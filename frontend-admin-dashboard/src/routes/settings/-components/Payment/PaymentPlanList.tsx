@@ -434,6 +434,8 @@ interface PaymentPlanListProps {
     onDelete?: (planId: string) => void;
     onSetDefault?: (planId: string) => void;
     onPreview?: (plan: PaymentPlan) => void;
+    /** Opens regional (country-based) pricing for a paid, non-CPO option. */
+    onRegionalPricing?: (plan: PaymentPlan) => void;
 }
 
 export const PaymentPlanList: React.FC<PaymentPlanListProps> = ({
@@ -442,8 +444,10 @@ export const PaymentPlanList: React.FC<PaymentPlanListProps> = ({
     onDelete,
     onSetDefault,
     onPreview,
+    onRegionalPricing,
 }) => {
     const { t } = useTranslation('settingsPaymentPlanList');
+    const { t: tRegional } = useTranslation('settingsRegionalPricing');
     const [expandedCpoIds, setExpandedCpoIds] = useState<Set<string>>(new Set());
 
     const toggleCpo = (id: string) => {
@@ -519,6 +523,19 @@ export const PaymentPlanList: React.FC<PaymentPlanListProps> = ({
                                                         className="text-blue-600 hover:text-blue-700"
                                                     >
                                                         <Eye className="size-4" />
+                                                    </Button>
+                                                )}
+                                            {onRegionalPricing &&
+                                                (plan.type === PaymentPlans.SUBSCRIPTION ||
+                                                    plan.type === PaymentPlans.UPFRONT) && (
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={() => onRegionalPricing(plan)}
+                                                        title={tRegional('actions.openDialog')}
+                                                        aria-label={tRegional('actions.openDialog')}
+                                                    >
+                                                        <Globe className="size-4" />
                                                     </Button>
                                                 )}
                                             {onEdit && plan.type !== PaymentPlans.CPO && (

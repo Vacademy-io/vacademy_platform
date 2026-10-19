@@ -25,7 +25,10 @@
         "titleLabel": "Titre",
         "selectSubject": "Sélectionner {{subject}}",
         "descriptionLabel": "Description",
-        "descriptionHint": "(Donnez un bref aperçu de votre cours en direct. Vous pouvez inclure du texte, des emojis, des images ou des affiches pour donner aux participants une idée rapide du sujet de la session)"
+        "descriptionHint": "(Donnez un bref aperçu de votre cours en direct. Vous pouvez inclure du texte, des emojis, des images ou des affiches pour donner aux participants une idée rapide du sujet de la session)",
+        "showToLearnersLabel": "Afficher ce cours aux apprenants",
+        "showToLearnersOnHint": "Activé : les apprenants voient ce cours et peuvent le rejoindre comme un cours en direct normal.",
+        "showToLearnersOffHint": "Désactivé : cours hors ligne. Les apprenants ne le voient pas et ne sont pas notifiés ; seule la présence est enregistrée."
     },
     "meetingType": {
         "oneTime": "Cours ponctuel",

@@ -56,6 +56,7 @@ curl https://api.telleo.ai/v1/calls/call_6f1d2c9a8b7e4f3a2d1c0b9a -H "X-API-Key:
 <ResponseField name="cost" type="object | null">`{credits, billed}`: what the call cost. See [Credits and usage](/platform/credits-and-usage#cost-of-one-call).</ResponseField>
 <ResponseField name="recording_url" type="string | null">A temporary link to the recording, valid until `recording_expires_at` (24 hours). Read the call again for a fresh link.</ResponseField>
 <ResponseField name="outcome" type="object | null">What the agent learned. See [Outcomes](/concepts/outcomes).</ResponseField>
+<ResponseField name="warnings" type="array">Only in the response to `POST /v1/calls` (and on each row of a batch's `calls`), and only when there is something to say: `[{field, code, message}]`. Today the one code is `reserved_variable`: a variable named like a built-in placeholder, which was kept but does not replace the built-in value. The call was created either way.</ResponseField>
 
 ## Canceling
 

@@ -11,7 +11,9 @@
         "knowledgeBase": "Knowledge Base",
         "coursePrompt": "Course Prompt",
         "video": "Video",
-        "usage": "Usage"
+        "usage": "Usage",
+        "limits": "Limits",
+        "plan": "Plan"
     },
     "common": {
         "saving": "Saving...",

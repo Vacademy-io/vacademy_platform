@@ -74,6 +74,7 @@ import {
 } from '@/routes/audience-manager/list/-utils/campaign-types';
 import { useLeadTerminology } from '@/hooks/use-lead-terminology';
 import { EvaluationApiKeysCard } from './EvaluationApiKeysCard';
+import { CatalogApiCard } from './catalog-api/CatalogApiCard';
 
 // ── Audience list hook ───────────────────────────────────────────────────────
 
@@ -2255,6 +2256,9 @@ export default function IntegrationSettings() {
 
             {/* ── AI Evaluation API keys (partner access, spec §6.3) ── */}
             <EvaluationApiKeysCard />
+
+            {/* ── Catalogue API: own-website course listing + enquiries ── */}
+            <CatalogApiCard />
 
             <ConnectorEditDialog
                 connector={editingConnector}

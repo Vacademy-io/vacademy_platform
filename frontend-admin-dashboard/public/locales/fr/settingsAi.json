@@ -11,7 +11,9 @@
         "knowledgeBase": "Base de connaissances",
         "coursePrompt": "Prompt du cours",
         "video": "Vidéo",
-        "usage": "Utilisation"
+        "usage": "Utilisation",
+        "limits": "Limites",
+        "plan": "Forfait"
     },
     "common": {
         "saving": "Enregistrement...",

@@ -19,6 +19,7 @@ from ..schemas.chat_agent import (
 )
 from ..config import get_settings
 from ..services.chat_llm_client import ChatLLMClient, reasoning_mode_for
+from ..services.image_model_resolver import QUIZ_IMAGE, image_model_for
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +40,9 @@ def _assessment_max_tokens(model: Optional[str]) -> int:
 
 # Image generation for assessment questions goes through OpenRouter — the
 # direct Gemini image key is free-tier with a zero image quota (429s every
-# call). Same billed model the course-content and video pipelines use.
+# call). Same billed model the course-content and video pipelines use. The
+# 'quiz_image' use case (super-admin portal) picks it; this literal is the
+# default. Chat-completions image models only (the call sends `modalities`).
 _IMAGE_MODEL = "google/gemini-3.1-flash-image"
 _OPENROUTER_IMAGE_URL = "https://openrouter.ai/api/v1/chat/completions"
 
@@ -499,7 +502,7 @@ OUTPUT — return ONLY this JSON object, no surrounding markdown / text:
                         "Content-Type": "application/json",
                     },
                     json={
-                        "model": _IMAGE_MODEL,
+                        "model": image_model_for(QUIZ_IMAGE, _IMAGE_MODEL),
                         "messages": [{"role": "user", "content": prompt}],
                         "modalities": ["image"],
                         "image_config": {"aspect_ratio": "16:9"},

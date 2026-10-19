@@ -1,3 +1,4 @@
+import type { OfflinePaymentDetails } from '@/services/offline-payment-modes';
 // Mirrors the backend DTOs in admin_core_service for the CPO side-view
 // endpoints under /admin-core-service/v1/fee-management. Snake-case wire
 // format on both sides — Spring serializes via SnakeCaseStrategy and we
@@ -31,10 +32,27 @@ export interface CpoUserPlanSummary {
     end_date?: string | null;
 }
 
+/**
+ * How a whole-plan discount is spread over the installments (CpoDiscountAllocator):
+ * ALL_PROPORTIONAL is the original way (every installment, paid ones too, in proportion);
+ * the others only touch what is still unpaid and are fixed when the discount is applied.
+ */
+export type CpoDiscountAllocation =
+    | 'UNPAID_PROPORTIONAL'
+    | 'UNPAID_EQUAL'
+    | 'LAST_FIRST'
+    | 'NEXT_FIRST'
+    | 'CUSTOM'
+    | 'ALL_PROPORTIONAL';
+
 export interface DiscountEntry {
     type: DiscountType;
     value: number;
     resolved_amount?: number | null;
+    /** Null/absent = ALL_PROPORTIONAL. */
+    allocation?: CpoDiscountAllocation | null;
+    /** Installment id → amount off, for every allocation but ALL_PROPORTIONAL. */
+    shares?: Record<string, number> | null;
     reason?: string | null;
     applied_by?: string | null;
     applied_at?: string | null;
@@ -78,6 +96,10 @@ export interface CpoInstallmentRow {
     start_date?: string | null;
     due_date?: string | null;
     status: string;
+    /** Set on bills from a learner's own installment schedule. */
+    installment_number?: number | null;
+    /** This installment's part of the whole-plan discount; absent when it takes none. */
+    plan_discount_share?: number | null;
     installment_discount?: InstallmentDiscountEntry | null;
     manual_amount_override?: ManualAmountOverrideEntry | null;
 }
@@ -109,6 +131,18 @@ export interface ModifyInstallmentRequest {
 export interface ApplyCpoDiscountRequest {
     discount?: DiscountSpec | null;
     remove?: boolean;
+    allocation?: CpoDiscountAllocation | null;
+    /** For CUSTOM: installment id → amount off it. */
+    custom_shares?: Record<string, number> | null;
+}
+
+/** What a plan discount would take off each installment; nothing is saved. */
+export interface CpoDiscountPreview {
+    allocation: CpoDiscountAllocation;
+    requested_amount: number;
+    /** Less than requested when not enough is left unpaid. */
+    resolved_amount: number;
+    installments: { id: string; share: number; amount_after: number }[];
 }
 
 /**
@@ -128,4 +162,6 @@ export interface RecordOfflinePaymentRequest {
     reference?: string | null;
     currency?: string | null;
     generate_invoice?: boolean;
+    /** How it was paid (mode, option, reference, proof). */
+    payment_details?: OfflinePaymentDetails | null;
 }

@@ -295,6 +295,7 @@ export default function ScheduleStep1() {
             streamingType: SessionPlatform.EMBED_IN_APP,
             allowRewind: false,
             allowPause: false,
+            showToLearners: false,
             enableWaitingRoom: liveSessionSettings.defaultWaitingRoomEnabled ?? false,
             // Pre-select the institute's default platform (falling back to
             // OTHER when it isn't set or has since been disallowed). Platform
@@ -932,6 +933,7 @@ export default function ScheduleStep1() {
             waitingRoomType: computedWaitingRoomType,
             allowRewind: schedule.allow_rewind ?? false,
             allowPause: schedule.allow_play_pause ?? false,
+            showToLearners: schedule.show_to_learners ?? false,
             events: '1',
             learner_button_config: topLevelLearnerButtonConfig,
             bbbRecord: schedule.bbb_config?.record ?? true,
@@ -1444,6 +1446,11 @@ export default function ScheduleStep1() {
                 uploadedFiles.coverFileId ?? null,
                 updateRecurrenceScope
             );
+            // Only attendance-only institutes choose learner visibility; for
+            // everyone else the request stays exactly as before.
+            if (!liveSessionSettings.attendanceOnlyMode) {
+                delete body.show_to_learners;
+            }
 
             const response = await createLiveSessionStep1(body);
             setSessionId(response.id);
@@ -2135,6 +2142,31 @@ export default function ScheduleStep1() {
                     className="mt-[8px] w-full font-thin sm:w-56"
                 />
             </div>
+
+            {liveSessionSettings.attendanceOnlyMode && (
+                <Controller
+                    control={control}
+                    name="showToLearners"
+                    render={({ field }) => (
+                        <label className="flex items-center justify-between gap-4 rounded-md border border-neutral-200 bg-neutral-50 p-3">
+                            <div>
+                                <div className="text-sm font-medium text-neutral-800">
+                                    {t('basicInfo.showToLearnersLabel')}
+                                </div>
+                                <div className="mt-0.5 text-xs text-neutral-500">
+                                    {field.value
+                                        ? t('basicInfo.showToLearnersOnHint')
+                                        : t('basicInfo.showToLearnersOffHint')}
+                                </div>
+                            </div>
+                            <Switch
+                                checked={field.value ?? false}
+                                onCheckedChange={field.onChange}
+                            />
+                        </label>
+                    )}
+                />
+            )}
 
             {liveSessionSettings.descriptionEnabled && (
             <div className="flex h-full flex-col gap-6">

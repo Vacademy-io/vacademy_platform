@@ -17,6 +17,13 @@ export interface PaymentLog {
     tracking_id?: string | null;
     tracking_source?: string | null;
     order_status?: string | null;
+    /** Offline payments only: how it was paid, as recorded by an admin (V577). */
+    payment_mode?: string | null;
+    payment_sub_mode?: string | null;
+    payment_reference?: string | null;
+    /** JSON: mode_label, sub_mode_label, notes, proof_file_id, cheque_date, bank_name, payer_name. */
+    payment_details_json?: string | null;
+    recorded_by_user_id?: string | null;
 }
 
 export interface EnrollInvite {

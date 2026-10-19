@@ -9,15 +9,9 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-    Sparkle,
-    CheckCircle,
-    Warning,
-    Check,
-    DownloadSimple,
-    Receipt,
-} from '@phosphor-icons/react';
+import { Sparkle, CheckCircle, Warning, Check, DownloadSimple } from '@phosphor-icons/react';
 import { Loader2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import {
@@ -28,9 +22,9 @@ import {
     useBillingProfileQuery,
     downloadInvoicePdf,
     isValidGstin,
-    INDIAN_GST_STATES,
     type CreditPack,
 } from '@/services/ai-credits/credit-pack-services';
+import { EMPTY_GST_BILLING, GstBillingFields } from './GstBillingFields';
 
 interface TopUpModalProps {
     open: boolean;
@@ -51,6 +45,7 @@ type Phase = 'pick' | 'launching' | 'awaiting' | 'success' | 'error';
  * this UI just reflects what the webhook has fulfilled.
  */
 export function TopUpModal({ open, onOpenChange, resumePaymentId }: TopUpModalProps) {
+    const { t: tPlans } = useTranslation('aiPlans');
     const instituteId = getCurrentInstituteId();
     const packsQuery = useCreditPacksQuery(instituteId, open);
     const purchaseMutation = usePurchaseCreditPackMutation();
@@ -153,20 +148,6 @@ export function TopUpModal({ open, onOpenChange, resumePaymentId }: TopUpModalPr
         () => packsQuery.data?.find((p) => p.pack_id === selectedPackId) ?? null,
         [packsQuery.data, selectedPackId]
     );
-
-    const handleGstinChange = (raw: string) => {
-        const v = raw
-            .toUpperCase()
-            .replace(/[^0-9A-Z]/g, '')
-            .slice(0, 15);
-        setBillingTouched(true);
-        setGstin(v);
-        setGstinError(null);
-        // State is fixed by the GSTIN prefix once it's long enough to carry one.
-        if (v.length >= 2 && INDIAN_GST_STATES.some((s) => s.code === v.slice(0, 2))) {
-            setStateCode(v.slice(0, 2));
-        }
-    };
 
     const handleBuy = async () => {
         if (!instituteId || !selectedPack) return;
@@ -287,79 +268,24 @@ export function TopUpModal({ open, onOpenChange, resumePaymentId }: TopUpModalPr
 
                             {/* GST details — INR buyers only */}
                             {isInr && packsQuery.data && packsQuery.data.length > 0 && (
-                                <div className="mt-4 rounded-xl border border-neutral-200 bg-neutral-50/60 p-4">
-                                    <div className="flex items-start justify-between gap-3">
-                                        <div>
-                                            <p className="text-sm font-semibold text-neutral-900">
-                                                GST details for your tax invoice
-                                            </p>
-                                            <p className="mt-0.5 text-xs text-neutral-500">
-                                                Add your GSTIN to claim input tax credit. Leave it
-                                                blank if your institute isn&rsquo;t GST registered.
-                                            </p>
-                                        </div>
-                                        <Receipt className="mt-0.5 size-5 shrink-0 text-neutral-400" />
-                                    </div>
-                                    <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                                        <label className="block">
-                                            <span className="mb-1 block text-xs font-medium text-neutral-700">
-                                                GSTIN{' '}
-                                                <span className="font-normal text-neutral-400">
-                                                    (optional)
-                                                </span>
-                                            </span>
-                                            <input
-                                                type="text"
-                                                inputMode="text"
-                                                autoCapitalize="characters"
-                                                spellCheck={false}
-                                                value={gstin}
-                                                onChange={(e) => handleGstinChange(e.target.value)}
-                                                placeholder="27AAAAA0000A1Z5"
-                                                maxLength={15}
-                                                aria-invalid={!!gstinError}
-                                                className={cn(
-                                                    'h-9 w-full rounded-md border bg-white px-3 font-mono text-sm tracking-wide text-neutral-900 outline-none transition-colors placeholder:font-sans placeholder:tracking-normal placeholder:text-neutral-300 focus:border-purple-400 focus:ring-2 focus:ring-purple-100',
-                                                    gstinError
-                                                        ? 'border-red-300'
-                                                        : 'border-neutral-200'
-                                                )}
-                                            />
-                                        </label>
-                                        <label className="block">
-                                            <span className="mb-1 block text-xs font-medium text-neutral-700">
-                                                State{' '}
-                                                <span className="font-normal text-neutral-400">
-                                                    (place of supply)
-                                                </span>
-                                            </span>
-                                            <select
-                                                value={stateCode}
-                                                disabled={gstin.length >= 2}
-                                                onChange={(e) => {
-                                                    setBillingTouched(true);
-                                                    setStateCode(e.target.value);
-                                                    setGstinError(null);
-                                                }}
-                                                className="h-9 w-full rounded-md border border-neutral-200 bg-white px-2.5 text-sm text-neutral-900 outline-none transition-colors focus:border-purple-400 focus:ring-2 focus:ring-purple-100 disabled:bg-neutral-100 disabled:text-neutral-500"
-                                            >
-                                                <option value="">Select state</option>
-                                                {INDIAN_GST_STATES.map((s) => (
-                                                    <option key={s.code} value={s.code}>
-                                                        {s.name} ({s.code})
-                                                    </option>
-                                                ))}
-                                            </select>
-                                        </label>
-                                    </div>
-                                    {gstinError && (
-                                        <p className="mt-2 text-xs text-red-600">{gstinError}</p>
-                                    )}
-                                    {!gstinError && billingQuery.data?.gstin && !billingTouched && (
-                                        <p className="mt-2 text-2xs text-neutral-400">
-                                            Saved from your last purchase. Edit if it has changed.
-                                        </p>
-                                    )}
+                                <div className="mt-4">
+                                    <GstBillingFields
+                                        value={{ ...EMPTY_GST_BILLING, gstin, stateCode }}
+                                        onChange={(patch) => {
+                                            setBillingTouched(true);
+                                            setGstinError(null);
+                                            if (patch.gstin !== undefined) setGstin(patch.gstin);
+                                            if (patch.stateCode !== undefined) {
+                                                setStateCode(patch.stateCode);
+                                            }
+                                        }}
+                                        error={gstinError}
+                                        hint={
+                                            billingQuery.data?.gstin && !billingTouched
+                                                ? tPlans('billing.savedHint')
+                                                : null
+                                        }
+                                    />
                                 </div>
                             )}
 

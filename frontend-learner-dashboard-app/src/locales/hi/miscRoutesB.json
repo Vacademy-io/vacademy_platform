@@ -234,6 +234,7 @@
         "pinCodePlaceholder": "पिन कोड दर्ज करें"
       },
       "additionalInfo": "अतिरिक्त जानकारी",
+      "selectParentFirst": "पहले {{name}} चुनें",
       "submit": "प्रतिक्रिया सबमिट करें",
       "submitting": "सबमिट हो रहा है..."
     },

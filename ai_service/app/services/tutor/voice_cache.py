@@ -28,7 +28,7 @@ import httpx
 from ...db import db_session
 from ...models.ai_token_usage import RequestType
 from ...models.tutor_tts_cache import TutorTtsCache
-from ..ai_billing import record_tool_billing
+from ..ai_billing import UC, metering_user, record_tool_billing
 from ..provider_rates import tts_cost_usd
 from .runtime import prompts
 from .runtime.speech import spoken_form, cache_key, effective_pace, tutor_segments
@@ -184,6 +184,7 @@ def spoken_lines(view: Dict[str, Any], lang: str, course_lang: str) -> List[str]
 async def warm_plan(
     *, plan_id: str, slide_id: str, institute_id: str, user_id: Optional[str], provider: str, voice: str,
     base_pace: float, languages: Iterable[str], course_lang: str, request_id: Optional[str] = None,
+    metering: Any = None,
 ) -> Dict[str, Any]:
     """Synthesise every line of a compiled plan for each language, once.
     Charges `tutor_voice_prepare` per slide per language only when at least
@@ -243,6 +244,10 @@ async def warm_plan(
                 model=f"{provider}:{v}", institute_id=institute_id, user_id=user_id, user_role="ADMIN",
                 request_id=request_id, idempotency_key=f"tutor_voice:{plan_id}:{lang}:{provider}:{v}"[:255],
                 provider_cost_usd=tts_cost_usd(provider, chars), character_count=chars,
+                use_case=UC.TUTOR_SETUP,
+                metering=metering if metering is not None else metering_user(user_id, surface="ADMIN_APP"),
+                usage_context={"plan_id": plan_id, "slide_id": slide_id, "language": lang,
+                               "feature": "tutor_voice_prepare"},
             )
     logger.info("Voice warm-up for slide %s: %s", slide_id, out)
     return out

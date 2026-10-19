@@ -30,6 +30,9 @@ import vacademy.io.admin_core_service.features.learner_payment_option_operation.
 import vacademy.io.admin_core_service.features.notification.service.DynamicNotificationService;
 import vacademy.io.admin_core_service.features.notification.enums.NotificationEventType;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
+import vacademy.io.admin_core_service.features.regional_pricing.dto.RegionalQuote;
+import vacademy.io.admin_core_service.features.regional_pricing.service.RegionalPriceLock;
+import vacademy.io.admin_core_service.features.regional_pricing.service.RegionalPriceResolver;
 import vacademy.io.admin_core_service.features.user_subscription.dto.coupon.CouponValidateRequestDTO;
 import vacademy.io.admin_core_service.features.user_subscription.dto.coupon.CouponValidateResponseDTO;
 import vacademy.io.admin_core_service.features.user_subscription.entity.AppliedCouponDiscount;
@@ -85,6 +88,9 @@ public class LearnerEnrollRequestService {
 
     @Autowired
     private EnrollInviteService enrollInviteService;
+
+    @Autowired
+    private RegionalPriceResolver regionalPriceResolver;
 
 
     @Autowired
@@ -193,6 +199,13 @@ public class LearnerEnrollRequestService {
     @Autowired
     private vacademy.io.admin_core_service.features.institute.service.setting.InstituteSettingService instituteSettingService;
 
+    /**
+     * extraData flag: reject the enrollment when the invite is not currently available
+     * (status / date window). Set by the public learner endpoint; internal callers
+     * (sub-org registration, admin MANUAL) leave it off.
+     */
+    public static final String ENFORCE_INVITE_AVAILABILITY = "ENFORCE_INVITE_AVAILABILITY";
+
     @Transactional
     public LearnerEnrollResponseDTO recordLearnerRequest(LearnerEnrollRequestDTO learnerEnrollRequestDTO) {
         return recordLearnerRequest(learnerEnrollRequestDTO, Map.of());
@@ -241,6 +254,24 @@ public class LearnerEnrollRequestService {
                 && gatewayStrategy.isClientPaymentConfirmation(enrollDTO.getPaymentInitiationRequest())) {
             return completeGatewayPaymentConfirmation(learnerEnrollRequestDTO,
                     enrollDTO.getPaymentInitiationRequest(), gatewayStrategy);
+        }
+
+        // ── Invite availability guard ─────────────────────────────────────────────
+        // The open invite endpoint shows an expired / not-started / deactivated link's
+        // "unavailable" message, but nothing stopped a direct POST from enrolling through
+        // it. Enforced only for callers that opt in (the public learner endpoint), and
+        // only after the phase-2 branch above: a payment that was already taken must
+        // still complete even if the link closed in between.
+        if (Boolean.TRUE.equals(extraData.get(ENFORCE_INVITE_AVAILABILITY))
+                && StringUtils.hasText(enrollDTO.getEnrollInviteId())) {
+            EnrollInvite availabilityInvite = getValidatedEnrollInvite(enrollDTO.getEnrollInviteId());
+            if (!vacademy.io.admin_core_service.features.enroll_invite.util.EnrollInviteAvailabilityUtil
+                    .isAvailable(availabilityInvite)) {
+                throw new VacademyException("This enrollment link is not accepting enrollments ("
+                        + vacademy.io.admin_core_service.features.enroll_invite.util.EnrollInviteAvailabilityUtil
+                                .compute(availabilityInvite)
+                        + ").");
+            }
         }
 
         if (!StringUtils.hasText(learnerEnrollRequestDTO.getUser().getId())) {
@@ -313,6 +344,11 @@ public class LearnerEnrollRequestService {
 
             String learndashBaseUrl = resolveLearnerPortalUrl(
                     enrollDTO.getPackageSessionIds(), learnerEnrollRequestDTO.getInstituteId());
+            if (learnerEnrollRequestDTO.getUser() != null) {
+                // Lets the institute's username strategy use a custom field (e.g. roll number).
+                learnerEnrollRequestDTO.getUser().setUsernameFieldValues(
+                        CustomFieldValueDTO.toValueMap(enrollDTO.getCustomFieldValues()));
+            }
             UserDTO user = authService.createUserFromAuthServiceForLearnerEnrollment(learnerEnrollRequestDTO.getUser(),
                     learnerEnrollRequestDTO.getInstituteId(), sendCredentials, learndashBaseUrl);
             learnerEnrollRequestDTO.setUser(user);
@@ -1103,6 +1139,9 @@ public class LearnerEnrollRequestService {
         AppliedCouponDiscount appliedCouponDiscount = resolveAppliedCoupon(
                 enrollDTO, instituteId, userEmail, paymentPlan);
 
+        RegionalQuote regionalQuote = resolveRegionalQuote(
+                enrollDTO, enrollInvite, paymentOption, paymentPlan, source, appliedCouponDiscount);
+
         return userPlanService.createUserPlan(
                 userId,
                 paymentPlan,
@@ -1113,7 +1152,47 @@ public class LearnerEnrollRequestService {
                 userPlanStatus,
                 source,
                 subOrgId,
-                enrollDTO.getStartDate());
+                enrollDTO.getStartDate(),
+                regionalQuote);
+    }
+
+    /**
+     * Regional price for this checkout, resolved server-side from the viewer's country —
+     * never from what the client sends. Only a learner's own paid ONE_TIME / SUBSCRIPTION
+     * purchase is regionally priced; sub-org seats and CPO fee structures stay on base price.
+     * When a price applies, the payment request is rewritten to it (currency + net amount)
+     * so the ledger accrual and the gateway order agree with what the learner was shown.
+     */
+    private RegionalQuote resolveRegionalQuote(LearnerPackageSessionsEnrollDTO enrollDTO, EnrollInvite enrollInvite,
+                                               PaymentOption paymentOption, PaymentPlan paymentPlan, String source,
+                                               AppliedCouponDiscount appliedCouponDiscount) {
+        String type = paymentOption.getType();
+        boolean regionalEligible = (source == null || UserPlanSourceEnum.USER.name().equals(source))
+                && (PaymentOptionType.ONE_TIME.name().equals(type) || PaymentOptionType.SUBSCRIPTION.name().equals(type));
+        if (!regionalEligible) {
+            return null;
+        }
+        RegionalQuote quote;
+        try {
+            quote = regionalPriceResolver
+                    .quote(paymentPlan, enrollInvite != null ? enrollInvite.getVendor() : null)
+                    .orElse(null);
+        } catch (Exception e) {
+            // Never fail an enrolment over regional pricing: fall back to the base-price flow.
+            log.warn("Regional pricing skipped for plan {}: {}",
+                    paymentPlan != null ? paymentPlan.getId() : null, e.getMessage());
+            return null;
+        }
+        PaymentInitiationRequestDTO payReq = enrollDTO.getPaymentInitiationRequest();
+        if (quote != null && payReq != null) {
+            payReq.setCurrency(quote.currency());
+            payReq.setAmount(RegionalPriceLock.applyDiscount(quote.actualPrice().doubleValue(),
+                    RegionalPriceLock.scale(quote, paymentPlan), appliedCouponDiscount));
+            log.info("Regional price {} {} ({}) applied to plan {} for viewer in {}",
+                    quote.currency(), quote.actualPrice(), quote.priceSource(), paymentPlan.getId(),
+                    quote.countryCode());
+        }
+        return quote;
     }
 
     /**

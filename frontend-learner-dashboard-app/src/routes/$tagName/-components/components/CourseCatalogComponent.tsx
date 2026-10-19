@@ -70,7 +70,7 @@ import { badgesNeedRanks, resolveCatalogDiscovery, type ResolvedQuickFilter } fr
 import {
   buildCatalogCards,
   cardPriceView,
-  courseTagsOf,
+  courseMatchKeysOf,
   isBuyableNowRow,
   isPureLanguageLevel,
   type CardPriceView,
@@ -611,11 +611,27 @@ const quickFilterDefaultLabel = (
   }
 };
 
+/** Comparator for filter options: names listed in `order` (matched
+ *  case-insensitively) come first in that order; the rest follow in natural
+ *  order. An empty or missing list is plain natural order. */
+const byAuthoredOrder = (order?: string[]) => {
+  const rank = new Map(
+    (Array.isArray(order) ? order : []).map((name, i) => [String(name).trim().toLowerCase(), i] as const),
+  );
+  return (a: { name: string }, b: { name: string }) => {
+    const ra = rank.get(a.name.trim().toLowerCase()) ?? Infinity;
+    const rb = rank.get(b.name.trim().toLowerCase()) ?? Infinity;
+    return ra === rb ? compareByNameNatural(a, b) : ra - rb;
+  };
+};
+
 export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = (componentProps) => {
   const {
     title,
     showFilters,
     filtersConfig,
+    levelOrder,
+    tagOrder,
     cartButtonConfig,
     render,
     defaultSort,
@@ -754,11 +770,11 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = (co
             !discovery.grouping || !isPureLanguageLevel(level, discovery.languages),
         )
         .map((level) => ({ id: level, name: displayLevelName(level) }))
-        // Sort naturally so the filter list is stable and reads sensibly
-        // (Class 6, 7, 8 … 12, then non-numeric levels) regardless of the
-        // order courses arrive from the API.
-        .sort(compareByNameNatural),
-    [courses, discovery.grouping, discovery.languages],
+        // Admin-set order first (levelOrder); the rest sort naturally so the
+        // list is stable and reads sensibly (Class 6, 7, 8 … 12, then
+        // non-numeric levels) regardless of the order courses arrive from the API.
+        .sort(byAuthoredOrder(levelOrder)),
+    [courses, discovery.grouping, discovery.languages, levelOrder],
   );
   // Same sentinel rule as levels: the placeholder "DEFAULT" session must not
   // surface as a "Default" checkbox next to real streams, and an institute
@@ -775,22 +791,23 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = (co
       .map(([id, name]) => ({ id, name }))
       .sort(compareByNameNatural);
   }, [courses]);
-  const tags = useMemo(
-    () =>
-      [
-        ...new Set(
-          courses
-            .flatMap(
-              (c) =>
-                c.comma_separeted_tags
-                  ?.split(",")
-                  .map((t: string) => t.trim()) || [],
-            )
-            .filter(Boolean),
-        ),
-      ].map((tag) => ({ id: tag, name: tag })),
-    [courses],
-  );
+  const tags = useMemo(() => {
+    const list = [
+      ...new Set(
+        courses
+          .flatMap(
+            (c) =>
+              c.comma_separeted_tags
+                ?.split(",")
+                .map((t: string) => t.trim()) || [],
+          )
+          .filter(Boolean),
+      ),
+    ].map((tag) => ({ id: tag, name: tag }));
+    // Admin-set order (tagOrder) first, the rest natural (1, 2, 3 …).
+    // Without one, the first-seen order stays exactly as it was.
+    return Array.isArray(tagOrder) && tagOrder.length ? list.sort(byAuthoredOrder(tagOrder)) : list;
+  }, [courses, tagOrder]);
   // Courses with no instructor carry the "Unknown Teacher" placeholder as
   // their instructor (see the fetch mapping). Keep it off the filter list so a
   // catalogue of author-less courses does not offer an "Unknown" checkbox.
@@ -1341,7 +1358,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = (co
         const price = Number(c.price) || 0;
         entry.price = entry.price === null ? price : Math.min(entry.price, price);
       }
-      courseTagsOf(c).forEach((tag) => entry.tags.add(tag.toLowerCase()));
+      courseMatchKeysOf(c).forEach((tag) => entry.tags.add(tag));
       byCourse.set(courseId, entry);
     }
     // A card folding several packages (courseLanguages.versionGroups) gets ONE

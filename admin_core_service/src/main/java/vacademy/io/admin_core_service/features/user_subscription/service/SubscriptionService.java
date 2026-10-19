@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import vacademy.io.admin_core_service.features.regional_pricing.service.RegionalPriceLock;
 import vacademy.io.admin_core_service.features.common.util.JsonUtil;
 import vacademy.io.admin_core_service.features.institute.service.InstitutePaymentGatewayMappingService;
 import vacademy.io.admin_core_service.features.institute.service.InstitutePaymentGatewayMappingService.VendorInfo;
@@ -195,9 +196,10 @@ public class SubscriptionService {
         // nothing. A renewal extends an existing membership, so require one to exist.
         boolean unfinishedSignup = isUnfinishedSignup(plan);
         boolean canRenewManually = !unfinishedSignup && renewalDue && renewalGateway != null;
-        String currency = mandate != null && mandate.getCurrency() != null
-                ? mandate.getCurrency()
-                : (plan.getEnrollInvite() != null ? plan.getEnrollInvite().getCurrency() : null);
+        String currency = RegionalPriceLock
+                .currency(plan, mandate != null && mandate.getCurrency() != null
+                        ? mandate.getCurrency()
+                        : (plan.getEnrollInvite() != null ? plan.getEnrollInvite().getCurrency() : null));
 
         var planChange = planChangeSummary(plan, instituteId, changeablePackageSessionIds);
 
@@ -215,7 +217,9 @@ public class SubscriptionService {
                 .currency(currency)
                 .hasActiveMandate(liveMandate)
                 .packageSessionIds(packageSessionIds)
-                .planPrice(plan.getPaymentPlan() != null ? plan.getPaymentPlan().getActualPrice() : null)
+                .planPrice(plan.getPaymentPlan() != null
+                        ? RegionalPriceLock.listPrice(plan)
+                        : null)
                 .vendorId(plan.getEnrollInvite() != null ? plan.getEnrollInvite().getVendorId() : null)
                 .canRenewManually(canRenewManually)
                 .canCompleteEnrollment(unfinishedSignup)
@@ -397,14 +401,20 @@ public class SubscriptionService {
         var user = users.get(0);
 
         var request = new vacademy.io.common.payment.dto.PaymentInitiationRequestDTO();
-        request.setAmount(payablePlan.getActualPrice());
+        // Renewing the same plan keeps a regionally priced member on their locked price.
+        boolean regionalRenewal = pendingTarget == null
+                && RegionalPriceLock.isLocked(plan);
+        double payableAmount = regionalRenewal
+                ? RegionalPriceLock.listPrice(plan)
+                : payablePlan.getActualPrice();
+        request.setAmount(payableAmount);
         // Invite currency first, then the PLAN's own currency, and only then INR. Vet
         // Education has invites with a blank currency (e.g. "Individual Membership",
         // 82725a60) whose plan is priced in AUD -- falling straight back to INR there would
         // charge an Australian member in rupees, and scale the minor units by the wrong
         // exponent on the way. It is also why that plan's button reads "Pay 192" with no
         // currency at all.
-        request.setCurrency(resolveCurrency(invite, payablePlan));
+        request.setCurrency(regionalRenewal ? plan.getRegionalCurrency() : resolveCurrency(invite, payablePlan));
         request.setDescription("Membership renewal — "
                 + (payablePlan.getName() != null ? payablePlan.getName() : "subscription"));
         request.setInstituteId(instituteId);
@@ -465,7 +475,12 @@ public class SubscriptionService {
             // mandate fields must be filled here just as enrolment fills them — an empty
             // RazorpayRequestDTO makes the gateway fall back to a CARD e-mandate with no
             // ceiling, which is wrong for a learner who authorised UPI Autopay.
-            mandateRequestDefaults.applyMaxAmountAndFrequency(request, invite, payablePlan);
+            if (regionalRenewal) {
+                mandateRequestDefaults.applyMaxAmountAndFrequency(request, invite, payableAmount);
+            } else {
+                // Not regionally priced: exactly the original call.
+                mandateRequestDefaults.applyMaxAmountAndFrequency(request, invite, payablePlan);
+            }
             mandateRequestDefaults.applyMethod(request, mandateMethod,
                     plan.getUserId(), instituteId, invite.getVendor());
             return paymentService.handleMandatePayment(user, instituteId, invite, plan, request);

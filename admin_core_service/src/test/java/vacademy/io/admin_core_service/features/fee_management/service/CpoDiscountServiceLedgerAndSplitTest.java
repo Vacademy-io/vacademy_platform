@@ -58,11 +58,13 @@ class CpoDiscountServiceLedgerAndSplitTest {
     private final List<Row> ledger = new ArrayList<>();
     private UserPlan plan;
     private CpoDiscountService service;
+    private StudentFeePaymentRepository sfpRepo;
 
     @BeforeEach
     void setUp() {
         UserPlanRepository userPlanRepository = mock(UserPlanRepository.class);
         StudentFeePaymentRepository sfpRepository = mock(StudentFeePaymentRepository.class);
+        sfpRepo = sfpRepository;
         UserAccountLedgerService ledgerService = mock(UserAccountLedgerService.class);
         UserAccountLedgerRepository ledgerRepository = mock(UserAccountLedgerRepository.class);
 
@@ -99,7 +101,8 @@ class CpoDiscountServiceLedgerAndSplitTest {
                         .map(Row::amount)
                         .reduce(BigDecimal.ZERO, BigDecimal::add));
 
-        service = new CpoDiscountService(userPlanRepository, sfpRepository, ledgerService, ledgerRepository);
+        service = new CpoDiscountService(userPlanRepository, sfpRepository, ledgerService, ledgerRepository,
+                mock(vacademy.io.admin_core_service.features.fee_management.repository.AftInstallmentRepository.class));
     }
 
     // ------------------------------------------------------------------ fixtures
@@ -340,5 +343,221 @@ class CpoDiscountServiceLedgerAndSplitTest {
         assertThrows(VacademyException.class, () -> service.splitInstallment("a", new BigDecimal("100"),
                 LocalDate.of(2027, 2, 1), LocalDate.of(2027, 1, 1), "admin"));
         assertEquals(1, sfps.size());
+    }
+
+    // ------------------------------------------------------- discount spread
+
+    /** B&WSSC: 9,000 in three, the first 3,510 already paid. */
+    private void paidFirstPlan() {
+        StudentFeePayment first = installment("p1", "3510.00", "3510.00", LocalDate.of(2026, 10, 14));
+        first.setStatus("PAID");
+        installment("p2", "2745.00", "0", LocalDate.of(2026, 10, 29));
+        installment("p3", "2745.00", "0", LocalDate.of(2026, 11, 13));
+        snapshot(UserPlanDiscountJson.builder().build());
+        service.recomputeUserPlan(PLAN);
+    }
+
+    private static vacademy.io.admin_core_service.features.fee_management.dto.DiscountSpecDTO flat(double v) {
+        return vacademy.io.admin_core_service.features.fee_management.dto.DiscountSpecDTO.builder()
+                .type("FLAT").value(v).build();
+    }
+
+    @Test
+    @DisplayName("the original spread still takes part of the discount off a paid installment")
+    void allProportionalUnchanged() {
+        paidFirstPlan();
+        service.setCpoDiscount(PLAN, flat(1000), "admin");
+
+        assertMoney("3120.00", sfps.get("p1").getAmountExpected());
+        assertMoney("2440.00", sfps.get("p2").getAmountExpected());
+        assertMoney("2440.00", sfps.get("p3").getAmountExpected());
+        assertNull(PaymentOptionJsonDiscountAccessor.read(plan.getPaymentOptionJson()).getCpoDiscount().getAllocation());
+        assertBooksAgree();
+    }
+
+    @Test
+    @DisplayName("unpaid-only spreads leave the paid installment alone")
+    void unpaidModes() {
+        paidFirstPlan();
+        service.setCpoDiscount(PLAN, flat(1000), CpoDiscountAllocator.UNPAID_EQUAL, null, "admin");
+        assertMoney("3510.00", sfps.get("p1").getAmountExpected());
+        assertEquals("PAID", sfps.get("p1").getStatus());
+        assertMoney("2245.00", sfps.get("p2").getAmountExpected());
+        assertMoney("2245.00", sfps.get("p3").getAmountExpected());
+        assertBooksAgree();
+
+        service.setCpoDiscount(PLAN, flat(1000), CpoDiscountAllocator.LAST_FIRST, null, "admin");
+        assertMoney("2745.00", sfps.get("p2").getAmountExpected());
+        assertMoney("1745.00", sfps.get("p3").getAmountExpected());
+        assertBooksAgree();
+
+        service.setCpoDiscount(PLAN, flat(3000), CpoDiscountAllocator.NEXT_FIRST, null, "admin");
+        assertMoney("0.00", sfps.get("p2").getAmountExpected());
+        assertMoney("2490.00", sfps.get("p3").getAmountExpected());
+        assertBooksAgree();
+
+        // 10% of the whole 9,000, taken from what is unpaid.
+        service.setCpoDiscount(PLAN, vacademy.io.admin_core_service.features.fee_management.dto.DiscountSpecDTO.builder()
+                .type("PERCENTAGE").value(10.0).build(), CpoDiscountAllocator.UNPAID_PROPORTIONAL, null, "admin");
+        assertMoney("3510.00", sfps.get("p1").getAmountExpected());
+        assertMoney("2295.00", sfps.get("p2").getAmountExpected());
+        assertMoney("2295.00", sfps.get("p3").getAmountExpected());
+        assertBooksAgree();
+    }
+
+    @Test
+    @DisplayName("frozen shares stay put when a later payment lands and the plan is recomputed")
+    void frozenSharesSurvivePayments() {
+        paidFirstPlan();
+        service.setCpoDiscount(PLAN, flat(1000), CpoDiscountAllocator.UNPAID_PROPORTIONAL, null, "admin");
+        StudentFeePayment p2 = sfps.get("p2");
+        p2.setAmountPaid(new BigDecimal("2245.00"));
+        p2.setStatus("PAID");
+        service.recomputeUserPlan(PLAN);
+
+        assertMoney("2245.00", sfps.get("p2").getAmountExpected());
+        assertEquals("PAID", sfps.get("p2").getStatus());
+        assertMoney("2245.00", sfps.get("p3").getAmountExpected());
+        assertBooksAgree();
+    }
+
+    @Test
+    @DisplayName("custom amounts: each within what is unpaid, the discount is their sum")
+    void customShares() {
+        paidFirstPlan();
+        service.setCpoDiscount(PLAN, flat(0), CpoDiscountAllocator.CUSTOM,
+                Map.of("p2", new BigDecimal("700"), "p3", new BigDecimal("300")), "admin");
+        assertMoney("2045.00", sfps.get("p2").getAmountExpected());
+        assertMoney("2445.00", sfps.get("p3").getAmountExpected());
+        UserPlanDiscountJson.DiscountEntry e = PaymentOptionJsonDiscountAccessor.read(plan.getPaymentOptionJson()).getCpoDiscount();
+        assertEquals(1000.0, e.getValue());
+        assertEquals("FLAT", e.getType());
+        assertBooksAgree();
+
+        assertThrows(VacademyException.class, () -> service.setCpoDiscount(PLAN, flat(0), CpoDiscountAllocator.CUSTOM,
+                Map.of("p1", new BigDecimal("1")), "admin"));
+        assertThrows(VacademyException.class, () -> service.setCpoDiscount(PLAN, flat(0), CpoDiscountAllocator.CUSTOM,
+                Map.of("p2", new BigDecimal("2745.01")), "admin"));
+    }
+
+    @Test
+    @DisplayName("a discount larger than what is unpaid is capped; the preview says so")
+    void cappedAndPreview() {
+        paidFirstPlan();
+        CpoDiscountService.CpoDiscountPlan preview = service.previewCpoDiscount(PLAN, flat(8000),
+                CpoDiscountAllocator.UNPAID_PROPORTIONAL, null);
+        assertMoney("8000.00", preview.requested());
+        assertMoney("5490.00", preview.resolved());
+        assertMoney("3510.00", sfps.get("p1").getAmountExpected()); // nothing saved
+        assertMoney("2745.00", sfps.get("p2").getAmountExpected());
+    }
+
+    @Test
+    @DisplayName("splitting an installment that carries a frozen share keeps the books and the total")
+    void splitWithFrozenShare() {
+        paidFirstPlan();
+        service.setCpoDiscount(PLAN, flat(1000), CpoDiscountAllocator.LAST_FIRST, null, "admin");
+        StudentFeePayment added = service.splitInstallment("p3", new BigDecimal("745.00"),
+                null, LocalDate.of(2026, 12, 13), "admin");
+
+        assertMoney("1000.00", sfps.get("p3").getAmountExpected());
+        assertMoney("745.00", added.getAmountExpected());
+        assertMoney("8000.00", sum(StudentFeePayment::getAmountExpected));
+        assertMoney("9000.00", sum(StudentFeePayment::getOriginalAmount));
+        assertBooksAgree();
+    }
+
+    @Test
+    @DisplayName("nothing unpaid: an unpaid-only discount is refused")
+    void nothingUnpaid() {
+        StudentFeePayment only = installment("x", "1000.00", "1000.00", LocalDate.of(2026, 10, 1));
+        only.setStatus("PAID");
+        snapshot(UserPlanDiscountJson.builder().build());
+        assertThrows(VacademyException.class, () -> service.setCpoDiscount(PLAN, flat(100),
+                CpoDiscountAllocator.UNPAID_EQUAL, null, "admin"));
+    }
+
+    /** The I2CAN learner on prod: 3,900 / 3,050 / 3,050, 1,000 off the original way, first paid at 3,510. */
+    private void paidAfterOriginalDiscount() {
+        installment("q1", "3900.00", "0", LocalDate.of(2026, 10, 14));
+        installment("q2", "3050.00", "0", LocalDate.of(2026, 10, 29));
+        installment("q3", "3050.00", "0", LocalDate.of(2026, 11, 13));
+        snapshot(UserPlanDiscountJson.builder().build());
+        service.setCpoDiscount(PLAN, flat(1000), "admin");
+        StudentFeePayment q1 = sfps.get("q1");
+        q1.setAmountPaid(new BigDecimal("3510.00"));
+        q1.setStatus("PAID");
+    }
+
+    @Test
+    @DisplayName("re-spreading keeps the discount a paid installment already carries")
+    void paidInstallmentKeepsItsShare() {
+        paidAfterOriginalDiscount();
+        assertMoney("3510.00", sfps.get("q1").getAmountExpected());
+
+        service.setCpoDiscount(PLAN, flat(1000), CpoDiscountAllocator.LAST_FIRST, null, "admin");
+        assertMoney("3510.00", sfps.get("q1").getAmountExpected());
+        assertEquals("PAID", sfps.get("q1").getStatus());
+        assertMoney("3050.00", sfps.get("q2").getAmountExpected());
+        assertMoney("2440.00", sfps.get("q3").getAmountExpected());
+        assertBooksAgree();
+
+        service.setCpoDiscount(PLAN, flat(1500), CpoDiscountAllocator.UNPAID_EQUAL, null, "admin");
+        assertMoney("3510.00", sfps.get("q1").getAmountExpected());
+        assertMoney("2495.00", sfps.get("q2").getAmountExpected());
+        assertMoney("2495.00", sfps.get("q3").getAmountExpected());
+        assertBooksAgree();
+
+        // Less than the 390 already on the paid installment cannot be spread over unpaid ones.
+        assertThrows(VacademyException.class, () -> service.setCpoDiscount(PLAN, flat(300),
+                CpoDiscountAllocator.UNPAID_PROPORTIONAL, null, "admin"));
+        // Custom: the paid one keeps its 390, the typed amounts add to it.
+        service.setCpoDiscount(PLAN, flat(0), CpoDiscountAllocator.CUSTOM,
+                Map.of("q3", new BigDecimal("110")), "admin");
+        assertMoney("3510.00", sfps.get("q1").getAmountExpected());
+        assertMoney("3050.00", sfps.get("q2").getAmountExpected());
+        assertMoney("2940.00", sfps.get("q3").getAmountExpected());
+        assertEquals(500.0, PaymentOptionJsonDiscountAccessor.read(plan.getPaymentOptionJson()).getCpoDiscount().getValue());
+        assertBooksAgree();
+    }
+
+    @Test
+    @DisplayName("enrollment: per-installment discounts from the schedule bill exactly what the screen showed")
+    void scheduleRowDiscountsAtEnrollment() {
+        // ₹4,000 in three, ₹1,000 off; the admin wants ₹2,000 now: 2,334 − 334 / 833 − 333 / 833 − 333.
+        installment("s1", "2334.00", "0", LocalDate.of(2026, 10, 15)).setInstallmentNumber(1);
+        installment("s2", "833.00", "0", LocalDate.of(2026, 11, 15)).setInstallmentNumber(2);
+        installment("s3", "833.00", "0", LocalDate.of(2026, 12, 15)).setInstallmentNumber(3);
+        snapshot(UserPlanDiscountJson.builder().build());
+        vacademy.io.admin_core_service.features.fee_management.dto.InstallmentScheduleDTO schedule =
+                vacademy.io.admin_core_service.features.fee_management.dto.InstallmentScheduleDTO.builder()
+                        .rows(List.of(
+                                scheduleRow("2026-10-15", "2334", "334"),
+                                scheduleRow("2026-11-15", "833", "333"),
+                                scheduleRow("2026-12-15", "833", "333")))
+                        .build();
+        vacademy.io.admin_core_service.features.learner_management.dto.CpoEnrollmentConfigDTO config =
+                vacademy.io.admin_core_service.features.learner_management.dto.CpoEnrollmentConfigDTO.builder()
+                        .installmentSchedule(schedule)
+                        .cpoDiscount(vacademy.io.admin_core_service.features.fee_management.dto.DiscountSpecDTO.builder()
+                                .type("PERCENTAGE").value(25.0).reason("Sibling").build())
+                        .build();
+
+        new CpoEnrollmentConfigApplier(sfpRepo, service).apply(PLAN, config, "admin");
+
+        assertMoney("2000.00", sfps.get("s1").getAmountExpected());
+        assertMoney("500.00", sfps.get("s2").getAmountExpected());
+        assertMoney("500.00", sfps.get("s3").getAmountExpected());
+        UserPlanDiscountJson.DiscountEntry e = PaymentOptionJsonDiscountAccessor.read(plan.getPaymentOptionJson()).getCpoDiscount();
+        assertEquals("CUSTOM", e.getAllocation());
+        assertEquals(1000.0, e.getValue());
+        assertEquals("Sibling", e.getReason());
+        assertBooksAgree();
+    }
+
+    private static vacademy.io.admin_core_service.features.fee_management.dto.InstallmentScheduleDTO.RowDTO scheduleRow(
+            String date, String amount, String discount) {
+        return vacademy.io.admin_core_service.features.fee_management.dto.InstallmentScheduleDTO.RowDTO.builder()
+                .dueDate(LocalDate.parse(date)).amount(new BigDecimal(amount)).discount(new BigDecimal(discount)).build();
     }
 }

@@ -180,7 +180,9 @@ public class AiCallingWebhookService {
         m.put("object", "webhook");
         m.put("url", w.getUrl());
         m.put("enabled", w.isEnabled());
-        m.put("events", List.of(EVENT_COMPLETED, EVENT_NOT_CONNECTED));
+        // One endpoint receives both families: AI calls and, since v1.2, human calls.
+        m.put("events", List.of(EVENT_COMPLETED, EVENT_NOT_CONNECTED, HumanCallWebhookService.EVENT_COMPLETED,
+                HumanCallWebhookService.EVENT_NOT_CONNECTED, HumanCallWebhookService.EVENT_ANALYSIS_READY));
         if (includeSecret) {
             m.put("secret", w.getSecret());
         } else {

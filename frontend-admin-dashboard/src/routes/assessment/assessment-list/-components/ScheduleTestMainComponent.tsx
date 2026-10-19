@@ -1,5 +1,6 @@
 import { Helmet } from 'react-helmet';
 import { Tabs } from '@/components/ui/tabs';
+import { cn } from '@/lib/utils';
 import { useEffect, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useSuspenseQuery } from '@tanstack/react-query';
@@ -37,6 +38,7 @@ import {
     getTerminologyPlural,
 } from '@/components/common/layout-container/sidebar/utils';
 import { ASSESSMENT_SOURCE_FILTERS } from '../-utils.ts/assessment-source';
+import type { FolderListFilter } from './folders/AssessmentFolderWorkspace';
 
 export interface SelectedQuestionPaperFilters {
     name: string | { id: string; name: string }[];
@@ -51,6 +53,9 @@ export interface SelectedQuestionPaperFilters {
     assessment_modes: MyFilterOption[];
     access_statuses: MyFilterOption[];
     evaluation_types: MyFilterOption[];
+    /** Folder scope (assessment folders); set from the route, not a filter chip. */
+    folder_id?: string;
+    unfiled_only?: boolean;
 }
 
 // Per-tab request flags/status — shared by the full-list fetch and the
@@ -92,10 +97,19 @@ export const ScheduleTestMainComponent = ({
     isCourseOutline = false,
     batchId,
     showBatchFilter = true,
+    folderFilter,
+    toolbar,
+    hideList = false,
 }: {
     isCourseOutline?: boolean;
     batchId?: string;
     showBatchFilter?: boolean;
+    /** Folder the list is scoped to; the workspace remounts this component when it changes. */
+    folderFilter?: FolderListFilter;
+    /** Rendered under the page header, above the tabs (assessment folder cards / breadcrumb). */
+    toolbar?: React.ReactNode;
+    /** Assessment folders: show only the header + toolbar (every test is in a folder). */
+    hideList?: boolean;
 }) => {
     const navigate = useNavigate();
     const { t } = useTranslation('assessmentScheduleTestMainComponent');
@@ -137,6 +151,7 @@ export const ScheduleTestMainComponent = ({
             assessment_modes: [],
             access_statuses: [],
             evaluation_types: [],
+            ...folderFilter,
         });
 
     // Whether the admin changed a filter since the last Apply — see hasUnappliedFilters.
@@ -309,6 +324,7 @@ export const ScheduleTestMainComponent = ({
             assessment_modes: [],
             access_statuses: [],
             evaluation_types: [],
+            ...folderFilter,
         });
         setSearchText('');
         const resetBaseData: SelectedQuestionPaperFilters = {
@@ -324,6 +340,7 @@ export const ScheduleTestMainComponent = ({
             assessment_statuses: [],
             assessment_modes: [],
             access_statuses: [],
+            ...folderFilter,
         };
         getFilteredData.mutate({
             pageNo: pageNo,
@@ -583,9 +600,11 @@ export const ScheduleTestMainComponent = ({
         if (!isCourseOutline)
             navigate({
                 to: '/assessment/assessment-list',
-                search: {
+                // Keep ?folderId= so the folder (and a sidebar sub-tab pointing at it) stays selected.
+                search: (prev: Record<string, unknown>) => ({
+                    ...prev,
                     selectedTab: selectedTab,
-                },
+                }),
             });
     }, [selectedTab, isCourseOutline, navigate]);
 
@@ -602,7 +621,9 @@ export const ScheduleTestMainComponent = ({
                 <meta name="description" content={t('meta.helmetDescription')} />
             </Helmet>
             <ScheduleTestHeaderDescription isCourseOutline />
-            <div className="flex flex-col gap-4">
+            {toolbar}
+            {/* hideList (assessment folders, every test in a folder): no empty tabs. */}
+            <div className={cn('flex flex-col gap-4', hideList && 'hidden')}>
                 <Tabs value={selectedTab} onValueChange={handleTabChange}>
                     <ScheduleTestTabList
                         selectedTab={selectedTab}

@@ -7,7 +7,9 @@ import vacademy.io.admin_core_service.features.agent.dto.ChatbotAiRequest;
 import vacademy.io.admin_core_service.features.agent.dto.ChatbotAiResponse;
 import vacademy.io.admin_core_service.features.agent.dto.ConversationSession;
 import vacademy.io.admin_core_service.features.ai_usage.enums.RequestType;
+import vacademy.io.admin_core_service.features.credits.client.AuthorizeResult;
 import vacademy.io.admin_core_service.features.credits.client.CreditClient;
+import vacademy.io.admin_core_service.features.credits.client.MeteringFields;
 
 import java.time.Duration;
 import java.util.Map;
@@ -64,11 +66,27 @@ public class ChatbotAiService {
         // 1. Affordability, fail CLOSED. hasActiveCredits already returns false when the
         // balance cannot be read, so an unreachable credits service pauses the bot rather
         // than letting it keep spending at the provider un-metered. Same posture as the
-        // Engagement Engine's autonomous sends and AI calling.
-        if (!hasCredits(request.getInstituteId())) {
+        // Engagement Engine's autonomous sends and AI calling. An empty wallet is then asked
+        // once more about the institute's LIVE AI plan (chatbot replies can be included in a
+        // plan); no LIVE plan = no extra call, and any failure there = today's answer.
+        if (!hasCredits(request)) {
             log.warn("Chatbot AI turn refused — institute {} has no AI credits", request.getInstituteId());
             return ChatbotAiResponse.builder()
                     .insufficientCredits(true)
+                    .exitIntent(false)
+                    .build();
+        }
+
+        // 1b. AI usage limits (institute policy in ENFORCE). A refusal takes the same pause
+        // path as an empty wallet: the flow hands the learner to a human. No limits on for
+        // the institute = no call at all; any gate failure = allowed.
+        AuthorizeResult limit = usageLimitDecision(request);
+        if (AuthorizeResult.blocks(limit)) {
+            log.warn("Chatbot AI turn refused — institute {} reached an AI usage limit", request.getInstituteId());
+            return ChatbotAiResponse.builder()
+                    .insufficientCredits(true)
+                    .usageLimited(true)
+                    .usageLimitMessage(limit.message())
                     .exitIntent(false)
                     .build();
         }
@@ -153,14 +171,35 @@ public class ChatbotAiService {
         }
     }
 
-    /** Balance gate. Never throws — an error here is "cannot confirm funds", i.e. no. */
-    private boolean hasCredits(String instituteId) {
+    /**
+     * Balance gate, then the plan. Never throws — an error here is "cannot confirm funds",
+     * i.e. no. The wallet is read first and unchanged; only a "no" from it asks whether the
+     * institute's LIVE AI plan covers this reply ({@link CreditClient#planCovers}).
+     */
+    private boolean hasCredits(ChatbotAiRequest request) {
+        String instituteId = request.getInstituteId();
         try {
-            return creditClient.hasActiveCredits(instituteId);
+            if (creditClient.hasActiveCredits(instituteId)) {
+                return true;
+            }
+            String model = request.getModelId() != null && !request.getModelId().isBlank()
+                    ? request.getModelId().trim() : null;
+            return creditClient.planCovers(instituteId, RequestType.CHATBOT.getValue(), model,
+                    estimateTokens(request), request.getUserId(), chargeMetering(request));
         } catch (Exception e) {
             log.warn("Credit check failed for institute {} — pausing chatbot AI: {}",
                     instituteId, e.getMessage());
             return false;
+        }
+    }
+
+    /** Limit gate. Never throws; an error here is "allowed" (limits fail open). */
+    private AuthorizeResult usageLimitDecision(ChatbotAiRequest request) {
+        try {
+            return creditClient.authorize(request.getInstituteId(), USE_CASE,
+                    RequestType.CHATBOT.getValue(), chargeMetering(request), request.getUserId());
+        } catch (Exception e) {
+            return AuthorizeResult.ALLOW_NONE;
         }
     }
 
@@ -189,11 +228,50 @@ public class ChatbotAiService {
                     // ever becomes the bot rather than the learner.
                     request.getUserId(),
                     describe(request),
-                    request.getFlowId());
+                    request.getFlowId(),
+                    chargeMetering(request));
         } catch (Exception e) {
             log.error("Chatbot credit charge failed for institute {} (flow {}): {}",
                     request.getInstituteId(), request.getFlowId(), e.getMessage());
         }
+    }
+
+    /**
+     * Usage-metering fields for one chatbot turn: the person chatting (a LEARNER, as on the
+     * ledger row) or a public visitor, on WhatsApp, with the flow in the context.
+     */
+    static MeteringFields chargeMetering(ChatbotAiRequest request) {
+        Map<String, Object> context = new java.util.HashMap<>();
+        if (request.getFlowId() != null) context.put("flow_id", request.getFlowId());
+        if (request.getFlowName() != null) context.put("flow_name", request.getFlowName());
+        if (request.getSessionId() != null) context.put("session_id", request.getSessionId());
+        MeteringFields.MeteringFieldsBuilder b = MeteringFields.builder()
+                .useCase(USE_CASE)
+                .surface(MeteringFields.SURFACE_WHATSAPP)
+                .sourceService(MeteringFields.SOURCE_ADMIN_CORE)
+                .usageContext(context);
+        if (request.getUserId() != null) {
+            b.actorKind(MeteringFields.ACTOR_USER).actorRoleClass(CREDIT_USER_ROLE);
+        } else {
+            b.actorKind("PUBLIC").actorRoleClass("PUBLIC");
+        }
+        return b.build();
+    }
+
+    /** Rough prompt + reply token estimate for the plan pre-check (about 4 characters a token). */
+    static int estimateTokens(ChatbotAiRequest request) {
+        long chars = length(request.getSystemPrompt()) + length(request.getUserMessage());
+        if (request.getConversationHistory() != null) {
+            for (Map<String, String> msg : request.getConversationHistory()) {
+                if (msg != null) chars += length(msg.get("content"));
+            }
+        }
+        int reply = request.getMaxTokens() > 0 ? request.getMaxTokens() : 500;
+        return (int) Math.min(Integer.MAX_VALUE, chars / 4 + reply);
+    }
+
+    private static long length(String s) {
+        return s == null ? 0 : s.length();
     }
 
     private static String describe(ChatbotAiRequest request) {

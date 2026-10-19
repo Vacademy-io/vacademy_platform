@@ -16,13 +16,16 @@ import { MyDialog } from '@/components/design-system/dialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { useToolCostPreview } from '@/components/common/ai-credits/useToolCostPreview';
-import { DEFAULT_EVALUATION_MODEL } from '@/routes/ai-center/-types/ai-models';
 import { cn } from '@/lib/utils';
 import {
     previewSubmittedCheck,
     startSubmittedCheck,
     type CopyIntakeBatch,
 } from '../../-services/copy-intake-services';
+import {
+    CommentPlacementPicker,
+    useInstituteCommentPlacement,
+} from '@/components/common/ai-copy-check/CommentPlacementPicker';
 
 export const SUBMITTED_CHECK_PREVIEW_KEY = 'COPY_INTAKE_SUBMITTED_PREVIEW';
 
@@ -57,6 +60,8 @@ export const CheckSubmittedCopiesDialog = ({
     const { t } = useTranslation('assessmentCopyIntake');
     const [includeChecked, setIncludeChecked] = useState(false);
     const [notifyEmail, setNotifyEmail] = useState(true);
+    // Preselected from the institute's default (Settings → Assessment); the teacher can change it per batch.
+    const [commentPlacement, setCommentPlacement] = useInstituteCommentPlacement(open);
     const scoped = Boolean(attemptIds && attemptIds.length > 0);
 
     const preview = useQuery({
@@ -99,8 +104,9 @@ export const CheckSubmittedCopiesDialog = ({
             startSubmittedCheck(assessmentId, instituteId, {
                 attempt_ids: scoped ? attemptIds : undefined,
                 include_checked: includeChecked,
-                preferred_model: DEFAULT_EVALUATION_MODEL,
+                // No preferred_model: the platform's evaluation default applies.
                 notify_email: notifyEmail,
+                comment_placement: commentPlacement,
             }),
         onSuccess: (batch) => {
             toast.success(t('submitted.toastStarted', { count: batch.total_items }));
@@ -234,6 +240,12 @@ export const CheckSubmittedCopiesDialog = ({
                         {t('dialog.insufficient')}
                     </p>
                 )}
+
+                <CommentPlacementPicker
+                    value={commentPlacement}
+                    onChange={setCommentPlacement}
+                    disabled={start.isPending}
+                />
 
                 <label className="flex items-center gap-2 text-sm text-neutral-700">
                     <Checkbox

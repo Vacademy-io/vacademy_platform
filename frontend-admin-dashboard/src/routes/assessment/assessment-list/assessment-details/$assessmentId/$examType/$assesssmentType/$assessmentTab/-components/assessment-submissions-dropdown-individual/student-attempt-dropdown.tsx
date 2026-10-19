@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from '@tanstack/react-router';
 import {
@@ -38,9 +38,12 @@ import {
     triggerAIEvaluation,
 } from '../../-services/ai-evaluation-services';
 import {
-    DEFAULT_EVALUATION_MODEL,
+    PLATFORM_DEFAULT_MODEL,
     buildModelDisplayNames,
+    pickableEvaluationModels,
+    toPreferredModel,
 } from '@/routes/ai-center/-types/ai-models';
+import { useAIModelsList } from '@/hooks/useAiModels';
 import {
     Select,
     SelectContent,
@@ -51,6 +54,7 @@ import {
 import { stashEvalReturnUrl } from '@/routes/evaluation/evaluation-tool/-utils/eval-return';
 import { UploadAnswerSheetDialog } from '@/routes/evaluation/evaluate/$assessmentId/$attemptId/$examType/-components/UploadAnswerSheetDialog';
 import { ProctoringReviewDialog } from './ProctoringReviewDialog';
+import { StudentAiReportDialog } from './StudentAiReportDialog';
 
 const isEvaluatedStatus = (status?: string | null) => {
     const s = (status || '').toUpperCase();
@@ -272,12 +276,25 @@ const StudentEvaluateWithAIComponent = ({
     const { assessmentId } = Route.useParams();
     const instituteId = getInstituteId();
     const navigate = useNavigate();
-    // Must stay DEFAULT_EVALUATION_MODEL: this picker always sends
-    // preferred_model, so whatever it defaults to silently overrides the
-    // grading pipeline's own default. An ultra-tier default here billed one
-    // copy 133.62 credits against a 10-credit estimate.
-    const [selectedModel, setSelectedModel] = useState<string>(DEFAULT_EVALUATION_MODEL);
+    // Starts on "Platform default", which sends NO preferred_model, so the
+    // super-admin's evaluation use-case default decides. A model is sent only
+    // when the teacher picks one: whatever this picker sends overrides the
+    // pipeline's own default (an ultra-tier default here once billed one copy
+    // 133.62 credits against a 10-credit estimate).
+    const [selectedModel, setSelectedModel] = useState<string>(PLATFORM_DEFAULT_MODEL);
     const modelDisplayNames = buildModelDisplayNames(t);
+    // Active registry models only; until (or unless) that list loads the
+    // static picker list stands, so the choices never disappear.
+    const { data: registryModels } = useAIModelsList();
+    const pickerModelIds = useMemo(
+        () =>
+            pickableEvaluationModels(
+                registryModels?.models
+                    ? new Set(registryModels.models.map((m) => m.model_id))
+                    : undefined
+            ),
+        [registryModels]
+    );
 
     // Credit cost preview for this evaluation (per graded question).
     const numQuestions: number = (assessmentData?.[1]?.saved_data?.sections ?? []).reduce(
@@ -330,7 +347,7 @@ const StudentEvaluateWithAIComponent = ({
     const handleEvaluateWithAIStudent = () => {
         triggerEvaluationMutation.mutate({
             attempt_ids: [student.attempt_id],
-            preferred_model: selectedModel,
+            preferred_model: toPreferredModel(selectedModel),
         });
     };
 
@@ -361,11 +378,18 @@ const StudentEvaluateWithAIComponent = ({
                             <SelectValue placeholder={t('dialogs.evaluateWithAI.selectModelPlaceholder')} />
                         </SelectTrigger>
                         <SelectContent>
-                            {Object.entries(modelDisplayNames).map(([modelId, info]) => (
-                                <SelectItem key={modelId} value={modelId}>
-                                    {info.name} - {info.description}
-                                </SelectItem>
-                            ))}
+                            <SelectItem value={PLATFORM_DEFAULT_MODEL}>
+                                {t('platformDefault.name', { ns: 'aiCenterAiModels' })} -{' '}
+                                {t('platformDefault.description', { ns: 'aiCenterAiModels' })}
+                            </SelectItem>
+                            {pickerModelIds.map((modelId) => {
+                                const info = modelDisplayNames[modelId];
+                                return (
+                                    <SelectItem key={modelId} value={modelId}>
+                                        {info ? `${info.name} - ${info.description}` : modelId}
+                                    </SelectItem>
+                                );
+                            })}
                         </SelectContent>
                     </Select>
                     <p className="text-xs text-neutral-500">
@@ -535,6 +559,7 @@ const StudentAttemptDropdown = ({ student }: { student: AssessmentRevaluateStude
     const [menuOpen, setMenuOpen] = useState(false);
     const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
     const [proctoringOpen, setProctoringOpen] = useState(false);
+    const [aiReportOpen, setAiReportOpen] = useState(false);
     const { assessmentId, examType } = Route.useParams();
     const instituteId = getInstituteId();
     const navigate = useNavigate();
@@ -891,6 +916,17 @@ const StudentAttemptDropdown = ({ student }: { student: AssessmentRevaluateStude
                                 : t('dropdown.downloadReport')}
                         </DropdownMenuItem>
                     )}
+                    {/* The student's AI report (what the learner sees). Download Report
+                        above already returns it once it exists; this also lets the
+                        admin generate it, with a credit warning first. */}
+                    {isEvaluated && !isManualEvaluation && (
+                        <DropdownMenuItem
+                            className="cursor-pointer"
+                            onClick={() => setAiReportOpen(true)}
+                        >
+                            {t('dropdown.downloadAiReport')}
+                        </DropdownMenuItem>
+                    )}
                     <DropdownMenuItem
                         className="cursor-pointer"
                         onClick={() => handleProvideReattempt('Release Result')}
@@ -919,6 +955,14 @@ const StudentAttemptDropdown = ({ student }: { student: AssessmentRevaluateStude
                 onUploaded={handleAnswerSheetUploaded}
             />
 
+            <StudentAiReportDialog
+                open={aiReportOpen}
+                onOpenChange={setAiReportOpen}
+                assessmentId={assessmentId}
+                attemptId={student.attempt_id}
+                instituteId={instituteId}
+                studentName={student.full_name}
+            />
             <ProctoringReviewDialog
                 attemptId={student.attempt_id}
                 studentName={student.full_name}

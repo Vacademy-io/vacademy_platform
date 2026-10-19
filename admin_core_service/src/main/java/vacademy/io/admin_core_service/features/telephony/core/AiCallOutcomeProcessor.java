@@ -889,11 +889,13 @@ public class AiCallOutcomeProcessor {
      * and {@code LIKELY_MACHINE} are frequently RED on calls the caller answered
      * perfectly well — on the 2026-08-14 sample they were 46%, 60% and 30% of calls
      * respectively, so treating them as untrustworthy would push most outcomes onto
-     * the retry path and re-dial leads who had a real conversation. These four mean
-     * the agent could not hold up its end at all.
+     * the retry path and re-dial leads who had a real conversation. These mean
+     * the agent could not hold up its end at all. {@code CALLER_IGNORED} (voice bot
+     * rules v7, 2026-10-14) is RED when two caller turns met silence — checked
+     * against the audio that played — so the lead never heard us either.
      */
     private static final List<String> UNTRUSTWORTHY_FAULTS =
-            List.of("BOT_SILENT", "TTS_WEDGE", "HANDBACK_LOOP", "REPLY_LOOP");
+            List.of("BOT_SILENT", "TTS_WEDGE", "HANDBACK_LOOP", "REPLY_LOOP", "CALLER_IGNORED");
 
     /**
      * True when the voice bot's own verdict says this call was broken by us:

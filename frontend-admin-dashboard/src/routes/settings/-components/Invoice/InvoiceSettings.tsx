@@ -57,6 +57,7 @@ import {
 } from './invoice-settings-service';
 import { InvoiceTemplatesSection } from './InvoiceTemplatesSection';
 import { InvoiceNumberingSection } from './InvoiceNumberingSection';
+import { InvoiceSeriesSection, seriesErrors, seriesValueOf } from './InvoiceSeriesSection';
 import { InvoiceNumberingChangeDialog } from './InvoiceNumberingChangeDialog';
 
 function getInjectablePlaceholders(
@@ -364,6 +365,7 @@ const numberingChanged = (a: InvoiceNumberingConfig, b: InvoiceNumberingConfig) 
 
 export default function InvoiceSettings() {
     const { t } = useTranslation('settingsInvoice');
+    const { t: tSeries } = useTranslation('settingsInvoiceSeries');
     const queryClient = useQueryClient();
     const [settings, setSettings] = useState<InvoiceSettingsData>(DEFAULT_INVOICE_SETTINGS);
     const [hasChanges, setHasChanges] = useState(false);
@@ -414,6 +416,12 @@ export default function InvoiceSettings() {
         (data ? data.numbering.seqScope !== settings.numbering.seqScope : false);
 
     const handleSave = () => {
+        // A half-filled receipt-series set-up would number nobody differently; say what is missing.
+        const seriesProblems = seriesErrors(seriesValueOf(settings), tSeries);
+        if (seriesProblems.length) {
+            toast.error(seriesProblems[0]);
+            return;
+        }
         if (numberingIsDirty && (numberingState?.existingInvoiceCount ?? 0) > 0) {
             setNumberingConfirmOpen(true);
             return;
@@ -737,6 +745,11 @@ export default function InvoiceSettings() {
                 onChange={(patch) =>
                     update({ numbering: { ...settings.numbering, ...patch } })
                 }
+            />
+            <InvoiceSeriesSection
+                value={seriesValueOf(settings)}
+                onChange={(next) => update({ numberingSeries: next.series, numberingSeriesPolicy: next.policy })}
+                defaultFormat={settings.numbering.format}
             />
             </section>
 

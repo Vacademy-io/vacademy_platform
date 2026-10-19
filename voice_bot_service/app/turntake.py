@@ -210,10 +210,43 @@ _CARRIER_PHRASES = (
     "the tone", "the beep", "voicemail", "voice mail", "record your message",
     "record your messages", "recording", "hang up", "leave a message",
     "leave your message", "not available", "unavailable", "please try again",
+    # The operator's unpaid-number message (call e208c6e8, 2026-10-14): "The
+    # number you are trying." / "Trying to reach." / "is not able to receive
+    # call due to pending recharge." and the Hindi "आपके द्वारा डायल किए जा रहे
+    # नंबर पर कॉल प्राप्त करने में असमर्थ है।" / "क्योंकि recharge बाकी है।". Two
+    # of its pieces matched nothing, each cut the opening as a "real barge-in".
+    # Operator-only wording: "not able to receive call" is what a person says
+    # too ("Sorry, I am not able to receive call right now") and would drop
+    # their words from the model's context (review 2026-10-14). The operator's
+    # sentence still matches on "pending recharge", whole or as its last piece.
+    "the number you are trying", "number you are trying to", "pending recharge",
     # Hindi
     "आप जिस नंबर", "डायल किया गया नंबर", "उपलब्ध नहीं", "स्विच ऑफ",
     "थोड़ी देर बाद", "व्यस्त है", "संपर्क क्षेत्र", "कृपया बाद में",
+    "डायल किए जा रहे नंबर", "प्राप्त करने में असमर्थ", "recharge बाकी", "रिचार्ज बाकी",
 )
+
+
+# The call-connect bridges above (JustDial and the like). They play to the
+# callee BEFORE the person answers, so a "Hello." just before one is plausibly
+# the person — unlike a voicemail, which plays when nobody will (see
+# is_call_connect and bot.TranscriptCollector's recording pieces).
+_CONNECT_PHRASES = ("getting connected", "being connected", "connected by", "connecting you",
+                    "connecting your call", "call is being connected", "just dial",
+                    "justdial")
+
+
+# The voicemail recorder's OWN prompts: it is taking a message, so nobody is on
+# the line while it plays. Short "turns" between carrier lines count as pieces
+# of the recording only on a call that played one of these
+# (bot.TranscriptCollector.looks_like_voicemail). The generic lines ("not
+# available", "please try again", the Hindi busy / call-later ones) also play
+# when a person may be on the line, and a person's own words can match them —
+# hanging up on those in silence is not a price worth a few billed seconds
+# (review 2026-10-14). All six voicemails of 2026-10-14 played one.
+_VOICEMAIL_PHRASES = ("voicemail", "voice mail", "the tone", "the beep", "record your message",
+                      "leave a message", "leave your message", "finished recording",
+                      "you may hang up")
 
 
 _SCREENER_PHRASES = ("record your name", "name and reason", "see if this person",
@@ -239,43 +272,161 @@ _SCREENER_HOLD_PHRASES = ("stay on the line", "please hold", "hold on the line",
 # नहीं", fillers, a REPLY_LOOP), then re-introduced itself when the person came
 # back. Unlike the machine window, this can start at any point in the call.
 #
-# Strong lines ENTER the hold. They are network recordings (or the person asking
-# us to hold), not something a caller says as an answer.
+# A false hold is worse than a missed one: missed, the bot answers a recording
+# once; false, it goes SILENT on a real person and their words never reach the
+# model. The first cut (53b6e16b04) entered on "दूसरी कॉल पर", "is on another call"
+# and "please hold" anywhere in a line, so "पापा अभी दूसरी कॉल पर हैं, बाद में
+# कीजिए" — a person asking for a call-back — got silence (review 2026-10-14). So
+# ENTRY is the recording's own phrasing only, in two tiers:
+#   * third-person recording sentences — nobody on a phone says "has put your
+#     call on hold" or "one of our representatives will assist you" in their own
+#     voice — enter whatever else the final carries;
+#   * the polite requests ("stay on the line", "कृपया प्रतीक्षा करें") enter only
+#     when they are the WHOLE final, every word from the recordings' vocabulary.
+#     "Stay on the line, I will call my son", "Please hold, what is the fee?",
+#     "थोड़ा प्रतीक्षा करें" are a person, and go to the model as a normal turn
+#     (wait / busy / call-back is the prompt's job, as for any other answer).
+# Nothing that sounds like a person (below) ever enters.
 _HOLD_PHRASES = (
-    # English (Airtel / Jio / Vi / BSNL)
-    "put your call on hold", "has put your call", "your call on hold", "call is on hold",
-    "call on hold", "placed on hold", "put on hold", "you are on hold", "you're on hold",
-    "stay on the line", "please hold the line", "hold the line", "please hold",
-    "the person you are speaking", "the person you're speaking", "person you are speaking with",
-    "is on another call", "busy on another call", "do not disconnect", "don't disconnect",
+    # English (Airtel / Jio / Vi / BSNL), and IVRs ("Welcome to New Light
+    # Institute. Stay on the line. One of our representatives will assist…").
+    "put your call on hold", "has put your call", "your call is on hold",
+    "your call has been put on hold", "your call has been placed on hold",
+    "you have been placed on hold", "you have been put on hold",
+    "the person you are speaking with", "the person you're speaking with",
+    "the person you are speaking to", "the person you're speaking to",
+    "the person you are talking to", "the person you're talking to",
+    "the subscriber you are", "the subscriber you're",
+    "one of our representatives", "one of our executives", "one of our agents",
+    "will assist you shortly", "your call is important to us",
     # Hindi
-    "hold पर", "होल्ड पर", "hold par", "होल्ड किया", "hold किया", "कॉल होल्ड", "call hold",
-    "लाइन पर बने", "लाइन पर बनी", "line पर बने", "कृपया लाइन पर", "आप जिस व्यक्ति से",
-    "जिस व्यक्ति से आप", "दूसरी कॉल पर", "दूसरी call पर", "कृपया प्रतीक्षा", "प्रतीक्षा करें",
+    "आप जिस व्यक्ति से बात कर रहे हैं", "आप जिस व्यक्ति से बात कर रहे है",
+    "जिस व्यक्ति से आप बात कर रहे हैं", "आप जिस व्यक्ति से बात कर रहे हो",
+    "आप जिनसे बात कर रहे हैं", "hold पर रखा", "होल्ड पर रखा", "hold par rakha",
+    "आपकी कॉल होल्ड पर", "आपका call hold पर", "आपकी call hold पर",
+)
+_HOLD_REQUESTS = (
+    "stay on the line", "hold the line", "please hold", "please wait",
+    "do not disconnect", "dont disconnect", "don't disconnect",
+    "लाइन पर बने", "लाइन पर बनी", "लाइन पे बने", "लाइन पे बनी", "line पर बने",
+    "कृपया लाइन पर", "कृपया लाइन पे", "प्रतीक्षा करें",
     "प्रतीक्षा कीजिए", "डिस्कनेक्ट न करें", "कॉल डिस्कनेक्ट न",
 )
-# Pieces of the same recordings. Only consulted WHILE on hold: the STT cuts the
-# announcement at different points on every loop ("उन्होंने आपके।", "कृपा।",
-# "Speaking with."), and none of these is how a person comes back to a call.
-_HOLD_FRAGMENTS = (
-    "आप जिस", "व्यक्ति", "बात कर रहे", "उन्होंने", "आपके call", "आपके कॉल", "call को",
-    "कॉल को", "hold", "होल्ड", "रखा है", "रखा गया", "कृपा", "कृपया", "लाइन", "बने रह",
-    "प्रतीक्षा", "the person", "person you", "speaking with", "speaking to", "you are speaking",
-    "has put", "your call", "on hold", "stay on", "the line", "on the line", "please wait",
-    "another call", "disconnect",
-)
+# Every word the hold recordings say (call 6d81124d's Hindi + English loop, the
+# 2026-10-14 IVR "…Stay on the line. One of our representatives will assist.").
+# WHOLE words: the first cut matched substrings, and "लाइन" inside "ऑनलाइन",
+# "hold" inside "holding", "बात कर रहे" inside "आप कहाँ से बात कर रहे हैं?" kept a
+# person who had come back on hold, unheard.
+_HOLD_WORDS = frozenset({
+    "आप", "जिस", "व्यक्ति", "से", "बात", "कर", "रहे", "हैं", "है", "उन्होंने", "आपके",
+    "आपकी", "आपका", "आपको", "call", "कॉल", "को", "hold", "होल्ड", "पर", "रखा", "गया",
+    "गई", "कृपया", "कृपा", "लाइन", "line", "बने", "बनी", "रहें", "प्रतीक्षा", "करें",
+    "कीजिए", "डिस्कनेक्ट", "disconnect", "न", "ना", "वो", "वह", "अभी", "दूसरी", "दूसरे",
+    "the", "person", "you", "youre", "are", "is", "speaking", "with", "to", "has", "have",
+    "been", "put", "placed", "your", "on", "please", "kindly", "stay", "wait", "do",
+    "not", "dont", "another", "one", "of", "our", "representatives", "representative",
+    "executives", "executive", "agents", "agent", "will", "assist", "shortly", "soon",
+    "see", "moment", "a", "while", "we", "connect", "connecting", "important", "us",
+    # Other operators' wording of the same loop (review 2026-10-14): "…बात कर रहे हो",
+    # "लाइन पे बने रहिए", "आप जिनसे…", "The person you are talking to", "The subscriber…".
+    "हो", "पे", "रहिए", "रहिये", "जिनसे", "रखी", "करके", "talking", "subscriber",
+    "connected", "being",
+})
+# A whole final counts as the recording only when it carries one of the words
+# that ONLY the recordings say. Every word of "आप लाइन पर हैं", "वो अभी बात कर
+# रहे हैं" (a child back to say the father is still busy) or "We will see" is
+# recording vocabulary too, and those are a person (review 2026-10-14). Short
+# generic bits ("रहे हैं।", "लाइन पर") are still caught by the scrap rule.
+_HOLD_DISTINCT_WORDS = frozenset({
+    "व्यक्ति", "उन्होंने", "जिनसे", "hold", "होल्ड", "कृपया", "कृपा", "बने", "बनी", "रहें",
+    "रहिए", "रहिये", "प्रतीक्षा", "डिस्कनेक्ट", "disconnect", "person", "speaking",
+    "talking", "subscriber", "stay", "kindly", "representatives", "representative",
+    "executives", "executive", "assist", "shortly", "important", "placed", "connecting",
+})
+# Words the recordings never say and a person coming back does: "Sorry for the
+# hold", "Thanks for holding", "I was on another call", "हाँ, लाइन पर हूँ, बोलिए".
+# Bare "हाँ"/"yes" are NOT here — the STT hears a lone "हाँ।" in the recording
+# itself (54.19 s on 6d81124d, 0.4 s after "Speaking with.").
+_HOLD_PERSON_WORDS = frozenset({
+    "i", "im", "ive", "ill", "me", "my", "mine", "myself", "sorry", "sory", "thanks",
+    "thank", "thankyou", "holding", "tell", "go", "ahead", "back", "speak", "ok",
+    "okay", "sir", "madam", "maam", "boliye", "bolo", "bataiye", "batayiye", "batao",
+    "main", "mai", "mera", "meri", "mere", "mujhe", "hoon", "wapas",
+    "बोलिए", "बोलिये", "बोलो", "बोलें", "बताइए", "बताइये", "बताईए", "बताओ", "बताएं",
+    "कहिए", "कहिये", "मैं", "मैंने", "मेरा", "मेरी", "मेरे", "मुझे", "हूँ", "हूं",
+    "सॉरी", "माफ़", "माफ", "वापस", "सर", "मैडम", "मैम", "ओके",
+    # Past tense: a person explaining the hold ("होल्ड पर रखा था", "hold par rakha
+    # tha", "I was on another call"); the recordings say "रखा है" / "has put".
+    "था", "थी", "थे", "tha", "thi", "was", "had",
+})
+# A person's short answer, two or three words long ("हाँ जी", "Yes, sure").
+_HOLD_AFFIRM_WORDS = frozenset({
+    "हाँ", "हां", "हा", "जी", "हाँजी", "हांजी", "haan", "han", "haa", "ji", "haanji",
+    "hanji", "yes", "yeah", "yep", "ya", "अच्छा", "achha", "acha", "ठीक", "theek",
+    "thik", "हम्म", "हं", "hmm", "hm",
+})
+# The STT cuts the recording at a different point on every loop and mishears a
+# piece now and then ("See shortly." / "But losing art." on the 2026-10-14 IVR).
+# A short scrap this soon after a recognised piece is more of the same.
+HOLD_SCRAP_SECS = 3.0
+
+
+def sounds_like_person(text: str) -> bool:
+    """While on hold (or deciding to enter it): words only the person says — a
+    hello, a question, who-is-this, a goodbye, busy/call-back, "sorry", "I…",
+    "बोलिए". Checked BEFORE any recording match, so "हेलो, आप लाइन पर हैं?" and
+    "Who am I speaking with?" can never read as the recording."""
+    t = " ".join((text or "").casefold().split())
+    if not t or t.startswith("["):
+        return False
+    if "?" in t or "？" in t:
+        return True                        # the recordings never ask anything
+    if (caller_checking_presence(t) or is_audio_check(t) or caller_asks_who(t)
+            or caller_wants_to_end(t) or caller_is_busy(t)):
+        return True
+    return any(w in _HOLD_PERSON_WORDS or w in HELLO_VARIANTS for w in _words(t))
 
 
 def is_hold_announcement(text: str) -> bool:
-    """A line that puts the call on hold (the network's hold recording)."""
-    t = (text or "").casefold()
-    return bool(t.strip()) and any(p in t for p in _HOLD_PHRASES)
+    """A line that puts the call on hold: the network's hold recording or an IVR
+    queue, never a person's own "he is on another call" / "please hold, …"."""
+    t = " ".join((text or "").casefold().split())
+    if not t or sounds_like_person(t):
+        return False
+    if any(p in t for p in _HOLD_PHRASES):
+        return True
+    ws = _words(t)
+    return (any(p in t for p in _HOLD_REQUESTS)
+            and bool(ws) and all(w in _HOLD_WORDS for w in ws))
 
 
 def is_hold_fragment(text: str) -> bool:
-    """While on hold: a piece of the looping hold recording, not the person."""
-    t = (text or "").casefold()
-    return bool(t.strip()) and any(p in t for p in _HOLD_FRAGMENTS)
+    """While on hold: a piece of the looping recording — every word of it is a
+    word the recordings say ("उन्होंने आपके।", "Speaking with.", "See shortly.")."""
+    ws = _words(text)
+    return (bool(ws) and all(w in _HOLD_WORDS for w in ws)
+            and any(w in _HOLD_DISTINCT_WORDS for w in ws) and not sounds_like_person(text))
+
+
+def hold_absorbs(text: str, secs_since_hold_line: float) -> bool:
+    """While on hold: is this final more of the recording (True — keep quiet) or
+    the person back (False — it goes to the model as their turn)? PURE; the live
+    gate (TranscriptCollector) and sim.replay share it."""
+    ws = _words(text)
+    if not ws:
+        return True                        # "।" — nothing anybody said
+    if sounds_like_person(text):
+        return False
+    if is_hold_announcement(text) or is_hold_fragment(text):
+        return True
+    if secs_since_hold_line < HOLD_SCRAP_SECS:
+        # A lone word right after a piece of the recording is the STT hearing
+        # the recording ("हाँ।" on 6d81124d); a two-three word scrap is too
+        # unless it carries a person's answer ("हाँ जी", "Yes, sure").
+        if len(ws) == 1:
+            return True
+        return len(ws) <= 3 and not any(w in _HOLD_AFFIRM_WORDS for w in ws)
+    return False
 
 
 def is_screener_hold(text: str) -> bool:
@@ -289,6 +440,20 @@ def is_call_screener(text: str) -> bool:
     it, so their first "Hello" must get the opening again."""
     t = (text or "").casefold()
     return any(p in t for p in _SCREENER_PHRASES)
+
+
+def is_call_connect(text: str) -> bool:
+    """A call-connect bridge ("You are getting connected by Just Dial"): the
+    network talking to someone who may be picking up right now."""
+    t = (text or "").casefold()
+    return any(p in t for p in _CONNECT_PHRASES)
+
+
+def is_voicemail_prompt(text: str) -> bool:
+    """The voicemail recorder's own prompt ("…forwarded to voicemail.", "Please
+    record your message.", "…at the tone."), not merely a carrier line."""
+    t = (text or "").casefold()
+    return any(p in t for p in _VOICEMAIL_PHRASES)
 
 
 def is_carrier_announcement(text: str) -> bool:
@@ -444,7 +609,9 @@ def caller_wants_to_end(text: str) -> bool:
 
 _PRESENCE_WORDS = frozenset({"hi", "haan", "ji", "yes", "yeah"}) | HELLO_VARIANTS
 _PRESENCE_PHRASES = ("are you there", "you there", "still there", "can you hear", "sun rahe",
-                     "sun rahi", "sun pa rahe", "awaaz aa rahi", "aawaz aa rahi", "hai kya", "koi hai")
+                     "sun rahi", "sun pa rahe", "awaaz aa rahi", "aawaz aa rahi", "hai kya", "koi hai",
+                     # Back from a hold (review of 53b6e16b04, 2026-10-14).
+                     "are you on the line", "are you still on the line")
 
 
 def caller_checking_presence(text: str) -> bool:
@@ -589,7 +756,9 @@ _WHO_PHRASES = ("who is this", "who's this", "who are you", "who is calling", "w
                 "which company", "कौन बोल", "आप कौन", "कहाँ से",
                 # "Uh, can I know the name of your…" (call b2f6330a) — the model
                 # answered with its script line instead.
-                "know the name", "name of your", "your name", "naam kya", "आपका नाम", "aapka naam")
+                "know the name", "name of your", "your name", "naam kya", "आपका नाम", "aapka naam",
+                # "हाँ जी, कौन बात कर रहे हैं?" — how a person back from a hold asks.
+                "कौन बात कर रहे", "कौन बात कर रही", "kaun baat kar rahe", "kaun baat kar rahi")
 
 
 _TAKEOVER_WORDS = frozenset({

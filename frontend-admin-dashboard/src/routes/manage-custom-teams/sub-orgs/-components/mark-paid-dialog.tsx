@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { OfflinePaymentFields } from '@/components/common/payments/OfflinePaymentFields';
+import { toOfflinePaymentDetailsPayload, type OfflinePaymentDetails } from '@/services/offline-payment-modes';
 import { useTranslation } from 'react-i18next';
 import {
     Dialog,
@@ -40,20 +42,22 @@ export function MarkPaidDialog({
     onSuccess,
 }: MarkPaidDialogProps) {
     const { t } = useTranslation('manageCustomTeamsMarkPaidDialog');
-    const [transactionId, setTransactionId] = useState<string>('');
+    const [details, setDetails] = useState<OfflinePaymentDetails>({});
+    const [detailsError, setDetailsError] = useState<string | null>(null);
     const [notes, setNotes] = useState<string>('');
 
     useEffect(() => {
         if (!open) return;
-        setTransactionId('');
+        setDetails({});
         setNotes('');
     }, [open]);
 
     const mutation = useMutation({
         mutationFn: () =>
             markInvoicePaidManually(invoiceId, {
-                transaction_id: transactionId.trim() || undefined,
+                transaction_id: details.reference?.trim() || undefined,
                 notes: notes.trim() || undefined,
+                payment_details: toOfflinePaymentDetailsPayload(details),
             }),
         onSuccess: () => {
             toast.success(t('toasts.markedPaid', { invoice: invoiceNumber || invoiceId }));
@@ -79,15 +83,8 @@ export function MarkPaidDialog({
                     </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-3 py-1">
-                    <div className="space-y-1">
-                        <Label htmlFor="mp-transaction-id">{t('fields.transactionReference')}</Label>
-                        <Input
-                            id="mp-transaction-id"
-                            value={transactionId}
-                            onChange={(e) => setTransactionId(e.target.value)}
-                            placeholder={t('fields.transactionReferencePlaceholder')}
-                        />
-                    </div>
+                    {/* How it was paid: mode, option (e.g. PhonePe), reference, proof. */}
+                    <OfflinePaymentFields value={details} onChange={setDetails} onErrorChange={setDetailsError} />
                     <div className="space-y-1">
                         <Label htmlFor="mp-notes">{t('fields.notes')}</Label>
                         <Input
@@ -113,7 +110,7 @@ export function MarkPaidDialog({
                         buttonType="primary"
                         scale="small"
                         onClick={() => mutation.mutate()}
-                        disable={mutation.isPending}
+                        disable={mutation.isPending || !!detailsError}
                     >
                         {mutation.isPending ? (
                             <>

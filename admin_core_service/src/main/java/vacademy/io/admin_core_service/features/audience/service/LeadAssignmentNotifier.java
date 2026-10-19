@@ -20,6 +20,9 @@ import java.util.Map;
  *   - workbench bulk reassign     (CounsellorReassignService)
  *   - pool backup reassign        (CounselorPoolService.reassignOpenLeadsToBackup)
  *
+ * Also rings the owner when one of their leads enquires again (repeat-lead
+ * reattempt, {@code AudienceService.recordReattempt}).
+ *
  * Also used by {@code LeadAutomationScheduler} for follow-up due/overdue
  * reminders — a guaranteed baseline bell alert, since the workflow-trigger
  * path those events also emit has no bell/system-alert node type and depends
@@ -95,6 +98,36 @@ public class LeadAssignmentNotifier {
         body.append(".");
         boolean sticky = leadUserId != null && !leadUserId.isBlank();
         dispatch(instituteId, counsellorUserId, "New lead assigned", body.toString(),
+                sticky ? STICKY_ALERT_SETTINGS : ALERT_SETTINGS,
+                sticky ? LEAD_ENTITY : null, sticky ? leadUserId : null);
+    }
+
+    /**
+     * One of the counsellor's leads enquired again. Filed against the lead and sticky like a
+     * new-lead alert when {@code leadUserId} is given. {@code leadName}, {@code sourceLabel}
+     * and {@code campaignName} are optional:
+     *   "Asha" enquired again via Meta Lead Ads (campaign "Spring intake").
+     */
+    public void notifyReattempt(String instituteId, String counsellorUserId, String leadName,
+                                String sourceLabel, String campaignName, String leadUserId) {
+        if (counsellorUserId == null || counsellorUserId.isBlank()) {
+            return;
+        }
+        StringBuilder body = new StringBuilder();
+        if (leadName != null && !leadName.isBlank()) {
+            body.append("\"").append(leadName).append("\" enquired again");
+        } else {
+            body.append("Your lead enquired again");
+        }
+        if (sourceLabel != null && !sourceLabel.isBlank()) {
+            body.append(" via ").append(sourceLabel);
+        }
+        if (campaignName != null && !campaignName.isBlank()) {
+            body.append(" (campaign \"").append(campaignName).append("\")");
+        }
+        body.append(".");
+        boolean sticky = leadUserId != null && !leadUserId.isBlank();
+        dispatch(instituteId, counsellorUserId, "Reattempt", body.toString(),
                 sticky ? STICKY_ALERT_SETTINGS : ALERT_SETTINGS,
                 sticky ? LEAD_ENTITY : null, sticky ? leadUserId : null);
     }

@@ -63,6 +63,17 @@ const explainFailure = (message: string, tr: (k: string) => string): string =>
         ? tr('noPlanConfigured')
         : adminCouponErrorMessage(message.trim()) ?? message;
 
+/** "15 Oct 2026" from a YYYY-MM-DD date, without a timezone shift. */
+const fmtScheduleDate = (iso: string) => {
+    const [y, m, d] = iso.split('-').map(Number);
+    if (!y || !m || !d) return iso;
+    return new Date(y, m - 1, d).toLocaleDateString('en-IN', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+    });
+};
+
 export const Step4Preview = ({ previewResponse, selectedPackageSessions }: Props) => {
     const { t } = useTranslation('manageStudentsStep4Preview');
     const { summary, results } = previewResponse;
@@ -276,6 +287,22 @@ export const Step4Preview = ({ previewResponse, selectedPackageSessions }: Props
                                                           })
                                                         : ''}
                                                 </span>
+                                                {r.cpo_schedule &&
+                                                    r.cpo_schedule.installments.length > 0 && (
+                                                        <span className="text-neutral-500">
+                                                            {t('table.cpo.schedule', {
+                                                                count: r.cpo_schedule.installments.length,
+                                                                first: fmtScheduleDate(
+                                                                    r.cpo_schedule.installments[0]!.due_date
+                                                                ),
+                                                                last: fmtScheduleDate(
+                                                                    r.cpo_schedule.installments[
+                                                                        r.cpo_schedule.installments.length - 1
+                                                                    ]!.due_date
+                                                                ),
+                                                            })}
+                                                        </span>
+                                                    )}
                                                 <span className="text-neutral-500">
                                                     {r.cpo_initial_payment_mode === 'OFFLINE' &&
                                                     r.cpo_initial_payment_amount

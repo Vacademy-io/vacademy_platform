@@ -27,6 +27,12 @@ import java.util.Optional;
  * theirs. Booked meetings (booking pages / mentorship) are exempt — the
  * attendee booked them and expects the confirmation and reminders.
  *
+ * <p>Per class: a class saved with {@code live_session.show_to_learners = TRUE}
+ * is a normal online class even while the mode is on — it is listed to
+ * learners and parents and its learner notifications go out. FALSE or NULL
+ * (every class created before the per-class choice existed) stays attendance
+ * only. The learner list queries apply this in SQL so paging stays correct.
+ *
  * <p>A live switch, not a scheduling default: it applies to classes that
  * already exist too. Off when the setting is absent or unreadable — this sits
  * on learner-facing list endpoints and must never throw.
@@ -75,7 +81,7 @@ public class LiveSessionAttendanceOnlyModeService {
         }
         try {
             return liveSessionRepository.findById(sessionId)
-                    .map(session -> !isBookedMeeting(session))
+                    .map(session -> !isBookedMeeting(session) && !isShownToLearners(session))
                     .orElse(true);
         } catch (Exception e) {
             log.warn("live_session.attendance_only.session_read_failed sessionId={}: {}",
@@ -85,7 +91,12 @@ public class LiveSessionAttendanceOnlyModeService {
     }
 
     public boolean suppressesLearnerNotifications(LiveSession session) {
-        return session != null && !isBookedMeeting(session) && isEnabled(session.getInstituteId());
+        return session != null && !isBookedMeeting(session) && !isShownToLearners(session)
+                && isEnabled(session.getInstituteId());
+    }
+
+    private boolean isShownToLearners(LiveSession session) {
+        return Boolean.TRUE.equals(session.getShowToLearners());
     }
 
     private boolean isBookedMeeting(LiveSession session) {
@@ -94,7 +105,8 @@ public class LiveSessionAttendanceOnlyModeService {
     }
 
     /**
-     * Whether a learner list request must come back empty. Institute is the
+     * Whether a learner list request must be limited to classes marked
+     * {@code show_to_learners}. Institute is the
      * instituteId param (the learner app always sends its current one), else
      * the batch's institute. Deliberately no "any active enrolment" fallback:
      * that lookup is LIMIT 1, so for a learner in two institutes it could hide

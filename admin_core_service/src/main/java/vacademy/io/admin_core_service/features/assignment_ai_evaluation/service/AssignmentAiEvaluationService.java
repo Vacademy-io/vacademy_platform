@@ -18,6 +18,7 @@ import vacademy.io.admin_core_service.features.assignment_ai_evaluation.reposito
 import vacademy.io.admin_core_service.features.assignment_ai_evaluation.repository.AssignmentAiEvaluationRepository;
 import vacademy.io.admin_core_service.features.assignment_ai_evaluation.repository.AssignmentAiEvaluationRepository.LatestSubmissionRow;
 import vacademy.io.admin_core_service.features.credits.client.CreditClient;
+import vacademy.io.admin_core_service.features.credits.client.MeteringFields;
 import vacademy.io.admin_core_service.features.learner_tracking.entity.ActivityLog;
 import vacademy.io.admin_core_service.features.learner_tracking.entity.AssignmentSlideTracked;
 import vacademy.io.admin_core_service.features.learner_tracking.repository.AssignmentSlideTrackedRepository;
@@ -96,7 +97,7 @@ public class AssignmentAiEvaluationService {
 
         AssignmentSlide assignment = loadAssignment(activityLog.getSlideId());
         requireTotalMarks(assignment);
-        requireCredits(instituteId);
+        requireCredits(instituteId, user.getUserId());
 
         // Created already PROCESSING so the queue job never picks it up as well; sent at
         // once, and a busy grader puts it back in the queue for the job to retry.
@@ -146,7 +147,7 @@ public class AssignmentAiEvaluationService {
         if (dto.getToCheck() == 0) {
             throw new VacademyException("Nothing to check - every submitted copy is graded, checked or in progress");
         }
-        requireCredits(instituteId);
+        requireCredits(instituteId, user.getUserId());
 
         AssignmentAiEvaluationBatch batch = new AssignmentAiEvaluationBatch();
         batch.setId(UUID.randomUUID().toString());
@@ -379,12 +380,25 @@ public class AssignmentAiEvaluationService {
         }
     }
 
-    private void requireCredits(String instituteId) {
+    /**
+     * A known empty wallet refuses (an unreadable one does not), as before, unless the
+     * institute's LIVE AI plan covers the copy check ({@link CreditClient#planCovers}: no
+     * LIVE plan = no extra call, any failure = refused as today).
+     */
+    private void requireCredits(String instituteId, String teacherUserId) {
         Optional<Double> balance = creditClient.readBalance(instituteId);
-        if (balance.isPresent() && balance.get() <= 0) {
+        if (balance.isPresent() && balance.get() <= 0
+                && !creditClient.planCovers(instituteId, PLAN_REQUEST_TYPE, null, PLAN_ESTIMATED_TOKENS,
+                        teacherUserId, MeteringFields.user(PLAN_USE_CASE, MeteringFields.SURFACE_ADMIN_APP).build())) {
             throw new VacademyException("Not enough AI credits to run the AI Evaluator");
         }
     }
+
+    /** The copy-check charge's request_type / catalog use case (ai_service copy check). */
+    static final String PLAN_REQUEST_TYPE = "evaluation";
+    static final String PLAN_USE_CASE = "evaluation";
+    /** Rough estimate of one answer-sheet check, for the plan pre-check only. */
+    static final int PLAN_ESTIMATED_TOKENS = 6000;
 
     private AssignmentAiEvaluation newRun(String trackedId, String slideId, String learnerId, String instituteId,
                                           String teacherId, Double maxMarks, String batchId, String status) {

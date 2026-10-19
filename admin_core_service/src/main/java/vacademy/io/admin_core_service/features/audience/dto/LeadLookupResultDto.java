@@ -95,6 +95,8 @@ public class LeadLookupResultDto {
         /** May contain HTML from the rich-text editor. */
         private String comments;
         private String studentResponse;
+        /** What the counsellor recorded on this follow-up - not the lead's tier. */
+        private String interestLevel;
         private String closerReason;
         private Timestamp closedAt;
         private Timestamp createdAt;

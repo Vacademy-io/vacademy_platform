@@ -40,6 +40,12 @@ import java.util.Map;
  *       failed. Safe to fall back to the legacy direct OpenRouter path.</li>
  *   <li>{@link CompletionException}: the call reached ai_service and failed (5xx, a
  *       timeout, an empty or truncated answer). A model may already have run.</li>
+ *   <li>{@link PolicyRefusalException}: ai_service refused the work on purpose (an AI usage
+ *       limit, 429 {@code AI_USAGE_LIMIT}; or a plan that does not include the model, 402
+ *       {@code PLAN_MODEL_NOT_INCLUDED}). No model ran, and the work must NOT be re-run on
+ *       the direct OpenRouter path or retried: that would do refused work unbilled. It is
+ *       neither of the two types above, so a {@code catch}/{@code onErrorResume} for them
+ *       never swallows it.</li>
  * </ul>
  */
 @Service
@@ -98,6 +104,47 @@ public class AiServiceLlmClient {
         public CompletionException(String message, Throwable cause) {
             super(message, cause);
         }
+    }
+
+    /**
+     * ai_service refused the work by policy (usage limit or plan). Terminal: never fall back
+     * to another provider and never retry. {@link #getMessage()} is the user-facing sentence.
+     */
+    public static class PolicyRefusalException extends RuntimeException {
+        private final int httpStatus;
+        private final String code;
+        private final Map<String, Object> body;
+
+        public PolicyRefusalException(int httpStatus, String code, String message, Map<String, Object> body) {
+            super(message);
+            this.httpStatus = httpStatus;
+            this.code = code;
+            this.body = body == null ? Map.of() : body;
+        }
+
+        public int getHttpStatus() {
+            return httpStatus;
+        }
+
+        /** AI_USAGE_LIMIT or PLAN_MODEL_NOT_INCLUDED. */
+        public String getCode() {
+            return code;
+        }
+
+        /** The refusal body as ai_service sent it (use_case, scope, period, limit, used, resets_at ...). */
+        public Map<String, Object> getBody() {
+            return body;
+        }
+    }
+
+    public static final String CODE_AI_USAGE_LIMIT = "AI_USAGE_LIMIT";
+    public static final String CODE_PLAN_MODEL_NOT_INCLUDED = "PLAN_MODEL_NOT_INCLUDED";
+    static final String DEFAULT_REFUSAL_MESSAGE =
+            "You've reached the AI usage limit set for this feature. Please try again later.";
+
+    /** True for the policy refusal, so Reactor retry filters can skip it. */
+    public static boolean isPolicyRefusal(Throwable t) {
+        return t instanceof PolicyRefusalException;
     }
 
     public boolean isConfigured() {
@@ -175,7 +222,8 @@ public class AiServiceLlmClient {
     }
 
     private Throwable classify(String useCase, Throwable e) {
-        if (e instanceof UnavailableException || e instanceof CompletionException) return e;
+        if (e instanceof UnavailableException || e instanceof CompletionException
+                || e instanceof PolicyRefusalException) return e;
         if (e instanceof WebClientResponseException wre) {
             HttpStatus status = HttpStatus.resolve(wre.getStatusCode().value());
             if (status == HttpStatus.NOT_FOUND || status == HttpStatus.METHOD_NOT_ALLOWED) {
@@ -188,6 +236,12 @@ public class AiServiceLlmClient {
                 return new UnavailableException("ai_service refused the internal token (" + status.value() + ")");
             }
             String errorBody = wre.getResponseBodyAsString();
+            PolicyRefusalException refusal = policyRefusal(wre.getStatusCode().value(), errorBody, objectMapper);
+            if (refusal != null) {
+                log.info("[ai-llm] ai_service refused {} by policy ({} {}): {}", useCase,
+                        refusal.getHttpStatus(), refusal.getCode(), refusal.getMessage());
+                return refusal;
+            }
             if (status == HttpStatus.SERVICE_UNAVAILABLE && errorBody != null
                     && errorBody.contains("Internal service token is not configured")) {
                 // require_internal_service_token rejects before any model runs.
@@ -202,6 +256,39 @@ public class AiServiceLlmClient {
             return new UnavailableException("ai_service unreachable: " + e.getMessage());
         }
         return new CompletionException("ai_service " + useCase + " completion failed: " + e.getMessage(), e);
+    }
+
+    /**
+     * The policy refusal in an error response, or null. Only 429 + {@code AI_USAGE_LIMIT} and
+     * 402 + {@code PLAN_MODEL_NOT_INCLUDED} count; the code is read from the top-level
+     * {@code error} or from FastAPI's {@code detail} wrapper. Package-private for tests.
+     */
+    @SuppressWarnings("unchecked")
+    static PolicyRefusalException policyRefusal(int status, String errorBody, ObjectMapper mapper) {
+        if ((status != 429 && status != 402) || errorBody == null || errorBody.isBlank()) {
+            return null;
+        }
+        Map<String, Object> root;
+        try {
+            Object parsed = mapper.readValue(errorBody, Object.class);
+            if (!(parsed instanceof Map<?, ?> m)) return null;
+            root = (Map<String, Object>) m;
+        } catch (Exception e) {
+            return null;
+        }
+        Map<String, Object> refusal = root;
+        if (!(root.get("error") instanceof String) && root.get("detail") instanceof Map<?, ?> d) {
+            refusal = (Map<String, Object>) d;
+        }
+        Object code = refusal.get("error");
+        boolean limit = status == 429 && CODE_AI_USAGE_LIMIT.equals(code);
+        boolean plan = status == 402 && CODE_PLAN_MODEL_NOT_INCLUDED.equals(code);
+        if (!limit && !plan) {
+            return null;
+        }
+        Object m = refusal.get("message");
+        String message = m instanceof String s && !s.isBlank() ? s.trim() : DEFAULT_REFUSAL_MESSAGE;
+        return new PolicyRefusalException(status, (String) code, message, refusal);
     }
 
     /**

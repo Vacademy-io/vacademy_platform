@@ -1449,6 +1449,14 @@ def _register_sarvam_v4() -> None:
         speakers=tuple(sorted(SARVAM_V4_VOICES)))
 
 
+def _sarvam_tts_class():
+    """SarvamTTSService as every call builds it (v3 and v4): each sentence
+    flushed and routed to its own context when the speech cache splits a turn
+    per sentence, and a silent line never holds the reply behind it — both from
+    call c6847f91 (2026-10-14)."""
+    return _silent_context_resume(_sarvam_sentence_routing(SarvamTTSService))
+
+
 def build_tts(sample_rate: int, voice: str | None = None, *, aiohttp_session=None,
               tts_model: str | None = None,
               pace: float | None = None, temperature: float | None = None,
@@ -1541,7 +1549,7 @@ def build_tts(sample_rate: int, voice: str | None = None, *, aiohttp_session=Non
         else:
             dg_voice = (voice or s.deepgram_tts_voice).strip() or s.deepgram_tts_voice
             try:
-                return _tag_engine(DeepgramTTSService(
+                return _tag_engine(_silent_context_resume(DeepgramTTSService)(
                     api_key=s.deepgram_api_key,
                     sample_rate=s.deepgram_tts_sample_rate,
                     encoding="linear16",
@@ -1599,7 +1607,7 @@ def build_tts(sample_rate: int, voice: str | None = None, *, aiohttp_session=Non
             v4_kwargs["temperature"] = _clamp(temperature, 0.01, 1.0)
         if s.sarvam_tts_min_buffer > 0:
             v4_kwargs["min_buffer_size"] = max(30, s.sarvam_tts_min_buffer)
-        return _tag_engine(SarvamTTSService(
+        return _tag_engine(_sarvam_tts_class()(
             api_key=s.sarvam_api_key,
             model=SARVAM_V4_MODEL,
             voice_id=v4_voice,
@@ -1613,13 +1621,150 @@ def build_tts(sample_rate: int, voice: str | None = None, *, aiohttp_session=Non
         # Sarvam's WS validation floor is 30 (20 = rejected config = silent call,
         # 2026-07-20 outage).
         kwargs["min_buffer_size"] = max(30, s.sarvam_tts_min_buffer)
-    return _tag_engine(SarvamTTSService(
+    return _tag_engine(_sarvam_tts_class()(
         api_key=s.sarvam_api_key,
         model=s.sarvam_tts_model,
         voice_id=voice or s.sarvam_tts_voice,
         sample_rate=sample_rate,
         params=SarvamTTSService.InputParams(**kwargs),
     ), "sarvam", s.sarvam_tts_model)
+
+
+def _sarvam_sentence_routing(cls):
+    """Subclass pipecat's SarvamTTSService so that, with ONE AUDIO CONTEXT PER
+    SENTENCE (what the speech cache switches on), every sentence is FLUSHED and
+    its audio lands in its own context.
+
+    THE FLUSH (call c6847f91, 2026-10-14, bulbul:v4-flash, cache on). Sarvam
+    holds text until min_buffer_size characters (50) unless it gets a
+    {"type": "flush"}. pipecat sends that flush once, at the end of a turn or a
+    TTSSpeakFrame, for `_turn_context_id` — and only if that id has an audio
+    context. With reuse off no sentence uses that id (create_context_id() hands
+    every sentence a fresh one), so the flush NEVER went out. The 9-character
+    bridge "एक सेकंड।" got no audio; the service had paused itself behind it
+    (pause_frame_processing) and the reply waited ~16 s, until the caller spoke.
+    So here every sentence is flushed the moment its text is sent, and
+    pipecat's own end-of-turn flush is dropped (every sentence is already
+    flushed; a second, empty flush could earn a 'final' that closes the wrong
+    sentence).
+
+    THE ROUTING. The stock receive loop files each audio message under
+    get_active_audio_context_id() — the context PLAYING — and lets a 'final'
+    close the playing context. Right with one context per turn; wrong with one
+    per sentence, where sentence 2's audio arrives while sentence 1 still plays:
+    it was filed under sentence 1, sentence 2's own context sat empty until
+    pipecat's 3 s idle timeout, and a 'final' processed just ahead of the next
+    sentence's first chunk put that chunk BEHIND the closed context's end marker,
+    where it is never played. Sarvam answers one socket strictly in order and
+    sends one 'final' per flush (send_completion_event=true), so the Nth flushed
+    sentence owns the audio until the Nth 'final': it gets its audio, its stop
+    and its close. A context pipecat already closed (idle timeout) cannot take
+    audio, so that audio goes to the next flushed sentence still open — late,
+    but in order.
+
+    With one context per turn (cache off) the stock path runs untouched,
+    including pipecat's own flush.
+    """
+    import base64 as _b64
+    import collections
+
+    from websockets.protocol import State as _State
+
+    class _Routed(cls):
+        def _sv_routing_on(self) -> bool:
+            return not getattr(self, "_reuse_context_id_within_turn", True)
+
+        def _sv_state(self):
+            if not hasattr(self, "_sv_pending"):
+                self._sv_pending = collections.deque()   # flushed contexts owed a 'final', in send order
+                self._sv_sent = False                    # did the last _send_text reach an open socket?
+            return self
+
+        def _sv_reset(self):
+            self._sv_state()._sv_pending.clear()
+
+        def _sv_target(self):
+            """The earliest flushed sentence whose context is still open."""
+            for ctx in self._sv_state()._sv_pending:
+                if self.audio_context_available(ctx):
+                    return ctx
+            return self.get_active_audio_context_id()
+
+        async def _connect_websocket(self):
+            # A fresh socket owes us nothing: the old socket's 'final's died with it.
+            self._sv_reset()
+            await super()._connect_websocket()
+
+        async def on_audio_context_interrupted(self, context_id: str):
+            self._sv_reset()
+            await super().on_audio_context_interrupted(context_id)
+
+        async def _handle_interruption(self, frame, direction):
+            # InterruptibleTTSService reopens the socket only while the bot is
+            # audibly speaking. A reply interrupted before its first audio (still
+            # being synthesised) leaves Sarvam owing audio and 'final's that would
+            # be filed under the NEXT reply's sentences — and each stale 'final'
+            # would close one of them early. Reopen the socket in that case too.
+            owed = self._sv_routing_on() and bool(self._sv_state()._sv_pending)
+            speaking = getattr(self, "_bot_speaking", False)
+            await super()._handle_interruption(frame, direction)
+            if owed and not speaking:
+                await self._disconnect()
+                await self._connect()
+
+        async def _send_text(self, text: str):
+            ws = self._websocket
+            self._sv_state()._sv_sent = bool(ws is not None and ws.state == _State.OPEN)
+            await super()._send_text(text)
+
+        async def flush_audio(self, context_id: str | None = None):
+            if self._sv_routing_on():
+                return              # every sentence was flushed as it was sent (run_tts)
+            await super().flush_audio(context_id)
+
+        async def run_tts(self, text, context_id, *args, **kwargs):
+            routed = self._sv_routing_on()
+            self._sv_state()._sv_sent = False
+            async for frame in super().run_tts(text, context_id, *args, **kwargs):
+                # The stock run_tts yields None once the text is on the socket (and
+                # yields an ErrorFrame instead when the send failed).
+                if frame is None and routed and self._sv_sent:
+                    self._sv_pending.append(context_id)
+                    await super().flush_audio(context_id)
+                yield frame
+
+        async def _receive_messages(self):
+            if not self._sv_routing_on():
+                await super()._receive_messages()
+                return
+            from pipecat.frames.frames import (ErrorFrame as _Error, TTSAudioRawFrame as _Audio,
+                                               TTSStoppedFrame as _Stopped)
+            async for message in self._get_websocket():
+                if not isinstance(message, str):
+                    continue
+                msg = json.loads(message)
+                kind = msg.get("type")
+                if kind == "audio":
+                    await self.stop_ttfb_metrics()
+                    ctx = self._sv_target()
+                    await self.append_to_audio_context(ctx, _Audio(
+                        _b64.b64decode(msg["data"]["audio"]), self.sample_rate, 1,
+                        context_id=ctx))
+                elif kind == "event" and msg.get("data", {}).get("event_type") == "final":
+                    st = self._sv_state()
+                    ctx = st._sv_pending.popleft() if st._sv_pending else None
+                    if ctx and self.audio_context_available(ctx):
+                        await self.append_to_audio_context(ctx, _Stopped(context_id=ctx))
+                        await self.remove_audio_context(ctx)
+                elif kind == "error":
+                    error_msg = msg.get("data", {}).get("message", "")
+                    await self.push_error(error_msg=f"TTS Error: {error_msg}")
+                    ctx = self._sv_target()
+                    await self.append_to_audio_context(ctx, _Error(error=f"TTS Error: {error_msg}"))
+
+    _Routed.__name__ = cls.__name__
+    _Routed.__qualname__ = cls.__qualname__
+    return _Routed
 
 
 def _smallest_request_routing(cls):
@@ -1812,13 +1957,76 @@ def _letterless_guard(cls):
     return _NoLetterless
 
 
+def _silent_context_resume(cls):
+    """Subclass a TTS built with pause_frame_processing so an utterance that
+    ends with NO audio cannot hold the reply behind it.
+
+    pipecat pauses such a service once a TTSSpeakFrame or an LLM reply has been
+    sent, and resumes it only on BotStoppedSpeakingFrame or an interruption. The
+    output transport turns a TTSStoppedFrame into BotStoppedSpeaking only if
+    audio was received — so a line the vendor never voiced kept the service
+    paused, and everything queued behind it, the reply included, waited for the
+    caller to speak. Call c6847f91 (2026-10-14, Sarvam bulbul:v4-flash): the
+    bridge "एक सेकंड।" got no audio, the fallback model's reply sat behind it and
+    the caller heard ~16 s of nothing until they talked over it.
+
+    So when an audio context ends (on its own stop, or on pipecat's
+    stop_frame_timeout_s idle timeout, 3 s) having played ZERO audio frames,
+    while frame processing is paused and no other context is queued behind it,
+    resume. Engine-agnostic: whatever made the line silent (no flush, a dropped
+    send, a vendor that answered nothing), the silence is bounded by that
+    timeout instead of by the caller. Resuming cannot reorder audio — later
+    contexts still drain in creation order — it is the shape google, which never
+    pauses, has always had.
+    """
+    from pipecat.frames.frames import TTSAudioRawFrame as _Audio
+    from pipecat.processors.frame_processor import FrameDirection as _Dir
+
+    class _Resume(cls):
+        _silent_diag = None
+        _audio_pushed = 0
+
+        def set_diagnostics(self, diag):
+            self._silent_diag = diag
+            sup = getattr(super(), "set_diagnostics", None)
+            if sup is not None:
+                sup(diag)
+
+        async def push_frame(self, frame, direction=_Dir.DOWNSTREAM):
+            if isinstance(frame, _Audio):
+                self._audio_pushed += 1
+            await super().push_frame(frame, direction)
+
+        async def _handle_audio_context(self, context_id: str):
+            before = self._audio_pushed
+            await super()._handle_audio_context(context_id)
+            if self._audio_pushed != before or not getattr(self, "_pause_frame_processing", False):
+                return
+            # pipecat's own flag; if a release renames it, resuming an unpaused
+            # processor is a no-op, so err on the side of resuming.
+            if not getattr(self, "_FrameProcessor__should_block_frames", True):
+                return
+            if any(c != context_id for c in getattr(self, "_audio_contexts", {}) or {}):
+                return              # more is queued: its own audio ends the pause as usual
+            logger.warning("tts: audio context %s ended with no audio while paused — resuming "
+                           "so the next reply is not held behind it", (context_id or "")[:8])
+            d = self._silent_diag
+            if d is not None:
+                d.bump("tts_silent_resumes")
+            await self.resume_processing_frames()
+
+    _Resume.__name__ = cls.__name__
+    _Resume.__qualname__ = cls.__qualname__
+    return _Resume
+
+
 def _build_smallest(cls, s, model: str, voice: str, speed: float,
                     language: str | None = None):
     """Construct Smallest.ai Lightning. Split out so build_tts can wrap it in one
     try/except: Lightning takes a REAL numeric speed multiplier (unlike Rumik,
     which only responds to prose), and its voice palettes are per-model — the API
     hard-rejects a cross-model voice, which is a mute call."""
-    cls = _letterless_guard(_smallest_request_routing(cls))
+    cls = _silent_context_resume(_letterless_guard(_smallest_request_routing(cls)))
     return cls(
         api_key=s.smallest_api_key,
         sample_rate=s.smallest_sample_rate,

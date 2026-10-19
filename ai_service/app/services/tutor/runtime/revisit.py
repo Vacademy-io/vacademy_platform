@@ -12,7 +12,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from ....db import db_session
 from ....models.ai_token_usage import RequestType
-from ...ai_billing import record_llm_billing
+from ...ai_billing import UC, metering_user, record_llm_billing
 from ...api_key_resolver import ApiKeyResolver
 from ...chat_llm_client import ChatLLMClient
 from ..compile_prompts import extract_json
@@ -78,6 +78,8 @@ async def fresh_check(
             prompt_tokens=usage["prompt_tokens"], completion_tokens=usage["completion_tokens"],
             total_tokens=usage["prompt_tokens"] + usage["completion_tokens"], institute_id=institute_id, user_id=user_id,
             request_id=tutor_session_id, metadata={"surface": "tutor", "kind": "revisit_question"},
+            use_case=UC.TUTOR_CHAT, metering=metering_user(user_id, surface="LEARNER_APP"),
+            usage_context={"tutor_session_id": tutor_session_id, "feature": "revisit_question"},
         )
         data = extract_json(resp.get("content") or "")
         prompt = str((data or {}).get("prompt") or "").strip() if isinstance(data, dict) else ""

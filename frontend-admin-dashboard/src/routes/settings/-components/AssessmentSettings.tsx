@@ -16,7 +16,9 @@ import { getAssessmentSettings, saveAssessmentSettings } from '@/services/assess
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import ReportBrandingSettingsSection from './ReportBrandingSettings';
 import ResultNotificationRecipientsCard from './ResultNotificationRecipientsCard';
+import ResultNotificationTemplatesCard from './ResultNotificationTemplatesCard';
 import ExamExperienceSettingsCard from './ExamExperienceSettingsCard';
+import { CommentPlacementPicker } from '@/components/common/ai-copy-check/CommentPlacementPicker';
 
 const DEFAULT_HEADER_HTML = `<div style="text-align:center; font-size:16px; font-weight:bold;">{{assessment_name}}</div>
 <div style="text-align:center; font-size:11px; color:rgb(102,102,102);">Student Performance Analysis</div>`;
@@ -151,6 +153,32 @@ const AssessmentSettings = () => {
                 </CardContent>
             </Card>
 
+            {/* Assessment folders (admin rail + learner folder cards) */}
+            <Card>
+                <CardHeader>
+                    <CardTitle className="text-base">{t('assessmentFolders.title')}</CardTitle>
+                    <CardDescription>{t('assessmentFolders.description')}</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <div className="flex items-center justify-between rounded-lg border p-4">
+                        <div className="flex flex-col gap-1">
+                            <Label className="text-sm font-medium">
+                                {t('assessmentFolders.enableLabel')}
+                            </Label>
+                            <p className="text-xs text-gray-500">
+                                {t('assessmentFolders.enableHint')}
+                            </p>
+                        </div>
+                        <Switch
+                            checked={settings.assessmentFolders?.enabled === true}
+                            onCheckedChange={(checked) =>
+                                handleToggle('assessmentFolders', 'enabled', checked)
+                            }
+                        />
+                    </div>
+                </CardContent>
+            </Card>
+
             {/* Live test experience (tools, palette, mobile chrome) */}
             <ExamExperienceSettingsCard
                 settings={settings.examExperience ?? DEFAULT_ASSESSMENT_SETTINGS.examExperience}
@@ -159,6 +187,23 @@ const AssessmentSettings = () => {
                     setHasChanges(true);
                 }}
             />
+
+            {/* AI copy checking template (preselected in the bulk / submitted check dialogs) */}
+            <Card>
+                <CardHeader>
+                    <CardTitle className="text-base">{t('aiCopyCheck.title')}</CardTitle>
+                    <CardDescription>{t('aiCopyCheck.description')}</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <CommentPlacementPicker
+                        value={settings.aiCopyCheck?.commentPlacement ?? 'INSIDE'}
+                        onChange={(commentPlacement) => {
+                            setSettings((prev) => ({ ...prev, aiCopyCheck: { commentPlacement } }));
+                            setHasChanges(true);
+                        }}
+                    />
+                </CardContent>
+            </Card>
 
             {/* Result Notification Recipients (role-wise) */}
             <ResultNotificationRecipientsCard
@@ -174,6 +219,9 @@ const AssessmentSettings = () => {
                     setHasChanges(true);
                 }}
             />
+
+            {/* Result email / WhatsApp templates (saved on change, not with the form) */}
+            <ResultNotificationTemplatesCard />
 
             {/* Report Branding Section */}
             <div>

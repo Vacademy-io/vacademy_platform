@@ -56,5 +56,11 @@
     },
     "actions": {
         "download": "Download"
+    },
+    "otherContacts": {
+        "heading": "Other contact details",
+        "hint": "Numbers and emails this person gave in other enquiries.",
+        "phone": "Phone",
+        "email": "Email"
     }
 }

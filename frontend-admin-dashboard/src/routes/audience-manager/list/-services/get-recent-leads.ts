@@ -41,6 +41,12 @@ export interface RecentLeadDetail {
     tat_due_at?: string | null;
     /** True when an admin set tat_due_at by hand. */
     tat_due_overridden?: boolean | null;
+    /** This enquiry repeats an existing lead (flagged by repeat-lead handling). */
+    is_duplicate?: boolean | null;
+    /** Live duplicate enquiries that repeat this lead; absent when there are none. */
+    duplicate_count?: number | null;
+    /** Open priority follow-up (opened for a reattempt). */
+    follow_up_priority?: boolean | null;
     /** First time the assigned counselor acted — drives "Responded in N" in the Reach-out-by cell. */
     first_response_at?: string | null;
     /** Follow-up deadline = last counselor action + followUpSlaHours (null until acted). */
@@ -101,6 +107,8 @@ export interface RecentLeadsRequest {
     lead_status_id?: string;
     /** Status keys to EXCLUDE, comma separated. Mutually exclusive with lead_status_id. */
     lead_status_exclude_id?: string;
+    /** EXCLUDE = hide enquiries flagged as duplicates; ONLY = just those. Omitted = no filter. */
+    duplicate_filter?: 'EXCLUDE' | 'ONLY';
     /** Follow-ups page: only leads carrying an OPEN, scheduled follow-up… */
     follow_up_pending?: boolean;
     /** …and, optionally, only those whose follow-up falls in this window. The caller sends

@@ -219,7 +219,7 @@ def start_session(
 ) -> Dict[str, Any]:
     _batch_access(db, caller, payload.package_session_id)
     if payload.mode == "VOICE":
-        short = svc.preflight_live_session(db, caller.institute_id)
+        short = svc.preflight_live_session(db, caller.institute_id, user_id=caller.user_id, roles_raw=caller.roles)
         if short:
             raise HTTPException(status_code=status.HTTP_402_PAYMENT_REQUIRED, detail=short)
     try:
@@ -353,6 +353,9 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
             await _fatal("This slide has no teaching plan", 4009)
             return
         institute_id, package_session_id = ctx["institute_id"], ctx["package_session_id"]
+        # Usage limits: the learner's roles for the per-minute limits check
+        # (None, with no work, when the institute has no limits policy).
+        limit_roles = svc.limit_roles_for(str(first.get("token") or ""), institute_id)
         chat_session_id = ctx["chat_session_id"]
         mode = "voice" if ctx["mode"] == "VOICE" else "text"
         settings: TutorSettings = ctx["settings"]
@@ -702,12 +705,24 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                     await asyncio.sleep(LIVE_METER_SECONDS)
                     continue
                 ok = await asyncio.to_thread(svc.bill_live_minute, tutor_session_id=tutor_session_id,
-                                             institute_id=institute_id, user_id=user_id, minute_no=minute)
+                                             institute_id=institute_id, user_id=user_id, minute_no=minute,
+                                             roles_raw=limit_roles)
                 if avatar_active:
                     await asyncio.to_thread(svc.bill_avatar_minute, tutor_session_id=tutor_session_id,
                                             institute_id=institute_id, user_id=user_id, minute_no=minute)
                 if not ok:
                     await _cancel_current()
+                    usage_frames = svc.usage_limit_frames(tutor_session_id)
+                    if usage_frames:
+                        # An AI usage limit (not the balance) stopped the lesson:
+                        # {"type": "usage_limit", <the HTTP 429 body>}, then "ended".
+                        for frame in usage_frames:
+                            await _send(frame)
+                        try:
+                            await websocket.close(code=svc.USAGE_LIMIT_CLOSE_CODE)
+                        except Exception:  # noqa: BLE001
+                            pass
+                        return
                     await _say(prompts.tpl("credits_end", lang), meta={"kind": "credits_end"})
                     await _send({"type": "ended", "reason": "credits"})
                     try:

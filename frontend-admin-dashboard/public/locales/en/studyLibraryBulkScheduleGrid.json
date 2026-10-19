@@ -84,7 +84,10 @@
         "disablePublicChat": "Participants can't send messages in class chat",
         "disableSharedNotes": "Participants can't edit shared notes",
         "hideUserList": "Participants can't see who else is in the class",
-        "endWhenNoModerator": "End class after the host leaves"
+        "endWhenNoModerator": "End class after the host leaves",
+        "showToLearnersLabel": "Show this class to learners",
+        "showToLearnersOnHint": "On: learners see this class and can join it like a normal live class.",
+        "showToLearnersOffHint": "Off: offline class. Learners won't see it or get notified; only attendance is marked."
     },
     "descriptionSection": {
         "title": "Description",

@@ -5,6 +5,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import vacademy.io.admin_core_service.features.credits.client.CreditClient;
+import vacademy.io.admin_core_service.features.credits.client.MeteringFields;
 import vacademy.io.admin_core_service.features.student_analysis.dto.StudentAnalysisData;
 import vacademy.io.admin_core_service.features.student_analysis.dto.StudentReportData;
 import vacademy.io.admin_core_service.features.student_analysis.dto.comprehensive.AiInsightsSection;
@@ -129,6 +131,28 @@ public class StudentAnalysisProcessorService {
                 notifyLearnerSafe(completed);
         }
 
+        /** Rough prompt + reply estimate of one comprehensive-report narration, for the plan pre-check. */
+        static final int NARRATIVE_ESTIMATED_TOKENS = 8000;
+
+        /**
+         * The v2 narrative's affordability: today's rule (a known balance must be positive; an
+         * unreadable one does not block), plus, only for a known empty wallet, the institute's
+         * LIVE AI plan.
+         */
+        static boolean aiAffordable(CreditClient credits, String instituteId, String learnerUserId,
+                        String actorUserId) {
+                java.util.Optional<Double> balance = credits.readBalance(instituteId);
+                if (balance.isEmpty() || balance.get() > 0) {
+                        return true; // today's rule, unchanged
+                }
+                // planCovers never throws; no LIVE plan = false at once (no HTTP call).
+                MeteringFields.MeteringFieldsBuilder m = actorUserId != null
+                                ? MeteringFields.user("student_report", MeteringFields.SURFACE_ADMIN_APP)
+                                : MeteringFields.system("student_report");
+                return credits.planCovers(instituteId, "analytics", null, NARRATIVE_ESTIMATED_TOKENS,
+                                actorUserId, m.subjectUserId(learnerUserId).build());
+        }
+
         // ── v2 path (new comprehensive report) ───────────────────────────────────
         private void processV2(StudentAnalysisProcess process, String actorUserId) throws Exception {
                 log.info("[Student-Analysis-Processor] [v2] Collecting comprehensive data");
@@ -160,8 +184,11 @@ public class StudentAnalysisProcessorService {
                 // Affordability: an institute whose wallet is known to be empty gets the deterministic
                 // report without AI text — the same outcome as a model failure — instead of being
                 // charged into a negative balance (charges are allow_negative). An unreadable
-                // balance does not block: the report behaves as it always has.
-                boolean aiAffordable = creditClient.readBalance(process.getInstituteId()).map(b -> b > 0).orElse(true);
+                // balance does not block: the report behaves as it always has. An empty wallet is
+                // asked once more about the institute's LIVE AI plan (learner reports can be
+                // included); no LIVE plan = no extra call, any failure there = today's answer.
+                boolean aiAffordable = aiAffordable(creditClient, process.getInstituteId(), process.getUserId(),
+                                actorUserId);
                 if (!aiAffordable) {
                         log.warn("[Student-Analysis-Processor] [v2] Institute {} has no AI credits; skipping AI narrative for processId={}",
                                         process.getInstituteId(), process.getId());

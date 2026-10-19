@@ -24,7 +24,8 @@ enroll_invite
         package_session_id, payment_option_id → the CPO mirror, status
 
 --- per learner, created at enrollment ---
-user_plan (payment_option = mirror, payment_plan = synthetic, discount_json = CPO discount snapshot)
+user_plan (payment_option = mirror, payment_plan = synthetic,
+           payment_option_json.cpo_discount_state = CPO discount snapshot)
  └─ student_fee_payment (SFP)  one row per aft_installment (or one per lump-sum AFV)
         amount_expected, amount_paid, original_amount, start_date, due_date, status, i_id, asv_id
  └─ payment_log (MANUAL, PAID)               only if admin records an offline payment
@@ -304,7 +305,7 @@ The order matters: **generate → override/discount → pay**.
 - `cpo_discount` → `CpoDiscountService.setCpoDiscount(userPlanId, …)`
 
 [CpoDiscountService](../admin_core_service/src/main/java/vacademy/io/admin_core_service/features/fee_management/service/CpoDiscountService.java) keeps **two layers**:
-- `user_plan.discount_json` is the *why*: CPO discount, per-row discounts, manual overrides and history.
+- The discount snapshot is the *why*: CPO discount, per-row discounts, manual overrides and history. It is stored in `user_plan.payment_option_json` under the key `cpo_discount_state` (`PaymentOptionJsonDiscountAccessor`). There is no `discount_json` column, although code comments use that name.
 - `student_fee_payment.amount_expected` is the *how much*: the net amount FIFO allocates against, recomputed from `original_amount` on every change:
   `original → − row discount → (manual override replaces) → − proportional share of CPO discount → clamp ≥ 0 → recompute status`
 - The discount is booked to `user_account_ledger` as a **delta** under `source_type = CPO_DISCOUNT` (a reversal if the discount grew, an accrual if it shrank), so Account Summary totals match the Fee Plan block.
@@ -349,8 +350,8 @@ The admin picks this invite, sets a 10% CPO discount, moves installment 2 to 15 
 
 | Surface | Reads |
 |---|---|
-| Admin side view → Fee Plan / CPO editor | `GET /v1/fee-management/user/{userId}/cpo-user-plans` (SFP rows + `discount_json`). Later edits go through `PUT /user-plan/{id}/cpo-discount`, the split-installment endpoint, and offline-payment recording (`CpoSideViewService`). |
-| Learner "my dues" / pay | `POST /learner/v1/fee/pay-installments` ([FeeTrackingLearnerController](../admin_core_service/src/main/java/vacademy/io/admin_core_service/features/fee_management/controller/FeeTrackingLearnerController.java)) or the open `/cpo-pay-installments`. Amounts come from [CpoDuesCalculator](../admin_core_service/src/main/java/vacademy/io/admin_core_service/features/fee_management/service/CpoDuesCalculator.java): "due now" is the unpaid rows with `due_date ≤ today` (rows with no date count as due), and "full outstanding" is all unpaid rows. |
+| Admin side view → Fee Plan / CPO editor | `GET /v1/fee-management/user/{userId}/cpo-user-plans` (SFP rows + the `cpo_discount_state` snapshot). Later edits go through `PUT /user-plan/{id}/cpo-discount`, the split-installment endpoint, and offline-payment recording (`CpoSideViewService`). |
+| Learner pay (backend only) | No learner screen calls these after enrollment; the learner app only uses the open endpoints inside enrollment checkout. Later installments are collected by the admin (offline payment, or an admin invoice with a `/pay/invoice/{id}` link). Backend: `POST /learner/v1/fee/pay-installments` ([FeeTrackingLearnerController](../admin_core_service/src/main/java/vacademy/io/admin_core_service/features/fee_management/controller/FeeTrackingLearnerController.java)) or the open `/cpo-pay-installments`. Amounts come from [CpoDuesCalculator](../admin_core_service/src/main/java/vacademy/io/admin_core_service/features/fee_management/service/CpoDuesCalculator.java): "due now" is the unpaid rows with `due_date ≤ today` (rows with no date count as due), and "full outstanding" is all unpaid rows. |
 | Payment history / invoices | `InvoiceService.getInvoicesByUserId` merges unpaid SFPs into the invoice list. |
 | Account summary tiles | `user_account_ledger` (accruals, discount reversals, credits). |
 
@@ -365,7 +366,7 @@ The admin picks this invite, sets a 10% CPO discount, moves installment 2 to 15 
 | SFP generation | `applyCpoEnrollmentSideEffects` calls the generator explicitly | the strategy calls the same generator |
 | Per-learner overrides / discount | yes (`cpo_config`) | no |
 | First charge | optional offline amount chosen by the admin | the next unpaid installment (or `OVERRIDE_TOTAL_AMOUNT` / the learner's amount) via Razorpay `SCHOOL` |
-| Allocation | `allocatePaymentForNewLog` | the webhook `handleSchoolPayment` → the same FIFO allocator |
+| Allocation | `allocatePaymentForNewLog` | the Razorpay webhook `handleSchoolPayment` → the same FIFO allocator. **Only Razorpay routes `SCHOOL` payments**; on other gateways the payment is marked PAID but the installments are not allocated |
 
 ---
 

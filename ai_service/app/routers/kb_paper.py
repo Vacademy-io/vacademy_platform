@@ -30,7 +30,7 @@ from ..models.ai_task import AiTaskInputType, AiTaskType
 from ..models.ai_token_usage import RequestType
 from ..repositories.ai_task_repository import AiTaskRepository
 from ..services import ai_task_service
-from ..services.ai_billing import preflight_tool_credits, record_tool_billing
+from ..services.ai_billing import UC, preflight_tool_credits, record_tool_billing
 from ..services.ai_task_service import AiTaskService
 from ..services.kb import generations as kb_generations
 from ..services.kb import paper as kb_paper
@@ -180,6 +180,7 @@ def _preflight_or_402(db: Session, *, tool_key: str, params: dict, institute_id:
 def _bill(
     tool_key: str, params: dict, *, model: Optional[str], usage: Dict[str, int],
     institute_id: str, user_id: Optional[str], idempotency_key: Optional[str] = None,
+    metering: Any = None, kb_id: Optional[str] = None,
 ) -> None:
     record_tool_billing(
         tool_key=tool_key,
@@ -192,6 +193,10 @@ def _bill(
         user_id=user_id,
         user_role="ADMIN",
         idempotency_key=idempotency_key,
+        # Usage-event attribution only; drawn figures are question images.
+        use_case=UC.QUIZ_IMAGE if tool_key == "html_document_image" else UC.KB_QUESTION_PAPER,
+        metering=metering,
+        usage_context={"kb_id": kb_id, "feature": tool_key},
     )
 
 
@@ -281,7 +286,7 @@ async def build_or_refine_blueprint(
         raise HTTPException(502, "The paper plan could not be generated. Please try again.") from exc
 
     _bill("kb_paper_blueprint", {}, model=model, usage=usage,
-          institute_id=resolved, user_id=caller.user_id)
+          institute_id=resolved, user_id=caller.user_id, metering=getattr(caller, "metering", None), kb_id=kb_id)
 
     # What generating THIS plan will cost, so the teacher sees it on the button
     # before committing rather than after.
@@ -289,6 +294,9 @@ async def build_or_refine_blueprint(
         db, tool_key="kb_paper_questions",
         tool_params={"num_questions": blueprint.total_questions},
         institute_id=resolved,
+        # Display only, after the blueprint was made and billed: a usage limit
+        # must not throw that work away (generate checks the limit itself).
+        enforce_limits=False,
     )
     return {"blueprint": blueprint.to_dict(), "generation_estimate": estimate}
 
@@ -390,7 +398,7 @@ async def generate_paper(
                     "prompt_tokens": generated.prompt_tokens,
                     "completion_tokens": generated.completion_tokens,
                 },
-                institute_id=resolved, user_id=user_id,
+                institute_id=resolved, user_id=user_id, metering=getattr(caller, "metering", None), kb_id=kb_id,
                 # Keyed on the task, so a retry of the same job cannot double-charge.
                 idempotency_key=f"kb_paper:{task_id}",
             )
@@ -402,7 +410,7 @@ async def generate_paper(
                 {"num_images": generated.diagrams_drawn},
                 model="image",
                 usage={"prompt_tokens": 0, "completion_tokens": 0},
-                institute_id=resolved, user_id=user_id,
+                institute_id=resolved, user_id=user_id, metering=getattr(caller, "metering", None), kb_id=kb_id,
                 idempotency_key=f"kb_paper_diagrams:{task_id}",
             )
 
@@ -564,7 +572,7 @@ async def generate_for_section(
                         "prompt_tokens": generated.prompt_tokens,
                         "completion_tokens": generated.completion_tokens,
                     },
-                    institute_id=resolved, user_id=user_id,
+                    institute_id=resolved, user_id=user_id, metering=getattr(caller, "metering", None), kb_id=kb_id,
                     idempotency_key=f"kb_paper:{task_id}",
                 )
 
@@ -694,7 +702,7 @@ async def regenerate_question(
     _bill("kb_paper_regenerate", {}, model=generated.model,
           usage={"prompt_tokens": generated.prompt_tokens,
                  "completion_tokens": generated.completion_tokens},
-          institute_id=resolved, user_id=caller.user_id)
+          institute_id=resolved, user_id=caller.user_id, metering=getattr(caller, "metering", None), kb_id=kb_id)
 
     return {"question": formatted[0], "raw_question": raw_kept[0]}
 

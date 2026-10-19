@@ -21,7 +21,7 @@ from typing import Optional
 
 import httpx
 from ..services.llm_router import open_chat_stream, post_chat
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -31,7 +31,7 @@ from ..constants.model_defaults import GLM_DEFAULT
 from ..core.security import get_current_user
 from ..db import db_dependency
 from ..models.ai_token_usage import RequestType
-from ..services.ai_billing import preflight_tool_credits, record_tool_billing
+from ..services.ai_billing import UC, metering_from_request, metering_user, preflight_tool_credits, record_tool_billing
 from ..services.model_selection import resolve_models
 from ..services.document_postprocess import (
     DOC_IMAGE_MODEL as _IMAGE_MODEL,
@@ -387,7 +387,7 @@ def _resolve_model(db: Session) -> str:
 
 
 async def _prepare(
-    body: GenerateHtmlRequest, current_user, db: Session, ground: bool = True
+    body: GenerateHtmlRequest, current_user, db: Session, ground: bool = True, request: Optional[Request] = None
 ) -> dict:
     """Auth + validation + preflight credit gate + PDF grounding, then build the
     prompt. Raises HTTPException (401/400/402/503) BEFORE any streaming starts.
@@ -458,6 +458,9 @@ async def _prepare(
         "tool_key": tool_key,
         "pdf_page_count": 0,
         "allowed_image_urls": set(),
+        # Usage-event attribution only (who/where); the ledger keeps actor_role.
+        "metering": (metering_from_request(request, institute_id, user=current_user)
+                     or metering_user(actor_user_id, surface="ADMIN_APP")),
     }
     if ground:
         await _ground(body, ctx)
@@ -545,6 +548,13 @@ async def _illustrate(ctx: dict, html_out: str, on_progress=None) -> tuple[str, 
         return html_out, 0
 
 
+def _meter_context(body: GenerateHtmlRequest, **extra) -> dict:
+    """Small usage-event context: which slide/page this charge was for."""
+    out = {"slide_id": getattr(body, "slide_id", None)}
+    out.update(extra)
+    return out
+
+
 def _bill(ctx: dict, body: GenerateHtmlRequest, usage: Optional[dict] = None) -> None:
     """Charge credits = max(flat, actual_token_cost × 2× markup), best-effort —
     the doc is already generated; a billing hiccup must never fail the request.
@@ -564,6 +574,9 @@ def _bill(ctx: dict, body: GenerateHtmlRequest, usage: Optional[dict] = None) ->
             user_role=ctx["actor_role"] if ctx["actor_user_id"] else None,
             idempotency_key=body.idempotency_key,
             usage_markup=_USAGE_MARKUP,
+            use_case=UC.HTML_DOCUMENT,
+            metering=ctx.get("metering"),
+            usage_context=_meter_context(body, is_edit=bool(body.current_html)),
         )
     except Exception as e:  # noqa: BLE001
         logger.warning("[html-doc] billing skipped: %s", e)
@@ -582,6 +595,9 @@ def _bill(ctx: dict, body: GenerateHtmlRequest, usage: Optional[dict] = None) ->
                 user_id=ctx["actor_user_id"],
                 user_role=ctx["actor_role"] if ctx["actor_user_id"] else None,
                 idempotency_key=(f"{body.idempotency_key}:pdf" if body.idempotency_key else None),
+                use_case=UC.HTML_DOCUMENT,
+                metering=ctx.get("metering"),
+                usage_context=_meter_context(body, pdf_pages=pages),
             )
         except Exception as e:  # noqa: BLE001
             logger.warning("[html-doc] pdf page billing skipped: %s", e)
@@ -602,6 +618,9 @@ def _bill_images(ctx: dict, body: GenerateHtmlRequest, count: int) -> None:
             user_id=ctx["actor_user_id"],
             user_role=ctx["actor_role"] if ctx["actor_user_id"] else None,
             idempotency_key=(f"{body.idempotency_key}:img" if body.idempotency_key else None),
+            use_case=UC.DOCUMENT_IMAGE,
+            metering=ctx.get("metering"),
+            usage_context=_meter_context(body, image_count=count),
         )
     except Exception as e:  # noqa: BLE001
         logger.warning("[html-doc] image billing skipped: %s", e)
@@ -612,8 +631,9 @@ async def generate_html_document(
     body: GenerateHtmlRequest,
     db: Session = Depends(db_dependency),
     current_user=Depends(get_current_user),
+    request: Request = None,
 ) -> GenerateHtmlResponse:
-    ctx = await _prepare(body, current_user, db)
+    ctx = await _prepare(body, current_user, db, request=request)
     try:
         raw, usage = await _call_openrouter(
             ctx["prompt"], ctx["openrouter_key"], ctx["openrouter_url"], ctx["model"]
@@ -640,12 +660,13 @@ async def generate_html_document_stream(
     body: GenerateHtmlRequest,
     db: Session = Depends(db_dependency),
     current_user=Depends(get_current_user),
+    request: Request = None,
 ):
     """Server-Sent Events variant: streams the HTML as it is generated so the
     author watches the page build live (and can cancel by dropping the request).
     Auth / validation / preflight all run first so those surface as normal HTTP
     errors before the stream opens. Events: {delta}, {done, html, model}, {error}."""
-    ctx = await _prepare(body, current_user, db)
+    ctx = await _prepare(body, current_user, db, request=request)
 
     async def event_gen():
         collected: list[str] = []
@@ -1324,10 +1345,11 @@ async def start_html_document_job(
     body: HtmlDocJobRequest,
     db: Session = Depends(db_dependency),
     current_user=Depends(get_current_user),
+    request: Request = None,
 ) -> dict:
     """Start a generation that keeps running if the author leaves. Auth, input
     validation and the credit pre-flight still fail fast here (401/400/402)."""
-    ctx = await _prepare(body, current_user, db, ground=False)
+    ctx = await _prepare(body, current_user, db, ground=False, request=request)
     repo = AiTaskRepository(db)
 
     # One live generation per slide: a double-click or a second tab re-attaches

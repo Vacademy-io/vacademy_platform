@@ -222,6 +222,9 @@ const FollowUpsContent = () => {
         /** Pre-select a dialog tab — 'FOLLOW_UP' for the "schedule next" flow
          *  after marking a follow-up complete. */
         initialActionType?: string;
+        /** Closes the follow-up being completed — runs only once the next
+         *  one is saved, so dismissing the dialog leaves it pending. */
+        onFollowUpScheduled?: () => void;
     } | null>(null);
     const [counsellorTarget, setCounsellorTarget] = useState<{
         userId: string;
@@ -533,10 +536,16 @@ const FollowUpsContent = () => {
     // Build VMs, filter to pending follow-ups, classify into buckets, sort by
     // soonest-due so the top of the list is always the most urgent task.
     // The server has already narrowed to the bucket, so there is nothing left to classify
-    // here — only the soonest-due ordering the page has always used.
+    // here — only the ordering: priority follow-ups (reattempts) first, as the server pages
+    // them, then soonest-due.
     const pendingVms = useMemo(() => (data?.content ?? []).map(recentLeadToVM), [data]);
     const sortedVms = useMemo(
-        () => [...pendingVms].sort((a, b) => effectiveDueMs(a) - effectiveDueMs(b)),
+        () =>
+            [...pendingVms].sort(
+                (a, b) =>
+                    Number(!!b.followUpPriority) - Number(!!a.followUpPriority) ||
+                    effectiveDueMs(a) - effectiveDueMs(b)
+            ),
         [pendingVms]
     );
 
@@ -606,12 +615,13 @@ const FollowUpsContent = () => {
                             audienceResponseId={vm.responseId}
                             userId={vm.userId}
                             invalidateKeys={INVALIDATE_KEYS}
-                            onScheduleNext={() =>
+                            onScheduleNext={(closeCurrent) =>
                                 setNoteTarget({
                                     userId: vm.userId!,
                                     userName: vm.name,
                                     responseId: vm.responseId,
                                     initialActionType: 'FOLLOW_UP',
+                                    onFollowUpScheduled: () => void closeCurrent(),
                                 })
                             }
                         />
@@ -1117,6 +1127,7 @@ const FollowUpsContent = () => {
                         // permanently disabled (canSubmit requires it).
                         audienceResponseId={noteTarget.responseId}
                         initialActionType={noteTarget.initialActionType}
+                        onFollowUpScheduled={noteTarget.onFollowUpScheduled}
                         // Scheduling a follow-up changes followUpDueAt — refresh
                         // the queue so the new task appears without a reload.
                         onSuccess={() =>

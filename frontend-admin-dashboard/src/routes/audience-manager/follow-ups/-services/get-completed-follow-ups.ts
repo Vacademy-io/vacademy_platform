@@ -24,6 +24,8 @@ export interface CompletedFollowUp {
     student_response: string | null;
     follow_up_mode: string | null;
     next_action: string | null;
+    interest_level?: string | null;
+    created_at?: string | null;
     lead_name: string | null;
     lead_mobile: string | null;
     lead_user_id: string | null;

@@ -59,3 +59,7 @@ cryptography>=42.0.0
 # In-process text embeddings (ONNX on CPU, no torch) for the curriculum
 # libraries — see app/services/embedding_service.py LOCAL_MODELS.
 fastembed>=0.7
+
+# IANA time zones for zoneinfo: the slim image has no /usr/share/zoneinfo, and the
+# CRM tools report in each institute's own time zone (app/services/crm_data.py).
+tzdata>=2024.1

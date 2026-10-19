@@ -10,6 +10,14 @@ import { DeliveryTicks, deliveryState } from './delivery-ticks';
 import { formatMessageTime, groupMessagesByDay } from '../-utils/day-labels';
 import { explainWhatsAppFailure } from '../-utils/whatsapp-errors';
 import {
+    ContactsCard,
+    InboundMedia,
+    LocationCard,
+    ReactionPill,
+    TemplateCategoryBadge,
+    labelKey,
+} from './inbound-content';
+import {
     ChatCircle,
     User,
     Robot,
@@ -41,9 +49,20 @@ export function ChatPanel({ onLoadOlder, onRetry }: Props) {
 
     const selectedConvo = conversations.find((c) => c.phone === selectedPhone);
 
+    // A learner's reaction belongs ON the message it reacts to, the way WhatsApp draws it — not as
+    // a bubble of its own reading "[reaction: 👍]". Reactions whose message is not loaded (older
+    // than this page) stay in the thread as a one-line "reacted to …".
+    const { reactionsByTarget, attachedReactionIds } = useMemo(
+        () => collectReactions(messages),
+        [messages]
+    );
+
     // Day-by-day runs, so the thread carries "Today" / "Yesterday" / "Monday" separators the way
     // WhatsApp does instead of leaving every bubble with only a bare clock time.
-    const dayGroups = useMemo(() => groupMessagesByDay(messages), [messages]);
+    const dayGroups = useMemo(
+        () => groupMessagesByDay(messages.filter((m) => !attachedReactionIds.has(m.id))),
+        [messages, attachedReactionIds]
+    );
 
     // Auto-scroll to bottom on new messages
     useEffect(() => {
@@ -164,9 +183,17 @@ export function ChatPanel({ onLoadOlder, onRetry }: Props) {
                             </div>
                         )}
 
-                        {group.messages.map((msg, i) => (
-                            <MessageBubble key={msg.id || `${group.key}-${i}`} msg={msg} />
-                        ))}
+                        {group.messages.map((msg, i) =>
+                            msg.messageKind === 'reaction' ? (
+                                <ReactionLine key={msg.id || `${group.key}-${i}`} msg={msg} />
+                            ) : (
+                                <MessageBubble
+                                    key={msg.id || `${group.key}-${i}`}
+                                    msg={msg}
+                                    reaction={reactionsByTarget.get(msg.id)}
+                                />
+                            )
+                        )}
                     </div>
                 ))}
 
@@ -179,18 +206,78 @@ export function ChatPanel({ onLoadOlder, onRetry }: Props) {
     );
 }
 
-function MessageBubble({ msg }: { msg: InboxMessage }) {
+/**
+ * Which emoji sits on which message. Oldest first, so a later reaction to the same message replaces
+ * an earlier one, and an empty emoji (the learner took it back) removes it.
+ */
+function collectReactions(messages: InboxMessage[]): {
+    reactionsByTarget: Map<string, string>;
+    attachedReactionIds: Set<string>;
+} {
+    const present = new Set(messages.map((m) => m.id));
+    const reactions = messages
+        .filter(
+            (m) =>
+                m.messageKind === 'reaction' &&
+                m.reactedToMessageId &&
+                present.has(m.reactedToMessageId)
+        )
+        .sort((a, b) => (a.timestamp || '').localeCompare(b.timestamp || ''));
+    const reactionsByTarget = new Map<string, string>();
+    const attachedReactionIds = new Set<string>();
+    for (const r of reactions) {
+        attachedReactionIds.add(r.id);
+        const target = r.reactedToMessageId as string;
+        if (r.reactionEmoji) reactionsByTarget.set(target, r.reactionEmoji);
+        else reactionsByTarget.delete(target);
+    }
+    return { reactionsByTarget, attachedReactionIds };
+}
+
+/** A reaction whose message is not on screen: "Reacted 👍 to “Attend for at least…”". */
+function ReactionLine({ msg }: { msg: InboxMessage }) {
     const { t } = useTranslation('communicationChatPanel');
+    const text = !msg.reactionEmoji
+        ? t('inbound.reactionRemoved')
+        : msg.reactedToPreview
+          ? t('inbound.reactedTo', { emoji: msg.reactionEmoji, preview: msg.reactedToPreview })
+          : t('inbound.reactedToMessage', { emoji: msg.reactionEmoji });
+    return (
+        <div className="flex justify-start">
+            <p className="max-w-[65%] rounded-lg bg-white/80 px-3 py-1 text-caption text-gray-600 shadow-sm">
+                {msg.senderName && (
+                    <span className="font-medium text-green-700">{msg.senderName} </span>
+                )}
+                {text}
+                <span className="ms-2 text-gray-400">{formatMessageTime(msg.timestamp)}</span>
+            </p>
+        </div>
+    );
+}
+
+function MessageBubble({ msg, reaction }: { msg: InboxMessage; reaction?: string }) {
+    // Also subscribes to the error catalog: explainWhatsAppFailure reads it through the i18n
+    // singleton, so without this the bubble could render before it loads and keep raw keys.
+    const { t } = useTranslation(['communicationChatPanel', 'communicationWhatsappErrors']);
     const failed = msg.deliveryStatus === 'FAILED';
     // The provider's verdict, said in words an admin can act on: "Re-engagement message (131047)"
     // becomes the 24-hour window, and an unrecognised code still shows the provider's exact text.
     const failure = failed ? explainWhatsAppFailure(msg.error) : null;
+    // The explainer falls back to the words "Not delivered" when the provider's text was only a
+    // code — the header already says that, so the line below it says what we know instead.
+    const failureTitle = failure && failure.title !== t('notDelivered') ? failure.title : undefined;
     const originKey = messageOriginKey(msg.origin);
+    const outgoing = msg.direction === 'OUTGOING';
+    // Kinds with no text of their own that we still cannot draw — say what they were.
+    const unrenderable =
+        !outgoing && (msg.messageKind === 'unsupported' || msg.messageKind === 'form_response');
 
     return (
-        <div className={`flex ${msg.direction === 'OUTGOING' ? 'justify-end' : 'justify-start'}`}>
+        <div
+            className={`flex ${outgoing ? 'justify-end' : 'justify-start'} ${reaction ? 'mb-3' : ''}`}
+        >
             <div
-                className={`max-w-[65%] px-3 py-2 rounded-lg text-sm shadow-sm ${
+                className={`relative max-w-[65%] rounded-lg px-3 py-2 text-sm shadow-sm ${
                     failed
                         ? 'bg-red-50 border border-red-200 rounded-tr-none'
                         : msg.direction === 'OUTGOING'
@@ -222,9 +309,20 @@ function MessageBubble({ msg }: { msg: InboxMessage }) {
                     />
                 )}
 
+                {/* What the learner sent: their photo/sticker/voice note, a location or a contact card */}
+                {msg.mediaFetchable && <InboundMedia msg={msg} />}
+                {msg.messageKind === 'location' && <LocationCard msg={msg} />}
+                {msg.messageKind === 'contacts' && <ContactsCard names={msg.contactNames} />}
+
                 {/* Message body — the actual template text the recipient received */}
-                {msg.body && (
-                    <p className="whitespace-pre-wrap break-words text-gray-800">{msg.body}</p>
+                {unrenderable ? (
+                    <p className="italic text-gray-500">
+                        {t(`inbound.kind.${labelKey(msg.messageKind)}`)}
+                    </p>
+                ) : (
+                    msg.body && (
+                        <p className="whitespace-pre-wrap break-words text-gray-800">{msg.body}</p>
+                    )
                 )}
 
                 {/* Who sent it: the workflow or chatbot flow behind this message */}
@@ -239,6 +337,7 @@ function MessageBubble({ msg }: { msg: InboxMessage }) {
                 {msg.templateName && (
                     <p className="text-caption text-gray-500 mt-1 flex flex-wrap items-center gap-1">
                         <span className="italic">{t('viaTemplate', { name: msg.templateName })}</span>
+                        <TemplateCategoryBadge category={msg.templateCategory} />
                         {msg.provider && (
                             <span className="px-1 py-px rounded bg-black/5 uppercase tracking-wide">
                                 {msg.provider}
@@ -260,11 +359,13 @@ function MessageBubble({ msg }: { msg: InboxMessage }) {
                                 </span>
                             )}
                         </p>
-                        {failure && (
+                        {failureTitle ? (
                             <p className="mt-0.5 text-red-600">
-                                <span className="font-medium">{failure.title}</span>
-                                {failure.detail ? ` — ${failure.detail}` : ''}
+                                <span className="font-medium">{failureTitle}</span>
+                                {failure?.detail ? ` — ${failure.detail}` : ''}
                             </p>
+                        ) : (
+                            <p className="mt-0.5 text-red-600">{t('noFailureReason')}</p>
                         )}
                         {failure?.accountLevel && (
                             <p className="mt-0.5 font-medium text-red-700">
@@ -295,6 +396,8 @@ function MessageBubble({ msg }: { msg: InboxMessage }) {
                         className="-mx-3 -mb-2 mt-1.5 rounded-b-lg border-t border-black/10"
                     />
                 )}
+
+                {reaction && <ReactionPill emoji={reaction} alignRight={outgoing} />}
             </div>
         </div>
     );

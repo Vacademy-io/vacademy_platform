@@ -490,6 +490,54 @@ Per-type display:
 
 Also rendered: `ResponseBreakdownComponent`, `MarksBreakdownComponent`, section-wise breakdown, PDF export (`EXPORT_ASSESSMENT_REPORT`), optional AI report at `/assessment/reports/ai-report/`. Survey assessments use a separate `SurveyReportDialog`.
 
+### 4.7 Student AI report PDF (redesign, 2026-10)
+
+`GET /assessment-service/assessment/learner/report/ai-pdf` renders through
+`features/assessment/service/aireport/` unless `assessment.ai-report.v2.enabled=false`;
+on any render error it falls back to the previous `AiReportHtmlBuilder`.
+
+| Piece | Role |
+|---|---|
+| `AiReportDataService` | All data in a few read-only queries. Max marks come from each question's `marking_json` (never `section.total_marks`, which is client-supplied and drifts). Class figures use each learner's latest ENDED attempt. Name from the registration; enrollment number and institute name from admin_core |
+| `AiReportHtmlBuilderV2` | Up to six A4 pages: result, class, topics + Bloom's, how the test was taken, mistakes, plan. Headlines are computed from the numbers; AI text fills only the narrative parts. Sections without data are left out |
+| `AiReportCharts` | Inline SVG charts (iText draws rect/line/polyline/polygon/path/circle/text) |
+| `ReportPalette` | Shades derived from the institute's primary/secondary colours, with contrast checks |
+| `AiReportFonts` | Bundled Baloo 2 + Mukta (`resources/fonts/report/`, see its README) |
+
+The endpoint now checks the attempt belongs to the caller and that its result is released
+(`validateOwnershipAndAccess`), like the other learner report endpoints. Other students
+appear only as counts; no names. Enrollment number: admin_core
+`GET /internal/learner/v1/enrollment-number`.
+
+**One report per attempt.** Once admin_core has a processed AI report for (learner,
+assessment), it replaces the normal report everywhere a single student's report is opened:
+
+- `AiReportPdfService.renderIfAvailable` is asked first by the learner `report/pdf` and the
+  admin `export/pdf/student-report` downloads; null means "serve the normal report".
+- The AI report is a superset of the normal one: it adds the normal report's question-by-
+  question detail (question, your answer, right answer, feedback, AI marking criteria,
+  explanation, plus class % right and class time), section toppers, "Your expertise" and
+  "Your potential". Only the named leaderboard is left out, on purpose.
+- Learner app: one "View report" button (`services/student-report-routing.ts`) opens the AI
+  report when it exists, else the normal report. The AI page has a "Questions & marks" tab
+  that is the normal report (`ComparisonDashboard`).
+- Admin: student menu → "Download AI Report" (`StudentAiReportDialog`) renders the same AI
+  report; it warns before generating one, which spends AI credits.
+- The release-results email now attaches the same one report (sent in batches of 25). The
+  bulk ZIP still uses the normal report.
+
+**Report profiles (V57).** Institutes add pages before/after the report: `TEMPLATE` (HTML
+with `{{values}}`, see `ReportTemplateEngine`), `PDF` and `IMAGE` (media file ids). A profile
+is the institute default (`is_institute_default`) or linked per assessment
+(`assessment_report_profile_link`, `NONE` = no pages). Banded values such as a scholarship
+(`variables.scholarship_percent.bands`) are computed in `ReportComposer.evaluate`; QR codes
+come from `qr_url`. Values: student_name, first_name, enrollment_number, score, max_score,
+percentage, rank, participants, correct/wrong/skipped/attempted, sections[name, questions,
+attempted, correct, wrong, marks, max], marking_note, result_date, asset.*, qr_svg.
+Admin API `/assessment-service/assessment/report-profile/v1`: list, get, save, link,
+preview (the exact PDF for one attempt), `ai-reports/generate-missing` (dry run by default;
+spends AI credits) and `ai-reports/job`.
+
 ---
 
 ## 5. End-to-End Lifecycle Cheat Sheet

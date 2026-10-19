@@ -46,6 +46,7 @@
         "empty": "No tools are available on this server yet.",
         "alwaysOn": "Always on",
         "optIn": "Turned on separately",
+        "eachOnItsOwn": "Switch each of these on separately.",
         "level": {
             "off": "Off",
             "view": "View",
@@ -57,7 +58,8 @@
             "additive": "Adds only",
             "not_live": "Not-live courses only",
             "live_additive": "Adds to live data",
-            "live": "Changes live"
+            "live": "Changes live",
+            "outbound": "Calls or messages leads"
         },
         "preset": {
             "viewOnly": "View only",

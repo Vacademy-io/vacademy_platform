@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AI_SERVICE_URL } from "@/constants/urls";
 import { getTokenFromCookie } from "@/lib/auth/sessionUtility";
 import { TokenKey } from "@/constants/auth/tokens";
+import { parseAiUsageLimitBody, type AiUsageLimitBody } from "@/lib/ai-usage-limit";
 
 export type TutorBoardOp = Record<string, unknown> & { op: string; id?: string; target?: string };
 
@@ -96,6 +97,11 @@ interface Callbacks {
   onError?: (message: string, fatal: boolean) => void;
   /** The server closed the session on its own (idle, time limit). */
   onEnded?: (reason: string) => void;
+  /**
+   * An AI usage limit stopped the lesson (`{"type":"usage_limit", …}`, the same
+   * body as the HTTP 429). The server closes the socket right after.
+   */
+  onUsageLimit?: (body: AiUsageLimitBody) => void;
   onClose?: () => void;
   /** Guest lessons: the token to authenticate with instead of the signed-in user's. */
   getToken?: () => string | null | undefined;
@@ -229,6 +235,12 @@ export function useTutorSocket(callbacks: Callbacks) {
           case "error":
             cb.onError?.(String(msg.message ?? "Error"), !!msg.fatal);
             break;
+          case "usage_limit": {
+            // Older servers never send it; a malformed frame still ends politely.
+            const body = parseAiUsageLimitBody(msg) ?? { ...msg, error: "AI_USAGE_LIMIT" as const };
+            cb.onUsageLimit?.(body as AiUsageLimitBody);
+            break;
+          }
           default:
             break;
         }

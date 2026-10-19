@@ -1,7 +1,7 @@
 {
     "header": {
         "title": "Assessment Actions",
-        "description": "Control whether this role can create, edit and delete assessments. All three are on by default; turning one off hides that action everywhere it appears."
+        "description": "Control whether this role can create, edit and delete assessments, and manage assessment folders. All are on by default; turning one off hides that action everywhere it appears."
     },
     "rows": {
         "showCreateAssessment": {
@@ -15,6 +15,10 @@
         "showDeleteAssessment": {
             "label": "Show \"Delete Assessment\" option",
             "hint": "The Delete entry in each assessment card’s \"…\" menu, on the Assessments, Evaluation Centre and Homework lists."
+        },
+        "showManageFolders": {
+            "label": "Manage assessment folders",
+            "hint": "New folder, editing and deleting folders, dragging tests into folders and \"Move to folder\". When off, this role can still open folders and see their tests."
         }
     }
 }

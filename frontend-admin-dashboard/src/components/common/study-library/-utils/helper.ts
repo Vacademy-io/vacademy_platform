@@ -3,6 +3,7 @@ import { Step1Data, Step2Data } from '../add-course/add-course-form';
 import { Session } from '@/types/course/create-course';
 import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtility';
 import { TokenKey, Authority } from '@/constants/auth/tokens';
+import { buildCoursePageJson, parseCoursePageJson } from '../add-course/-utils/course-page-content';
 
 export type CourseFormData = Step1Data & Step2Data;
 interface AddFacultyToCourse {
@@ -107,6 +108,11 @@ export interface FormattedCourseData {
      * Only set when the wizard's Advanced Settings JSON is present and valid.
      */
     course_setting?: string;
+    /**
+     * Public course-page extras (mode + FAQs) as a JSON string. Omitted = keep what is
+     * stored; "" = clear (update only). See add-course/-utils/course-page-content.ts.
+     */
+    course_page_json?: string;
 }
 
 type FormattedSession = FormattedCourseData['sessions'][0];
@@ -337,6 +343,9 @@ export const convertToApiCourseFormat = (formData: CourseFormData): FormattedCou
         }
     }
 
+    // Course-page extras: omitted entirely when the admin filled nothing in.
+    const coursePageJson = buildCoursePageJson(formData.coursePage, { isEdit: false });
+
     // A simple course (no sessions, no levels) sends contain_levels=false, and
     // the backend then never looks inside `sessions` -- so the authors nested
     // under the DEFAULT level above were silently dropped on every create and
@@ -373,6 +382,7 @@ export const convertToApiCourseFormat = (formData: CourseFormData): FormattedCou
         original_course_id: null,
         version_number: 1,
         ...(courseSetting ? { course_setting: courseSetting } : {}),
+        ...(coursePageJson !== null ? { course_page_json: coursePageJson } : {}),
     };
 };
 
@@ -550,6 +560,14 @@ export const convertToApiCourseFormatUpdate = (
     const currentSessions = formData.sessions || [];
     const previousSessions = oldFormData.sessions || [];
 
+    // Sent only when the form loaded the stored value from course-init: then always the
+    // full current JSON, or "" when the admin removed everything. Otherwise omitted, so
+    // the backend keeps what is stored.
+    const coursePageJson = buildCoursePageJson(formData.coursePage, {
+        isEdit: true,
+        storedValueLoaded: (formData as { coursePageJsonLoaded?: boolean }).coursePageJsonLoaded,
+    });
+
     const allSessionIds = new Set([
         ...currentSessions.map((s) => s.id),
         ...previousSessions.map((s) => s.id),
@@ -605,6 +623,7 @@ export const convertToApiCourseFormatUpdate = (
         // any course to whoever edited it, and detach editable copies from
         // their original.
         status: (formData as any).status || undefined,
+        ...(coursePageJson !== null ? { course_page_json: coursePageJson } : {}),
     };
 };
 
@@ -682,6 +701,12 @@ export function transformCourseData(course: CourseDetailsFormValues) {
         selectedInstructors: extractInstructors(sessions),
         instructors: [],
         publishToCatalogue: course.courseData.isCoursePublishedToCatalaouge ?? false,
+        // Parsed defensively: bad JSON reads as empty instead of breaking the form.
+        coursePage: parseCoursePageJson(course.courseData.coursePageJson),
+        // Only course-init ever returns a string here (the institute-wide init list always
+        // carries null), so a string means "loaded". Otherwise the edit form fetches
+        // course-init itself before the section becomes editable.
+        coursePageJsonLoaded: typeof course.courseData.coursePageJson === 'string',
         // Carried through to convertToApiCourseFormatUpdate so an edit
         // preserves DRAFT / IN_REVIEW / ACTIVE instead of guessing by role.
         status: course.courseData.status || undefined,

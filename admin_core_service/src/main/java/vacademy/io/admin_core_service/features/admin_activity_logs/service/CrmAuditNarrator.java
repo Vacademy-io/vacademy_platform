@@ -344,6 +344,33 @@ public class CrmAuditNarrator {
         }
     }
 
+    /**
+     * The editable part of a follow-up, for UPDATE before-payloads — notes stay
+     * editable after closing, so this is the only record of what was there before.
+     */
+    public Map<String, Object> followupSnapshot(String followupId) {
+        if (isBlank(followupId)) {
+            return null;
+        }
+        try {
+            return leadFollowupRepository.findById(followupId)
+                    .map(f -> {
+                        Map<String, Object> snapshot = new LinkedHashMap<>();
+                        snapshot.put("id", f.getId());
+                        snapshot.put("schedule_time", f.getScheduleTime());
+                        snapshot.put("content", f.getContent());
+                        snapshot.put("closer_reason", f.getCloserReason());
+                        snapshot.put("interest_level", f.getInterestLevel());
+                        snapshot.put("is_closed", f.getIsClosed());
+                        return snapshot;
+                    })
+                    .orElse(null);
+        } catch (Exception e) {
+            logger.warn("Could not snapshot follow-up {}: {}", followupId, e.getMessage());
+            return null;
+        }
+    }
+
     // ── People (counsellors, staff) ───────────────────────────────────────
 
     /**

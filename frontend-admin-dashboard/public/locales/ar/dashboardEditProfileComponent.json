@@ -58,7 +58,8 @@
         "changeTheme": "تغيير السمة"
     },
     "actions": {
-        "saveChanges": "حفظ التغييرات"
+        "saveChanges": "حفظ التغييرات",
+        "cancel": "إلغاء"
     },
     "toast": {
         "updateSuccess": "تم تحديث بياناتك بنجاح!"

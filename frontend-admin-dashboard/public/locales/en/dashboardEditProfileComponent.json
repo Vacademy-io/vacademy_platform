@@ -58,7 +58,8 @@
         "changeTheme": "Change Theme"
     },
     "actions": {
-        "saveChanges": "Save Changes"
+        "saveChanges": "Save Changes",
+        "cancel": "Cancel"
     },
     "toast": {
         "updateSuccess": "Your details has been updated successfully!"

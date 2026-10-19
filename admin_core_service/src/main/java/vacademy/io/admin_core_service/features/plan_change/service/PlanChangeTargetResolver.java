@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
+import vacademy.io.admin_core_service.features.regional_pricing.service.RegionalPriceLock;
 import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessionLearnerInvitationToPaymentOption;
 import vacademy.io.admin_core_service.features.enroll_invite.repository.PackageSessionLearnerInvitationToPaymentOptionRepository;
@@ -121,6 +122,14 @@ public class PlanChangeTargetResolver {
      * membership on the learner's dashboard is pure waste.
      */
     public List<Candidate> resolve(UserPlan userPlan, String instituteId, List<String> packageSessionIds) {
+        // A regionally priced membership has no switch targets yet: proration, the target's
+        // price and the new lock would all have to be worked out in the locked currency, and
+        // pricing them from base plan prices would charge a USD member in rupees.
+        if (RegionalPriceLock.isLocked(userPlan)) {
+            log.debug("Plan change: user plan {} is regionally priced ({}) — no targets",
+                    userPlan.getId(), userPlan.getRegionalCurrency());
+            return List.of();
+        }
         if (packageSessionIds == null || packageSessionIds.isEmpty()) {
             log.debug("Plan change: user plan {} grants no ACTIVE package session — no targets",
                     userPlan.getId());

@@ -41,6 +41,10 @@ public class LiveSessionStep1RequestDTO {
     private boolean allowPlayPause; // new added
     private String timeZone;
 
+    // Attendance-only institutes: true shows this class to learners. Null
+    // leaves the stored value untouched (older clients, edits that omit it).
+    private Boolean showToLearners;
+
     private String bookingTypeId;
     private String source;
     private String sourceId;

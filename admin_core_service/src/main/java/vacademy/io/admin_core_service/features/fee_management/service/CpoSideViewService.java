@@ -1,10 +1,13 @@
 package vacademy.io.admin_core_service.features.fee_management.service;
 
+import vacademy.io.admin_core_service.features.offline_payment.service.OfflinePaymentDetailsService;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.fee_management.dto.ApplyCpoDiscountRequestDTO;
+import vacademy.io.admin_core_service.features.fee_management.dto.CpoDiscountPreviewDTO;
 import vacademy.io.admin_core_service.features.fee_management.dto.CpoInstallmentRowDTO;
 import vacademy.io.admin_core_service.features.fee_management.dto.CpoSideViewInstallmentsResponseDTO;
 import vacademy.io.admin_core_service.features.fee_management.dto.CpoUserPlanSummaryDTO;
@@ -63,6 +66,7 @@ public class CpoSideViewService {
     private final FeeLedgerAllocationService feeLedgerAllocationService;
     private final InvoiceService invoiceService;
     private final InvoiceRepository invoiceRepository;
+    private final OfflinePaymentDetailsService offlinePaymentDetailsService;
     private final ComplexPaymentOptionRepository complexPaymentOptionRepository;
     private final FacultySubjectPackageSessionMappingRepository facultyMappingRepository;
 
@@ -147,6 +151,7 @@ public class CpoSideViewService {
             return cmp != 0 ? cmp : a.getId().compareTo(b.getId());
         });
         UserPlanDiscountJson snapshot = parseSnapshot(plan);
+        Map<String, BigDecimal> planShares = cpoDiscountService.currentPlanDiscountShares(sfps, snapshot);
 
         BigDecimal gross = BigDecimal.ZERO;
         BigDecimal net = BigDecimal.ZERO;
@@ -165,6 +170,7 @@ public class CpoSideViewService {
             rows.add(CpoInstallmentRowDTO.builder()
                     .id(sfp.getId())
                     .aftInstallmentId(sfp.getIId())
+                    .installmentNumber(sfp.getInstallmentNumber())
                     .originalAmount(originalAmount)
                     .amountExpected(amountExpected)
                     .amountPaid(amountPaid)
@@ -172,6 +178,7 @@ public class CpoSideViewService {
                     .startDate(sfp.getStartDate())
                     .dueDate(sfp.getDueDate())
                     .status(sfp.getStatus())
+                    .planDiscountShare(planShares.get(sfp.getId()))
                     .installmentDiscount(snapshot.getInstallmentDiscounts() != null
                             ? snapshot.getInstallmentDiscounts().get(sfp.getId())
                             : null)
@@ -260,8 +267,41 @@ public class CpoSideViewService {
         if (req.getDiscount() == null && !req.isRemove()) {
             throw new VacademyException("Either discount or remove=true must be supplied");
         }
-        cpoDiscountService.setCpoDiscount(userPlanId, req.isRemove() ? null : req.getDiscount(), appliedBy);
+        cpoDiscountService.setCpoDiscount(userPlanId, req.isRemove() ? null : req.getDiscount(),
+                req.getAllocation(), req.getCustomShares(), appliedBy);
         return list(userPlanId);
+    }
+
+    /** What {@link #setCpoDiscount} would take off each installment; nothing is saved. */
+    public CpoDiscountPreviewDTO previewCpoDiscount(String userPlanId, ApplyCpoDiscountRequestDTO req) {
+        if (req == null || req.getDiscount() == null) {
+            throw new VacademyException("Discount is required");
+        }
+        CpoDiscountService.CpoDiscountPlan planned = cpoDiscountService.previewCpoDiscount(
+                userPlanId, req.getDiscount(), req.getAllocation(), req.getCustomShares());
+        UserPlan plan = userPlanRepository.findById(userPlanId)
+                .orElseThrow(() -> new VacademyException("UserPlan not found: " + userPlanId));
+        UserPlanDiscountJson snapshot = parseSnapshot(plan);
+        List<StudentFeePayment> sfps = studentFeePaymentRepository.findByUserPlanId(userPlanId);
+        Map<String, BigDecimal> current = cpoDiscountService.currentPlanDiscountShares(sfps, snapshot);
+        List<CpoDiscountPreviewDTO.Row> rows = new ArrayList<>(sfps.size());
+        for (StudentFeePayment sfp : sfps) {
+            BigDecimal share = nz(planned.shares().get(sfp.getId()));
+            // Billed now + the plan discount it carries now = its value before any plan discount.
+            BigDecimal before = nz(sfp.getAmountExpected()).add(nz(current.get(sfp.getId())));
+            BigDecimal after = before.subtract(share);
+            rows.add(CpoDiscountPreviewDTO.Row.builder()
+                    .id(sfp.getId())
+                    .share(share)
+                    .amountAfter(after.signum() < 0 ? BigDecimal.ZERO : after)
+                    .build());
+        }
+        return CpoDiscountPreviewDTO.builder()
+                .allocation(planned.allocation())
+                .requestedAmount(planned.requested())
+                .resolvedAmount(planned.resolved())
+                .installments(rows)
+                .build();
     }
 
     @Transactional
@@ -286,11 +326,30 @@ public class CpoSideViewService {
         UserPlan plan = userPlanRepository.findById(userPlanId)
                 .orElseThrow(() -> new VacademyException("UserPlan not found: " + userPlanId));
 
+        // Resolve institute_id from SFP rows — UserPlan has no instituteId column.
+        String instituteId = studentFeePaymentRepository.findByUserPlanId(userPlanId).stream()
+                .map(StudentFeePayment::getInstituteId)
+                .filter(s -> s != null && !s.isBlank())
+                .findFirst()
+                // A plan with no fee bills (e.g. a sub-org admin plan): its invite knows the institute.
+                .orElse(plan.getEnrollInvite() != null ? plan.getEnrollInvite().getInstituteId() : null);
+
+        // Validate how it was paid before anything is written.
+        OfflinePaymentDetailsService.Resolved paymentDetails =
+                offlinePaymentDetailsService.resolve(instituteId, req.getPaymentDetails(), req.getReference());
+        // First payment of this enrolment: pin the numbering-series field (e.g. branch) picked
+        // in the dialog, so this and every later receipt of the course use its series.
+        offlinePaymentDetailsService.pinNumberingValue(instituteId, userPlanId, plan.getUserId(),
+                req.getPaymentDetails());
+
         String currency = req.getCurrency() != null
                 ? req.getCurrency()
                 : (plan.getPaymentPlan() != null && plan.getPaymentPlan().getCurrency() != null
                         ? plan.getPaymentPlan().getCurrency() : "INR");
-        Date paymentDate = req.getPaymentDate() != null ? req.getPaymentDate() : new Date();
+        Date paymentDate = req.getPaymentDate() != null ? req.getPaymentDate()
+                : paymentDetails != null && paymentDetails.paymentDate() != null
+                        ? java.sql.Date.valueOf(paymentDetails.paymentDate())
+                        : new Date();
 
         String paymentLogId = paymentLogService.createPaymentLog(
                 plan.getUserId(),
@@ -313,12 +372,7 @@ public class CpoSideViewService {
                 PaymentLogStatusEnum.SUCCESS.name(),
                 PaymentStatusEnum.PAID.name(),
                 JsonUtil.toJson(paymentSpecificData));
-
-        // Resolve institute_id from SFP rows — UserPlan has no instituteId column.
-        String instituteId = studentFeePaymentRepository.findByUserPlanId(userPlanId).stream()
-                .map(StudentFeePayment::getInstituteId)
-                .filter(s -> s != null && !s.isBlank())
-                .findFirst().orElse(null);
+        offlinePaymentDetailsService.apply(paymentLogId, paymentDetails, appliedBy);
 
         // Ledger: credit payment for CPO offline settlement
         if (instituteId != null) {
@@ -356,6 +410,11 @@ public class CpoSideViewService {
             invoicePayReq.setNotes("Auto-settled via offline payment log " + paymentLogId
                     + (req.getReference() != null && !req.getReference().isBlank()
                        ? " (ref: " + req.getReference() + ")" : ""));
+            // Same "how it was paid" as the payment that settles them. Without it, an institute
+            // that requires a mode would reject this inner call, and because it joins this
+            // transaction, the whole offline payment would roll back.
+            invoicePayReq.setPaymentDetails(req.getPaymentDetails());
+            invoicePayReq.setTransactionId(req.getReference());
             List<Invoice> pendingAdminInvoices =
                     invoiceRepository.findPendingAdminManualInvoices(plan.getUserId(), instituteId);
             for (Invoice inv : pendingAdminInvoices) {

@@ -13,5 +13,11 @@ public enum PaymentType {
      * invite) from the pending user_plan_change_request.
      */
     PLAN_CHANGE,
+    /**
+     * An institute paying the platform for an AI plan subscription charge (first period,
+     * renewal or upgrade), on the PLATFORM Razorpay account like AI_CREDIT_PACK. Fulfilled by
+     * PlatformRazorpayWebHookService (admin_core), never by the institute-account webhook.
+     */
+    AI_SUBSCRIPTION,
 
 }

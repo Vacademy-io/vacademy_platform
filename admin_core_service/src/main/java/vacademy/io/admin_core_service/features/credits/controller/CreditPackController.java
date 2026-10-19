@@ -34,9 +34,11 @@ import java.util.List;
  *   POST   /admin-core-service/credits/packs/purchase
  *   GET    /admin-core-service/credits/packs/orders/{platformPaymentId}/status
  *
- * All three require an authenticated user (any institute admin) — auth is
- * applied by the global filter that populates the {@code user} request
- * attribute. The webhook itself lives at PlatformWebHookController.
+ * Listing packs needs institute staff; purchase, billing profile, invoices,
+ * invoice PDFs and order status need an institute ADMIN. Neither check has the
+ * root-user bypass of validateUserAccess: learners and invited staff are root
+ * users, so that bypass let any learner read or change any institute's billing
+ * (GSTIN, invoices, orders). The webhook itself lives at PlatformWebHookController.
  */
 @Slf4j
 @RestController
@@ -62,7 +64,7 @@ public class CreditPackController {
     public ResponseEntity<List<CreditPackDTO>> listPacks(
             @RequestAttribute("user") CustomUserDetails user,
             @RequestParam("instituteId") String instituteId) {
-        instituteAccessValidator.validateUserAccess(user, instituteId);
+        instituteAccessValidator.requireInstituteStaff(user, instituteId);
         return ResponseEntity.ok(creditPackService.listPacksForInstitute(instituteId));
     }
 
@@ -73,7 +75,7 @@ public class CreditPackController {
         if (request == null || request.getInstituteId() == null || request.getPackId() == null) {
             throw new VacademyException("instituteId and packId are required");
         }
-        instituteAccessValidator.validateUserAccess(user, request.getInstituteId());
+        instituteAccessValidator.requireInstituteAdmin(user, request.getInstituteId());
         UserDTO buyer = toUserDTO(user);
         CreditPackPurchaseResponseDTO response = creditPackService.createOrder(
                 request.getInstituteId(), request.getPackId(), buyer, request.getReturnUrl(),
@@ -86,7 +88,7 @@ public class CreditPackController {
     public ResponseEntity<BillingProfileDTO> getBillingProfile(
             @RequestAttribute("user") CustomUserDetails user,
             @RequestParam("instituteId") String instituteId) {
-        instituteAccessValidator.validateUserAccess(user, instituteId);
+        instituteAccessValidator.requireInstituteAdmin(user, instituteId);
         return ResponseEntity.ok(creditPackService.getBillingProfile(instituteId));
     }
 
@@ -95,7 +97,7 @@ public class CreditPackController {
     public ResponseEntity<List<PlatformInvoiceSummaryDTO>> listInvoices(
             @RequestAttribute("user") CustomUserDetails user,
             @RequestParam("instituteId") String instituteId) {
-        instituteAccessValidator.validateUserAccess(user, instituteId);
+        instituteAccessValidator.requireInstituteAdmin(user, instituteId);
         return ResponseEntity.ok(creditPackService.listInvoices(instituteId));
     }
 
@@ -106,7 +108,7 @@ public class CreditPackController {
             @PathVariable("invoiceId") String invoiceId) {
         PlatformInvoice invoice = platformInvoiceRepository.findById(invoiceId)
                 .orElseThrow(() -> new VacademyException("Invoice not found: " + invoiceId));
-        instituteAccessValidator.validateUserAccess(user, invoice.getBuyerInstituteId());
+        instituteAccessValidator.requireInstituteAdmin(user, invoice.getBuyerInstituteId());
 
         byte[] pdf = platformInvoicePdfService.renderPdf(invoice);
         HttpHeaders headers = new HttpHeaders();
@@ -127,7 +129,7 @@ public class CreditPackController {
         // other institutes' purchase statuses.
         PlatformPayment payment = platformPaymentRepository.findById(platformPaymentId)
                 .orElseThrow(() -> new VacademyException("Order not found: " + platformPaymentId));
-        instituteAccessValidator.validateUserAccess(user, payment.getInstituteId());
+        instituteAccessValidator.requireInstituteAdmin(user, payment.getInstituteId());
         return ResponseEntity.ok(creditPackService.getOrderStatus(platformPaymentId));
     }
 

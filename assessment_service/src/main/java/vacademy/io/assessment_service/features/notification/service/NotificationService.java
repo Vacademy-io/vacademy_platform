@@ -136,6 +136,37 @@ public class NotificationService {
         }
     }
 
+    /**
+     * Sends an approved WhatsApp template to each recipient. Per-recipient values go in
+     * {@code variables} (named; notification_service maps them to the template's positions),
+     * and {@code _headerUrl} carries the document link when headerType is "document".
+     * Returns whether the notification service accepted the batch.
+     */
+    public boolean sendWhatsAppTemplate(String instituteId, String templateName, String languageCode,
+                                        List<UnifiedSendRequest.Recipient> recipients, String headerType,
+                                        String source, String sourceId) {
+        UnifiedSendRequest request = UnifiedSendRequest.builder()
+                .instituteId(instituteId != null ? instituteId : "")
+                .channel("WHATSAPP")
+                .templateName(templateName)
+                .languageCode(languageCode)
+                .recipients(recipients)
+                .options(UnifiedSendRequest.SendOptions.builder()
+                        .headerType(headerType)
+                        .source(source)
+                        .sourceId(sourceId)
+                        .build())
+                .build();
+        try {
+            var response = internalClientUtils.makeHmacRequest(
+                    clientName, HttpMethod.POST.name(), notificationServerBaseUrl, UNIFIED_SEND, request);
+            return response != null && response.getStatusCode().is2xxSuccessful();
+        } catch (Exception e) {
+            log.error("Failed to send WhatsApp template {} via unified API: {}", templateName, e.getMessage(), e);
+            return false;
+        }
+    }
+
     public void sendPushNotificationToUsers(String instituteId, List<String> userIds, String title, String body, java.util.Map<String, String> data) {
         List<UnifiedSendRequest.Recipient> recipients = userIds.stream()
                 .map(uid -> UnifiedSendRequest.Recipient.builder().userId(uid).build())

@@ -31,15 +31,19 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from ..core.security import get_current_user
 from ..db import db_dependency
 from ..models.ai_token_usage import RequestType
-from ..services.ai_billing import preflight_tool_credits, record_tool_billing
+from ..services.ai_billing import (
+    UC, metering_from_request, metering_kwargs, metering_user, preflight_tool_credits, record_tool_billing,
+    supported_kwargs,
+)
 from ..services.figma_links import FIGMA_LINK_GUIDANCE, find_figma_url, is_figma_url
+from ..services.image_model_resolver import PAGE_BUILDER_IMAGE, ImageCharge, image_model_for, plan_image_charge
 from ..services.llm_json import generate_json
 from ..constants.model_defaults import GLM_DEFAULT
 from ..services.model_selection import resolve_models
@@ -215,7 +219,12 @@ def _load_catalog() -> Dict[str, Any]:
 
 # ─── Image generation (logos / hero art / illustrations) ────────────────────
 
-_IMAGE_MODEL = os.getenv("PAGE_IMAGE_MODEL") or "google/gemini-3.1-flash-image"
+# PAGE_IMAGE_MODEL (env) wins; else the 'page_builder_image' use case
+# (super-admin portal), else this literal. Chat-completions image models only
+# (the call below sends `modalities`).
+_IMAGE_MODEL_ENV = os.getenv("PAGE_IMAGE_MODEL")
+_IMAGE_MODEL_DEFAULT = "google/gemini-3.1-flash-image"
+_IMAGE_MODEL = _IMAGE_MODEL_ENV or _IMAGE_MODEL_DEFAULT
 _IMAGE_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 _IMAGE_ASPECTS = {"16:9", "4:3", "1:1", "3:4", "9:16", "3:2", "2:3"}
 # Auto-generated images per page. Was 5, which quietly became the binding
@@ -232,7 +241,12 @@ _MIN_BAND_PADDING_PX = 32.0
 _GEN_PREFIX = "gen:"
 
 
-async def _openrouter_image(prompt: str, aspect: str) -> Optional[bytes]:
+def _image_model() -> str:
+    """The page-builder image model right now (cached 30 s by the resolver)."""
+    return _IMAGE_MODEL_ENV or image_model_for(PAGE_BUILDER_IMAGE, _IMAGE_MODEL_DEFAULT)
+
+
+async def _openrouter_image(prompt: str, aspect: str, model: Optional[str] = None) -> Optional[bytes]:
     """One image via OpenRouter (same call the course/doc image path uses).
     Returns raw PNG bytes or None."""
     from ..config import get_settings
@@ -245,7 +259,7 @@ async def _openrouter_image(prompt: str, aspect: str) -> Optional[bytes]:
             _IMAGE_API_URL,
             headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
             json={
-                "model": _IMAGE_MODEL,
+                "model": model or _image_model(),
                 "messages": [{"role": "user", "content": prompt}],
                 "modalities": ["image"],
                 "image_config": {"aspect_ratio": aspect if aspect in _IMAGE_ASPECTS else "16:9"},
@@ -277,33 +291,56 @@ def _upload_image(data: bytes, kind: str) -> Optional[str]:
         return None
 
 
-def _bill_image(db, institute_id: Optional[str], user_id: Optional[str]) -> None:
+def _page_metering(request: Optional[Request], institute_id: Optional[str], user: Any, user_id: Optional[str]) -> Any:
+    """Usage-event attribution for a page-builder call (never changes a charge)."""
+    return metering_from_request(request, institute_id, user=user) or metering_user(user_id, surface="ADMIN_APP")
+
+
+def _bill_image(db, institute_id: Optional[str], user_id: Optional[str], model: Optional[str] = None,
+                metering: Any = None) -> None:
     if not institute_id:
         return
+    model = model or _image_model()
+    # billing.image_registry_pricing: off (default) charges the flat image
+    # rate exactly as before; shadow adds would_be_credits to the usage
+    # metadata; on charges the registry price of the model that ran.
+    try:
+        charge = plan_image_charge(model, 1, feature="page_builder_image")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[page-image] image pricing plan failed (%s); billing as before", e)
+        charge = ImageCharge("off")
     try:
         from ..services.token_usage_service import TokenUsageService
         from ..models.ai_token_usage import ApiProvider
-        TokenUsageService(db).record_usage_and_deduct_credits(
+        tus = TokenUsageService(db)
+        tus.record_usage_and_deduct_credits(
             api_provider=ApiProvider.OPENAI,  # via OpenRouter
             prompt_tokens=0, completion_tokens=0, total_tokens=0,
             request_type=RequestType.IMAGE,
             institute_id=institute_id, user_id=user_id,
-            model=_IMAGE_MODEL, metadata={"feature": "page_builder_image"},
+            model=model, metadata=charge.metadata({"feature": "page_builder_image"}),
+            precomputed_credits=charge.precomputed_credits,
+            **supported_kwargs(tus.record_usage_and_deduct_credits, metering_kwargs(
+                UC.PAGE_BUILDER_IMAGE,
+                metering if metering is not None else metering_user(user_id, surface="ADMIN_APP"),
+            )),
         )
     except Exception as e:  # noqa: BLE001
         logger.warning("[page-image] billing skipped: %s", e)
 
 
 async def _generate_and_upload_image(
-    prompt: str, aspect: str, kind: str, db, institute_id: Optional[str], user_id: Optional[str]
+    prompt: str, aspect: str, kind: str, db, institute_id: Optional[str], user_id: Optional[str],
+    metering: Any = None,
 ) -> Optional[str]:
     """Generate → upload → bill one image. Returns the public URL or None."""
-    data = await _openrouter_image(prompt, aspect)
+    model = _image_model()
+    data = await _openrouter_image(prompt, aspect, model)
     if not data:
         return None
     url = _upload_image(data, kind)
     if url:
-        _bill_image(db, institute_id, user_id)
+        _bill_image(db, institute_id, user_id, model, **supported_kwargs(_bill_image, {"metering": metering}))
     return url
 
 
@@ -312,7 +349,8 @@ _GEN_KEYS = {"image", "src", "logo", "avatar", "photo", "backgroundimage", "post
 _GEN_ASPECT = {"logo": "1:1", "avatar": "1:1", "photo": "4:3", "backgroundimage": "16:9", "thumbnail": "4:3"}
 
 
-async def _autogen_images(page: Any, db, institute_id: Optional[str], user_id: Optional[str]) -> set:
+async def _autogen_images(page: Any, db, institute_id: Optional[str], user_id: Optional[str],
+                          metering: Any = None) -> set:
     """Walk the page for image fields set to 'gen:<prompt>', generate each
     (concurrently, capped), upload, and replace the value with the real URL
     (or '' on failure). Returns the set of generated URLs to allowlist."""
@@ -339,7 +377,8 @@ async def _autogen_images(page: Any, db, institute_id: Optional[str], user_id: O
     generated: set = set()
 
     async def one(container: Dict[str, Any], key: str, prompt: str, aspect: str, kind: str) -> None:
-        url = await _generate_and_upload_image(prompt, aspect, kind, db, institute_id, user_id)
+        url = await _generate_and_upload_image(prompt, aspect, kind, db, institute_id, user_id,
+                                               **supported_kwargs(_generate_and_upload_image, {"metering": metering}))
         container[key] = url or ""
         if url:
             generated.add(url)
@@ -2973,6 +3012,7 @@ async def _compose_one_page(
     body: GeneratePageRequest, catalog: Dict[str, Any], db, institute_id: str, actor_user_id: Optional[str],
     fixed_global: Optional[Dict[str, Any]] = None,
     inspiration: Optional[Dict[str, Any]] = None,
+    metering: Any = None,
 ) -> tuple[Dict[str, Any], Optional[Dict[str, Any]], List[str], str, str]:
     """Compose ONE page end-to-end: inspiration/site-import → prompt → LLM →
     auto-images → sanitize → bill. Returns (page, global_settings, warnings,
@@ -3018,7 +3058,8 @@ async def _compose_one_page(
             data = json.loads(raw_json)
             page_obj = data.get("page") if isinstance(data, dict) else None
             if isinstance(page_obj, dict):
-                generated_urls = await _autogen_images(page_obj, db, institute_id, actor_user_id)
+                generated_urls = await _autogen_images(page_obj, db, institute_id, actor_user_id,
+                                                       **supported_kwargs(_autogen_images, {"metering": metering}))
                 raw_json = json.dumps(data)
         except Exception as e:  # noqa: BLE001
             logger.warning("[page-builder] auto-image pass skipped: %s", e)
@@ -3119,6 +3160,9 @@ async def _compose_one_page(
             user_role=None,
             idempotency_key=f"{_TOOL_KEY}:{run_id}",
             usage_markup=_USAGE_MARKUP,
+            use_case=UC.PAGE_BUILDER,
+            metering=metering,
+            usage_context={"run_id": run_id, "page_type": body.page_type or "homepage"},
         )
     except Exception as e:  # noqa: BLE001
         logger.warning("[page-builder] billing skipped: %s", e)
@@ -3131,6 +3175,7 @@ async def generate_page(
     body: GeneratePageRequest,
     db: Session = Depends(db_dependency),
     current_user=Depends(get_current_user),
+    request: Request = None,
 ) -> GeneratePageResponse:
     if not current_user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required.")
@@ -3161,7 +3206,9 @@ async def generate_page(
     # belong in a prompt or in a response the editor merges back.
     pinned = _coerce_global_settings(body.global_settings) if body.global_settings else None
     page, global_settings, warnings, model_used, run_id = await _compose_one_page(
-        body, catalog, db, institute_id, actor_user_id, fixed_global=pinned
+        body, catalog, db, institute_id, actor_user_id, fixed_global=pinned,
+        **supported_kwargs(_compose_one_page,
+                           {"metering": _page_metering(request, institute_id, current_user, actor_user_id)}),
     )
     return GeneratePageResponse(
         page=page, global_settings=global_settings, run_id=run_id, model=model_used, warnings=warnings
@@ -3485,6 +3532,7 @@ async def edit_page(
     body: EditPageRequest,
     db: Session = Depends(db_dependency),
     current_user=Depends(get_current_user),
+    request: Request = None,
 ) -> EditPageResponse:
     if not current_user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required.")
@@ -3497,6 +3545,7 @@ async def edit_page(
     if not institute_id:
         raise HTTPException(status_code=400, detail="No institute context on this session.")
     actor_user_id = getattr(current_user, "user_id", None)
+    meter_ctx = _page_metering(request, institute_id, current_user, actor_user_id)
 
     estimate = preflight_tool_credits(db, tool_key=_EDIT_TOOL_KEY, tool_params={}, institute_id=institute_id)
     if estimate.get("sufficient") is False:
@@ -3542,7 +3591,8 @@ async def edit_page(
         try:
             data = json.loads(raw_json)
             if isinstance(data, dict) and isinstance(data.get("ops"), list):
-                generated_urls = await _autogen_images(data["ops"], db, institute_id, actor_user_id)
+                generated_urls = await _autogen_images(data["ops"], db, institute_id, actor_user_id,
+                                                       **supported_kwargs(_autogen_images, {"metering": meter_ctx}))
                 raw_json = json.dumps(data)
         except Exception as e:  # noqa: BLE001
             logger.warning("[page-copilot] auto-image pass skipped: %s", e)
@@ -3565,6 +3615,9 @@ async def edit_page(
             user_role=None,
             idempotency_key=f"{_EDIT_TOOL_KEY}:{run_id}",
             usage_markup=_USAGE_MARKUP,
+            use_case=UC.PAGE_BUILDER,
+            metering=meter_ctx,
+            usage_context={"run_id": run_id},
         )
     except Exception as e:  # noqa: BLE001
         logger.warning("[page-copilot] billing skipped: %s", e)
@@ -3756,6 +3809,7 @@ async def generate_section_variants(
     body: SectionVariantsRequest,
     db: Session = Depends(db_dependency),
     current_user=Depends(get_current_user),
+    request: Request = None,
 ) -> SectionVariantsResponse:
     if not current_user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required.")
@@ -3766,6 +3820,7 @@ async def generate_section_variants(
     if not institute_id:
         raise HTTPException(status_code=400, detail="No institute context on this session.")
     actor_user_id = getattr(current_user, "user_id", None)
+    meter_ctx = _page_metering(request, institute_id, current_user, actor_user_id)
 
     target = _find_component(body.page, body.component_id)
     if target is None:
@@ -3862,6 +3917,9 @@ async def generate_section_variants(
             user_role=None,
             idempotency_key=f"{_EDIT_TOOL_KEY}:{run_id}",
             usage_markup=_USAGE_MARKUP,
+            use_case=UC.PAGE_BUILDER,
+            metering=meter_ctx,
+            usage_context={"run_id": run_id},
         )
     except Exception as e:  # noqa: BLE001
         logger.warning("[page-section] billing skipped: %s", e)
@@ -4075,6 +4133,7 @@ async def derive_brand_kit(
     body: BrandKitRequest,
     db: Session = Depends(db_dependency),
     current_user=Depends(get_current_user),
+    request: Request = None,
 ) -> BrandKitResponse:
     if not current_user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required.")
@@ -4082,6 +4141,7 @@ async def derive_brand_kit(
     if not institute_id:
         raise HTTPException(status_code=400, detail="No institute context on this session.")
     actor_user_id = getattr(current_user, "user_id", None)
+    meter_ctx = _page_metering(request, institute_id, current_user, actor_user_id)
 
     estimate = preflight_tool_credits(db, tool_key=_BRAND_TOOL_KEY, tool_params={}, institute_id=institute_id)
     if estimate.get("sufficient") is False:
@@ -4148,6 +4208,9 @@ async def derive_brand_kit(
             user_role=None,
             idempotency_key=f"{_BRAND_TOOL_KEY}:{run_id}",
             usage_markup=_USAGE_MARKUP,
+            use_case=UC.PAGE_BUILDER,
+            metering=meter_ctx,
+            usage_context={"run_id": run_id},
         )
     except Exception as e:  # noqa: BLE001
         logger.warning("[brand-kit] billing skipped: %s", e)
@@ -4186,6 +4249,7 @@ async def generate_page_image(
     body: GenerateImageRequest,
     db: Session = Depends(db_dependency),
     current_user=Depends(get_current_user),
+    request: Request = None,
 ) -> GenerateImageResponse:
     if not current_user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required.")
@@ -4195,6 +4259,7 @@ async def generate_page_image(
     if not institute_id:
         raise HTTPException(status_code=400, detail="No institute context on this session.")
     actor_user_id = getattr(current_user, "user_id", None)
+    meter_ctx = _page_metering(request, institute_id, current_user, actor_user_id)
 
     wrapper, default_aspect = _IMAGE_KIND_STYLE.get(body.kind, _IMAGE_KIND_STYLE["image"])
     prompt = wrapper.format(p=body.prompt.strip())
@@ -4202,13 +4267,15 @@ async def generate_page_image(
     n = max(1, min(3, body.count))
 
     results = await asyncio.gather(
-        *[_generate_and_upload_image(prompt, aspect, body.kind, db, institute_id, actor_user_id) for _ in range(n)],
+        *[_generate_and_upload_image(prompt, aspect, body.kind, db, institute_id, actor_user_id,
+                                     **supported_kwargs(_generate_and_upload_image, {"metering": meter_ctx}))
+          for _ in range(n)],
         return_exceptions=True,
     )
     urls = [r for r in results if isinstance(r, str) and r]
     if not urls:
         raise HTTPException(status_code=502, detail="Image generation failed — please try again.")
-    return GenerateImageResponse(urls=urls, model=_IMAGE_MODEL)
+    return GenerateImageResponse(urls=urls, model=_image_model())
 
 
 # ─── Multi-page site (one brief → several coherent pages) ────────────────────
@@ -4273,6 +4340,7 @@ async def generate_site(
     body: GenerateSiteRequest,
     db: Session = Depends(db_dependency),
     current_user=Depends(get_current_user),
+    request: Request = None,
 ) -> GenerateSiteResponse:
     if not current_user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required.")
@@ -4282,6 +4350,7 @@ async def generate_site(
     if not institute_id:
         raise HTTPException(status_code=400, detail="No institute context on this session.")
     actor_user_id = getattr(current_user, "user_id", None)
+    meter_ctx = _page_metering(request, institute_id, current_user, actor_user_id)
 
     # De-dup, keep order, always lead with homepage, cap at 5 pages.
     seen: set = set()
@@ -4347,6 +4416,7 @@ async def generate_site(
             page, gs, w, model_used, _ = await _compose_one_page(
                 sub, catalog, db, institute_id, actor_user_id, fixed_global=shared_global,
                 inspiration=shared_inspiration,
+                **supported_kwargs(_compose_one_page, {"metering": meter_ctx}),
             )
         except HTTPException:
             if pages:
@@ -4536,6 +4606,7 @@ async def intake_turn(
     body: IntakeRequest,
     db: Session = Depends(db_dependency),
     current_user=Depends(get_current_user),
+    request: Request = None,
 ) -> IntakeResponse:
     from ..services.chat_llm_client import ChatLLMClient
     from ..services.api_key_resolver import ApiKeyResolver
@@ -4546,6 +4617,7 @@ async def intake_turn(
     if not institute_id:
         raise HTTPException(status_code=400, detail="No institute context on this session.")
     actor_user_id = getattr(current_user, "user_id", None)
+    meter_ctx = _page_metering(request, institute_id, current_user, actor_user_id)
     if len(body.history) > _MAX_INTAKE_TURNS:
         raise HTTPException(status_code=400, detail="This conversation is too long — please generate or start over.")
 
@@ -4700,6 +4772,9 @@ async def intake_turn(
             user_role=None,
             idempotency_key=f"{_INTAKE_TOOL_KEY}:{run_id}",
             usage_markup=_USAGE_MARKUP,
+            use_case=UC.PAGE_BUILDER,
+            metering=meter_ctx,
+            usage_context={"run_id": run_id},
         )
     except Exception as e:  # noqa: BLE001
         logger.warning("[page-intake] billing skipped: %s", e)
@@ -4891,6 +4966,7 @@ async def edit_site_chrome(
     body: SiteChromeRequest,
     db: Session = Depends(db_dependency),
     current_user=Depends(get_current_user),
+    request: Request = None,
 ) -> SiteChromeResponse:
     if not current_user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required.")
@@ -4901,6 +4977,7 @@ async def edit_site_chrome(
     if not institute_id:
         raise HTTPException(status_code=400, detail="No institute context on this session.")
     actor_user_id = getattr(current_user, "user_id", None)
+    meter_ctx = _page_metering(request, institute_id, current_user, actor_user_id)
 
     estimate = preflight_tool_credits(
         db, tool_key=_CHROME_TOOL_KEY, tool_params={}, institute_id=institute_id
@@ -4950,6 +5027,9 @@ async def edit_site_chrome(
             user_role=None,
             idempotency_key=f"{_CHROME_TOOL_KEY}:{run_id}",
             usage_markup=_USAGE_MARKUP,
+            use_case=UC.PAGE_BUILDER,
+            metering=meter_ctx,
+            usage_context={"run_id": run_id},
         )
     except Exception as e:  # noqa: BLE001
         logger.warning("[site-chrome] billing skipped: %s", e)
@@ -5023,6 +5103,7 @@ async def translate_site_strings(
     body: SiteTranslateRequest,
     db: Session = Depends(db_dependency),
     principal: PinnedPrincipal = Depends(get_pinned_principal),
+    request: Request = None,
 ) -> SiteTranslateResponse:
     # Imported here so loading the page builder stays light (the service pulls
     # in the translation-job models).
@@ -5037,6 +5118,7 @@ async def translate_site_strings(
             detail="Only institute admins can translate the website.",
         )
     actor_user_id = getattr(principal, "user_id", None)
+    meter_ctx = _page_metering(request, institute_id, principal, actor_user_id)
 
     source = (body.source_locale or "en").strip().lower()
     target = (body.target_locale or "").strip().lower()
@@ -5139,6 +5221,9 @@ async def translate_site_strings(
                 user_role=None,
                 idempotency_key=f"{_TRANSLATE_TOOL_KEY}:{run_id}",
                 usage_markup=_USAGE_MARKUP,
+                use_case=UC.TRANSLATION,
+                metering=meter_ctx,
+                usage_context={"run_id": run_id, "feature": "site_translate"},
             )
         except Exception as e:  # noqa: BLE001
             logger.warning("[translate] billing skipped: %s", e)

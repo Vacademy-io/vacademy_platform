@@ -40,6 +40,11 @@ public class LeadFollowup {
     @Builder.Default
     private Boolean isClosed = false;
 
+    /** Opened for a repeat-lead reattempt; the Follow-ups page lists these leads first. */
+    @Column(name = "is_priority", nullable = false)
+    @Builder.Default
+    private Boolean isPriority = false;
+
     @Column(name = "content", columnDefinition = "TEXT")
     private String content;
 
@@ -57,6 +62,10 @@ public class LeadFollowup {
 
     @Column(name = "next_action")
     private String nextAction;
+
+    /** How warm the lead sounded on this follow-up - its own record, not the lead's tier. */
+    @Column(name = "interest_level")
+    private String interestLevel;
 
     @Column(name = "closer_reason", columnDefinition = "TEXT")
     private String closerReason;

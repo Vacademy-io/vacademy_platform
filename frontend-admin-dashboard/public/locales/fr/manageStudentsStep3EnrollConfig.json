@@ -5,7 +5,14 @@
         "inviteLinkLabel": "Lien d'invitation",
         "accessDaysLabel": "Remplacement des jours d'accès",
         "accessDaysPlaceholder": "Depuis l'invitation",
-        "autoResolvedFromDefault": "(résolu automatiquement à partir de l'invitation par défaut)"
+        "autoResolvedFromDefault": "(résolu automatiquement à partir de l'invitation par défaut)",
+        "payInInstallments": {
+            "label": "Payer en plusieurs fois",
+            "description": "Répartir ce prix en échéances pour ces apprenants. La remise du plan de frais remplace la remise ci-dessus."
+        },
+        "autoResolvedOnlyActive": "(le seul lien d’invitation actif du cours)",
+        "pickInvite": "Ce cours a {{count}} liens d’invitation actifs et aucun par défaut. Choisissez le lien d’invitation à utiliser.",
+        "noInvite": "Aucun lien d’invitation pour ce cours : les apprenants sont inscrits gratuitement."
     },
     "globalOptions": {
         "heading": "Options globales",
@@ -30,7 +37,8 @@
             "label": "ID de transaction (facultatif)",
             "placeholder": "Saisir l'ID de transaction",
             "description": "Référence de transaction de paiement externe"
-        }
+        },
+        "paymentDetailsInCourse": "Le mode de paiement est repris de la section frais de chaque cours ci-dessus."
     },
     "workflows": {
         "heading": "Workflows qui se déclencheront lors de l'inscription",

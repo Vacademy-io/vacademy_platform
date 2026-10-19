@@ -6,7 +6,12 @@
  *     "action": "REJECT",
  *     "repeatLead": { "counsellorMode": "SAME_AS_PREVIOUS", "specificCounsellorId": null,
  *                     "specificCounsellorName": null, "statusMode": "KEEP_EXISTING",
- *                     "samePersonByPhone": false, "blockOwnedManualAdd": false } }
+ *                     "samePersonByPhone": false, "blockOwnedManualAdd": false,
+ *                     "blockOpenLeadManualAdd": false, "alsoMatchEmail": false,
+ *                     "reattempt": { "markDuplicate": false, "journeyEntry": false,
+ *                                    "notifyOwner": false, "showBadge": false,
+ *                                    "followUp": false, "tier": null,
+ *                                    "duplicateOpenOnly": true } } }
  *
  * Mirrors the backend defaults in
  * admin_core_service/.../features/audience/service/LeadDedupSettingService.java.
@@ -25,8 +30,34 @@ export type LeadDedupScope = 'CAMPAIGN' | 'SELECTED' | 'INSTITUTE';
 export type LeadDedupAction = 'REJECT' | 'ALLOW_REASSIGN';
 /** Counsellor handling for a repeat lead, only read when action === 'ALLOW_REASSIGN'. */
 export type RepeatLeadCounsellorMode = 'NONE' | 'SAME_AS_PREVIOUS' | 'SPECIFIC' | 'ROUND_ROBIN';
-/** Status handling for a repeat lead, only read when action === 'ALLOW_REASSIGN'. */
-export type RepeatLeadStatusMode = 'KEEP_EXISTING' | 'RESET_TO_NEW';
+/**
+ * Status handling for a repeat lead, only read when action === 'ALLOW_REASSIGN'.
+ * RESET_CLOSED_TO_NEW resets only when the earlier lead is converted or discarded.
+ */
+export type RepeatLeadStatusMode = 'KEEP_EXISTING' | 'RESET_TO_NEW' | 'RESET_CLOSED_TO_NEW';
+
+/** What a repeat enquiry leaves behind; every switch is off unless set. */
+export interface ReattemptSettings {
+    /** Flag the new enquiry as a duplicate of the lead it repeats. */
+    markDuplicate: boolean;
+    /** Write a "Reattempt" entry in that lead's journey. */
+    journeyEntry: boolean;
+    /** Ring the bell of the lead's counsellor. */
+    notifyOwner: boolean;
+    /** Show a "Duplicate" badge next to the lead name in lead tables. */
+    showBadge: boolean;
+    /** Open a priority follow-up for the lead's counsellor; the Follow-ups page lists it first. */
+    followUp: boolean;
+    /** Institute tier key (Interest Level) to set on the lead, e.g. VERY_HOT; null = keep. */
+    tier: string | null;
+    /** markDuplicate only while the earlier lead is open (not converted / LOST). Default on. */
+    duplicateOpenOnly: boolean;
+    /**
+     * Duplicates show only on the Duplicate Leads tab; the other lead lists show the lead
+     * once, badged. Off = lists unchanged. A route's own duplicates= still wins.
+     */
+    duplicatesTabOnly: boolean;
+}
 
 /** Raw shape persisted at LEAD_SETTING.data.dedup.repeatLead (backend contract). */
 export interface RepeatLeadSettingsSubtree {
@@ -36,6 +67,9 @@ export interface RepeatLeadSettingsSubtree {
     statusMode?: RepeatLeadStatusMode;
     samePersonByPhone?: boolean;
     blockOwnedManualAdd?: boolean;
+    blockOpenLeadManualAdd?: boolean;
+    alsoMatchEmail?: boolean;
+    reattempt?: Partial<ReattemptSettings>;
 }
 
 export interface RepeatLeadSettings {
@@ -48,6 +82,11 @@ export interface RepeatLeadSettings {
     samePersonByPhone: boolean;
     /** Match by phone only: a counsellor cannot add by hand a phone another counsellor owns. */
     blockOwnedManualAdd: boolean;
+    /** A counsellor cannot add by hand a lead that is still open (not converted / discarded). */
+    blockOpenLeadManualAdd: boolean;
+    /** Match by phone only: an enquiry with a new phone is still a repeat when its email matches a lead. */
+    alsoMatchEmail: boolean;
+    reattempt: ReattemptSettings;
 }
 
 /** Raw shape persisted at LEAD_SETTING.data.dedup (backend contract). */
@@ -71,6 +110,17 @@ export interface LeadDedupSettings {
     repeatLead: RepeatLeadSettings;
 }
 
+export const REATTEMPT_SETTINGS_DEFAULTS: ReattemptSettings = {
+    markDuplicate: false,
+    journeyEntry: false,
+    notifyOwner: false,
+    showBadge: false,
+    followUp: false,
+    tier: null,
+    duplicateOpenOnly: true,
+    duplicatesTabOnly: false,
+};
+
 export const REPEAT_LEAD_SETTINGS_DEFAULTS: RepeatLeadSettings = {
     counsellorMode: 'SAME_AS_PREVIOUS',
     specificCounsellorId: null,
@@ -78,6 +128,9 @@ export const REPEAT_LEAD_SETTINGS_DEFAULTS: RepeatLeadSettings = {
     statusMode: 'KEEP_EXISTING',
     samePersonByPhone: false,
     blockOwnedManualAdd: false,
+    blockOpenLeadManualAdd: false,
+    alsoMatchEmail: false,
+    reattempt: REATTEMPT_SETTINGS_DEFAULTS,
 };
 
 export const LEAD_DEDUP_SETTINGS_DEFAULTS: LeadDedupSettings = {
@@ -102,9 +155,27 @@ function withRepeatLeadDefaults(subtree: RepeatLeadSettingsSubtree | undefined):
         counsellorMode,
         specificCounsellorId: subtree?.specificCounsellorId ?? null,
         specificCounsellorName: subtree?.specificCounsellorName ?? null,
-        statusMode: subtree?.statusMode === 'RESET_TO_NEW' ? 'RESET_TO_NEW' : 'KEEP_EXISTING',
+        statusMode:
+            subtree?.statusMode === 'RESET_TO_NEW' || subtree?.statusMode === 'RESET_CLOSED_TO_NEW'
+                ? subtree.statusMode
+                : 'KEEP_EXISTING',
         samePersonByPhone: subtree?.samePersonByPhone === true,
         blockOwnedManualAdd: subtree?.blockOwnedManualAdd === true,
+        blockOpenLeadManualAdd: subtree?.blockOpenLeadManualAdd === true,
+        alsoMatchEmail: subtree?.alsoMatchEmail === true,
+        reattempt: {
+            markDuplicate: subtree?.reattempt?.markDuplicate === true,
+            journeyEntry: subtree?.reattempt?.journeyEntry === true,
+            notifyOwner: subtree?.reattempt?.notifyOwner === true,
+            showBadge: subtree?.reattempt?.showBadge === true,
+            followUp: subtree?.reattempt?.followUp === true,
+            tier:
+                typeof subtree?.reattempt?.tier === 'string' && subtree.reattempt.tier.trim()
+                    ? subtree.reattempt.tier.trim()
+                    : null,
+            duplicateOpenOnly: subtree?.reattempt?.duplicateOpenOnly !== false,
+            duplicatesTabOnly: subtree?.reattempt?.duplicatesTabOnly === true,
+        },
     };
 }
 

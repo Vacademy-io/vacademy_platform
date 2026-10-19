@@ -33,20 +33,17 @@ from sim.timing import Say, Scenario
 
 def _hold_lines(finals) -> set:
     """Times of the finals that are the network's hold recording, by the same
-    rules as the live gate: a hold line starts it; while on hold, pieces of the
-    recording and lone words within 3 s of one stay in it; anything else is the
-    person coming back."""
-    from app.turntake import (is_hold_announcement, is_hold_fragment,
-                              caller_checking_presence, is_audio_check)
+    rules as the live gate: a hold line starts it; while on hold,
+    turntake.hold_absorbs decides piece by piece; anything else is the person
+    coming back."""
+    from app.turntake import is_hold_announcement, hold_absorbs
     out, holding, last = set(), False, -99.0
     for t, x in finals:
         x = (x or "").strip()
         if not x:
             continue
         if holding:
-            if (is_hold_announcement(x) or is_hold_fragment(x)
-                    or (len(x.split()) < 2 and t - last < 3.0
-                        and not (caller_checking_presence(x) or is_audio_check(x)))):
+            if hold_absorbs(x, t - last):
                 out.add(t)
                 last = t
                 continue

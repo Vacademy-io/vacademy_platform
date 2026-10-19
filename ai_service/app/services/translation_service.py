@@ -363,7 +363,9 @@ def _charge_llm_item(
                 )
             charge = max(parametric, actual)
 
-            TokenUsageService(db).record_usage_and_deduct_credits(
+            from .ai_billing import metering_kwargs, metering_user, supported_kwargs
+            tus = TokenUsageService(db)
+            tus.record_usage_and_deduct_credits(
                 api_provider=provider_for_model(model),
                 prompt_tokens=prompt_tokens,
                 completion_tokens=completion_tokens,
@@ -379,6 +381,11 @@ def _charge_llm_item(
                 # Post-paid: the item was already translated — never silently
                 # drop the charge if a concurrent spend dipped the balance.
                 allow_negative=True,
+                # Usage-event attribution only (the ledger role above is unchanged).
+                **supported_kwargs(tus.record_usage_and_deduct_credits, metering_kwargs(
+                    "translation", metering_user(user_id, surface="ADMIN_APP"),
+                    {"job_id": job_id, "item_id": item_id, "target_locale": target_locale},
+                )),
             )
     except Exception as exc:  # noqa: BLE001
         logger.warning(

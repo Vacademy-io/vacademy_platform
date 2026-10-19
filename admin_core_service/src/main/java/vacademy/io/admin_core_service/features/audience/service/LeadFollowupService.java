@@ -51,6 +51,7 @@ public class LeadFollowupService {
     private final vacademy.io.admin_core_service.features.audience.repository.LeadStatusRepository leadStatusRepository;
     private final vacademy.io.admin_core_service.features.common.repository.CustomFieldValuesRepository customFieldValuesRepository;
     private final vacademy.io.admin_core_service.features.common.repository.CustomFieldRepository customFieldRepository;
+    private final LeadFollowupSettingService leadFollowupSettingService;
 
     @Transactional
     public LeadFollowupDto create(CreateLeadFollowupRequest request, CustomUserDetails user) {
@@ -65,6 +66,7 @@ public class LeadFollowupService {
                 .studentResponse(request.getStudentResponse())
                 .followUpMode(request.getFollowUpMode())
                 .nextAction(request.getNextAction())
+                .interestLevel(request.getInterestLevel())
                 .build();
 
         LeadFollowup saved = leadFollowupRepository.save(followup);
@@ -101,25 +103,8 @@ public class LeadFollowupService {
     public List<LeadFollowupDto> listForLead(String audienceResponseId, CustomUserDetails user) {
         List<LeadFollowup> rows = leadFollowupRepository
                 .findByAudienceResponseIdOrderByScheduleTimeAsc(audienceResponseId);
-        if (!rows.isEmpty() && user != null && user.getUserId() != null) {
-            String instituteId = resolveInstituteId(audienceResponseId, rows.get(0).getInstituteId());
-            if (counsellorScopeService.isScopedCaller(instituteId, user)) {
-                String leadUserId = audienceResponseRepository.findById(audienceResponseId)
-                        .map(AudienceResponse::getUserId)
-                        .orElse(null);
-                String assignee = null;
-                if (leadUserId != null) {
-                    try {
-                        assignee = workbenchLeadRepository.currentAssigneeForLead(instituteId, leadUserId);
-                    } catch (org.springframework.dao.EmptyResultDataAccessException e) {
-                        // No user_lead_profile row yet — treat as unassigned.
-                    }
-                }
-                if (assignee != null && !counsellorScopeService
-                        .scopedCounsellorUserIds(instituteId, user.getUserId()).contains(assignee)) {
-                    throw new VacademyException("You don't have access to this lead's follow-ups");
-                }
-            }
+        if (!rows.isEmpty()) {
+            assertCanAccessLead(audienceResponseId, rows.get(0).getInstituteId(), user);
         }
         return rows.stream()
                 .map(LeadFollowupDto::from)
@@ -459,15 +444,79 @@ public class LeadFollowupService {
         return s == null || s.isBlank();
     }
 
+    /**
+     * Edit a follow-up.
+     *
+     * Open follow-ups keep the old path: no scope check, because the reminder's
+     * snooze runs through here and a counsellor must still be able to snooze
+     * their own follow-up after the lead moved to someone outside their scope.
+     *
+     * A closed follow-up stays read-only, exactly as before, unless the
+     * institute turned on "Allow editing past follow-ups" (LEAD_SETTING
+     * followUpFields.allowEditing). Then its note, closing note and interest
+     * level can be corrected; the schedule never, since a closed follow-up
+     * keeps the time it was due.
+     */
     @Transactional
-    public LeadFollowupDto update(String id, UpdateLeadFollowupRequest request) {
+    public LeadFollowupDto update(String id, UpdateLeadFollowupRequest request, CustomUserDetails user) {
         LeadFollowup followup = findOrThrow(id);
         if (Boolean.TRUE.equals(followup.getIsClosed())) {
+            editClosed(followup, request, user);
+        } else {
+            if (request.getScheduleTime() != null) followup.setScheduleTime(request.getScheduleTime());
+            if (request.getContent() != null) followup.setContent(request.getContent());
+            // An open follow-up has no closing note yet; closerReason is ignored here.
+            applyInterestLevel(followup, request);
+        }
+        return LeadFollowupDto.from(leadFollowupRepository.save(followup));
+    }
+
+    private void editClosed(LeadFollowup followup, UpdateLeadFollowupRequest request, CustomUserDetails user) {
+        if (request.getScheduleTime() != null
+                || !leadFollowupSettingService.allowEditing(followup.getInstituteId())) {
             throw new VacademyException("Cannot update a closed follow-up");
         }
-        if (request.getScheduleTime() != null) followup.setScheduleTime(request.getScheduleTime());
+        // Editing a closed follow-up is the new path, so it gets the lead-scope
+        // rule of listForLead; whoever created the follow-up may always fix it.
+        if (user == null || !java.util.Objects.equals(user.getUserId(), followup.getCreatedBy())) {
+            assertCanAccessLead(followup.getAudienceResponseId(), followup.getInstituteId(), user);
+        }
         if (request.getContent() != null) followup.setContent(request.getContent());
-        return LeadFollowupDto.from(leadFollowupRepository.save(followup));
+        if (request.getCloserReason() != null) followup.setCloserReason(request.getCloserReason());
+        applyInterestLevel(followup, request);
+    }
+
+    /** A blank interest level clears it. */
+    private static void applyInterestLevel(LeadFollowup followup, UpdateLeadFollowupRequest request) {
+        if (request.getInterestLevel() == null) return;
+        followup.setInterestLevel(isBlank(request.getInterestLevel()) ? null : request.getInterestLevel());
+    }
+
+    /**
+     * A hierarchy-scoped caller (COUNSELLOR role) may only touch a lead's
+     * follow-ups when the lead's current assignee sits inside their scope
+     * (unassigned leads stay open, same as the shared unassigned pool).
+     */
+    private void assertCanAccessLead(String audienceResponseId, String followupInstituteId,
+                                     CustomUserDetails user) {
+        if (user == null || user.getUserId() == null) return;
+        String instituteId = resolveInstituteId(audienceResponseId, followupInstituteId);
+        if (!counsellorScopeService.isScopedCaller(instituteId, user)) return;
+        String leadUserId = audienceResponseRepository.findById(audienceResponseId)
+                .map(AudienceResponse::getUserId)
+                .orElse(null);
+        String assignee = null;
+        if (leadUserId != null) {
+            try {
+                assignee = workbenchLeadRepository.currentAssigneeForLead(instituteId, leadUserId);
+            } catch (org.springframework.dao.EmptyResultDataAccessException e) {
+                // No user_lead_profile row yet — treat as unassigned.
+            }
+        }
+        if (assignee != null && !counsellorScopeService
+                .scopedCounsellorUserIds(instituteId, user.getUserId()).contains(assignee)) {
+            throw new VacademyException("You don't have access to this lead's follow-ups");
+        }
     }
 
     @Transactional

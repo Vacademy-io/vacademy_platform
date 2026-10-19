@@ -452,6 +452,7 @@ def test_ordinary_answers_are_not_hold_lines():
 
 def test_pieces_of_the_recording_are_fragments():
     from app.turntake import is_hold_fragment
-    for piece in ("उन्होंने आपके।", "आपके call को", "होल्ड।", "कृपा।", "The person you are",
-                  "Speaking with."):
+    for piece in ("उन्होंने आपके।", "होल्ड।", "कृपा।", "The person you are", "Speaking with."):
         assert is_hold_fragment(piece), piece
+    # Recording words, but none only the recording says: a person can say it too.
+    assert not is_hold_fragment("आपके call को")

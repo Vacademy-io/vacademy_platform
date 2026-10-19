@@ -21,5 +21,9 @@
             "description": "OpenAI"
         }
     },
-    "fallbackDescription": "Modèle d'IA"
+    "fallbackDescription": "Modèle d'IA",
+    "platformDefault": {
+        "name": "Valeur par défaut de la plateforme",
+        "description": "recommandé — le modèle choisi par l'administrateur de la plateforme pour la correction des copies"
+    }
 }

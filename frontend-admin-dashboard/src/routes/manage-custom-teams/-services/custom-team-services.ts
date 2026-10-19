@@ -1,3 +1,4 @@
+import type { OfflinePaymentDetails } from '@/services/offline-payment-modes';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import {
     GRANT_USER_ACCESS,
@@ -594,6 +595,8 @@ export interface AddSubOrgMemberRequest {
     offline_payment_currency?: string;
     offline_payment_date?: string; // ISO
     offline_payment_reference?: string;
+    /** How the offline payment was made (mode, option, reference, proof). */
+    offline_payment_details?: OfflinePaymentDetails | null;
     generate_invoice?: boolean;
 
     // Per-learner payment-option override. When set to a CPO mirror id, the backend
@@ -981,7 +984,7 @@ export const sendInvoiceReminder = async (
  */
 export const markInvoicePaidManually = async (
     invoiceId: string,
-    body: { transaction_id?: string; notes?: string }
+    body: { transaction_id?: string; notes?: string; payment_details?: OfflinePaymentDetails | null }
 ): Promise<InvoiceSummary> => {
     const response = await authenticatedAxiosInstance({
         method: 'POST',
@@ -1005,6 +1008,7 @@ export const recordSubOrgAdminOfflinePayment = async (
         reference?: string | null;
         currency?: string;
         generate_invoice?: boolean;
+        payment_details?: OfflinePaymentDetails | null;
     }
 ): Promise<unknown> => {
     const url = `${BASE_URL}/admin-core-service/v1/fee-management/user-plan/${userPlanId}/record-offline-payment`;

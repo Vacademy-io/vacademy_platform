@@ -18,6 +18,36 @@ from app.mcp.constants import MCP_ALLOWED_WRITE_TOOLS, MCP_EXPOSED_TOOLS  # noqa
 from app.schemas.auth import PinnedPrincipal  # noqa: E402
 from app.services.assistant_tool_registry import ASSISTANT_TOOLS  # noqa: E402
 
+SERVICES = Path(__file__).resolve().parents[1] / "app" / "services"
+
+#: The CRM tools, their settings group and the module that registers them (docs/crm/CRM_MCP.md).
+CRM_TOOLS = (
+    ("crm_leads", "crm_leads", "assistant_tools_crm_leads"),
+    ("crm_lead_activity", "crm_lead_activity", "assistant_tools_crm_lead_edit"),
+    ("crm_lead_edit", "crm_lead_edits", "assistant_tools_crm_lead_edit"),
+    ("crm_team_edit", "crm_team_edits", "assistant_tools_crm_team"),
+    ("crm_lead_intake", "crm_lead_intake", "assistant_tools_crm_lead_edit"),
+    ("crm_calls", "crm_calls", "assistant_tools_crm_calls"),
+    ("crm_dial", "crm_calling_outbound", "assistant_tools_crm_calls"),
+    ("crm_ai_campaign", "crm_ai_campaigns", "assistant_tools_crm_calls"),
+    ("crm_meetings", "crm_meetings", "assistant_tools_crm_meetings"),
+    ("crm_meetings_edit", "crm_meeting_edits", "assistant_tools_crm_meetings"),
+    ("crm_messages", "crm_messages", "assistant_tools_crm_messages"),
+    ("crm_send", "crm_messaging_outbound", "assistant_tools_crm_messages"),
+    ("crm_reports", "crm_reports", "assistant_tools_crm_reports"),
+)
+CRM_TOOL_NAMES = tuple(t for t, _, _ in CRM_TOOLS)
+CRM_GROUP = {t: g for t, g, _ in CRM_TOOLS}
+
+
+def crm_module_present(module: str) -> bool:
+    return (SERVICES / f"{module}.py").exists()
+
+
+def loaded(names):
+    """``names`` minus CRM tools whose module has not landed yet (a landed module must register its tools)."""
+    return [n for n in names if n in ASSISTANT_TOOLS or n not in CRM_TOOL_NAMES]
+
 
 def principal(roles=("ADMIN",), is_root=False):
     return PinnedPrincipal(
@@ -52,12 +82,22 @@ def test_exposed_set_is_the_documented_one():
         "courses", "course_edit", "course_drip_edit", "course_invites_edit", "course_structure_edit",
         "learners", "learner_report", "learner_enroll", "learner_edit",
         "sub_orgs", "sub_org_edit", "sub_org_enroll",
+        "crm_leads", "crm_lead_activity", "crm_lead_edit", "crm_team_edit", "crm_lead_intake",
+        "crm_calls", "crm_dial", "crm_ai_campaign",
+        "crm_meetings", "crm_meetings_edit",
+        "crm_messages", "crm_send",
+        "crm_reports",
     )
+    assert CRM_TOOL_NAMES == MCP_EXPOSED_TOOLS[-len(CRM_TOOL_NAMES):]
 
 
 def test_every_exposed_name_exists_in_the_registry():
-    """Guards against a registry rename silently emptying the MCP surface."""
-    assert [s.name for s in adapter.exposed_specs()] == list(MCP_EXPOSED_TOOLS)
+    """Guards against a registry rename silently emptying the MCP surface. A CRM tool may be missing only while
+    its module has not landed: once the module file exists, its tools must register."""
+    assert [s.name for s in adapter.exposed_specs()] == loaded(MCP_EXPOSED_TOOLS)
+    for tool, _group, module in CRM_TOOLS:
+        if crm_module_present(module):
+            assert tool in ASSISTANT_TOOLS, f"{module}.py exists but did not register {tool}"
 
 
 def test_exposed_write_tools_are_on_the_allow_list():
@@ -117,7 +157,7 @@ def test_tools_translate_to_valid_mcp_tools():
 
 def test_catalog_describes_each_exposed_tool_for_the_settings_ui():
     catalog = adapter.tool_catalog()
-    assert [c["name"] for c in catalog] == list(MCP_EXPOSED_TOOLS)
+    assert [c["name"] for c in catalog] == loaded(MCP_EXPOSED_TOOLS)
     entry = next(c for c in catalog if c["name"] == "get_institute_overview")
     assert entry["key"] == "institute_overview"
     assert entry["label"] == "Institute stats"
@@ -138,7 +178,8 @@ def test_catalog_places_every_tool_in_an_area_with_one_view_and_risk_rated_edits
         # (edit turns view on), and a WRITE tool is never presented as a view.
         assert (c["level"] == "edit") == (c["mode"] == "WRITE"), c["key"]
         if c["level"] == "edit":
-            assert c["risk"] in ("drafts", "additive", "not_live", "live_additive", "live") and c["sub_label"]
+            assert c["risk"] in ("drafts", "additive", "not_live", "live_additive", "live", "outbound") \
+                and c["sub_label"]
     for area in {c["area"] for c in catalog}:
         assert sum(1 for c in catalog if c["area"] == area and c["level"] == "view") == 1, area
     invites = next(c for c in catalog if c["key"] == "course_invite_edits")
@@ -250,9 +291,15 @@ def test_website_publish_is_an_opt_in_live_capability_no_existing_connection_has
     assert (entry["area"], entry["level"], entry["risk"]) == ("website", "edit", "live")
     assert entry["opt_in"] is True and entry["label"] == "Website: publish" and entry["sub_label"]
     # Every other group keeps the area's Edit level / presets behaviour.
-    assert [c["key"] for c in adapter.tool_catalog() if c["opt_in"]] == [
+    opt_in_keys = [
         "website_data_edits", "website_publish", "course_structure_edits", "learner_enrollments",
-        "learner_profile_edits", "sub_org_edits", "sub_org_enrollments"]
+        "learner_profile_edits", "sub_org_edits", "sub_org_enrollments",
+        "crm_lead_activity", "crm_lead_edits", "crm_team_edits", "crm_lead_intake",
+        "crm_calling_outbound", "crm_ai_campaigns", "crm_meeting_edits", "crm_messaging_outbound"]
+    keys_loaded = {ASSISTANT_TOOLS[n].key() for n in loaded(MCP_EXPOSED_TOOLS) if n in ASSISTANT_TOOLS}
+    assert [c["key"] for c in adapter.tool_catalog() if c["opt_in"]] == [k for k in opt_in_keys if k in keys_loaded]
+    from app.mcp.constants import MCP_OPT_IN_GROUPS
+    assert MCP_OPT_IN_GROUPS == frozenset(opt_in_keys)
     spec = ASSISTANT_TOOLS["website_publish"]
     assert spec.mcp_only and not spec.default_enabled and not spec.default_roles and spec.mode == "WRITE"
     assert "LIVE" in MCP_ALLOWED_WRITE_TOOLS["website_publish"]
@@ -281,9 +328,11 @@ def test_opt_in_groups_are_served_only_to_a_settings_page_that_asks_for_them():
     from app.mcp.constants import MCP_OPT_IN_GROUPS
     full = {c["key"] for c in adapter.tool_catalog(include_opt_in=True)}
     legacy = {c["key"] for c in adapter.tool_catalog(include_opt_in=False)}
-    assert MCP_OPT_IN_GROUPS <= full
+    # CRM groups whose module has not landed yet are simply absent from both.
+    landed = {s.key() for s in adapter.exposed_specs()}
+    assert MCP_OPT_IN_GROUPS & landed <= full and MCP_OPT_IN_GROUPS - landed <= set(CRM_GROUP.values())
     assert not (MCP_OPT_IN_GROUPS & legacy)
-    assert full - legacy == set(MCP_OPT_IN_GROUPS)
+    assert full - legacy == set(MCP_OPT_IN_GROUPS) & landed
 
 
 def test_connection_info_defaults_to_the_legacy_catalogue():
@@ -291,3 +340,303 @@ def test_connection_info_defaults_to_the_legacy_catalogue():
     from app.mcp import consent
     param = _inspect.signature(consent.connection_info).parameters["opt_in"]
     assert param.default.default is False
+
+
+# ── outbound risk + CRM placement ────────────────────────────────────────
+#: Live groups that predate the rule below and stay on the area's Edit level (changing them would switch a
+#: capability off for an older dashboard bundle that already saved it). Never add to this set.
+LIVE_NOT_OPT_IN_LEGACY = frozenset({"course_invite_edits"})
+
+
+def test_every_live_or_outbound_group_is_opt_in():
+    """An older dashboard bundle never sees an opt-in group (no ?opt_in=1), so its presets cannot switch on a
+    group that changes live data or contacts leads — and it never meets the 'outbound' risk it cannot render."""
+    from app.mcp.constants import MCP_OPT_IN_GROUPS, MCP_TOOL_PLACEMENT
+    for key, place in MCP_TOOL_PLACEMENT.items():
+        if place.get("risk") == "outbound":
+            assert key in MCP_OPT_IN_GROUPS, key
+        if place.get("risk") == "live" and key not in LIVE_NOT_OPT_IN_LEGACY:
+            assert key in MCP_OPT_IN_GROUPS, key
+    assert all(MCP_TOOL_PLACEMENT[k]["risk"] == "live" for k in LIVE_NOT_OPT_IN_LEGACY)
+
+
+def test_crm_groups_sit_in_the_five_crm_areas_with_opt_in_edits():
+    from app.mcp.constants import (MCP_OPT_IN_GROUPS, MCP_TOOL_AREAS, MCP_TOOL_GROUP_LABELS,
+                                   MCP_TOOL_GROUP_SUMMARIES, MCP_TOOL_PLACEMENT)
+    crm_areas = ["crm_leads", "crm_calls", "crm_meetings", "crm_messages", "crm_reports"]
+    assert [a for a in MCP_TOOL_AREAS if a.startswith("crm_")] == crm_areas
+    expected = {
+        "crm_leads": ("crm_leads", "view", None), "crm_lead_activity": ("crm_leads", "edit", "live_additive"),
+        "crm_lead_edits": ("crm_leads", "edit", "live"), "crm_team_edits": ("crm_leads", "edit", "live"),
+        "crm_lead_intake": ("crm_leads", "edit", "live"),
+        "crm_calls": ("crm_calls", "view", None), "crm_calling_outbound": ("crm_calls", "edit", "outbound"),
+        "crm_ai_campaigns": ("crm_calls", "edit", "outbound"),
+        "crm_meetings": ("crm_meetings", "view", None), "crm_meeting_edits": ("crm_meetings", "edit", "outbound"),
+        "crm_messages": ("crm_messages", "view", None),
+        "crm_messaging_outbound": ("crm_messages", "edit", "outbound"),
+        "crm_reports": ("crm_reports", "view", None),
+    }
+    assert set(CRM_GROUP.values()) == set(expected)
+    for key, (area, level, risk) in expected.items():
+        place = MCP_TOOL_PLACEMENT[key]
+        assert (place["area"], place["level"], place.get("risk")) == (area, level, risk), key
+        assert MCP_TOOL_GROUP_LABELS[key] and MCP_TOOL_GROUP_SUMMARIES[key], key
+        if level == "edit":
+            assert place["sub_label"] and key in MCP_OPT_IN_GROUPS, key
+        else:
+            assert key not in MCP_OPT_IN_GROUPS, key
+    for area in crm_areas:
+        assert sum(1 for k, p in MCP_TOOL_PLACEMENT.items() if p["area"] == area and p["level"] == "view") == 1
+
+
+def test_crm_write_tools_carry_a_safety_property_and_reads_none():
+    writes = [t for t in CRM_TOOL_NAMES if MCP_TOOL_PLACEMENT_LEVEL(CRM_GROUP[t]) == "edit"]
+    assert writes == ["crm_lead_activity", "crm_lead_edit", "crm_team_edit", "crm_lead_intake", "crm_dial",
+                      "crm_ai_campaign", "crm_meetings_edit", "crm_send"]
+    for tool in CRM_TOOL_NAMES:
+        assert (tool in MCP_ALLOWED_WRITE_TOOLS) == (tool in writes), tool
+    for tool in writes:
+        reason = MCP_ALLOWED_WRITE_TOOLS[tool]
+        assert "confirm" in reason and ("scope" in reason or "institute" in reason), tool
+    for tool in ("crm_dial", "crm_ai_campaign", "crm_send"):
+        assert MCP_ALLOWED_WRITE_TOOLS[tool].startswith("outbound, ") and "single-use" in MCP_ALLOWED_WRITE_TOOLS[tool]
+
+
+def MCP_TOOL_PLACEMENT_LEVEL(key):
+    from app.mcp.constants import MCP_TOOL_PLACEMENT
+    return MCP_TOOL_PLACEMENT[key]["level"]
+
+
+def _crm_specs():
+    return [ASSISTANT_TOOLS[t] for t in CRM_TOOL_NAMES if t in ASSISTANT_TOOLS]
+
+
+def test_crm_specs_are_mcp_only_off_by_default_and_tied_to_a_module():
+    """Runs over the CRM tools whose modules have landed (none yet = nothing to check)."""
+    for spec in _crm_specs():
+        assert spec.mcp_only, spec.name                      # never offered to the in-product assistant
+        assert not spec.default_enabled and spec.default_roles is None, spec.name
+        assert spec.key() == CRM_GROUP[spec.name], spec.name
+        assert spec.module_feature or spec.module_features_any, spec.name
+        assert spec.mode == ("WRITE" if MCP_TOOL_PLACEMENT_LEVEL(spec.key()) == "edit" else "READ"), spec.name
+        assert spec.required_permission is None, spec.name   # the RBAC leg would let a root principal through
+        props = spec.schema["function"]["parameters"]["properties"]
+        assert "user_id" not in props and "institute_id" not in props, spec.name
+
+
+def _action_table(tool, module):
+    """{action: meta} for one CRM tool: ACTION_SPEC is keyed by action, or by tool name and then action."""
+    import importlib
+    action_spec = getattr(importlib.import_module(f"app.services.{module}"), "ACTION_SPEC")
+    enum = ASSISTANT_TOOLS[tool].schema["function"]["parameters"]["properties"]["action"]["enum"]
+    nested = all(isinstance(v, dict) and "confirm" not in v for v in action_spec.values())
+    return (action_spec[tool] if nested else {a: m for a, m in action_spec.items() if a in enum}), enum, \
+        (set() if nested else set(action_spec))
+
+
+def test_crm_action_specs_match_the_action_enum():
+    """Each CRM module's ACTION_SPEC (docs + executor) lists exactly the actions its schemas offer."""
+    modules = {}
+    for tool, _group, module in CRM_TOOLS:
+        if tool in ASSISTANT_TOOLS:
+            modules.setdefault(module, []).append(tool)
+    if not modules:
+        pytest.skip("no CRM tool module has landed yet")
+    for module, tools in modules.items():
+        flat_keys, offered = set(), set()
+        for tool in tools:
+            table, enum, flat = _action_table(tool, module)
+            flat_keys |= flat
+            offered |= set(enum)
+            assert set(table) == set(enum), tool
+            for action, meta in table.items():
+                assert set(meta) >= {"summary", "writes", "confirm", "feature", "admin_only"}, (tool, action)
+                assert meta["confirm"] in ("none", "edit_token", "single_use"), (tool, action)
+                assert isinstance(meta["writes"], bool) and isinstance(meta["admin_only"], bool), (tool, action)
+                if ASSISTANT_TOOLS[tool].mode == "READ":
+                    assert meta["writes"] is False and meta["confirm"] == "none", (tool, action)
+        if flat_keys:
+            assert flat_keys == offered, module
+
+
+def test_crm_write_reasons_match_what_the_actions_do():
+    """MCP_ALLOWED_WRITE_TOOLS is published: it may only promise what each tool's ACTION_SPEC enforces."""
+    checked = 0
+    for tool, _group, module in CRM_TOOLS:
+        if tool not in ASSISTANT_TOOLS or tool not in MCP_ALLOWED_WRITE_TOOLS:
+            continue
+        table, _enum, _flat = _action_table(tool, module)
+        reason = MCP_ALLOWED_WRITE_TOOLS[tool]
+        writes = {a: m for a, m in table.items() if m["writes"]}
+        assert writes, tool
+        if "every write needs" in reason:
+            assert all(m["confirm"] != "none" for m in writes.values()), tool
+        if "single-use" in reason:
+            assert any(m["confirm"] == "single_use" for m in writes.values()), tool
+        if "admins only" in reason:
+            assert all(m["admin_only"] for m in writes.values()), tool
+        checked += 1
+    if not checked:
+        pytest.skip("no CRM write module has landed yet")
+
+
+# ── the module (plan) gate ───────────────────────────────────────────────
+import json  # noqa: E402
+import types  # noqa: E402
+
+from app.services import assistant_tool_registry as registry  # noqa: E402
+
+
+class _Ent:
+    def __init__(self, on, calls):
+        self._on, self.calls = set(on), calls
+
+    def on(self, key):
+        return key in self._on
+
+
+@pytest.fixture
+def plan(monkeypatch):
+    """Stand-in for app/services/entitlements.py: plan['on'] is the set of features the institute has."""
+    state = {"on": set(), "loads": 0, "raise": False}
+
+    def entitlements(db, institute_id):
+        state["loads"] += 1
+        if state["raise"]:
+            raise RuntimeError("boom")
+        return _Ent(state["on"], state)
+
+    fake = types.ModuleType("app.services.entitlements")
+    fake.entitlements = entitlements
+    monkeypatch.setitem(sys.modules, "app.services.entitlements", fake)
+    return state
+
+
+@pytest.fixture
+def gated_tool(monkeypatch):
+    ran = []
+
+    async def executor(args, ctx):
+        ran.append(dict(args))
+        return json.dumps({"ok": True})
+
+    def register(name="zz_module_tool", **kw):
+        spec = registry.ToolSpec(
+            name=name,
+            schema={"type": "function", "function": {"name": name, "description": "test",
+                                                     "parameters": {"type": "object", "properties": {}}}},
+            executor=executor, setting_key=name, mcp_only=True, **kw)
+        monkeypatch.setitem(ASSISTANT_TOOLS, name, spec)
+        monkeypatch.setattr(adapter, "MCP_EXPOSED_TOOLS", adapter.MCP_EXPOSED_TOOLS + (name,))
+        return spec
+
+    register.ran = ran
+    return register
+
+
+def _ctx(db=object()):
+    return registry.ToolContext(db=db, principal=principal(), keys=(), via_mcp=True)
+
+
+@pytest.mark.asyncio
+async def test_a_tool_outside_the_plan_is_refused_before_it_runs(plan, gated_tool):
+    gated_tool(module_feature="crm.leads")
+    out = json.loads(await registry.execute_tool("zz_module_tool", {}, _ctx(), {"enabled_tools": ["zz_module_tool"]}))
+    assert out["error"] == "module_not_enabled" and out["feature"] == "crm.leads" and out["message"]
+    assert gated_tool.ran == []
+    plan["on"] = {"crm.leads"}
+    out = json.loads(await registry.execute_tool("zz_module_tool", {}, _ctx(), {"enabled_tools": ["zz_module_tool"]}))
+    assert out == {"ok": True} and len(gated_tool.ran) == 1
+
+
+@pytest.mark.asyncio
+async def test_any_of_features_needs_one_of_them(plan, gated_tool):
+    gated_tool(module_features_any=("crm.calling", "crm.ai_calling"))
+    setting_ = {"enabled_tools": ["zz_module_tool"]}
+    out = json.loads(await registry.execute_tool("zz_module_tool", {}, _ctx(), setting_))
+    assert out["error"] == "module_not_enabled" and out["features_any"] == ["crm.calling", "crm.ai_calling"]
+    plan["on"] = {"crm.ai_calling"}
+    assert json.loads(await registry.execute_tool("zz_module_tool", {}, _ctx(), setting_)) == {"ok": True}
+
+
+@pytest.mark.asyncio
+async def test_module_gate_runs_after_the_settings_gate_and_once_per_call(plan, gated_tool):
+    gated_tool(module_feature="crm.leads")
+    out = json.loads(await registry.execute_tool("zz_module_tool", {}, _ctx(), {"enabled_tools": []}))
+    assert out["error"] == "tool_not_permitted" and plan["loads"] == 0
+    plan["on"] = {"crm.leads"}
+    ctx = _ctx()
+    await registry.execute_tool("zz_module_tool", {}, ctx, {"enabled_tools": ["zz_module_tool"]})
+    assert registry.context_entitlements(ctx).on("crm.leads") and plan["loads"] == 1   # memoised on ctx
+
+
+@pytest.mark.asyncio
+async def test_module_gate_is_skipped_without_a_db_and_fails_closed_on_error(plan, gated_tool):
+    gated_tool(module_feature="crm.leads")
+    setting_ = {"enabled_tools": ["zz_module_tool"]}
+    assert json.loads(await registry.execute_tool("zz_module_tool", {}, _ctx(db=None), setting_)) == {"ok": True}
+    assert plan["loads"] == 0
+    plan["raise"] = True
+    out = json.loads(await registry.execute_tool("zz_module_tool", {}, _ctx(), setting_))
+    assert out["error"] == "module_not_enabled" and len(gated_tool.ran) == 1
+
+
+@pytest.mark.asyncio
+async def test_tools_without_a_module_never_load_entitlements(plan):
+    out = json.loads(await registry.execute_tool("get_institute_overview", {"sections": []}, _ctx(db=None),
+                                                 {"enabled_tools": []}))
+    assert out["error"] == "tool_not_permitted" and plan["loads"] == 0
+
+
+def test_tools_list_hides_tools_outside_the_plan_only_with_a_db(plan, gated_tool):
+    gated_tool(module_feature="crm.leads")
+    conf = setting(["zz_module_tool", "institute_overview"])
+    assert "zz_module_tool" in [t.name for t in adapter.list_tools_for(principal(), conf)]
+    assert plan["loads"] == 0
+    names = [t.name for t in adapter.list_tools_for(principal(), conf, db=object())]
+    assert "zz_module_tool" not in names and "get_institute_overview" in names and plan["loads"] == 1
+    plan["on"] = {"crm.leads"}
+    assert "zz_module_tool" in [t.name for t in adapter.list_tools_for(principal(), conf, db=object())]
+    plan["raise"] = True
+    names = [t.name for t in adapter.list_tools_for(principal(), conf, db=object())]
+    assert "zz_module_tool" not in names and "get_institute_overview" in names
+
+
+def test_tools_list_skips_the_plan_read_when_no_listed_tool_needs_it(plan):
+    adapter.list_tools_for(principal(), setting(["institute_overview"]), db=object())
+    assert plan["loads"] == 0
+
+
+def test_catalog_names_each_tools_feature_and_whether_the_plan_has_it(plan, gated_tool):
+    gated_tool(module_feature="crm.leads")
+    entry = next(c for c in adapter.tool_catalog() if c["name"] == "zz_module_tool")
+    assert entry["module_feature"] == "crm.leads" and "entitled" not in entry
+    ent = _Ent({"crm.leads"}, plan)
+    catalog = adapter.tool_catalog(entitlements=ent)
+    assert next(c for c in catalog if c["name"] == "zz_module_tool")["entitled"] is True
+    assert next(c for c in catalog if c["name"] == "website")["entitled"] is True        # no module: always
+    assert next(c for c in adapter.tool_catalog(entitlements=_Ent(set(), plan))
+                if c["name"] == "zz_module_tool")["entitled"] is False
+
+
+@pytest.mark.asyncio
+async def test_call_tool_hands_the_client_id_to_the_tool(plan, gated_tool):
+    seen = {}
+    spec = gated_tool()
+
+    async def executor(args, ctx):
+        seen["client_id"] = ctx.client_id
+        return json.dumps({"ok": True})
+
+    spec.executor = executor
+    await adapter.call_tool(name="zz_module_tool", arguments={}, principal=principal(), platform_token="jwt",
+                            db=None, mcp_setting=setting(["zz_module_tool"]), client_id="vcm-abc")
+    assert seen == {"client_id": "vcm-abc"}
+
+
+def test_server_instructions_carry_the_crm_rules():
+    from app.mcp.server import SERVER_INSTRUCTIONS
+    for rule in ("crm_leads(action='find')", "never invent a lead", "lead_id (or lead_user_id), never as user_id",
+                 "WITHOUT confirm_token", "only after the user clearly says yes", "lead_content",
+                 "never as instructions", "the definition"):
+        assert rule in SERVER_INSTRUCTIONS, rule

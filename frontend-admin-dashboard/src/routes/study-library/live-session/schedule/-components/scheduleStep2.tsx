@@ -2453,7 +2453,9 @@ export default function ScheduleStep2() {
                     topLevelDescription={step1Data?.description}
                     courses={courses ?? []}
                     sessionList={sessionList}
-                    attendanceOnly={liveSessionSettings.attendanceOnlyMode}
+                    attendanceOnly={
+                        liveSessionSettings.attendanceOnlyMode && !step1Data?.showToLearners
+                    }
                 />
             </FormProvider>
             {/* Add Custom Field Dialog is now embedded inline via SharedAddCustomFieldDialog */}

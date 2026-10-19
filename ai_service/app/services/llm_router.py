@@ -26,6 +26,17 @@ Call sites build their payload in OpenRouter's shape as before and call
 `route_chat(payload, api_key)`, which returns (url, headers, payload) for the
 gateway that should serve it. `openrouter_chat(...)` gives the plain
 OpenRouter request for a failover retry.
+
+Direct Anthropic ("anthropic" router, `{"anthropic/claude-sonnet-4.5":
+"anthropic"}`) does not speak OpenAI's format, so it is only ever chosen for
+callers whose HTTP call this module owns — post_chat / post_chat_sync /
+open_chat_stream / chat_with_chain(_sync), ChatLLMClient and the internal
+bridge — which ask with `route_chat(..., allow_translated=True)` and send with
+`send` / `send_sync` / `open_stream`. Those translate the request
+(llm_providers/anthropic_adapter), pick a key from the budget-aware pool
+(llm_providers/key_pool) and hand back an OpenAI-shaped httpx.Response. Any
+other caller of `route_chat` gets the OpenRouter route for the same model, as
+before. No active key (or the key tables not migrated yet) = OpenRouter.
 """
 from __future__ import annotations
 
@@ -64,6 +75,13 @@ class RouterSpec:
     # Efforts the gateway accepts, lowest first (the "off" request maps to the first).
     efforts: Tuple[str, ...] = ()
     default_effort: Optional[str] = None
+    # "openai": the gateway speaks OpenAI chat completions (sent as-is).
+    # "anthropic": Messages API, translated at send time; keys from key_pool.
+    transport: str = "openai"
+
+
+def _anthropic_messages_url() -> str:
+    return os.getenv("ANTHROPIC_BASE_URL", "https://api.anthropic.com").rstrip("/") + "/v1/messages"
 
 
 ROUTERS: Dict[str, RouterSpec] = {
@@ -88,7 +106,18 @@ ROUTERS: Dict[str, RouterSpec] = {
         efforts=("low", "high", "max"),
         default_effort="low",
     ),
+    # Keys come from the budget-aware pool (llm_provider_keys), never the env.
+    "anthropic": RouterSpec(
+        name="anthropic",
+        label="Anthropic (direct)",
+        chat_url=_anthropic_messages_url,
+        api_key=lambda: None,
+        reasoning_style="anthropic",
+        transport="anthropic",
+    ),
 }
+
+ANTHROPIC_ROUTER = "anthropic"
 
 
 @dataclass(frozen=True)
@@ -102,12 +131,22 @@ class ChatRoute:
     reasoning_style: str
     efforts: Tuple[str, ...]
     effort: Optional[str]  # the route entry's effort; None = the gateway default
+    transport: str = "openai"
+    key_id: Optional[str] = None          # pool key (transport "anthropic")
+    registry_model: Optional[str] = None  # ai_models id, for translated replies
 
     @property
     def is_default(self) -> bool:
         return self.router == DEFAULT_ROUTER
 
+    @property
+    def is_translated(self) -> bool:
+        return self.transport != "openai"
+
     def headers(self) -> Dict[str, str]:
+        if self.transport == "anthropic":
+            from .llm_providers.anthropic_transport import request_headers
+            return request_headers(self.api_key)
         return {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
@@ -115,9 +154,13 @@ class ChatRoute:
         }
 
     def prepare(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        """The payload in this gateway's shape. OpenRouter's is returned as-is."""
+        """The payload in this gateway's shape. OpenRouter's is returned as-is.
+        A translated transport gets the OpenRouter payload with its wire model;
+        the Messages body is built at send time."""
         if self.reasoning_style == "openrouter":
             return payload
+        if self.transport != "openai":
+            return {**payload, "model": self.wire_model}
         p = {k: v for k, v in payload.items() if k not in _OPENROUTER_ONLY_KEYS}
         p["model"] = self.wire_model
         if self.efforts:
@@ -156,9 +199,12 @@ def _map_effort(reasoning: Any, route_effort: Optional[str], efforts: Tuple[str,
 # Route map
 # --------------------------------------------------------------------------
 
-def parse_routes(raw: Any) -> Dict[str, Dict[str, Any]]:
+def parse_routes(raw: Any, strict: bool = True) -> Dict[str, Dict[str, Any]]:
     """Normalise a route map (JSON text or dict) to {model_id: entry}.
-    Raises ValueError on anything malformed or on an unknown router."""
+    Raises ValueError on anything malformed or on an unknown router. With
+    strict=False (runtime) a bad ENTRY is skipped with an error log instead,
+    so one typo cannot move every other routed model back to OpenRouter; a map
+    that is not a JSON object still raises."""
     if raw is None or (isinstance(raw, str) and not raw.strip()):
         return {}
     data = json.loads(raw) if isinstance(raw, str) else raw
@@ -166,26 +212,35 @@ def parse_routes(raw: Any) -> Dict[str, Dict[str, Any]]:
         raise ValueError('routes must be a JSON object like {"z-ai/glm-5.3-flash": "isoquant"}')
     out: Dict[str, Dict[str, Any]] = {}
     for model_id, entry in data.items():
-        if isinstance(entry, str):
-            entry = {"router": entry}
-        if not isinstance(entry, dict) or not entry.get("router"):
-            raise ValueError(f"route for {model_id} needs a router name")
-        router = str(entry["router"]).strip().lower()
-        if router not in ROUTERS:
-            raise ValueError(f"unknown router '{router}' for {model_id} (known: {', '.join(ROUTERS)})")
-        # `"reasoning_effort": false` → send none (models without the parameter).
-        send_effort = entry.get("reasoning_effort") is not False
-        effort = entry.get("reasoning_effort") if send_effort else None
-        spec = ROUTERS[router]
-        if effort is not None and spec.efforts and str(effort).lower() not in spec.efforts:
-            raise ValueError(f"{spec.label} accepts reasoning_effort {', '.join(spec.efforts)}, not '{effort}'")
-        out[str(model_id).strip()] = {
-            "router": router,
-            "model": str(entry.get("model") or "").strip() or None,
-            "reasoning_effort": str(effort).lower() if effort is not None else None,
-            "send_effort": send_effort,
-        }
+        try:
+            out[str(model_id).strip()] = _parse_entry(model_id, entry)
+        except ValueError as exc:
+            if strict:
+                raise
+            logger.error("LLM route for %s ignored (%s); that model stays on OpenRouter", model_id, exc)
     return out
+
+
+def _parse_entry(model_id: Any, entry: Any) -> Dict[str, Any]:
+    if isinstance(entry, str):
+        entry = {"router": entry}
+    if not isinstance(entry, dict) or not entry.get("router"):
+        raise ValueError(f"route for {model_id} needs a router name")
+    router = str(entry["router"]).strip().lower()
+    if router not in ROUTERS:
+        raise ValueError(f"unknown router '{router}' for {model_id} (known: {', '.join(ROUTERS)})")
+    # `"reasoning_effort": false` → send none (models without the parameter).
+    send_effort = entry.get("reasoning_effort") is not False
+    effort = entry.get("reasoning_effort") if send_effort else None
+    spec = ROUTERS[router]
+    if effort is not None and spec.efforts and str(effort).lower() not in spec.efforts:
+        raise ValueError(f"{spec.label} accepts reasoning_effort {', '.join(spec.efforts)}, not '{effort}'")
+    return {
+        "router": router,
+        "model": str(entry.get("model") or "").strip() or None,
+        "reasoning_effort": str(effort).lower() if effort is not None else None,
+        "send_effort": send_effort,
+    }
 
 
 def _env_routes() -> str:
@@ -199,7 +254,7 @@ def model_routes() -> Dict[str, Dict[str, Any]]:
     except Exception:  # noqa: BLE001
         raw = _env_routes()
     try:
-        return parse_routes(raw)
+        return parse_routes(raw, strict=False)
     except Exception as exc:  # noqa: BLE001
         # A bad map must never take generation down: everything stays on OpenRouter.
         logger.error("LLM route map is invalid (%s); every model stays on OpenRouter", exc)
@@ -210,6 +265,12 @@ def _default_wire_model(model_id: str) -> str:
     """OpenRouter ids carry a vendor prefix and variant suffix
     ("z-ai/glm-5.3-flash:batch"); direct gateways use the bare name."""
     return model_id.split("/", 1)[-1].split(":", 1)[0]
+
+
+def anthropic_wire_model(model_id: str) -> str:
+    """`anthropic/claude-sonnet-4.5` -> `claude-sonnet-4-5` (Anthropic API id)."""
+    from .llm_providers.anthropic_adapter import derive_wire_model
+    return derive_wire_model(model_id)
 
 
 # --------------------------------------------------------------------------
@@ -243,12 +304,26 @@ def _openrouter_route(model: str, api_key: Optional[str]) -> ChatRoute:
     )
 
 
+def _anthropic_route(model: str, entry: Dict[str, Any], key) -> ChatRoute:
+    spec = ROUTERS[ANTHROPIC_ROUTER]
+    return ChatRoute(
+        router=spec.name, label=spec.label, url=spec.chat_url(), api_key=key.api_key,
+        wire_model=entry.get("model") or anthropic_wire_model(model),
+        extra_headers={}, reasoning_style=spec.reasoning_style, efforts=(), effort=None,
+        transport=spec.transport, key_id=key.id, registry_model=model,
+    )
+
+
 def route_for(
-    model: str, api_key: Optional[str] = None, routes: Optional[Dict[str, Dict[str, Any]]] = None
+    model: str, api_key: Optional[str] = None, routes: Optional[Dict[str, Dict[str, Any]]] = None,
+    allow_translated: bool = False, payload: Optional[Dict[str, Any]] = None,
 ) -> ChatRoute:
     """The gateway that should serve `model`. `api_key` is the key the caller
     resolved (None = the platform key); `routes` overrides the live map (the
-    portal probes a map before saving it)."""
+    portal probes a map before saving it). `allow_translated`: the caller sends
+    through `send`/`send_sync`/`open_stream`, so a non-OpenAI gateway may be
+    picked; otherwise such an entry resolves to OpenRouter. `payload` sizes the
+    call for the key pool's budget check."""
     entry = (model_routes() if routes is None else routes).get(model or "")
     if not entry or entry["router"] == DEFAULT_ROUTER:
         return _openrouter_route(model, api_key)
@@ -258,6 +333,14 @@ def route_for(
         return _openrouter_route(model, api_key)  # caller's own OpenRouter key
 
     spec = ROUTERS[entry["router"]]
+    if spec.transport != "openai":
+        if not allow_translated or _router_cooling_down(spec.name):
+            return _openrouter_route(model, api_key)
+        from .llm_providers import key_pool
+        pool_key = key_pool.select_key(spec.name, key_pool.estimate_usd(model, payload) if payload else 0.0)
+        if pool_key is None:
+            return _openrouter_route(model, api_key)  # no active key with budget left
+        return _anthropic_route(model, entry, pool_key)
     key = spec.api_key()
     if not key:
         logger.warning("Model %s is routed to %s but its API key is not set; using OpenRouter",
@@ -279,10 +362,14 @@ def route_for(
 def route_chat(
     payload: Dict[str, Any], api_key: Optional[str] = None,
     routes: Optional[Dict[str, Dict[str, Any]]] = None,
+    allow_translated: bool = False,
 ) -> Tuple[str, Dict[str, str], Dict[str, Any], ChatRoute]:
     """(url, headers, payload, route) for one chat completion whose payload is
-    in OpenRouter's shape with the registry model id in `payload["model"]`."""
-    route = route_for(payload.get("model") or "", api_key, routes)
+    in OpenRouter's shape with the registry model id in `payload["model"]`.
+    Only pass allow_translated=True when the request goes out through
+    `send` / `send_sync` / `open_stream` (see route_for)."""
+    route = route_for(payload.get("model") or "", api_key, routes,
+                      allow_translated=allow_translated, payload=payload)
     return route.url, route.headers(), route.prepare(payload), route
 
 
@@ -300,7 +387,90 @@ def should_fail_over(route: ChatRoute, status: Optional[int]) -> bool:
     A 400 is the request's own fault and would fail on OpenRouter too."""
     if route.is_default:
         return False
+    if route.is_translated:
+        # Key-specific refusals were already walked through the key pool;
+        # anything still failing (incl. a 400 the translation may have caused)
+        # gets one try on OpenRouter. Never a model-park signal to callers.
+        return status is None or status >= 400
     return status is None or status in (401, 402, 403, 404, 408, 429) or status >= 500
+
+
+def note_route_failure(route: ChatRoute, status: Optional[int]) -> None:
+    """A routed call is failing over: cool the gateway down when the gateway
+    itself is the problem. For OpenAI-transport gateways that is every
+    failover (today's rule); a translated gateway cools down only on a
+    transport error or a 5xx/529 — a key's refusal is the pool's business."""
+    if route.is_translated and status is not None and status < 500:
+        return
+    mark_router_failed(route.router)
+
+
+# --------------------------------------------------------------------------
+# Send helpers (the only way a translated route goes out)
+# --------------------------------------------------------------------------
+
+async def send(client, route: ChatRoute, wire: Dict[str, Any], **kwargs):
+    """POST `wire` (route.prepare output) on `route` with an httpx.AsyncClient.
+    OpenAI transport: exactly client.post(url, headers, json). Anthropic: the
+    translated call; returns an OpenAI-shaped httpx.Response."""
+    if route.transport == "anthropic":
+        from .llm_providers.anthropic_transport import send_async
+        return await send_async(client, route, wire, **kwargs)
+    return await client.post(route.url, headers=route.headers(), json=wire, **kwargs)
+
+
+def send_sync(route: ChatRoute, wire: Dict[str, Any], timeout: float = 60.0, client=None, **kwargs):
+    """`send` for synchronous code (httpx.Client; one is opened when not given)."""
+    import httpx
+
+    if client is None:
+        with httpx.Client(timeout=timeout) as own:
+            return send_sync(route, wire, timeout, own, **kwargs)
+    if route.transport == "anthropic":
+        from .llm_providers.anthropic_transport import send_sync as anthropic_send_sync
+        return anthropic_send_sync(client, route, wire, **kwargs)
+    return client.post(route.url, headers=route.headers(), json=wire, **kwargs)
+
+
+def open_stream(client, route: ChatRoute, wire: Dict[str, Any], **kwargs):
+    """Async context manager for one streaming request on `route`. OpenAI
+    transport: exactly client.stream("POST", ...). Anthropic: an httpx.Response
+    whose body is OpenAI SSE translated from the Messages stream."""
+    if route.transport == "anthropic":
+        from .llm_providers.anthropic_transport import open_stream as anthropic_open_stream
+        return anthropic_open_stream(client, route, wire, **kwargs)
+    return client.stream("POST", route.url, headers=route.headers(), json=wire, **kwargs)
+
+
+def probe_anthropic_route(model_id: str, routes: Optional[Dict[str, Dict[str, Any]]] = None,
+                          timeout: float = 25.0) -> Optional[str]:
+    """One tiny call for `model_id` through the Anthropic key pool — no
+    OpenRouter failover, so a save-time probe tests what will really serve.
+    None when it answered, else why not."""
+    import httpx
+    from .chat_llm_client import openrouter_error_text
+    from .llm_providers import key_pool
+
+    entry = (model_routes() if routes is None else routes).get(model_id) or {"router": ANTHROPIC_ROUTER}
+    pool_key = key_pool.select_key(ANTHROPIC_ROUTER)
+    if pool_key is None:
+        return ("no active Anthropic key with budget left — add one under Super admin > LLM keys "
+                "(or check that the llm_provider_keys migration has run)")
+    route = _anthropic_route(model_id, entry, pool_key)
+    payload = {"model": model_id, "messages": [{"role": "user", "content": "Reply with the single word: ok"}],
+               "max_tokens": 16}
+    try:
+        resp = send_sync(route, route.prepare(payload), timeout)
+    except Exception as exc:  # noqa: BLE001
+        return f"could not reach Anthropic: {exc}"
+    if resp.status_code >= 400:
+        return f"Anthropic {resp.status_code}: {openrouter_error_text(resp.text)}"
+    try:
+        if not (resp.json().get("choices") or []):
+            return "Anthropic returned no choices"
+    except Exception as exc:  # noqa: BLE001
+        return f"unreadable Anthropic response: {exc}"
+    return None
 
 
 # --------------------------------------------------------------------------
@@ -314,17 +484,19 @@ async def post_chat(client, payload: Dict[str, Any], api_key: Optional[str] = No
     so callers keep their own error handling)."""
     import httpx
 
-    url, headers, wire, route = route_chat(payload, api_key)
+    url, headers, wire, route = route_chat(payload, api_key, allow_translated=True)
+    status: Optional[int] = None
     try:
-        response = await client.post(url, headers=headers, json=wire, **kwargs)
+        response = await send(client, route, wire, **kwargs)
         if not should_fail_over(route, response.status_code):
             return response
+        status = response.status_code
         reason = f"{response.status_code}: {response.text[:200]}"
     except httpx.TransportError as exc:
         if route.is_default:
             raise
         reason = str(exc)
-    mark_router_failed(route.router)
+    note_route_failure(route, status)
     logger.warning("%s failed for %s (%s); retrying on OpenRouter", route.label, payload.get("model"), reason)
     url, headers, wire, _ = openrouter_chat(payload, api_key)
     return await client.post(url, headers=headers, json=wire, **kwargs)
@@ -334,18 +506,20 @@ def post_chat_sync(payload: Dict[str, Any], api_key: Optional[str] = None, timeo
     """`post_chat` for synchronous code paths (httpx.Client)."""
     import httpx
 
-    url, headers, wire, route = route_chat(payload, api_key)
+    url, headers, wire, route = route_chat(payload, api_key, allow_translated=True)
     with httpx.Client(timeout=timeout) as client:
+        status: Optional[int] = None
         try:
-            response = client.post(url, headers=headers, json=wire)
+            response = send_sync(route, wire, timeout, client)
             if not should_fail_over(route, response.status_code):
                 return response
+            status = response.status_code
             reason = f"{response.status_code}: {response.text[:200]}"
         except httpx.TransportError as exc:
             if route.is_default:
                 raise
             reason = str(exc)
-        mark_router_failed(route.router)
+        note_route_failure(route, status)
         logger.warning("%s failed for %s (%s); retrying on OpenRouter", route.label, payload.get("model"), reason)
         url, headers, wire, _ = openrouter_chat(payload, api_key)
         return client.post(url, headers=headers, json=wire)
@@ -368,18 +542,25 @@ class open_chat_stream:
     async def __aenter__(self):
         import httpx
 
-        url, headers, wire, self.route = route_chat(self._payload, self._api_key)
+        url, headers, wire, self.route = route_chat(self._payload, self._api_key, allow_translated=True)
+        status: Optional[int] = None
         try:
-            response = await self._open(url, headers, wire)
+            if self.route.is_translated:
+                self._cm = open_stream(self._client, self.route, wire, **self._kwargs)
+                response = await self._cm.__aenter__()
+            else:
+                response = await self._open(url, headers, wire)
             if not should_fail_over(self.route, response.status_code):
                 return response
+            status = response.status_code
             reason = f"{response.status_code}: {(await response.aread())[:200]!r}"
             await self._cm.__aexit__(None, None, None)
         except httpx.TransportError as exc:
             if self.route.is_default:
                 raise
             reason = str(exc)
-        mark_router_failed(self.route.router)
+        self._cm = None
+        note_route_failure(self.route, status)
         logger.warning("%s failed for %s (%s); streaming from OpenRouter",
                        self.route.label, self._payload.get("model"), reason)
         url, headers, wire, self.route = openrouter_chat(self._payload, self._api_key)
@@ -617,6 +798,8 @@ def _router_of(response) -> str:
 __all__ = [
     "ROUTERS", "ROUTES_SETTING_KEY", "ChatRoute", "parse_routes", "model_routes",
     "route_for", "route_chat", "openrouter_chat", "should_fail_over", "mark_router_failed",
+    "note_route_failure", "send", "send_sync", "open_stream", "anthropic_wire_model",
+    "probe_anthropic_route",
     "post_chat", "post_chat_sync", "open_chat_stream",
     "REASONING_MANDATORY_PREFIXES", "ChainExhausted", "ChainResult", "chain_payload",
     "chat_with_chain", "chat_with_chain_sync",

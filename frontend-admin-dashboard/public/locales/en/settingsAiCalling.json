@@ -175,7 +175,10 @@
                 "expiryInPast": "Pick a date after today.",
                 "generic": "Check the form and try again."
             },
-            "notCopiedWarning": "You have not copied the key. Close again to discard it; it cannot be shown again."
+            "notCopiedWarning": "You have not copied the key. Close again to discard it; it cannot be shown again.",
+            "humanCallsLabel": "Can ring counsellors (human calls)",
+            "humanCallsHint": "Lets this key list your counsellors' names and emails and connect them to contacts by phone (human_calls:read, human_calls:write). Keys cannot be changed later.",
+            "humanCallsBadge": "Human calls"
         },
         "agents": {
             "title": "Agent ids",

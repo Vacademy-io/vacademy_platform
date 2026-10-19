@@ -64,9 +64,16 @@ export interface McpToolCatalogEntry {
  * drafts: nothing goes live · additive: only adds · not_live: courses not live yet ·
  * live_additive: only adds, but to live records (new folders / pages start hidden or draft; tags on live
  * courses and courses added to an active store page show at once), never turned on by the area's Edit
- * level · live: learners see it at once.
+ * level · live: learners see it at once · outbound: calls or messages leads, or sends them invites; always
+ * turned on one by one (never by the area's Edit level, a preset or the first Enable).
  */
-export type McpToolRisk = 'drafts' | 'additive' | 'not_live' | 'live_additive' | 'live';
+export type McpToolRisk =
+    | 'drafts'
+    | 'additive'
+    | 'not_live'
+    | 'live_additive'
+    | 'live'
+    | 'outbound';
 
 export interface McpManualClient {
     client_id: string;

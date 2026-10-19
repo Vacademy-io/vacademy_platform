@@ -12,7 +12,7 @@ import httpx
 
 from ..services.api_key_resolver import ApiKeyResolver
 from ..constants.model_defaults import GLM_DEFAULT
-from .llm_router import mark_router_failed, openrouter_chat, route_chat, should_fail_over
+from .llm_router import note_route_failure, open_stream, openrouter_chat, route_chat, send, should_fail_over
 
 logger = logging.getLogger(__name__)
 
@@ -192,7 +192,12 @@ class _AttemptRejected(Exception):
 
 class _RouteUnavailable(Exception):
     """A routed gateway (not OpenRouter) was unreachable or refused before any
-    token arrived; the caller retries the same request on OpenRouter."""
+    token arrived; the caller retries the same request on OpenRouter.
+    `status` is the gateway's HTTP status (None = no response at all)."""
+
+    def __init__(self, message: str = "", status: Optional[int] = None):
+        super().__init__(message)
+        self.status = status
 
 
 class ChatLLMClient:
@@ -479,21 +484,28 @@ class ChatLLMClient:
         route = None
         variants = payload_variants(model, payload)
         for index, (label, attempt) in enumerate(variants):
-            url, headers, wire, route = (openrouter_chat if force_openrouter else route_chat)(attempt, api_key)
+            if force_openrouter:
+                url, headers, wire, route = openrouter_chat(attempt, api_key)
+            else:
+                url, headers, wire, route = route_chat(attempt, api_key, allow_translated=True)
             try:
-                response = await self.http_client.post(url, json=wire, headers=headers)
+                if route.is_translated:
+                    # Direct Anthropic: translated request, OpenAI-shaped reply.
+                    response = await send(self.http_client, route, wire)
+                else:
+                    response = await self.http_client.post(url, json=wire, headers=headers)
             except httpx.TransportError as exc:
                 if route.is_default:
                     raise
                 logger.warning(f"{route.label} unreachable for {model} ({exc}); retrying on OpenRouter")
-                mark_router_failed(route.router)
+                note_route_failure(route, None)
                 return await self._call_openrouter(messages, tools, temperature, max_tokens, api_key, model, True)
             if should_fail_over(route, response.status_code):
                 logger.warning(
                     f"{route.label} {response.status_code} for {model}: "
                     f"{openrouter_error_text(response.text)}; retrying on OpenRouter"
                 )
-                mark_router_failed(route.router)
+                note_route_failure(route, response.status_code)
                 return await self._call_openrouter(messages, tools, temperature, max_tokens, api_key, model, True)
 
             if response.status_code == 402:
@@ -635,7 +647,7 @@ class ChatLLMClient:
         # output — and never leaves two streams open for one turn.
         variants = payload_variants(model, payload)
         for index, (label, attempt) in enumerate(variants):
-            url, headers, wire, route = route_chat(attempt, api_key)
+            url, headers, wire, route = route_chat(attempt, api_key, allow_translated=True)
             try:
                 try:
                     async for chunk in self._stream_openrouter_once(url, headers, wire, model, route):
@@ -643,7 +655,7 @@ class ChatLLMClient:
                 except _RouteUnavailable as unavailable:
                     # Raised before the first token, so nothing is duplicated.
                     logger.warning(f"{route.label} failed for {model} (streaming): {unavailable}; retrying on OpenRouter")
-                    mark_router_failed(route.router)
+                    note_route_failure(route, unavailable.status)
                     url, headers, wire, route = openrouter_chat(attempt, api_key)
                     async for chunk in self._stream_openrouter_once(url, headers, wire, model, route):
                         yield chunk
@@ -688,7 +700,11 @@ class ChatLLMClient:
                 "tool_calls": [accumulated_tool_calls[i] for i in sorted(accumulated_tool_calls.keys())],
             }
 
-        stream_cm = self.http_client.stream("POST", url, json=payload, headers=headers)
+        if route is not None and route.is_translated:
+            # Direct Anthropic: a response whose body is OpenAI SSE.
+            stream_cm = open_stream(self.http_client, route, payload)
+        else:
+            stream_cm = self.http_client.stream("POST", url, json=payload, headers=headers)
         try:
             response = await stream_cm.__aenter__()
         except httpx.TransportError as exc:
@@ -698,7 +714,8 @@ class ChatLLMClient:
         try:
             if routed and should_fail_over(route, response.status_code):
                 body = (await response.aread())[:300].decode("utf-8", "ignore")
-                raise _RouteUnavailable(f"{response.status_code}: {openrouter_error_text(body)}")
+                raise _RouteUnavailable(f"{response.status_code}: {openrouter_error_text(body)}",
+                                        response.status_code)
             if response.status_code == 402:
                 raise Exception(f"OpenRouter 402 Payment Required")
             if 400 <= response.status_code < 500:

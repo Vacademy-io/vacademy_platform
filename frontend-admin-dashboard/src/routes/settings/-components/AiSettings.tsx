@@ -27,6 +27,8 @@ import {
     Student,
     Books,
     Article,
+    Gauge,
+    SealCheck,
 } from '@phosphor-icons/react';
 import {
     SettingsPageShell,
@@ -34,6 +36,12 @@ import {
     type SettingsSectionGroup,
 } from '@/components/settings/shell';
 import { AiUsageSection } from './ai-usage/AiUsageSection';
+import { AiLimitsSection } from './ai-limits/AiLimitsSection';
+import { AiPlanSection } from './ai-plan/AiPlanSection';
+import { AiPlanBilling } from './ai-plan/AiPlanBilling';
+import { isPlanInEffect, useAiPlanQuery } from '@/components/common/ai-credits/aiPlan';
+import { useStorefrontQuery } from '@/services/ai-plans/storefront';
+import { isAdminForInstitute } from '@/lib/auth/roleUtils';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import {
     AI_SERVICE_BASE_URL,
@@ -125,7 +133,29 @@ import { StudentAiSettingsSection } from './StudentAiSettingsSection';
 import { AiInsightsSettingsSection } from './AiInsightsSettingsSection';
 import { noAutofillProps } from '@/lib/no-autofill';
 
-const getAiSettingsSections = (t: (key: string) => string): SettingsSectionGroup[] => [
+const LIMITS_SECTION_ID = 'grp-limits';
+/**
+ * Shown only to admins of an institute with an AI plan in effect, or — as
+ * "Plan & billing" — when the self-serve storefront is on for the institute.
+ * Neither = no change here.
+ */
+const PLAN_SECTION_ID = 'grp-plan';
+
+/** `?aiSection=grp-limits` deep-links a tab (the usage-limit modal links here). */
+const readAiSectionParam = (): string | undefined => {
+    try {
+        return new URLSearchParams(window.location.search).get('aiSection') ?? undefined;
+    } catch {
+        return undefined;
+    }
+};
+
+const getAiSettingsSections = (
+    t: (key: string) => string,
+    showLimits: boolean,
+    showPlan = false,
+    planLabel?: string
+): SettingsSectionGroup[] => [
     {
         sections: [
             { id: 'grp-providers', label: t('sections.providers'), icon: Sparkle },
@@ -136,13 +166,34 @@ const getAiSettingsSections = (t: (key: string) => string): SettingsSectionGroup
             { id: 'grp-prompt', label: t('sections.coursePrompt'), icon: Article },
             { id: 'grp-video', label: t('sections.video'), icon: FilmStrip },
             { id: 'grp-usage', label: t('sections.usage'), icon: ChartLineUp },
+            // Usage limits are admin-only (the API re-checks the role).
+            ...(showLimits
+                ? [{ id: LIMITS_SECTION_ID, label: t('sections.limits'), icon: Gauge }]
+                : []),
+            ...(showPlan
+                ? [{ id: PLAN_SECTION_ID, label: planLabel ?? t('sections.plan'), icon: SealCheck }]
+                : []),
         ],
     },
 ];
 
 const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
     const { t } = useTranslation(['settingsAi', 'videoApiStudioVideoStyleBranding']);
-    const AI_SETTINGS_SECTIONS = getAiSettingsSections(t);
+    const instituteIdForLimits = getInstituteId();
+    const showLimits = isAdminForInstitute(instituteIdForLimits);
+    const aiPlanQuery = useAiPlanQuery(instituteIdForLimits, showLimits);
+    // Self-serve plans: visible only when the facade answers for this admin.
+    const storefrontQuery = useStorefrontQuery(instituteIdForLimits, showLimits);
+    const { t: tPlans } = useTranslation('aiPlans');
+    const storefrontVisible = showLimits && !!storefrontQuery.data;
+    const showPlan = showLimits && (isPlanInEffect(aiPlanQuery.data) || storefrontVisible);
+    const AI_SETTINGS_SECTIONS = getAiSettingsSections(
+        t,
+        showLimits,
+        showPlan,
+        storefrontVisible ? tPlans('tab') : undefined
+    );
+    const [initialSection] = useState(readAiSectionParam);
     const watermarkPositions = buildWatermarkPositions(t);
     const [openaiKey, setOpenaiKey] = useState('');
     const [geminiKey, setGeminiKey] = useState('');
@@ -592,7 +643,14 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
             description={t('page.description')}
             maxWidth="max-w-7xl"
         >
-            <SettingsSectionsLayout groups={AI_SETTINGS_SECTIONS}>
+            <SettingsSectionsLayout
+                // The plan tab appears only after its queries resolve; re-mount once
+                // when it does so a ?aiSection=grp-plan deep link (e.g. the return
+                // from a plan payment) still opens it. Other visits are unaffected.
+                key={initialSection === PLAN_SECTION_ID && showPlan ? 'plan-ready' : 'default'}
+                groups={AI_SETTINGS_SECTIONS}
+                defaultActiveId={initialSection}
+            >
                 <section id="grp-providers" className="space-y-6">
                     {/* AI Configuration Card */}
                     <Card className="border-indigo-100 shadow-sm">
@@ -2021,6 +2079,18 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                 <section id="grp-usage" className="space-y-6">
                     <AiUsageSection />
                 </section>
+
+                {showLimits && (
+                    <section id={LIMITS_SECTION_ID} className="space-y-6">
+                        <AiLimitsSection />
+                    </section>
+                )}
+
+                {showPlan && (
+                    <section id={PLAN_SECTION_ID} className="space-y-6">
+                        {storefrontVisible ? <AiPlanBilling /> : <AiPlanSection />}
+                    </section>
+                )}
             </SettingsSectionsLayout>
 
             {/* API Keys Info Dialog */}

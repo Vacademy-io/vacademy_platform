@@ -317,5 +317,164 @@
         "confirmDescription": "Tout lien contenant seulement un identifiant cesse immédiatement de fonctionner pour vos apprenants, y compris les messages déjà envoyés. Vérifiez d'abord que chaque système qui envoie des liens ajoute un code.",
         "confirmCancel": "Annuler",
         "confirmAction": "Activer"
+    },
+    "catalogApi": {
+        "title": "API catalogue et sites web",
+        "description": "Affichez vos cours publiés sur votre propre site et envoyez ses demandes directement dans votre CRM.",
+        "docs": "Lire la documentation de l'API",
+        "loading": "Chargement…",
+        "retry": "Réessayer",
+        "copy": "Copier",
+        "copied": "Copié dans le presse-papiers",
+        "copiedShort": "Copié",
+        "copyFailed": "Impossible de copier. Sélectionnez le texte et copiez-le vous-même.",
+        "websites": {
+            "title": "Vos sites web",
+            "description": "Vos clés ne fonctionnent que sur ces sites (et sur localhost pendant le développement). Prouvez que chaque site vous appartient en ajoutant un enregistrement DNS.",
+            "add": "Ajouter un site",
+            "loadError": "Impossible de charger vos sites web.",
+            "emptyTitle": "Aucun site web pour l'instant",
+            "emptyDescription": "Ajoutez le site qui affichera vos cours, par exemple www.votreecole.com.",
+            "status": {
+                "PENDING": "En attente",
+                "VERIFIED": "Vérifié",
+                "REVOKED": "Révoqué"
+            },
+            "verifiedOn": "Vérifié le {{date}}",
+            "lastChecked": "Dernière vérification {{when}}",
+            "waiting": "En attente de l'enregistrement DNS",
+            "revoked": "Bloqué par Vacademy — contactez le support",
+            "revokedReason": "Motif : {{reason}}",
+            "showRecord": "Enregistrement DNS",
+            "verify": "Vérifier maintenant",
+            "remove": "Supprimer",
+            "addDialog": {
+                "heading": "Ajouter un site web",
+                "label": "Adresse du site",
+                "placeholder": "ex. www.votreecole.com",
+                "hint": "Vous pouvez coller le lien complet. Un site vérifié couvre aussi ses sous-domaines.",
+                "preview": "Nous ajouterons : {{host}}",
+                "cancel": "Annuler",
+                "submit": "Ajouter le site",
+                "errors": {
+                    "host_required": "Saisissez l'adresse de votre site.",
+                    "host_invalid": "Cela ne ressemble pas à une adresse de site web.",
+                    "host_ip": "Utilisez le nom de votre site, pas une adresse IP.",
+                    "host_localhost": "localhost fonctionne toujours, inutile de l'ajouter.",
+                    "host_single_label": "Saisissez l'adresse complète, comme votreecole.com.",
+                    "host_too_long": "Cette adresse est trop longue."
+                }
+            },
+            "dns": {
+                "heading": "Vérifier {{host}}",
+                "intro": "Ajoutez cet enregistrement TXT là où vous gérez le DNS de votre domaine (GoDaddy, Cloudflare…). Puis appuyez sur Vérifier. Les changements DNS peuvent prendre jusqu'à une heure.",
+                "step1": "Ouvrez les réglages DNS de votre domaine, là où vous l'avez acheté ou hébergé.",
+                "step2": "Créez un nouvel enregistrement TXT et copiez-y le nom et la valeur ci-dessous.",
+                "step3": "Enregistrez, revenez ici et appuyez sur Vérifier maintenant.",
+                "type": "Type",
+                "name": "Nom",
+                "value": "Valeur",
+                "nameHint": "Certains fournisseurs ajoutent votre domaine au nom automatiquement. Dans ce cas, saisissez seulement la partie avant votre domaine.",
+                "verified": "Ce site est vérifié. Vos clés y fonctionnent maintenant.",
+                "noRecord": "L'enregistrement DNS n'est pas disponible. Supprimez le site et ajoutez-le à nouveau.",
+                "close": "Fermer"
+            },
+            "toasts": {
+                "added": "{{host}} ajouté. Ajoutez maintenant l'enregistrement DNS.",
+                "addFailed": "Impossible d'ajouter le site.",
+                "verified": "{{host}} est vérifié.",
+                "notYet": "Aucun enregistrement TXT trouvé pour l'instant. Les changements DNS peuvent prendre jusqu'à une heure.",
+                "verifyFailed": "Impossible de vérifier le site pour le moment. Réessayez dans une minute.",
+                "removed": "Site supprimé.",
+                "removeFailed": "Impossible de supprimer le site."
+            },
+            "removeConfirm": {
+                "title": "Supprimer {{host}} ?",
+                "description": "Vos clés cesseront immédiatement de fonctionner sur ce site. Vous pourrez l'ajouter plus tard, mais il faudra le vérifier à nouveau.",
+                "cancel": "Annuler",
+                "confirm": "Supprimer"
+            }
+        },
+        "keys": {
+            "title": "Clés API publiables",
+            "description": "Le code de votre site utilise une clé pour lire vos cours publiés et envoyer des demandes.",
+            "create": "Créer une clé",
+            "loadError": "Impossible de charger les clés.",
+            "empty": "Aucune clé pour l'instant. Créez-en une quand votre site est prêt à utiliser l'API.",
+            "needsWebsite": "Les clés ne fonctionnent que sur des sites vérifiés. Ajoutez et vérifiez d'abord votre site ci-dessus.",
+            "name": "Nom",
+            "prefix": "Clé",
+            "created": "Créée",
+            "lastUsed": "Dernière utilisation",
+            "status": "Statut",
+            "neverUsed": "Jamais",
+            "statusActive": "Active",
+            "statusExpired": "Expirée",
+            "statusRevoked": "Révoquée",
+            "revoke": "Révoquer",
+            "form": {
+                "heading": "Créer une clé publiable",
+                "nameLabel": "Nom de la clé",
+                "namePlaceholder": "ex. Site de l'école",
+                "hint": "Choisissez un nom qui indique où la clé est utilisée.",
+                "cancel": "Annuler",
+                "submit": "Créer la clé",
+                "errors": {
+                    "nameRequired": "Saisissez un nom pour la clé.",
+                    "nameTooLong": "Le nom est trop long.",
+                    "generic": "Vérifiez le formulaire et réessayez."
+                }
+            },
+            "issued": {
+                "heading": "Votre nouvelle clé",
+                "warning": "Copiez cette clé maintenant. Elle n'est affichée qu'une seule fois.",
+                "note": "Peut être utilisée sans risque dans le code de votre site. Elle lit seulement votre catalogue publié et envoie des demandes, et ne fonctionne que depuis vos sites vérifiés (et localhost).",
+                "done": "J'ai copié la clé",
+                "notCopiedWarning": "Vous n'avez pas encore copié cette clé. Copiez-la, ou appuyez sur le bouton ci-dessous pour fermer quand même."
+            },
+            "revokeConfirm": {
+                "title": "Révoquer cette clé ?",
+                "description": "Les sites qui utilisent « {{name}} » n'afficheront plus vos cours tant qu'ils ne passent pas à une nouvelle clé. Action irréversible.",
+                "cancel": "Annuler",
+                "confirm": "Révoquer la clé"
+            },
+            "toasts": {
+                "issueFailed": "Impossible de créer la clé.",
+                "revoked": "Clé révoquée.",
+                "revokeFailed": "Impossible de révoquer la clé."
+            }
+        },
+        "address": {
+            "title": "Adresse des pages de cours",
+            "description": "Chaque cours de l'API renvoie vers sa page sur votre site de cours, où les apprenants s'inscrivent et paient.",
+            "loadError": "Impossible de charger l'adresse des pages de cours.",
+            "current": "Les pages de cours s'ouvrent à",
+            "site": "Site du catalogue : {{tag}}",
+            "source": {
+                "override": "Définie par vous",
+                "domain": "Définie automatiquement à partir du domaine de votre site de cours",
+                "portal": "Définie automatiquement à partir de l'adresse de votre portail apprenant",
+                "other": "Définie automatiquement",
+                "none": "Pas encore définie"
+            },
+            "noneHint": "Nous n'avons pas pu déterminer où se trouvent vos pages de cours. Saisissez l'adresse ci-dessous.",
+            "overrideLabel": "Utiliser une autre adresse",
+            "overridePlaceholder": "https://learning.votreecole.com/store",
+            "overrideHint": "Doit commencer par https://. Les liens de cours seront cette adresse suivie du cours.",
+            "save": "Enregistrer l'adresse",
+            "reset": "Revenir à l'automatique",
+            "errors": {
+                "url_required": "Saisissez une adresse.",
+                "url_not_https": "L'adresse doit commencer par https://.",
+                "url_has_query": "Supprimez tout ce qui suit ? ou #.",
+                "url_too_long": "Cette adresse est trop longue."
+            },
+            "toasts": {
+                "saved": "Adresse des pages de cours enregistrée.",
+                "saveFailed": "Impossible d'enregistrer l'adresse.",
+                "reset": "Retour à l'adresse automatique.",
+                "resetFailed": "Impossible de réinitialiser l'adresse."
+            }
+        }
     }
 }

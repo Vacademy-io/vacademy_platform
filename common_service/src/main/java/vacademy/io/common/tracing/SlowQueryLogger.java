@@ -217,12 +217,14 @@ public class SlowQueryLogger {
     /**
      * Format a single argument, truncating if necessary
      */
-    private String formatArg(Object arg) {
+    String formatArg(Object arg) {
         if (arg == null)
             return "null";
 
         String str;
-        if (arg instanceof String) {
+        if (arg instanceof String && looksLikeSecret((String) arg)) {
+            str = "\"***\"";
+        } else if (arg instanceof String) {
             str = "\"" + arg + "\"";
         } else if (arg.getClass().isArray()) {
             // Primitive arrays (byte[], int[]...) cannot be cast to Object[] —
@@ -238,6 +240,11 @@ public class SlowQueryLogger {
         } else if (arg instanceof java.util.Collection) {
             java.util.Collection<?> col = (java.util.Collection<?>) arg;
             str = "Collection(size=" + col.size() + ")";
+        } else if (arg instanceof java.util.Map) {
+            // Maps often carry credentials (e.g. a payment gateway's key id + secret). The
+            // truncation below keeps the first ~47 characters, and map order is not fixed, so
+            // a secret could be printed (and sent to Sentry). Never print map contents.
+            str = "Map(size=" + ((java.util.Map<?, ?>) arg).size() + ")";
         } else {
             str = arg.toString();
         }
@@ -247,6 +254,13 @@ public class SlowQueryLogger {
             return str.substring(0, 47) + "...";
         }
         return str;
+    }
+
+    /** Vendor key / secret shapes that must never reach a log line. */
+    static boolean looksLikeSecret(String s) {
+        String v = s.trim();
+        return v.startsWith("rzp_live_") || v.startsWith("rzp_test_") || v.startsWith("sk-") || v.startsWith("sk_live_")
+                || v.startsWith("sk_test_") || v.startsWith("Bearer ");
     }
 
     /**

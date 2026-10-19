@@ -457,3 +457,81 @@ def test_section_header_count_times_marks_means_marks_each_is_the_second_number(
     assert pd._section_marks_each({"marks_each": 2, "question_count": 5, "total_marks": 10}) == 2
     assert pd._section_marks_each({"marks_each": 3}) == 3
     assert pd._section_marks_each({}) is None
+
+
+# ---------------------------------------------------------------------------
+# internal choice ("answer any FOUR of the following")
+# ---------------------------------------------------------------------------
+
+def _lit_paper_round():
+    """The shape of the X English Literature paper: 18 printed questions, MM 40."""
+    qs = [_q(f"VI({i})", f"Extract question {i}?", marks=m, section="VI") for i, m in zip("1234", (1, 1, 1, 2))]
+    qs += [_q(f"VII({i})", f"Poem question {i}?", marks=m, section="VII") for i, m in zip("1234", (1, 1, 1, 2))]
+    qs += [_q(str(i), f"Short answer {i}?", section="VIII") for i in range(1, 6)]   # marks from the header
+    qs += [_q(str(i), f"Short answer B{i}?", section="IX") for i in range(1, 4)]
+    qs += [_q("X", "Long answer X?", marks=6, section="X"), _q("XI", "Long answer XI?", marks=6, section="XI")]
+    return {
+        "title": "Literature", "total_marks": 40,
+        "sections": [
+            {"name": "VI", "instruction": "Read the extract"},
+            {"name": "VII", "instruction": "Read the extract"},
+            # The model reads "(4*3M=12)" as count 4 - or as the 5 printed; both must give 3 each.
+            {"name": "VIII", "instruction": "Answer any FOUR", "marks_each": 3, "question_count": 5,
+             "total_marks": 12, "attempt": 4},
+            {"name": "IX", "instruction": "Answer any TWO", "question_count": 2, "total_marks": 6, "attempt": 2},
+            {"name": "X", "instruction": ""}, {"name": "XI", "instruction": ""},
+        ],
+        "questions": qs,
+    }
+
+
+def test_any_n_sections_become_choice_groups_and_the_paper_totals_40_not_46():
+    paper = pd.build_paper([_lit_paper_round()], pdf_url="https://x/p.pdf", file_name="p.pdf", expected_total=40)
+
+    marks = {f'{q["section"]}:{q["question_number"]}': q["marks"] for q in paper.raw_questions}
+    assert [marks[f"VIII:{i}"] for i in range(1, 6)] == [3, 3, 3, 3, 3]   # 12 / attempt 4, never 12 / 5 printed
+    assert [marks[f"IX:{i}"] for i in range(1, 4)] == [3, 3, 3]
+    assert paper.marks_total == 46                     # every printed question, as before
+    assert paper.paper_total == 40                     # what the paper is out of
+    groups = paper.choice_groups
+    assert [(g["label"], g["attempt"], g["policy"], len(g["question_indexes"])) for g in groups] == [
+        ("VIII", 4, "best", 5), ("IX", 2, "best", 3)]
+    # Positions point at the questions handed to the assessment builder.
+    assert [paper.raw_questions[i]["section"] for i in groups[0]["question_indexes"]] == ["VIII"] * 5
+    assert not any("add up to" in w for w in paper.warnings)
+    out = paper.to_dict()
+    assert out["paper_total"] == 40 and out["choice_groups"] == groups
+
+
+def test_a_wrong_stated_total_is_still_reported_against_the_choice_total():
+    paper = pd.build_paper([{**_lit_paper_round(), "total_marks": 45}], pdf_url="https://x/p.pdf",
+                           file_name="p.pdf", expected_total=None)
+    assert any("states 45 marks but the questions add up to 40" in w for w in paper.warnings)
+
+
+def test_attempt_not_below_the_section_size_is_no_choice():
+    round_ = _lit_paper_round()
+    for s in round_["sections"]:
+        if s["name"] == "IX":
+            s["attempt"] = 3          # all three answered: not a choice
+    paper = pd.build_paper([round_], pdf_url="https://x/p.pdf", file_name="p.pdf", expected_total=None)
+    assert [g["label"] for g in paper.choice_groups] == ["VIII"]
+    # IX is now three compulsory questions sharing the header's 6 marks.
+    assert [q["marks"] for q in paper.raw_questions if q["section"] == "IX"] == [2, 2, 2]
+    assert paper.paper_total == 40
+
+
+def test_a_paper_without_choice_is_unchanged():
+    round_ = _lit_paper_round()
+    for s in round_["sections"]:
+        s.pop("attempt", None)
+    round_["sections"][2].update(question_count=4, total_marks=12)
+    paper = pd.build_paper([round_], pdf_url="https://x/p.pdf", file_name="p.pdf", expected_total=None)
+    assert paper.choice_groups == [] and paper.paper_total == paper.marks_total
+    assert any("states 40 marks but the questions add up to" in w for w in paper.warnings)
+
+
+def test_prompt_asks_for_attempt_and_the_printed_maximum():
+    prompt = pd._build_prompt("<p>x</p>", [])
+    assert '"attempt": number | null' in prompt and "Internal choice" in prompt
+    assert "MM: 40" in prompt

@@ -416,6 +416,10 @@ export const GET_UTM_FILTER_OPTIONS = `${BASE_URL}/admin-core-service/v1/utm/fil
 export const GET_UTM_DASHBOARD = `${BASE_URL}/admin-core-service/v1/utm/dashboard`;
 
 export const GET_USER_LEAD_PROFILE = `${BASE_URL}/admin-core-service/v1/audience/user-lead-profile`;
+// Different phones and real emails the person behind a lead enquired with ("Other contact
+// details" on the lead Overview), e.g. a repeat that came in with a new phone or email.
+export const GET_LEAD_ENQUIRY_CONTACTS = (responseId: string) =>
+    `${BASE_URL}/admin-core-service/v1/audience/lead/${responseId}/enquiry-contacts`;
 export const GET_LEAD_SCORE = (responseId: string) =>
     `${BASE_URL}/admin-core-service/v1/audience/lead/${responseId}/score`;
 export const SET_MANUAL_LEAD_SCORE = (responseId: string) =>
@@ -924,6 +928,7 @@ export const UPDATE_USER_CREDENTIALS = `${BASE_URL}/auth-service/v1/user-operati
 // bound to the LEARNER_CREDENTIALS_SHARED event, per channel.
 export const SEND_LEARNER_CREDENTIALS = `${BASE_URL}/admin-core-service/learner-credentials/v1/send`;
 export const LEARNER_CREDENTIALS_TEMPLATE_CONFIG = `${BASE_URL}/admin-core-service/learner-credentials/v1/template-config`;
+export const RESULT_NOTIFICATION_TEMPLATE = `${BASE_URL}/admin-core-service/assessment-result-notification/v1/template`;
 // Password reset: mails the learner a link to CHOOSE a new password rather than
 // mailing the one they already have. `/link` returns that link both filled in for
 // one learner and with a {username} placeholder for third-party integrators.
@@ -1127,6 +1132,18 @@ export const SAVE_PAYMENT_OPTION = `${BASE_URL}/admin-core-service/v1/payment-op
 export const GET_PAYMENT_OPTIONS = `${BASE_URL}/admin-core-service/v1/payment-option/get-payment-options`;
 export const MAKE_DEFAULT_PAYMENT_OPTION = `${BASE_URL}/admin-core-service/v1/payment-option/make-default-payment-option`;
 export const DELETE_PAYMENT_OPTION_URL = SAVE_PAYMENT_OPTION;
+
+// Regional (country-based) pricing on a payment option
+export const REGIONAL_PRICING_BASE = `${BASE_URL}/admin-core-service/v1/regional-pricing`;
+export const REGIONAL_PRICING_CONFIG = (paymentOptionId: string) =>
+    `${REGIONAL_PRICING_BASE}/payment-option/${paymentOptionId}`;
+export const REGIONAL_PRICING_SETTINGS = (paymentOptionId: string) =>
+    `${REGIONAL_PRICING_BASE}/payment-option/${paymentOptionId}/settings`;
+export const REGIONAL_PRICING_REFRESH = (paymentOptionId: string) =>
+    `${REGIONAL_PRICING_BASE}/payment-option/${paymentOptionId}/refresh`;
+export const REGIONAL_PRICE_UPSERT = `${REGIONAL_PRICING_BASE}/price`;
+export const REGIONAL_PRICE_ITEM = (regionalPriceId: string) =>
+    `${REGIONAL_PRICING_BASE}/price/${regionalPriceId}`;
 
 // Payment plan markdown (Offer Price)
 export const APPLY_MARKDOWN_URL = `${BASE_URL}/admin-core-service/v1/payment-plan/markdown/apply`;
@@ -1582,6 +1599,8 @@ export const PUT_INSTALLMENT = (sfpId: string) =>
     `${BASE_URL}/admin-core-service/v1/fee-management/installments/${sfpId}`;
 export const PUT_USER_PLAN_CPO_DISCOUNT = (userPlanId: string) =>
     `${BASE_URL}/admin-core-service/v1/fee-management/user-plan/${userPlanId}/cpo-discount`;
+export const POST_USER_PLAN_CPO_DISCOUNT_PREVIEW = (userPlanId: string) =>
+    `${BASE_URL}/admin-core-service/v1/fee-management/user-plan/${userPlanId}/cpo-discount/preview`;
 export const POST_USER_PLAN_OFFLINE_PAYMENT = (userPlanId: string) =>
     `${BASE_URL}/admin-core-service/v1/fee-management/user-plan/${userPlanId}/record-offline-payment`;
 export const POST_SPLIT_INSTALLMENT = (sfpId: string) =>

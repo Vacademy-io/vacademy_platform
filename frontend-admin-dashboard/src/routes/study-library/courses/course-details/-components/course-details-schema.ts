@@ -168,6 +168,8 @@ export const buildCourseDetailsSchema = (t: TFunction) => {
             courseBannerMediaPreview: z.string(),
             courseMediaPreview: z.string(),
             courseHtmlDescription: z.string(),
+            /** Public course-page extras (mode + FAQs) as stored: a JSON string or null. */
+            coursePageJson: z.string().nullable().optional(),
             created_by_user_id: z.string().optional(),
             instructors: z
                 .array(instructorSchema)

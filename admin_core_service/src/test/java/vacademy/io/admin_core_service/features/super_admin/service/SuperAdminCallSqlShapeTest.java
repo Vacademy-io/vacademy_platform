@@ -23,6 +23,9 @@ class SuperAdminCallSqlShapeTest {
 
     private static final Pattern GLUED = Pattern.compile("(?i)(SELECT|FROM|WHERE|JOIN|END|AND|OR|ON)(CASE|SELECT|COUNT|AS\\b|r\\.)");
 
+    private static final Pattern BIND = Pattern.compile(
+            ":(instituteId|fromTs|toTs|health|disposition|agentId|lim|off|pulse|inst|frm|to|agt)\\b");
+
     @Test
     void everyQueryKeepsItsWordsApart() {
         EntityManager em = mock(EntityManager.class);
@@ -44,6 +47,17 @@ class SuperAdminCallSqlShapeTest {
         for (String s : calls) {
             assertFalse(GLUED.matcher(s).find(), () -> "glued keywords in: " + s);
             assertTrue(s.contains("IS DISTINCT FROM 'MOCK'"), "mock calls stay out, NULL providers stay in");
+            // Hibernate reads any ':' as a parameter marker: only real binds may carry one.
+            String unbound = BIND.matcher(s).replaceAll("");
+            assertFalse(unbound.contains(":"), () -> "bare ':' (use chr(58) or CAST) in: " + s);
+        }
+        // The list and the summary decide "which legs are still estimated" with the SAME
+        // predicates, or a row and the total it rolls into disagree.
+        List<String> ledgered = calls.stream().filter(s -> s.contains("credit_transactions")).toList();
+        assertTrue(ledgered.size() >= 2, "list and summary both join the ledger");
+        for (String s : ledgered) {
+            assertTrue(s.contains(SuperAdminCallService.VOICE_PENDING_SQL), "voice-leg predicate shared");
+            assertTrue(s.contains(SuperAdminCallService.AI_PENDING_SQL), "AI-leg predicate shared");
         }
     }
 }

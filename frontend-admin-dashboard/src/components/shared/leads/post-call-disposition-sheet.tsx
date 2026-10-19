@@ -46,7 +46,12 @@ import { LeadStatusChip } from '@/components/shared/lead-status-chip';
 import { cn } from '@/lib/utils';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { CREATE_TIMELINE_EVENT, CREATE_LEAD_FOLLOWUP } from '@/constants/urls';
-import { FollowUpFields, useFollowUpFields, useFollowUpNotesRequired } from './follow-up-fields';
+import {
+    FollowUpFields,
+    useFollowUpFeatures,
+    useFollowUpFields,
+    useFollowUpNotesRequired,
+} from './follow-up-fields';
 import {
     fetchLeadStatuses,
     setLeadStatusForLead,
@@ -249,6 +254,8 @@ function PostCallDispositionSheet({
     const [followUpAt, setFollowUpAt] = useState('');
     const followUpFields = useFollowUpFields();
     const notesRequired = useFollowUpNotesRequired();
+    const { keepPopupsOpen } = useFollowUpFeatures();
+    const keepOpen = keepPopupsOpen ? (e: Event) => e.preventDefault() : undefined;
     const [statusPickerOpen, setStatusPickerOpen] = useState(false);
     // null = untouched (keep the lead's current status — nothing is posted).
     const [selectedStatusId, setSelectedStatusId] = useState<string | null>(null);
@@ -392,6 +399,10 @@ function PostCallDispositionSheet({
             <SheetContent
                 side="right"
                 className="flex w-full flex-col gap-0 overflow-y-auto p-0 sm:max-w-md"
+                // "Close pop-ups only with X" on: only X / Skip close it, so a
+                // stray click does not drop the typed note.
+                onInteractOutside={keepOpen}
+                onEscapeKeyDown={keepOpen}
             >
                 <SheetHeader className="space-y-0 border-b border-neutral-100 px-6 py-4 text-left">
                     <div className="flex items-center gap-3">

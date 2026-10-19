@@ -1,3 +1,4 @@
+import type { OfflinePaymentDetails } from '@/services/offline-payment-modes';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import {
     GET_INVOICES_BY_USER,
@@ -165,7 +166,7 @@ export async function fetchUserAccountLedger(
 
 export async function markInvoicePaidManual(
     invoiceId: string,
-    body: { transaction_id?: string; notes?: string }
+    body: { transaction_id?: string; notes?: string; payment_details?: OfflinePaymentDetails | null }
 ): Promise<InvoiceDTO> {
     const response = await authenticatedAxiosInstance.post<InvoiceDTO>(
         POST_MARK_INVOICE_PAID_MANUAL(invoiceId),

@@ -65,6 +65,11 @@ import static vacademy.io.common.auth.enums.CompanyStatus.ACTIVE;
 @Slf4j
 @Component
 public class AssessmentParticipantsManager {
+    /** The one report per attempt (AI report when it exists, plus report-profile pages). Lazy: avoids a bean cycle. */
+    @Autowired
+    @org.springframework.context.annotation.Lazy
+    vacademy.io.assessment_service.features.assessment.service.aireport.AiReportPdfService aiReportPdfService;
+
     @Autowired
     AssessmentService assessmentService;
 
@@ -112,6 +117,9 @@ public class AssessmentParticipantsManager {
 
     @Autowired
     AssessmentReportNotificationService assessmentReportNotificationService;
+
+    @Autowired
+    vacademy.io.assessment_service.features.assessment.notification.ResultNotificationService resultNotificationService;
 
     @Autowired
     AssessmentNotificationService assessmentNotificationService;
@@ -1308,7 +1316,16 @@ public class AssessmentParticipantsManager {
         // duplicated HTML/PDF generation code (now shared via
         // ReportPdfRenderService), and a failed upload no longer silently
         // leaves report_pdf_file_id unset (ReportPdfUploadService throws).
+        //
+        // Emails now go out in batches as reports are made: holding every PDF until the end
+        // and sending one request with all of them breaks on large classes once each report
+        // is the AI report plus profile pages (~2 MB each, 2.7 MB as base64): 5 per request.
+        final int emailBatch = 5;
         Map<StudentAttempt, byte[]> reportMap = new HashMap<>();
+        // The result email / WhatsApp templates for this assessment, looked up once per release.
+        final vacademy.io.assessment_service.features.assessment.notification.ResultNotificationService.Templates resultTemplates =
+                resultNotificationService.resolve(instituteId, assessment.getId());
+        final Map<String, Map<String, String>> variablesByAttempt = new HashMap<>();
         attemptList.forEach(attempt -> {
             try {
                 // Skip attempts that were never submitted (no meaningful report to generate)
@@ -1332,8 +1349,14 @@ public class AssessmentParticipantsManager {
                     log.warn("Failed to build comparison for attempt {}: {}", attempt.getId(), e.getMessage());
                 }
 
-                // Render HTML -> PDF via the shared render service (no duplicated logic)
-                byte[] participantPdfReport = reportPdfRenderService.render(studentReportOverallDetailDto, comparison, ctx);
+                // The student's one report: the AI report when it exists, else the normal report,
+                // wrapped in the assessment's report-profile pages (e.g. a scholarship letter).
+                final vacademy.io.assessment_service.features.learner_assessment.dto.StudentComparisonDto cmp = comparison;
+                var rendered = aiReportPdfService.renderWithVariables(userId, assessment.getId(), attempt.getId(),
+                        instituteId, studentReportOverallDetailDto,
+                        () -> reportPdfRenderService.render(studentReportOverallDetailDto, cmp, ctx));
+                byte[] participantPdfReport = rendered.pdf();
+                variablesByAttempt.put(attempt.getId(), rendered.variables());
 
                 // Upload PDF to storage and cache the file ID. Throws on failure —
                 // caught below so one student's upload failure doesn't stop the batch.
@@ -1351,14 +1374,44 @@ public class AssessmentParticipantsManager {
 
                 // Send notification to the student
                 reportMap.put(attempt, participantPdfReport);
+                if (reportMap.size() >= emailBatch) {
+                    sendResultNotifications(reportMap, variablesByAttempt, assessment.getId(), instituteId, resultTemplates);
+                    publishResultReleasedFor(reportMap);
+                    reportMap.clear();
+                }
             } catch (Exception e) {
                 log.error("Failed to generate report for attempt {}: {}", attempt.getId(), e.getMessage());
                 // Still release the attempt even if PDF generation fails
                 updateAttemptDataReleaseData(attempt);
             }
         });
-        sendNotificationToStudent(reportMap, assessment.getId(), instituteId);
-        publishResultReleasedFor(reportMap);
+        if (!reportMap.isEmpty()) {
+            sendResultNotifications(reportMap, variablesByAttempt, assessment.getId(), instituteId, resultTemplates);
+            publishResultReleasedFor(reportMap);
+        }
+    }
+
+    /** Email (always, from the bound or default template) and WhatsApp (when bound) for one batch. */
+    private void sendResultNotifications(Map<StudentAttempt, byte[]> reports, Map<String, Map<String, String>> variablesByAttempt,
+                                         String assessmentId, String instituteId,
+                                         vacademy.io.assessment_service.features.assessment.notification.ResultNotificationService.Templates templates) {
+        if (!adminCoreServiceClient.isLearnerResultNotificationEnabled(instituteId)) {
+            log.info("[result-notification] learner notifications disabled for institute {} — skipping", instituteId);
+            return;
+        }
+        List<vacademy.io.assessment_service.features.assessment.notification.ResultNotificationService.Item> items = new ArrayList<>();
+        reports.forEach((attempt, pdf) -> items.add(new vacademy.io.assessment_service.features.assessment.notification.ResultNotificationService.Item(
+                attempt, pdf, variablesByAttempt.getOrDefault(attempt.getId(), Map.of()))));
+        try {
+            resultNotificationService.sendEmails(items, assessmentId, instituteId, templates);
+        } catch (Exception e) {
+            log.error("[result-notification] email batch failed for assessment {}", assessmentId, e);
+        }
+        try {
+            resultNotificationService.sendWhatsApps(items, assessmentId, instituteId, templates);
+        } catch (Exception e) {
+            log.error("[result-notification] WhatsApp batch failed for assessment {}", assessmentId, e);
+        }
     }
 
     private void handleParticipantsReportCreationForManualAssessment(List<StudentAttempt> attemptList,

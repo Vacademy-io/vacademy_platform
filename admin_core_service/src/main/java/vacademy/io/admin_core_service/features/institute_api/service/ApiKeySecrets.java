@@ -21,6 +21,8 @@ public final class ApiKeySecrets {
     public static final String EVALUATION_KEY_PREFIX = "vak_eval_";
     public static final String LOGIN_LINKS_KEY_PREFIX = "vak_login_";
     public static final String AI_CALLING_KEY_PREFIX = "vak_call_";
+    /** Publishable catalogue keys: meant to be visible in browser code (read-only + leads). */
+    public static final String CATALOG_KEY_PREFIX = "vak_pub_";
     static final int RANDOM_BYTES = 24;
     static final int DISPLAY_PREFIX_LENGTH = 16;
 
@@ -43,6 +45,11 @@ public final class ApiKeySecrets {
     /** A new AI calling (Telleo API) key ({@code vak_call_<48 hex>}) in plaintext. Show it once; never store it. */
     public static String newAiCallingKey() {
         return newKey(AI_CALLING_KEY_PREFIX);
+    }
+
+    /** A new publishable Catalogue API key ({@code vak_pub_<48 hex>}) in plaintext. Show it once; never store it. */
+    public static String newCatalogKey() {
+        return newKey(CATALOG_KEY_PREFIX);
     }
 
     private static String newKey(String prefix) {

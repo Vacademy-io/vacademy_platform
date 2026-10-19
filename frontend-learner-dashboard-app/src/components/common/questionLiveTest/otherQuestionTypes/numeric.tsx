@@ -5,13 +5,18 @@ import { QUESTION_TYPES } from "@/types/assessment";
 import { useAssessmentStore } from "@/stores/assessment-store";
 import { cn } from "@/lib/utils";
 
+// The learner payload carries no options_json, so a question's numeric type is not
+// known here. It used to be hardcoded to INTEGER, which made "." untypeable and every
+// decimal answer key (0.287, 2.05) unreachable. Decimals are always accepted now: a
+// decimal typed for a whole-number answer key is simply graded wrong.
+const isDecimal = true;
+const maxDecimals = Number.POSITIVE_INFINITY;
+
 export function NumericInputWithKeypad() {
   const { t } = useTranslation("questionTest");
   const { currentQuestion, answers, setAnswer, setQuestionState } =
     useAssessmentStore();
   const [numericValue, setNumericValue] = useState("");
-  const [isDecimal, setIsDecimal] = useState(false);
-  const [maxDecimals, setMaxDecimals] = useState(0);
   // The pad is a fallback for devices where the OS keyboard covers the
   // question; a learner who prefers the system keyboard can fold it away and
   // get the screen back.
@@ -32,23 +37,6 @@ export function NumericInputWithKeypad() {
       setNumericValue(answers[currentQuestion.question_id][0]);
     } else {
       setNumericValue("");
-    }
-
-    // Set numeric type and decimals (for now, hardcoded options_json)
-    const options_json = {
-      numeric_type: "INTEGER",
-      decimals: 0,
-      min_value: 0,
-      max_value: 1000,
-      units: "days",
-    };
-
-    try {
-      const options = options_json;
-      setIsDecimal(options.numeric_type === "DECIMAL");
-      setMaxDecimals(options.decimals || 0);
-    } catch (error) {
-      console.error("Error parsing options_json:", error);
     }
   }, [currentQuestion, answers]);
 

@@ -363,7 +363,11 @@ public class FeeTrackingService {
                 StudentFeeAdjustmentHistory effective = adjustmentResolver.effectiveOrNull(event);
                 BigDecimal adjustmentEffect = adjustmentResolver.computeAdjustmentEffect(effective);
                 String name = feeTypeNameMap.getOrDefault(p.getAsvId(), "N/A");
-                Integer num = installmentNumberMap.getOrDefault(p.getIId(), null);
+                // i_id is null on lump-sum and schedule-generated bills; Map.of() (used when no
+                // bill has an i_id) throws on a null key, so never look it up.
+                Integer num = p.getInstallmentNumber() != null
+                        ? p.getInstallmentNumber()
+                        : p.getIId() != null ? installmentNumberMap.get(p.getIId()) : null;
 
                 return vacademy.io.admin_core_service.features.fee_management.dto.InstallmentDetailsDTO.builder()
                         .feeTypeName(name)
@@ -935,7 +939,11 @@ public class FeeTrackingService {
          */
         @Transactional(readOnly = true)
         public List<Map<String, String>> getFeeTypesForInstitute(String instituteId) {
-                List<ComplexPaymentOption> cpos = complexPaymentOptionRepository.findByInstituteId(instituteId);
+                // Leave out the hidden plans behind one-time prices (V575): each would add its own
+                // "Course fee" entry to the fee-type filters.
+                List<ComplexPaymentOption> cpos = complexPaymentOptionRepository.findByInstituteId(instituteId).stream()
+                                .filter(c -> c.getSourcePaymentPlanId() == null)
+                                .collect(Collectors.toList());
                 List<String> cpoIds = cpos.stream().map(ComplexPaymentOption::getId).collect(Collectors.toList());
                 if (cpoIds.isEmpty()) return Collections.emptyList();
 

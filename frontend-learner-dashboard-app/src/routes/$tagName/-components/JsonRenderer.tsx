@@ -30,7 +30,19 @@ import {
   usePreferredPhoneCountries,
 } from "@/hooks/use-preferred-phone-countries";
 import {
+  CaretLeft,
+  CaretRight,
   GraduationCap,
+  Train,
+  Bank,
+  Newspaper,
+  Exam,
+  Books,
+  FileText,
+  SquaresFour,
+  Fire,
+  Student,
+  ChalkboardTeacher,
   Rocket,
   Target,
   UsersThree,
@@ -58,6 +70,7 @@ import { HtmlPageSection } from './components/HtmlPageSection';
 import { HtmlBlockSection } from "./components/HtmlBlockSection";
 import { ProductPageOfferComponent } from "./components/ProductPageOfferComponent";
 import { FolderBrowserComponent } from "./components/FolderBrowserComponent";
+import { AccessPassGridComponent } from "./components/AccessPassGridComponent";
 import { DetailBlocksComponent } from "./components/DetailBlocksComponent";
 import { BlogComponent } from "./components/BlogComponent";
 import { LeadFormComponent } from "./components/LeadFormComponent";
@@ -85,6 +98,8 @@ import { BookCatalogueComponent } from "./components/BookCatalogueComponent";
 import { BookDetailsComponent } from "./components/BookDetailsComponent";
 import { DocumentViewerComponent } from "./components/DocumentViewerComponent";
 import { Policy } from "./components/Policy";
+import { RAIL_CLONE_PROPS, useAutoScrollRail, useRailArrows } from "../-utils/use-auto-scroll-rail";
+import { useCatalogueSearchParams } from "../-utils/catalogue-url-state";
 
 // Opt-in section: loaded only by pages that have a learningPath, so every
 // other page (and the logged-in app, which bundles this renderer) skips it.
@@ -239,7 +254,13 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
     // Authored text in the visitor's language — the very same object as the
     // base props when there is no dictionary. Slot children are localized
     // when renderChild reaches them.
-    const props = localizeComponentProps(baseProps, dict);
+    const localizedProps = localizeComponentProps(baseProps, dict);
+    // Style-panel Background Color is painted on the wrapper, but these blocks
+    // paint their own opaque section (bg-catalogue-bg) on top of it and only
+    // honour props.backgroundColor — so the picked colour never showed. Hand
+    // it to the block when it has no colour of its own (mirror of the shell
+    // canvas adopting props.backgroundColor in ComponentStyleWrapper).
+    const props = withStyleBackground(type, localizedProps, component.style);
 
     switch (type) {
       case "header":
@@ -415,6 +436,8 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
             {...props}
             instituteId={instituteId}
             tagName={tagName}
+            // Recommended-course cards under an article use the site's card settings.
+            globalSettings={globalSettings}
             pageRoute={page.route || ""}
             isPreviewMode={isPreviewMode}
           />
@@ -474,6 +497,20 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
         // product page inside the open folder shows its courses inline.
         return (
           <FolderBrowserComponent
+            key={id}
+            {...props}
+            instituteId={instituteId}
+            tagName={tagName}
+            isPreviewMode={isPreviewMode}
+            globalSettings={globalSettings}
+          />
+        );
+
+      case "accessPassGrid":
+        // Published Access Passes (one purchase -> several courses), read live.
+        // Buying goes through the pass invite on the enroll-by-invite page.
+        return (
+          <AccessPassGridComponent
             key={id}
             {...props}
             instituteId={instituteId}
@@ -669,7 +706,7 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
 
     // Plain rendering — still add anchor ID if present
     if (component.anchorId) {
-      return <div key={component.id} id={component.anchorId}>{rendered}</div>;
+      return <div key={component.id} id={component.anchorId} className="catalogue-block-anchor">{rendered}</div>;
     }
     return <React.Fragment key={component.id}>{rendered}</React.Fragment>;
   };
@@ -781,6 +818,28 @@ const isHexDark = (hex?: string): boolean => {
   return (0.299 * r + 0.587 * g + 0.114 * b) / 255 < 0.55;
 };
 
+/** Blocks whose own section is opaque unless props.backgroundColor is set,
+ *  so a style-panel Background Color on the wrapper is never seen. Blocks
+ *  outside this list either let the wrapper show through already or give
+ *  props.backgroundColor extra meaning (hero drops its image, header and
+ *  footer have their own pickers) — they keep their current behaviour. */
+const STYLE_BG_TO_PROPS_TYPES = new Set([
+  'sectionHeading', 'faqSection', 'contactForm', 'announcementFeed',
+  'tabsAccordion', 'featureGrid', 'newsletterSignup', 'stepsProcess',
+]);
+
+/** Props with the style-panel Background Color handed to the block, when it
+ *  is a plain #rrggbb (what the picker writes, and what sectionText can read
+ *  for contrast) and the style paints no image or gradient over it. */
+const withStyleBackground = <P,>(type: string, props: P, style?: ComponentStyle): P => {
+  const styleBg = style?.backgroundColor;
+  if (!STYLE_BG_TO_PROPS_TYPES.has(type)) return props;
+  if (typeof styleBg !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(styleBg.trim())) return props;
+  if (style?.backgroundImage || style?.gradient || style?.backgroundLayers?.length) return props;
+  if ((props as { backgroundColor?: unknown } | undefined)?.backgroundColor) return props;
+  return { ...props, backgroundColor: styleBg.trim() };
+};
+
 /**
  * Text classes for section copy. Three cases, because an author-colored
  * surface can be anything:
@@ -819,6 +878,86 @@ const FEATURE_ICON_MAP: Record<string, React.ComponentType<any>> = {
   GraduationCap, Rocket, Target, UsersThree, Code, Brain, Trophy, Lightbulb,
   ShieldCheck, ChartLineUp, Clock, Star, BookOpen, Certificate, ChatsCircle,
   Wrench, Sparkle, Medal, Briefcase, Globe,
+  Train, Bank, Newspaper, Exam, Books, FileText, SquaresFour, Fire, Student, ChalkboardTeacher,
+};
+
+/**
+ * Prev/next arrows over a full-bleed card rail (featureGrid 'carousel'), the
+ * same affordance the product-page rail has. Hidden until there is somewhere
+ * to go; swipe and snap stay the primary way to move on touch screens.
+ */
+const RailArrows: React.FC<{ canPrev: boolean; canNext: boolean; onMove: (dir: number) => void }> = ({ canPrev, canNext, onMove }) => {
+  const { t } = useTranslation("coursePlayerB");
+  const cls =
+    "catalogue-btn catalogue-btn-secondary absolute top-1/2 hidden size-10 -translate-y-1/2 justify-center rounded-full border-catalogue-border bg-catalogue-bg catalogue-btn-icon shadow-lg md:inline-flex";
+  return (
+    <>
+      {canPrev && (
+        <button type="button" onClick={() => onMove(-1)} aria-label={t("common.previousSlide")} className={`${cls} left-3`}>
+          <CaretLeft className="size-5" weight="bold" aria-hidden="true" />
+        </button>
+      )}
+      {canNext && (
+        <button type="button" onClick={() => onMove(1)} aria-label={t("common.nextSlide")} className={`${cls} right-3`}>
+          <CaretRight className="size-5" weight="bold" aria-hidden="true" />
+        </button>
+      )}
+    </>
+  );
+};
+
+/**
+ * featureGrid style 'categoryTiles': a row of icon tiles that filter the page.
+ * Each tile writes `?<filterParam>=<value>` (a tile with no value clears it =
+ * "All"), and the sections below opt in with visibleWhen rules on that param.
+ * The tile matching the current URL is filled, so the visitor always sees
+ * which category they are in. No navigation, no scroll jump.
+ */
+const CategoryTilesRenderer: React.FC<any> = ({ headerText, subheading, features = [], filterParam, backgroundColor }) => {
+  const txt = sectionText(backgroundColor);
+  const param = String(filterParam || 'cat').trim() || 'cat';
+  const { get, update } = useCatalogueSearchParams();
+  const current = (get(param) || '').toLowerCase();
+  return (
+    <section style={sectionBg(backgroundColor)} className="catalogue-section bg-catalogue-bg">
+      <div className="catalogue-shell">
+        {headerText && <h2 className={`mb-2 text-center catalogue-h2 ${txt.heading}`}>{headerText}</h2>}
+        {subheading && <p className={`catalogue-lead catalogue-measure mb-8 text-center ${txt.muted}`}>{subheading}</p>}
+        <div
+          role="tablist"
+          aria-label={headerText || param}
+          className="catalogue-no-scrollbar -mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-2 sm:mx-0 sm:flex-wrap sm:justify-center sm:gap-4 sm:overflow-visible sm:px-0"
+        >
+          {features.map((f: any, i: number) => {
+            const value = String(f.value || '').trim();
+            const active = value.toLowerCase() === current;
+            const IconComp = f.iconName ? FEATURE_ICON_MAP[f.iconName] : undefined;
+            return (
+              <button
+                key={i}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => update({ [param]: value || null })}
+                className={`flex w-28 shrink-0 snap-start flex-col items-center justify-center gap-3 rounded-catalogue-lg border p-4 text-center transition-all duration-200 sm:w-36 sm:p-5 ${
+                  active
+                    ? 'border-transparent bg-primary-500 text-primary-foreground shadow-lg'
+                    : 'border-catalogue-border bg-catalogue-bg-subtle text-catalogue-text-primary hover:-translate-y-0.5 hover:shadow-md'
+                }`}
+              >
+                {IconComp ? (
+                  <IconComp size={40} weight="duotone" aria-hidden="true" className={active ? '' : 'text-catalogue-brand-ink'} />
+                ) : f.icon ? (
+                  <span className="text-3xl" aria-hidden="true">{f.icon}</span>
+                ) : null}
+                <span className="text-sm font-semibold leading-tight">{f.title}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
 };
 
 const FaqSectionRenderer: React.FC<any> = ({ headerText, subheading, faqs = [], backgroundColor }) => {
@@ -905,6 +1044,9 @@ const CtaBannerRenderer: React.FC<any> = ({ heading, subheading, backgroundColor
   // Intentional white: the button sits on the author-colored banner surface,
   // so it must stay white in every theme/mode (not a token surface).
   const ctaButtonClass = 'mt-4 inline-block rounded-lg bg-white px-8 py-3 font-semibold shadow-md transition hover:opacity-90'; // design-lint-ignore: intentional white over author-colored surface
+  // Optional author colours for the button; defaults keep the white button
+  // with banner-coloured text.
+  const ctaButtonStyle = { color: button?.textColor || backgroundColor, backgroundColor: button?.backgroundColor || undefined }; // design-lint-ignore: page-builder dynamic button color
   return (
     <section style={{ backgroundColor }} className="catalogue-section">
       <div className={`catalogue-shell flex ${isSplit ? 'items-center justify-between gap-8 flex-wrap' : 'flex-col items-center text-center'}`}>
@@ -918,12 +1060,12 @@ const CtaBannerRenderer: React.FC<any> = ({ heading, subheading, backgroundColor
               type="button"
               onClick={() => dispatchOpenAudienceForm(button.audienceId, button.formTitle || button.text)}
               className={ctaButtonClass}
-              style={{ color: backgroundColor }}
+              style={ctaButtonStyle}
             >
               {button.text}
             </button>
           ) : (
-            <CatalogueLink to={button.target || '#'} className={ctaButtonClass} style={{ color: backgroundColor }}>
+            <CatalogueLink to={button.target || '#'} className={ctaButtonClass} style={ctaButtonStyle}>
               {button.text}
             </CatalogueLink>
           ))}
@@ -1351,6 +1493,7 @@ const TabsAccordionRenderer: React.FC<any> = ({ mode = 'tabs', items = [], defau
 /* ─── Logo Cloud ───────────────────────────────────────────────────────── */
 
 const MARQUEE_SPEED_MAP: Record<string, string> = { slow: '45s', medium: '30s', fast: '18s' };
+const MARQUEE_TEXT_SIZE: Record<string, string> = { xs: 'text-xs', sm: 'text-sm', base: 'text-base', lg: 'text-lg', xl: 'text-xl' };
 
 /* ─── Marquee (announcement ticker) ────────────────────────────────────── */
 
@@ -1375,35 +1518,84 @@ const MarqueeRenderer: React.FC<any> = ({
 }) => {
   const { t } = useTranslation("coursePlayerA");
   const list = (Array.isArray(items) ? items : []).filter((it: any) => it && it.text);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const unitRef = useRef<HTMLDivElement>(null);
+  // Copies of the items in each half of the track. The loop is seamless only
+  // when one half is at least as wide as the band: two short items doubled
+  // ran out halfway across a desktop screen, and the ticker looked stuck.
+  const [copies, setCopies] = useState(1);
+  useLayoutEffect(() => {
+    const viewport = viewportRef.current;
+    const unit = unitRef.current;
+    if (!viewport || !unit || typeof ResizeObserver === "undefined") return;
+    const measure = () => {
+      const width = unit.offsetWidth;
+      if (width > 0) setCopies(Math.max(1, Math.ceil(viewport.clientWidth / width)));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(viewport);
+    observer.observe(unit);
+    return () => observer.disconnect();
+  }, [list.length]);
   if (list.length === 0) return null;
-  const row = [...list, ...list];
-  return (
-    <section
-      className="catalogue-marquee-viewport overflow-hidden py-3"
-      style={{ backgroundColor }}
-      aria-label={t("jsonRenderer.announcements")}
-    >
+  // The duration covers one half, so it grows with the copies to keep the speed.
+  const seconds = parseFloat(MARQUEE_SPEED_MAP[speed] || "30s") * copies;
+  // Each item carries its own trailing space (no flex gap), so a half is
+  // exactly N items wide and translate(-50%) lands on the next copy.
+  const half = (part: number) =>
+    Array.from({ length: copies }, (_, copy) => (
       <div
-        className={`catalogue-marquee flex items-center gap-10 ${pauseOnHover === false ? 'catalogue-marquee-nopause' : ''}`}
-        style={{
-          animationDuration: MARQUEE_SPEED_MAP[speed] || '30s',
-          // The keyframes scroll left; 'right' simply plays them backwards.
-          animationDirection: direction === 'right' ? 'reverse' : undefined,
-          color: textColor,
-        }}
+        key={`${part}-${copy}`}
+        ref={part === 0 && copy === 0 ? unitRef : undefined}
+        aria-hidden={part > 0 || copy > 0 || undefined}
+        className="flex shrink-0 items-center"
       >
-        {row.map((item: any, i: number) => (
-          <span
-            key={i}
-            aria-hidden={i >= list.length}
-            className={`flex shrink-0 items-center gap-2 whitespace-nowrap font-medium ${fontSize === 'base' ? 'text-base' : 'text-sm'}`}
-          >
-            {(item.icon || defaultIcon) && (
-              <span style={{ color: iconColor }} aria-hidden="true">{item.icon || defaultIcon}</span>
-            )}
-            {item.text}
-          </span>
-        ))}
+        {list.map((item: any, i: number) => {
+          const itemClass = `flex shrink-0 items-center gap-2 whitespace-nowrap pe-10 font-medium ${MARQUEE_TEXT_SIZE[fontSize] || 'text-sm'}`;
+          const content = (
+            <>
+              {(item.icon || defaultIcon) && (
+                <span style={{ color: iconColor }} aria-hidden="true">{item.icon || defaultIcon}</span>
+              )}
+              {item.text}
+            </>
+          );
+          // A linked item opens a page, scrolls to a #section or opens an
+          // external URL (CatalogueLink). Only the first copy is tabbable — the
+          // loop copies are aria-hidden duplicates.
+          return item.link ? (
+            <CatalogueLink
+              key={i}
+              to={item.link}
+              tabIndex={part > 0 || copy > 0 ? -1 : undefined}
+              className={`${itemClass} underline-offset-4 hover:underline focus-visible:underline`}
+            >
+              {content}
+            </CatalogueLink>
+          ) : (
+            <span key={i} className={itemClass}>{content}</span>
+          );
+        })}
+      </div>
+    ));
+  return (
+    // The band keeps its colour edge to edge; only the moving text fades at
+    // the sides (the mask on the band itself faded the colour into a smudge).
+    <section style={{ backgroundColor }} aria-label={t("jsonRenderer.announcements")}>
+      <div ref={viewportRef} className="catalogue-marquee-viewport overflow-hidden py-3">
+        <div
+          className={`catalogue-marquee flex items-center ${pauseOnHover === false ? 'catalogue-marquee-nopause' : ''}`}
+          style={{
+            animationDuration: `${seconds}s`,
+            // The keyframes scroll left; 'right' simply plays them backwards.
+            animationDirection: direction === 'right' ? 'reverse' : undefined,
+            color: textColor,
+          }}
+        >
+          {half(0)}
+          {half(1)}
+        </div>
       </div>
     </section>
   );
@@ -1782,10 +1974,35 @@ const ResourceCard: React.FC<{ feature: any; index: number; gateAudienceId: stri
 
 const FeatureGridRenderer: React.FC<any> = ({
   headerText, subheading, columns = 3, features = [], style = 'cards', iconSize = 'large', backgroundColor, align,
-  layout, gateAudienceId = '', gateTitle, gateAll = false,
+  layout, gateAudienceId = '', gateTitle, gateAll = false, autoScroll = false, autoScrollIntervalMs, autoScrollLoop = false, filterParam,
 }) => {
+  // 'carousel' rails (photo / resource) can advance on their own, one card at a time.
+  const railRef = React.useRef<HTMLDivElement>(null);
+  const { looping } = useAutoScrollRail(railRef, {
+    enabled: layout === 'carousel' && !!autoScroll,
+    intervalMs: autoScrollIntervalMs,
+    itemCount: features.length,
+    loop: !!autoScrollLoop,
+  });
+  // Endless ring: a second lap of the same slides (see useAutoScrollRail).
+  const loopCopy = (slides: React.ReactNode[]) =>
+    looping
+      ? slides.map((s, i) => (React.isValidElement(s) ? React.cloneElement(s, { key: `loop-${i}`, ...RAIL_CLONE_PROPS }) : null))
+      : null;
+  const arrows = useRailArrows(railRef, { enabled: layout === 'carousel', itemCount: features.length });
   const sizeMap: Record<string, string> = { small: 'text-xl', medium: 'text-2xl', large: 'text-3xl' };
   const txt = sectionText(backgroundColor);
+  if (style === 'categoryTiles') {
+    return (
+      <CategoryTilesRenderer
+        headerText={headerText}
+        subheading={subheading}
+        features={features}
+        filterParam={filterParam}
+        backgroundColor={backgroundColor}
+      />
+    );
+  }
   const cardClass =
     style === 'cards' ? 'catalogue-card-elevated group p-6 sm:p-7' :
     style === 'bordered' ? 'rounded-xl border-2 border-catalogue-border p-6' :
@@ -1917,12 +2134,41 @@ const FeatureGridRenderer: React.FC<any> = ({
         <div className="catalogue-shell">
           {headerText && <h2 className={`mb-2 catalogue-h2 ${headLeft ? '' : 'text-center'} ${txt.heading}`}>{headerText}</h2>}
           {subheading && <p className={`catalogue-lead mb-8 ${headLeft ? '' : 'catalogue-measure text-center'} ${txt.muted}`}>{subheading}</p>}
-          <div className={`grid gap-6 grid-cols-1 sm:grid-cols-2 ${columns >= 3 ? 'lg:grid-cols-3' : ''} ${columns >= 4 ? 'xl:grid-cols-4' : ''}`}>
-            {features.map((f: any, i: number) => (
-              <ResourceCard key={i} feature={f} index={i} gateAudienceId={gateId} gateTitle={gateTitle} gateAll={!!gateAll} />
-            ))}
-          </div>
+          {layout !== 'carousel' && (
+            <div className={`grid gap-6 grid-cols-1 sm:grid-cols-2 ${columns >= 3 ? 'lg:grid-cols-3' : ''} ${columns >= 4 ? 'xl:grid-cols-4' : ''}`}>
+              {features.map((f: any, i: number) => (
+                <ResourceCard key={i} feature={f} index={i} gateAudienceId={gateId} gateTitle={gateTitle} gateAll={!!gateAll} />
+              ))}
+            </div>
+          )}
         </div>
+        {layout === 'carousel' && (
+          // Same full-bleed rail as the photo style: `columns` cards per view,
+          // the next one peeking in, swipe / snap native.
+          <div className="relative">
+            <div ref={railRef} className="catalogue-carousel-bleed catalogue-no-scrollbar flex snap-x snap-mandatory gap-5 overflow-x-auto py-2">
+              {(() => {
+                const slides = features.map((f: any, i: number) => (
+                  <div
+                    key={i}
+                    className="flex min-w-reg-250 shrink-0 snap-start [&>*]:w-full"
+                    // Width per card follows the authored column count — a computed value, not a token.
+                    style={{ flexBasis: `calc((100% - ${(Math.min(Math.max(Number(columns) || 4, 1), 4) - 1) * 1.25}rem) / ${Math.min(Math.max(Number(columns) || 4, 1), 4)})` }}
+                  >
+                    <ResourceCard feature={f} index={i} gateAudienceId={gateId} gateTitle={gateTitle} gateAll={!!gateAll} />
+                  </div>
+                ));
+                return (
+                  <>
+                    {slides}
+                    {loopCopy(slides)}
+                  </>
+                );
+              })()}
+            </div>
+            <RailArrows canPrev={arrows.canPrev} canNext={arrows.canNext} onMove={arrows.scrollByPage} />
+          </div>
+        )}
       </section>
     );
   }
@@ -2017,8 +2263,12 @@ const FeatureGridRenderer: React.FC<any> = ({
           // Full-bleed rail: the shell would clip the edge-to-edge scroll, and
           // scroll-padding (baked into catalogue-carousel-bleed) is what keeps
           // snap alignment honest against the gutter.
-          <div className="catalogue-carousel-bleed catalogue-no-scrollbar flex snap-x snap-mandatory gap-5 overflow-x-auto pb-2">
-            {cards}
+          <div className="relative">
+            <div ref={railRef} className="catalogue-carousel-bleed catalogue-no-scrollbar flex snap-x snap-mandatory gap-5 overflow-x-auto pb-2">
+              {cards}
+              {loopCopy(cards)}
+            </div>
+            <RailArrows canPrev={arrows.canPrev} canNext={arrows.canNext} onMove={arrows.scrollByPage} />
           </div>
         ) : (
           <div className="catalogue-shell">
@@ -2526,7 +2776,7 @@ const ComponentStyleWrapper: React.FC<{
         ref={ref}
         id={component.anchorId || undefined}
         data-cid={component.id}
-        className={`${component.style?.customClass || ''} ${hoverClass} ${staggerClass}`}
+        className={`${component.style?.customClass || ''} ${hoverClass} ${staggerClass}${component.anchorId ? ' catalogue-block-anchor' : ''}`}
         style={{ ...canvasStyle, ...animationStyle, ...decorClip, ...authoredPaddingVars(component.style) }}
       >
         {responsiveCSS && <style dangerouslySetInnerHTML={{ __html: responsiveCSS }} />}
@@ -2555,7 +2805,7 @@ const ComponentStyleWrapper: React.FC<{
       ref={ref}
       id={component.anchorId || undefined}
       data-cid={component.id}
-      className={`${component.style?.customClass || ''} ${hoverClass} ${staggerClass}`}
+      className={`${component.style?.customClass || ''} ${hoverClass} ${staggerClass}${component.anchorId ? ' catalogue-block-anchor' : ''}`}
       style={{
         ...componentStyle,
         ...animationStyle,

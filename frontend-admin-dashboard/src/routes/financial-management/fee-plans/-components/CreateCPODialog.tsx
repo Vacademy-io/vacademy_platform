@@ -13,6 +13,13 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import {
+    DEFAULT_FLEXIBLE_DEFAULTS,
+    flexibleDefaultsError,
+    flexibleHasNoSplitFee,
+    type FlexibleDefaultsForm,
+} from '../-utils/flexible-defaults';
+import { FlexibleScheduleSettings } from './FlexibleScheduleSettings';
 
 // ─── Types for the form ─────────────────────────────────────────────────────────
 
@@ -46,7 +53,17 @@ export interface CPOForm {
     feeTypes: FeeTypeForm[];
     /** When true, learners enrolling via this CPO need admin approval before course access. */
     requireApproval?: boolean;
+    /**
+     * FIXED (default): installment dates are part of the plan. FLEXIBLE: the plan holds
+     * fees and amounts only; the admin picks the number of installments and the gap for
+     * each learner at enrollment (docs/CPO_FLEXIBLE_INSTALLMENTS.md).
+     */
+    scheduleMode?: 'FIXED' | 'FLEXIBLE';
+    /** Defaults for a FLEXIBLE plan; prefill the Enroll wizard. */
+    flexibleDefaults?: FlexibleDefaultsForm;
 }
+
+
 
 export interface BatchOption {
     id: string;
@@ -144,7 +161,28 @@ function buildFeeTypePresets(t: TFunction) {
 
 // ─── Payload builder ────────────────────────────────────────────────────────────
 
+/** schedule_mode + flexible_defaults for the create payload; empty for a fixed plan. */
+function flexiblePayload(form: CPOForm): Pick<CreateCPOPayload, 'schedule_mode' | 'flexible_defaults'> {
+    if (form.scheduleMode !== 'FLEXIBLE') return {};
+    const d = form.flexibleDefaults ?? DEFAULT_FLEXIBLE_DEFAULTS;
+    const toInt = (v: number | string) => {
+        const n = Math.floor(Number(v));
+        return Number.isFinite(n) && n > 0 ? n : null;
+    };
+    return {
+        schedule_mode: 'FLEXIBLE',
+        flexible_defaults: {
+            count: toInt(d.count),
+            interval: { unit: d.unit, value: toInt(d.value) ?? 1 },
+            max_count: toInt(d.maxCount),
+        },
+    };
+}
+
 export function buildCreateCPOPayload(form: CPOForm, allBatches: any[] = []): CreateCPOPayload {
+    // A flexible plan carries no installment dates: each fee is either split over the
+    // learner's schedule (has_installment) or paid upfront on the first due date.
+    const flexible = form.scheduleMode === 'FLEXIBLE';
     const expandedIds = new Set<string>(form.packageSessionIds);
     for (const selectedId of form.packageSessionIds) {
         for (const batch of allBatches) {
@@ -163,6 +201,7 @@ export function buildCreateCPOPayload(form: CPOForm, allBatches: any[] = []): Cr
         created_by: null,
         approved_by: null,
         require_approval: !!form.requireApproval,
+        ...flexiblePayload(form),
         fee_types: form.feeTypes.map((ft) => ({
             id: null,
             name: ft.name,
@@ -180,7 +219,7 @@ export function buildCreateCPOPayload(form: CPOForm, allBatches: any[] = []): Cr
                     ? parseFloat(ft.penaltyPercentage as string) || 0
                     : null,
                 status: 'ACTIVE',
-                installments: ft.hasInstallment
+                installments: ft.hasInstallment && !flexible
                     ? ft.installments.map((inst, idx) => ({
                           id: null,
                           installment_number: idx + 1,
@@ -285,14 +324,18 @@ function FeeTypeEditor({
     onChange,
     onRemove,
     canRemove,
+    flexible = false,
 }: {
     feeType: FeeTypeForm;
     index: number;
     onChange: (updated: FeeTypeForm) => void;
     onRemove: () => void;
     canRemove: boolean;
+    /** Flexible plan: no installment table; the toggle chooses split vs upfront. */
+    flexible?: boolean;
 }) {
     const { t } = useTranslation('financialManagementCreateCpoDialog');
+    const { t: tFlex } = useTranslation('financialManagementFlexibleSchedule');
     const [isExpanded, setIsExpanded] = useState(true);
     const installmentPresets = React.useMemo(() => buildInstallmentPresets(t), [t]);
     const feeTypePresets = React.useMemo(() => buildFeeTypePresets(t), [t]);
@@ -403,9 +446,11 @@ function FeeTypeEditor({
                         {feeType.amount && (
                             <div className="text-xs text-gray-500">
                                 ₹{parseFloat(feeType.amount as string).toLocaleString('en-IN')} ·{' '}
-                                {t('feeType.installmentCount', {
-                                    count: feeType.installments.length,
-                                })}
+                                {flexible
+                                    ? tFlex(feeType.hasInstallment ? 'fee.split' : 'fee.upfront')
+                                    : t('feeType.installmentCount', {
+                                          count: feeType.installments.length,
+                                      })}
                             </div>
                         )}
                     </div>
@@ -505,7 +550,7 @@ function FeeTypeEditor({
                                 onChange={(v) => update('hasInstallment', v)}
                             />
                             <span className="text-sm font-medium text-gray-700">
-                                {t('feeType.hasInstallments')}
+                                {flexible ? tFlex('fee.splitToggle') : t('feeType.hasInstallments')}
                             </span>
                         </div>
                         <div className="flex items-center gap-2">
@@ -541,7 +586,7 @@ function FeeTypeEditor({
                     </div>
 
                     {/* Installment Configuration */}
-                    {feeType.hasInstallment && (
+                    {feeType.hasInstallment && !flexible && (
                         <div className="flex flex-col gap-3">
                             {/* Frequency Presets */}
                             <div>
@@ -856,6 +901,7 @@ export default function CreateCPODialog({
     isSaving?: boolean;
 }) {
     const { t } = useTranslation('financialManagementCreateCpoDialog');
+    const { t: tFlex } = useTranslation('financialManagementFlexibleSchedule');
     const [form, setForm] = useState<CPOForm>({
         name: '',
         status: 'ACTIVE',
@@ -914,7 +960,9 @@ export default function CreateCPODialog({
         form.packageSessionIds.length > 0 &&
         form.name.trim() !== '' &&
         form.feeTypes.length > 0 &&
-        form.feeTypes.every((ft) => ft.name.trim() !== '' && parseFloat(ft.amount as string) > 0);
+        form.feeTypes.every((ft) => ft.name.trim() !== '' && parseFloat(ft.amount as string) > 0) &&
+        !flexibleDefaultsError(form.scheduleMode, form.flexibleDefaults) &&
+        !flexibleHasNoSplitFee(form.scheduleMode, form.feeTypes);
 
     const totalPackageAmount = form.feeTypes.reduce(
         (sum, ft) => sum + (parseFloat(ft.amount as string) || 0),
@@ -991,7 +1039,9 @@ export default function CreateCPODialog({
                                 {t('summary.paymentDates')}
                             </div>
                             <div className="text-lg font-extrabold text-primary-500">
-                                {uniqueInstallmentCount}
+                                {form.scheduleMode === 'FLEXIBLE'
+                                    ? tFlex('perLearner')
+                                    : uniqueInstallmentCount}
                             </div>
                         </div>
                     </div>
@@ -1060,6 +1110,12 @@ export default function CreateCPODialog({
                         />
                     </div>
 
+                    {/* Fixed dates vs chosen for each learner at enrollment */}
+                    <FlexibleScheduleSettings
+                        form={form}
+                        onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))}
+                    />
+
                     {/* Fee Types Section */}
                     <div>
                         <div className="mb-3 flex items-center justify-between">
@@ -1097,6 +1153,7 @@ export default function CreateCPODialog({
                                     onChange={(updated) => updateFeeType(ft.id, updated)}
                                     onRemove={() => removeFeeType(ft.id)}
                                     canRemove={form.feeTypes.length > 1}
+                                    flexible={form.scheduleMode === 'FLEXIBLE'}
                                 />
                             ))}
                         </div>

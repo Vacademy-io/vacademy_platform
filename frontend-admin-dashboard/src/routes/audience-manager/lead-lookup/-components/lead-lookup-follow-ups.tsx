@@ -8,6 +8,7 @@
  */
 import { CalendarCheck, Clock, LockSimple } from '@phosphor-icons/react';
 import { formatDateTime } from '@/lib/formatters';
+import { useFollowUpFeatures } from '@/components/shared/leads/follow-up-fields';
 import { cn, parseHtmlToString } from '@/lib/utils';
 import type { LeadLookupFollowUp, LeadLookupResult } from '../-services/lead-lookup';
 
@@ -61,10 +62,16 @@ export function LeadLookupFollowUps({ result }: { result: LeadLookupResult }) {
 }
 
 function FollowUpItem({ followUp }: { followUp: LeadLookupFollowUp }) {
+    const { showHistory } = useFollowUpFeatures();
     const status = FOLLOW_UP_STATUS[followUp.status ?? ''] ?? FOLLOW_UP_STATUS.PENDING!;
     const comments = followUp.comments ? toPlainText(followUp.comments) : '';
     const details: [string, string | undefined][] = [
+        [
+            'Created',
+            showHistory && followUp.created_at ? formatDateTime(followUp.created_at) : undefined,
+        ],
         ['Counsellor', followUp.counsellor_name],
+        ['Interest level', followUp.interest_level],
         ['Action label', followUp.action_label],
         ['Mode', followUp.mode],
         ['Student response', followUp.student_response],

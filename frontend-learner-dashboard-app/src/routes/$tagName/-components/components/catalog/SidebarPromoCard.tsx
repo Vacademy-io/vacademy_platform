@@ -2,6 +2,7 @@ import React from "react";
 import { CatalogueLink } from "../../CatalogueLink";
 import { cn } from "@/lib/utils";
 import { splitScriptRuns, type ResolvedSidebarPromo } from "./catalog-sidebar-config";
+import { AppStoreBadges } from "../promo/AppStoreBadges";
 
 /**
  * The dark app promo card under the editorial filter card
@@ -108,7 +109,9 @@ export const SidebarPromoCard: React.FC<{ promo: ResolvedSidebarPromo; className
           )}
         </div>
       )}
-      {promo.buttonTarget && (
+      {promo.appLinks ? (
+        <AppStoreBadges links={promo.appLinks} stacked />
+      ) : promo.buttonTarget && (
         <CatalogueLink
           to={promo.buttonTarget}
           target={promo.openInNewTab ? "_blank" : undefined}

@@ -2,10 +2,12 @@
     "headers": {
         "lead": "Lead",
         "contact": "Contact",
+        "createdAt": "Created on",
         "wasDue": "Was due",
         "completedAt": "Completed at",
         "completedBy": "Completed by",
         "outcome": "Outcome",
+        "interestLevel": "Interest level",
         "studentResponse": "Student response",
         "followUpMode": "Mode",
         "nextAction": "Next action"

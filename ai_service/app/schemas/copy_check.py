@@ -131,6 +131,11 @@ class CopyCheckGradeRequest(BaseModel):
     # location pass. Sent by assignment AI evaluation, where the single question's
     # answer IS the whole copy. Absent/False keeps the usual behaviour.
     skip_answer_location: bool = False
+    # Checked-copy template. INSIDE = remarks written on the copy in pen;
+    # OUTSIDE = marks on the copy, remarks typed in a "Teacher comments" panel
+    # beside it. Absent (or any other value) keeps the usual behaviour - never a
+    # reason to refuse a copy.
+    comment_placement: Optional[str] = None
 
     @model_validator(mode="after")
     def _copy_needs_pdf(self) -> "CopyCheckGradeRequest":

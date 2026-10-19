@@ -92,6 +92,90 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("last10") String last10);
 
         /**
+         * Does this lead (audience_response) belong to a campaign of this institute? The
+         * telephony click-to-call loads a lead by the id the browser sends; without this a
+         * counsellor of one institute could dial (and file a call under) another
+         * institute's lead by its UUID.
+         */
+        @Query(value = """
+                SELECT COUNT(*) > 0
+                FROM audience_response ar
+                JOIN audience a ON a.id = ar.audience_id
+                WHERE ar.id = :responseId
+                  AND a.institute_id = :instituteId
+                """, nativeQuery = true)
+        boolean isLeadInInstitute(@Param("responseId") String responseId,
+                        @Param("instituteId") String instituteId);
+
+        /**
+         * Does this campaign-less lead belong to this institute through its application?
+         * Admission / application leads are created with audience_id NULL (ApplicantService,
+         * AdmissionService), so {@link #isLeadInInstitute} cannot place them; their institute
+         * is the one owning the applicant's current application stage
+         * (audience_response.applicant_id → applicant.application_stage_id →
+         * application_stage.institute_id, the same rule ApplicantRepository filters by).
+         * applicant / application_stage ids are UUIDs and the referencing columns VARCHAR: a
+         * value that is not a UUID joins nothing instead of failing the cast, and a UUID one
+         * uses the primary keys.
+         */
+        @Query(value = """
+                SELECT COUNT(*) > 0
+                FROM audience_response ar
+                JOIN applicant ap ON ap.id = CASE
+                        WHEN length(ar.applicant_id) = 36
+                         AND ar.applicant_id ~* '^[0-9a-f]+-[0-9a-f]+-[0-9a-f]+-[0-9a-f]+-[0-9a-f]+$'
+                        THEN CAST(ar.applicant_id AS uuid) END
+                JOIN application_stage s ON s.id = CASE
+                        WHEN length(ap.application_stage_id) = 36
+                         AND ap.application_stage_id ~* '^[0-9a-f]+-[0-9a-f]+-[0-9a-f]+-[0-9a-f]+-[0-9a-f]+$'
+                        THEN CAST(ap.application_stage_id AS uuid) END
+                WHERE ar.id = :responseId
+                  AND ar.audience_id IS NULL
+                  AND s.institute_id = :instituteId
+                """, nativeQuery = true)
+        boolean isApplicantLeadInInstitute(@Param("responseId") String responseId,
+                        @Param("instituteId") String instituteId);
+
+        /**
+         * Up to two live leads of this institute whose {@code parent_mobile} matches on the
+         * last 10 digits — {@code [audience_response.id, user_id]}. Two rows means the
+         * number is ambiguous: the public human-call API links a call to a lead only when
+         * exactly one matches, so it never files a call on the wrong person's timeline.
+         * Duplicates and soft-deleted (INACTIVE) leads are skipped.
+         */
+        @Query(value = """
+                SELECT ar.id, ar.user_id
+                FROM audience_response ar
+                JOIN audience a ON a.id = ar.audience_id
+                WHERE a.institute_id = :instituteId
+                  AND ar.parent_mobile IS NOT NULL
+                  AND RIGHT(regexp_replace(ar.parent_mobile, '[^0-9]', '', 'g'), 10) = :last10
+                  AND (ar.is_duplicate IS NULL OR ar.is_duplicate = false)
+                  AND (ar.audience_status IS NULL OR ar.audience_status <> 'INACTIVE')
+                ORDER BY ar.created_at DESC
+                LIMIT 2
+                """, nativeQuery = true)
+        List<Object[]> findUpToTwoLiveLeadsByInstituteAndPhoneLast10(
+                        @Param("instituteId") String instituteId,
+                        @Param("last10") String last10);
+
+        /** Up to two live lead ids of this user in this institute (same filters as above). */
+        @Query(value = """
+                SELECT ar.id
+                FROM audience_response ar
+                JOIN audience a ON a.id = ar.audience_id
+                WHERE a.institute_id = :instituteId
+                  AND ar.user_id = :userId
+                  AND (ar.is_duplicate IS NULL OR ar.is_duplicate = false)
+                  AND (ar.audience_status IS NULL OR ar.audience_status <> 'INACTIVE')
+                ORDER BY ar.created_at DESC
+                LIMIT 2
+                """, nativeQuery = true)
+        List<String> findUpToTwoLiveLeadIdsByInstituteAndUser(
+                        @Param("instituteId") String instituteId,
+                        @Param("userId") String userId);
+
+        /**
          * The lead a WhatsApp chatbot flow should treat as "this person is already a lead":
          * any lead in the institute (any list) whose {@code parent_mobile} matches on the last
          * 10 digits. Opted-out leads count — someone who opted out and writes again is still a
@@ -289,6 +373,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                               AND (COALESCE(:leadStatusId, '') = '' OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) = ANY(STRING_TO_ARRAY(:leadStatusId, ',')) OR ('__NO_STATUS__' = ANY(STRING_TO_ARRAY(:leadStatusId, ',')) AND ar.lead_status_id IS NULL AND ulp.conversion_status IS NULL))
                               AND (COALESCE(:leadStatusExcludeId, '') = '' OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) IS NULL OR NOT (COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) = ANY(STRING_TO_ARRAY(:leadStatusExcludeId, ','))))
                               AND (COALESCE(:followUpPending, FALSE) = FALSE OR EXISTS (SELECT 1 FROM lead_followup lf WHERE lf.audience_response_id = ar.id AND lf.is_closed = FALSE AND lf.schedule_time IS NOT NULL AND (CAST(:followUpFrom AS timestamp) IS NULL OR lf.schedule_time >= CAST(:followUpFrom AS timestamp)) AND (CAST(:followUpTo AS timestamp) IS NULL OR lf.schedule_time < CAST(:followUpTo AS timestamp))))
+                              AND (COALESCE(:duplicateFilter, '') = '' OR (:duplicateFilter = 'EXCLUDE' AND COALESCE(ar.is_duplicate, FALSE) = FALSE) OR (:duplicateFilter = 'ONLY' AND COALESCE(ar.is_duplicate, FALSE) = TRUE))
                               AND (COALESCE(:sourceType, '') = '' OR ar.source_type = :sourceType)
                               AND (COALESCE(:sourceId, '') = '' OR ar.source_id = :sourceId)
                               AND (CAST(:submittedFrom AS timestamp) IS NULL OR ar.submitted_at >= CAST(:submittedFrom AS timestamp))
@@ -540,6 +625,12 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                                 AND tcl.institute_id = a.institute_id
                                                 AND tcl.provider_type NOT IN ('VACADEMY_AI', 'AAVTAAR', 'MOCK')))))
                             ORDER BY
+                              CASE WHEN COALESCE(:followUpPending, FALSE) = TRUE
+                                    AND EXISTS (SELECT 1 FROM lead_followup lfp
+                                                 WHERE lfp.audience_response_id = ar.id
+                                                   AND lfp.is_closed = FALSE
+                                                   AND lfp.is_priority = TRUE)
+                                   THEN 0 ELSE 1 END ASC,
                               CASE WHEN :sortBy = 'SUBMITTED_AT' AND :sortDirection = 'ASC'
                                    THEN ar.submitted_at END ASC,
                               CASE WHEN :sortBy = 'SUBMITTED_AT' AND (:sortDirection IS NULL OR :sortDirection = 'DESC')
@@ -667,6 +758,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                               AND (COALESCE(:leadStatusId, '') = '' OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) = ANY(STRING_TO_ARRAY(:leadStatusId, ',')) OR ('__NO_STATUS__' = ANY(STRING_TO_ARRAY(:leadStatusId, ',')) AND ar.lead_status_id IS NULL AND ulp.conversion_status IS NULL))
                               AND (COALESCE(:leadStatusExcludeId, '') = '' OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) IS NULL OR NOT (COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) = ANY(STRING_TO_ARRAY(:leadStatusExcludeId, ','))))
                               AND (COALESCE(:followUpPending, FALSE) = FALSE OR EXISTS (SELECT 1 FROM lead_followup lf WHERE lf.audience_response_id = ar.id AND lf.is_closed = FALSE AND lf.schedule_time IS NOT NULL AND (CAST(:followUpFrom AS timestamp) IS NULL OR lf.schedule_time >= CAST(:followUpFrom AS timestamp)) AND (CAST(:followUpTo AS timestamp) IS NULL OR lf.schedule_time < CAST(:followUpTo AS timestamp))))
+                              AND (COALESCE(:duplicateFilter, '') = '' OR (:duplicateFilter = 'EXCLUDE' AND COALESCE(ar.is_duplicate, FALSE) = FALSE) OR (:duplicateFilter = 'ONLY' AND COALESCE(ar.is_duplicate, FALSE) = TRUE))
                               AND (COALESCE(:sourceType, '') = '' OR ar.source_type = :sourceType)
                               AND (COALESCE(:sourceId, '') = '' OR ar.source_id = :sourceId)
                               AND (CAST(:submittedFrom AS timestamp) IS NULL OR ar.submitted_at >= CAST(:submittedFrom AS timestamp))
@@ -925,6 +1017,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("followUpPending") Boolean followUpPending,
                         @Param("followUpFrom") Timestamp followUpFrom,
                         @Param("followUpTo") Timestamp followUpTo,
+                        @Param("duplicateFilter") String duplicateFilter,
                         @Param("sourceType") String sourceType,
                         @Param("sourceId") String sourceId,
                         @Param("submittedFrom") Timestamp submittedFrom,
@@ -1041,6 +1134,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                               AND (COALESCE(:leadStatusId, '') = '' OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) = ANY(STRING_TO_ARRAY(:leadStatusId, ',')) OR ('__NO_STATUS__' = ANY(STRING_TO_ARRAY(:leadStatusId, ',')) AND ar.lead_status_id IS NULL AND ulp.conversion_status IS NULL))
                               AND (COALESCE(:leadStatusExcludeId, '') = '' OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) IS NULL OR NOT (COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) = ANY(STRING_TO_ARRAY(:leadStatusExcludeId, ','))))
                               AND (COALESCE(:followUpPending, FALSE) = FALSE OR EXISTS (SELECT 1 FROM lead_followup lf WHERE lf.audience_response_id = ar.id AND lf.is_closed = FALSE AND lf.schedule_time IS NOT NULL AND (CAST(:followUpFrom AS timestamp) IS NULL OR lf.schedule_time >= CAST(:followUpFrom AS timestamp)) AND (CAST(:followUpTo AS timestamp) IS NULL OR lf.schedule_time < CAST(:followUpTo AS timestamp))))
+                              AND (COALESCE(:duplicateFilter, '') = '' OR (:duplicateFilter = 'EXCLUDE' AND COALESCE(ar.is_duplicate, FALSE) = FALSE) OR (:duplicateFilter = 'ONLY' AND COALESCE(ar.is_duplicate, FALSE) = TRUE))
                               AND (CAST(:submittedFrom AS timestamp) IS NULL OR ar.submitted_at >= CAST(:submittedFrom AS timestamp))
                               AND (CAST(:submittedTo AS timestamp) IS NULL OR ar.submitted_at <= CAST(:submittedTo AS timestamp))
                               -- "How many did I work / call in the last 24h / 7d" -- deliberately
@@ -1292,6 +1386,12 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                                 AND tcl.institute_id = a.institute_id
                                                 AND tcl.provider_type NOT IN ('VACADEMY_AI', 'AAVTAAR', 'MOCK')))))
                             ORDER BY
+                              CASE WHEN COALESCE(:followUpPending, FALSE) = TRUE
+                                    AND EXISTS (SELECT 1 FROM lead_followup lfp
+                                                 WHERE lfp.audience_response_id = ar.id
+                                                   AND lfp.is_closed = FALSE
+                                                   AND lfp.is_priority = TRUE)
+                                   THEN 0 ELSE 1 END ASC,
                               CASE WHEN :sortBy = 'SUBMITTED_AT' AND :sortDirection = 'ASC'
                                    THEN ar.submitted_at END ASC,
                               CASE WHEN :sortBy = 'SUBMITTED_AT' AND (:sortDirection IS NULL OR :sortDirection = 'DESC')
@@ -1419,6 +1519,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                               AND (COALESCE(:leadStatusId, '') = '' OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) = ANY(STRING_TO_ARRAY(:leadStatusId, ',')) OR ('__NO_STATUS__' = ANY(STRING_TO_ARRAY(:leadStatusId, ',')) AND ar.lead_status_id IS NULL AND ulp.conversion_status IS NULL))
                               AND (COALESCE(:leadStatusExcludeId, '') = '' OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) IS NULL OR NOT (COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) = ANY(STRING_TO_ARRAY(:leadStatusExcludeId, ','))))
                               AND (COALESCE(:followUpPending, FALSE) = FALSE OR EXISTS (SELECT 1 FROM lead_followup lf WHERE lf.audience_response_id = ar.id AND lf.is_closed = FALSE AND lf.schedule_time IS NOT NULL AND (CAST(:followUpFrom AS timestamp) IS NULL OR lf.schedule_time >= CAST(:followUpFrom AS timestamp)) AND (CAST(:followUpTo AS timestamp) IS NULL OR lf.schedule_time < CAST(:followUpTo AS timestamp))))
+                              AND (COALESCE(:duplicateFilter, '') = '' OR (:duplicateFilter = 'EXCLUDE' AND COALESCE(ar.is_duplicate, FALSE) = FALSE) OR (:duplicateFilter = 'ONLY' AND COALESCE(ar.is_duplicate, FALSE) = TRUE))
                               AND (CAST(:submittedFrom AS timestamp) IS NULL OR ar.submitted_at >= CAST(:submittedFrom AS timestamp))
                               AND (CAST(:submittedTo AS timestamp) IS NULL OR ar.submitted_at <= CAST(:submittedTo AS timestamp))
                               -- "How many did I work / call in the last 24h / 7d" -- deliberately
@@ -1677,6 +1778,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("followUpPending") Boolean followUpPending,
                         @Param("followUpFrom") Timestamp followUpFrom,
                         @Param("followUpTo") Timestamp followUpTo,
+                        @Param("duplicateFilter") String duplicateFilter,
                         @Param("submittedFrom") Timestamp submittedFrom,
                         @Param("submittedTo") Timestamp submittedTo,
                         @Param("searchQuery") String searchQuery,
@@ -2306,6 +2408,220 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                 String getCounsellorName();
         }
 
+        /**
+         * The lead a repeat enquiry repeats: the active, non-duplicate OTHER lead with this
+         * phone (same match rules as the dedup exists-queries), an owned one first, then the
+         * newest, matching {@link #findLeadUserIdByPhoneLast10}. Blank {@code audienceIdsCsv}
+         * = whole institute. At most one row.
+         */
+        @Query(value = """
+                            SELECT ar.id                       AS "responseId",
+                                   ar.user_id                  AS "userId",
+                                   ulp.assigned_counselor_id   AS "counsellorId",
+                                   COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id),
+                                            ulp.conversion_status) AS "statusKey"
+                            FROM audience_response ar
+                            JOIN audience a ON a.id = ar.audience_id
+                            LEFT JOIN user_lead_profile ulp ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
+                            WHERE a.institute_id = :instituteId
+                            AND (COALESCE(:audienceIdsCsv, '') = '' OR ar.audience_id = ANY(STRING_TO_ARRAY(:audienceIdsCsv, ',')))
+                            AND ar.parent_mobile IS NOT NULL
+                            AND RIGHT(regexp_replace(ar.parent_mobile, '[^0-9]', '', 'g'), 10) = :last10
+                            AND (ar.is_duplicate IS NULL OR ar.is_duplicate = false)
+                            AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                            AND ar.id <> :excludeResponseId
+                            AND ar.audience_status = 'ACTIVE'
+                            ORDER BY (COALESCE(ulp.assigned_counselor_id, '') <> '') DESC, ar.created_at DESC
+                            LIMIT 1
+                        """, nativeQuery = true)
+        List<PrimaryLeadRow> findPrimaryLeadByPhoneLast10(
+                        @Param("instituteId") String instituteId,
+                        @Param("audienceIdsCsv") String audienceIdsCsv,
+                        @Param("last10") String last10,
+                        @Param("excludeResponseId") String excludeResponseId);
+
+        /** Email twin of {@link #findPrimaryLeadByPhoneLast10}. */
+        @Query(value = """
+                            SELECT ar.id                       AS "responseId",
+                                   ar.user_id                  AS "userId",
+                                   ulp.assigned_counselor_id   AS "counsellorId",
+                                   COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id),
+                                            ulp.conversion_status) AS "statusKey"
+                            FROM audience_response ar
+                            JOIN audience a ON a.id = ar.audience_id
+                            LEFT JOIN user_lead_profile ulp ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
+                            WHERE a.institute_id = :instituteId
+                            AND (COALESCE(:audienceIdsCsv, '') = '' OR ar.audience_id = ANY(STRING_TO_ARRAY(:audienceIdsCsv, ',')))
+                            AND LOWER(TRIM(ar.parent_email)) = LOWER(TRIM(:email))
+                            AND (ar.is_duplicate IS NULL OR ar.is_duplicate = false)
+                            AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                            AND ar.id <> :excludeResponseId
+                            AND ar.audience_status = 'ACTIVE'
+                            ORDER BY (COALESCE(ulp.assigned_counselor_id, '') <> '') DESC, ar.created_at DESC
+                            LIMIT 1
+                        """, nativeQuery = true)
+        List<PrimaryLeadRow> findPrimaryLeadByEmail(
+                        @Param("instituteId") String instituteId,
+                        @Param("audienceIdsCsv") String audienceIdsCsv,
+                        @Param("email") String email,
+                        @Param("excludeResponseId") String excludeResponseId);
+
+        /**
+         * The open lead (not converted, not LOST) with this phone, for the manual-add block:
+         * active, non-duplicate, an owned one first, then the newest. Blank
+         * {@code audienceIdsCsv} = whole institute. At most one row.
+         */
+        @Query(value = """
+                            SELECT ulp.assigned_counselor_id   AS "counsellorId",
+                                   ulp.assigned_counselor_name AS "counsellorName",
+                                   COALESCE(ls.label, ulp.conversion_status) AS "statusLabel"
+                            FROM audience_response ar
+                            JOIN audience a ON a.id = ar.audience_id
+                            LEFT JOIN user_lead_profile ulp ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
+                            LEFT JOIN lead_status ls ON ls.id = ar.lead_status_id
+                            WHERE a.institute_id = :instituteId
+                            AND (COALESCE(:audienceIdsCsv, '') = '' OR ar.audience_id = ANY(STRING_TO_ARRAY(:audienceIdsCsv, ',')))
+                            AND ar.parent_mobile IS NOT NULL
+                            AND RIGHT(regexp_replace(ar.parent_mobile, '[^0-9]', '', 'g'), 10) = :last10
+                            AND (ar.is_duplicate IS NULL OR ar.is_duplicate = false)
+                            AND ar.audience_status = 'ACTIVE'
+                            AND COALESCE(UPPER(COALESCE(ls.status_key, ulp.conversion_status)), '') NOT IN ('CONVERTED', 'LOST')
+                            ORDER BY (COALESCE(ulp.assigned_counselor_id, '') <> '') DESC, ar.created_at DESC
+                            LIMIT 1
+                        """, nativeQuery = true)
+        List<OpenLeadRow> findOpenLeadByPhoneLast10(
+                        @Param("instituteId") String instituteId,
+                        @Param("audienceIdsCsv") String audienceIdsCsv,
+                        @Param("last10") String last10);
+
+        /** Email twin of {@link #findOpenLeadByPhoneLast10}. */
+        @Query(value = """
+                            SELECT ulp.assigned_counselor_id   AS "counsellorId",
+                                   ulp.assigned_counselor_name AS "counsellorName",
+                                   COALESCE(ls.label, ulp.conversion_status) AS "statusLabel"
+                            FROM audience_response ar
+                            JOIN audience a ON a.id = ar.audience_id
+                            LEFT JOIN user_lead_profile ulp ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
+                            LEFT JOIN lead_status ls ON ls.id = ar.lead_status_id
+                            WHERE a.institute_id = :instituteId
+                            AND (COALESCE(:audienceIdsCsv, '') = '' OR ar.audience_id = ANY(STRING_TO_ARRAY(:audienceIdsCsv, ',')))
+                            AND LOWER(TRIM(ar.parent_email)) = LOWER(TRIM(:email))
+                            AND (ar.is_duplicate IS NULL OR ar.is_duplicate = false)
+                            AND ar.audience_status = 'ACTIVE'
+                            AND COALESCE(UPPER(COALESCE(ls.status_key, ulp.conversion_status)), '') NOT IN ('CONVERTED', 'LOST')
+                            ORDER BY (COALESCE(ulp.assigned_counselor_id, '') <> '') DESC, ar.created_at DESC
+                            LIMIT 1
+                        """, nativeQuery = true)
+        List<OpenLeadRow> findOpenLeadByEmail(
+                        @Param("instituteId") String instituteId,
+                        @Param("audienceIdsCsv") String audienceIdsCsv,
+                        @Param("email") String email);
+
+        /** Projection for {@link #findOpenLeadByPhoneLast10}; aliases are quoted camelCase. */
+        interface OpenLeadRow {
+                String getCounsellorId();
+
+                String getCounsellorName();
+
+                /** Lead status label, else the profile conversion status. */
+                String getStatusLabel();
+        }
+
+        /** Projection for {@link #findPrimaryLeadByPhoneLast10}; aliases are quoted camelCase. */
+        /**
+         * Every active enquiry of the person behind this lead (same user in the same
+         * institute) with the phone and email it was submitted with, oldest first. A
+         * repeat matched by phone or email joins the same user, so a different phone or
+         * email it brought is listed here.
+         */
+        @Query(value = """
+                            SELECT ar.id              AS "responseId",
+                                   ar.parent_mobile   AS "phone",
+                                   ar.parent_email    AS "email",
+                                   ar.source_type     AS "sourceType",
+                                   a.campaign_name    AS "campaignName",
+                                   ar.created_at      AS "createdAt",
+                                   ma.institute_id    AS "instituteId"
+                            FROM audience_response me
+                            JOIN audience ma ON ma.id = me.audience_id
+                            JOIN audience_response ar ON ar.user_id = me.user_id
+                            JOIN audience a ON a.id = ar.audience_id AND a.institute_id = ma.institute_id
+                            WHERE me.id = :responseId
+                            AND ar.audience_status = 'ACTIVE'
+                            ORDER BY ar.created_at
+                            LIMIT 50
+                        """, nativeQuery = true)
+        List<EnquiryContactRow> findEnquiryContactsOfLeadPerson(@Param("responseId") String responseId);
+
+        /**
+         * The phone and email one lead was submitted with, read as plain columns so the
+         * intake transaction never loads (and could later re-save) that lead as an entity.
+         */
+        @Query(value = """
+                            SELECT ar.parent_mobile AS "phone",
+                                   ar.parent_email  AS "email"
+                            FROM audience_response ar
+                            WHERE ar.id = :responseId
+                        """, nativeQuery = true)
+        List<ResponseContactRow> findContactOfResponse(@Param("responseId") String responseId);
+
+        /**
+         * How many live duplicate enquiries point at each of these leads, so a lead list that
+         * hides duplicates can still badge the lead they repeat. Leads with none are absent.
+         */
+        @Query(value = """
+                            SELECT ar.primary_response_id AS "primaryResponseId",
+                                   COUNT(*)               AS "duplicateCount"
+                            FROM audience_response ar
+                            WHERE ar.primary_response_id IN (:responseIds)
+                            AND ar.is_duplicate = TRUE
+                            AND ar.audience_status = 'ACTIVE'
+                            GROUP BY ar.primary_response_id
+                        """, nativeQuery = true)
+        List<DuplicateCountRow> countActiveDuplicatesOf(@Param("responseIds") List<String> responseIds);
+
+        /** Projection for {@link #countActiveDuplicatesOf}; aliases are quoted camelCase. */
+        interface DuplicateCountRow {
+                String getPrimaryResponseId();
+
+                Long getDuplicateCount();
+        }
+
+        /** Projection for {@link #findContactOfResponse}; aliases are quoted camelCase. */
+        interface ResponseContactRow {
+                String getPhone();
+
+                String getEmail();
+        }
+
+        /** Projection for {@link #findEnquiryContactsOfLeadPerson}; aliases are quoted camelCase. */
+        interface EnquiryContactRow {
+                String getResponseId();
+
+                String getPhone();
+
+                String getEmail();
+
+                String getSourceType();
+
+                String getCampaignName();
+
+                java.sql.Timestamp getCreatedAt();
+
+                String getInstituteId();
+        }
+
+        interface PrimaryLeadRow {
+                String getResponseId();
+
+                String getUserId();
+
+                String getCounsellorId();
+
+                /** Lead status key, else the profile conversion status (CONVERTED, LOST, …). */
+                String getStatusKey();
+        }
+
         // ── TAT / Follow-up SLA scan (emit-only scheduler) ────────────────────────
 
         /**
@@ -2865,6 +3181,21 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("byUserId") String byUserId);
 
         /**
+         * Flag one enquiry as a duplicate of the lead it repeats. A column-only UPDATE, so it
+         * never writes back stale values from an entity loaded before other intake steps ran.
+         */
+        @Modifying
+        @Transactional
+        @Query(value = """
+                            UPDATE audience_response
+                               SET is_duplicate = true,
+                                   primary_response_id = :primaryResponseId
+                             WHERE id = :id
+                        """, nativeQuery = true)
+        int markDuplicateOf(@Param("id") String id,
+                        @Param("primaryResponseId") String primaryResponseId);
+
+        /**
          * Lead lookup — "is this phone / email already ours?".
          *
          * Institute-wide on purpose: the whole point is to answer for a lead the
@@ -2972,13 +3303,17 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
         /**
          * Every enquiry by the same person as {@link #lookupByPhoneOrEmail}, same
          * match rules, newest first — Check Lead's follow-up history spans them all,
-         * so a repeat enquiry still shows the calls made on the earlier one.
+         * so a repeat enquiry still shows the calls made on the earlier one. Enquiries
+         * flagged as duplicates are skipped unless {@code includeDuplicates} — set when the
+         * institute's repeat-lead handling flags reattempts, since counsellors log
+         * follow-ups on those rows too.
          */
         @Query(value = """
                             SELECT ar.id FROM audience_response ar
                             JOIN audience a ON a.id = ar.audience_id
                             WHERE a.institute_id = :instituteId
-                              AND (ar.is_duplicate IS NULL OR ar.is_duplicate = false)
+                              AND (COALESCE(:includeDuplicates, FALSE) = TRUE
+                                   OR ar.is_duplicate IS NULL OR ar.is_duplicate = false)
                               AND (
                                    (CAST(:last10 AS text) IS NOT NULL
                                     AND ar.parent_mobile IS NOT NULL
@@ -2997,7 +3332,8 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("instituteId") String instituteId,
                         @Param("last10") String last10,
                         @Param("email") String email,
-                        @Param("name") String name);
+                        @Param("name") String name,
+                        @Param("includeDuplicates") Boolean includeDuplicates);
 
         /**
          * Projection for {@link #lookupByPhoneOrEmail}.

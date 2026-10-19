@@ -56,7 +56,7 @@ public class BbbHealthCheckService {
     @Value("${GH_ACTION_TOKEN:}")
     private String githubToken;
 
-    @Value("${bbb.github.repo:Vacademy-io/vacademy_platform}")
+    @Value("${bbb.github.repo:Vacademy-io/vacademy_edtech_platform}")
     private String githubRepo;
 
     /** admin_core_service base URL for pool queries */
@@ -336,7 +336,18 @@ public class BbbHealthCheckService {
                     "{\"ref\":\"main\",\"inputs\":{\"action\":\"%s\",\"server_slug\":\"%s\",\"server_count\":\"%d\"}}",
                     action, serverSlug, serverCount);
 
-            restTemplate.exchange(url, HttpMethod.POST, new HttpEntity<>(body, headers), String.class);
+            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.POST,
+                    new HttpEntity<>(body, headers), String.class);
+
+            // A renamed repo answers a dispatch POST with 3xx, which RestTemplate does not
+            // treat as an error. Without this check the call is logged as "triggered" while
+            // GitHub never creates a run, so a start or stop fails silently.
+            if (!response.getStatusCode().is2xxSuccessful()) {
+                String msg = "Dispatch not accepted: HTTP " + response.getStatusCode();
+                result.put("error", msg);
+                log.error("[BBB Pool] {} (url={}, action={})", msg, url, action);
+                return result;
+            }
 
             result.put("status", "triggered");
             result.put("message",

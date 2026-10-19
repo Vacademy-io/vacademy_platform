@@ -352,12 +352,304 @@ SETTING_SPECS["llm.model_routes"] = SettingSpec(
         'Models served by a gateway other than OpenRouter, e.g. {"z-ai/glm-5.3-flash": "isoquant"} '
         'or {"z-ai/glm-5.3-flash": {"router": "isoquant", "model": "glm-5.3-flash", "reasoning_effort": "low"}}. '
         "Unlisted models stay on OpenRouter. Institutes using their own OpenRouter key always stay "
-        "on OpenRouter, and a failing gateway falls back to OpenRouter for 2 minutes."
+        "on OpenRouter, and a failing gateway falls back to OpenRouter for 2 minutes. "
+        '"anthropic" sends a Claude model straight to Anthropic with the keys under LLM keys, e.g. '
+        '{"anthropic/claude-sonnet-4.5": "anthropic"}; with no active key it stays on OpenRouter.'
     ),
     type="string",
     default=lambda: os.getenv("LLM_MODEL_ROUTES", "") or "{}",
     max_length=6000,
 )
+
+SETTING_SPECS["security.credit_history_scope"] = SettingSpec(
+    key="security.credit_history_scope",
+    group="rollout",
+    label="Credit history: who sees which rows",
+    description=(
+        "Who can read an institute's credit transaction history and AI usage. 'institute' "
+        "(default) = any member sees every row. 'own_unless_admin' = institute admins and "
+        "platform staff see every row; other members see only the credit rows they caused and "
+        "cannot open the institute-wide AI usage views (they keep their own usage)."
+    ),
+    type="enum",
+    default=lambda: "institute",
+    options=("institute", "own_unless_admin"),
+)
+
+SETTING_SPECS["billing.image_registry_pricing"] = SettingSpec(
+    key="billing.image_registry_pricing",
+    group="images",
+    label="Image billing: registry pricing",
+    description=(
+        "How page-builder, course-assist, course-slide and course-banner images are charged. "
+        "'off' (default) = as before (flat image rate; course assist 5 credits). 'shadow' = charge "
+        "as before and log/record would_be_credits at the registry price. 'on' = charge "
+        "ai_models.image_price_per_unit of the model that ran x the credit ratio. "
+        "AI video billing is not affected by this switch."
+    ),
+    type="enum",
+    default=lambda: "off",
+    options=("off", "shadow", "on"),
+)
+
+# Read by admin_core directly from ai_platform_settings (60 s cache), not by ai_service.
+SETTING_SPECS["billing.java_agent_charge"] = SettingSpec(
+    key="billing.java_agent_charge",
+    group="rollout",
+    label="Charge admin_core AI calls (admin agent, workflow drafter)",
+    description=(
+        "'false' (default) = as before: these calls are logged in AI usage but not charged. "
+        "'true' = each call is priced from ai_models and charged at the normal token rate "
+        "(post-paid, once per usage row), whichever gateway served it. A charge the "
+        "institute's balance cannot cover is dropped (logged), never taken below zero. Calls "
+        "that already carry their own fee or are free by product decision (chatbot turns, the "
+        "voice-agent prompt assistant, the WhatsApp engagement brain) are never charged. "
+        "Takes up to a minute to apply."
+    ),
+    type="enum",
+    default=lambda: "false",
+    options=("false", "true"),
+)
+
+SETTING_SPECS["billing.record_unbilled_usage"] = SettingSpec(
+    key="billing.record_unbilled_usage",
+    group="rollout",
+    label="Log unbilled AI usage (embeddings, web search)",
+    description=(
+        "Off (default) = as before: OpenRouter embedding calls (knowledge-base indexing and "
+        "search) and the video pipeline's web searches are not logged. On = each call writes "
+        "an AI usage row with its tokens and registry price but charges no credits. Those rows "
+        "appear in the institute's AI Settings activity log and its cost total."
+    ),
+    type="bool",
+    default=lambda: False,
+)
+
+# Usage metering (services/metering): write-only ai_usage_event rows.
+SETTING_SPECS["metering.events.enabled"] = SettingSpec(
+    key="metering.events.enabled",
+    group="rollout",
+    label="Record AI usage events (who used which AI feature)",
+    description=(
+        "On (default) = every AI charge, and every recorded-but-free AI call, also writes one "
+        "ai_usage_event row (feature, user, role, surface, model, credits). Charges, balances and "
+        "the credit ledger are exactly the same either way. Off = no usage events are written "
+        "(the kill switch; the new usage history then stops growing). Takes up to 30 s to apply."
+    ),
+    type="bool",
+    default=lambda: True,
+)
+
+SETTING_SPECS["metering.admin_hosts"] = SettingSpec(
+    key="metering.admin_hosts",
+    group="rollout",
+    label="Usage events: admin dashboard hosts (JSON)",
+    description=(
+        'JSON array of browser hosts that count as the admin dashboard when a usage event records '
+        'where a request came from (its Origin/Referer), e.g. ["dash.vacademy.io"]. Labels only; '
+        "nothing is charged or blocked differently."
+    ),
+    type="string",
+    default=lambda: '["dash.vacademy.io"]',
+    max_length=2000,
+)
+
+SETTING_SPECS["metering.history_v2_institutes"] = SettingSpec(
+    key="metering.history_v2_institutes",
+    group="rollout",
+    label="New AI usage history: institutes (JSON)",
+    description=(
+        'JSON array of institute ids that see the new AI credits History/Analytics (per user, per '
+        'feature), or ["*"] for every institute. Empty (default) = everyone keeps the current view. '
+        "Only the screen changes; the data is recorded for every institute either way."
+    ),
+    type="string",
+    default=lambda: "[]",
+    max_length=6000,
+)
+
+# Read by admin_core's nightly AiUsageRoleBackfillJob directly from ai_platform_settings.
+if "metering.role_backfill.enabled" not in SETTING_SPECS:
+    SETTING_SPECS["metering.role_backfill.enabled"] = SettingSpec(
+        key="metering.role_backfill.enabled",
+        group="rollout",
+        label="Usage events: fill in roles and names nightly",
+        description=(
+            "On (default) = a nightly admin_core job looks up the role and name of the users on the "
+            "last 7 days of usage events whose role was not known when they were written. It only "
+            "updates the usage-event table. Off = the job does nothing."
+        ),
+        type="bool",
+        default=lambda: True,
+    )
+
+# Usage limits (services/metering/limits.py): the global kill switch for blocking.
+if "metering.limits.enforce" not in SETTING_SPECS:
+    SETTING_SPECS["metering.limits.enforce"] = SettingSpec(
+        key="metering.limits.enforce",
+        group="rollout",
+        label="AI usage limits: allow blocking",
+        description=(
+            "On (default) = institutes whose limits policy is set to Enforce get HTTP 429 when a hard "
+            "limit is reached. Off = every Enforce policy behaves like Preview (Shadow): limits are "
+            "still counted and would-block decisions are recorded, but no AI request is refused. "
+            "Institutes without a limits policy are never affected either way. Takes up to 30 s to apply."
+        ),
+        type="bool",
+        default=lambda: True,
+    )
+
+# Read by admin_core's nightly AiUsageCounterRebuildJob directly from ai_platform_settings.
+if "metering.limits.rebuild.enabled" not in SETTING_SPECS:
+    SETTING_SPECS["metering.limits.rebuild.enabled"] = SettingSpec(
+        key="metering.limits.rebuild.enabled",
+        group="rollout",
+        label="AI usage limits: rebuild counters nightly",
+        description=(
+            "On (default) = a nightly admin_core job recomputes the current usage-limit counters from "
+            "the usage events and repairs any drift. It does nothing while no institute has a limits "
+            "policy. Off = the job does nothing (counters are still kept live by every charge)."
+        ),
+        type="bool",
+        default=lambda: True,
+    )
+
+# AI subscription plans (services/metering/plans.py). Off = every charge exactly as before.
+if "billing.plans.enabled" not in SETTING_SPECS:
+    SETTING_SPECS["billing.plans.enabled"] = SettingSpec(
+        key="billing.plans.enabled",
+        group="rollout",
+        label="AI subscription plans: apply plans to charges",
+        description=(
+            "Off (default) = as before: every AI charge comes from the institute's credit balance, "
+            "whatever subscription it has. On = institutes with a live AI subscription follow it: a "
+            "subscription set to Shadow still pays exactly as before and only records what the plan "
+            "would have done; one set to Live has included features (within fair use) and plan "
+            "allowance taken off the plan instead of the balance. AI calling and telephony are always "
+            "charged. Institutes without a subscription are never affected. Takes up to 30 s to apply."
+        ),
+        type="bool",
+        default=lambda: False,
+    )
+
+if "billing.inr_per_usd" not in SETTING_SPECS:
+    SETTING_SPECS["billing.inr_per_usd"] = SettingSpec(
+        key="billing.inr_per_usd",
+        group="rollout",
+        label="AI plans: rupees per US dollar (P&L)",
+        description=(
+            "The exchange rate the AI plan P&L and simulator use to turn real vendor cost in US "
+            "dollars into rupees (default 86). Reports only; no charge depends on it."
+        ),
+        type="number",
+        default=lambda: 86,
+        min_value=1,
+        max_value=1000,
+    )
+
+# Read by admin_core's hourly AI plan renewal job directly from ai_platform_settings.
+if "billing.plans.roll.enabled" not in SETTING_SPECS:
+    SETTING_SPECS["billing.plans.roll.enabled"] = SettingSpec(
+        key="billing.plans.roll.enabled",
+        group="rollout",
+        label="AI plans: renew and expire subscriptions hourly",
+        description=(
+            "On (default) = an hourly admin_core job starts the next period of subscriptions that "
+            "auto-renew, applies scheduled plan changes and cancellations at the period end, and "
+            "expires subscriptions past their end date. It does nothing while no institute has a "
+            "subscription. Off = the job does nothing (periods are still opened when a charge needs one)."
+        ),
+        type="bool",
+        default=lambda: True,
+    )
+
+# Paid AI plans (payments design 2026-10-16). Every one defaults to OFF / dark;
+# admin_core reads these directly from ai_platform_settings too.
+if "billing.subscriptions.payments.enabled" not in SETTING_SPECS:
+    SETTING_SPECS["billing.subscriptions.payments.enabled"] = SettingSpec(
+        key="billing.subscriptions.payments.enabled",
+        group="rollout",
+        label="AI plans: take payments for subscriptions",
+        description=(
+            "Off (default) = AI plans are assigned by the platform team only (manual or complimentary), "
+            "as before. On = plans can be sold: a paid checkout or a paid assignment creates a "
+            "subscription that starts when its first payment is received, renews only when paid, and "
+            "pauses its benefits (AI use charged from credits) while a renewal is unpaid. Institutes "
+            "already paying keep their plan benefits even if the plans switch is turned off."
+        ),
+        type="bool",
+        default=lambda: False,
+    )
+
+if "billing.autopay.enabled" not in SETTING_SPECS:
+    SETTING_SPECS["billing.autopay.enabled"] = SettingSpec(
+        key="billing.autopay.enabled",
+        group="rollout",
+        label="AI plans: autopay (UPI Autopay / card mandate)",
+        description=(
+            "Off (default) = every renewal is paid with a payment link. On = checkout offers to set up "
+            "autopay (on by default where the payment method supports it) and renewals up to Rs 15,000 "
+            "are debited automatically after a 24-hour notice; a failed debit falls back to a payment link."
+        ),
+        type="bool",
+        default=lambda: False,
+    )
+
+if "billing.storefront.mode" not in SETTING_SPECS:
+    SETTING_SPECS["billing.storefront.mode"] = SettingSpec(
+        key="billing.storefront.mode",
+        group="rollout",
+        label="AI plans: who sees the plans page",
+        description=(
+            "OFF (default) = no institute sees the AI plans page. ALLOWLIST = only institutes the platform "
+            "team allowed one by one. SEGMENTS = those plus institutes in an allowed segment. ALL = every "
+            "institute admin (an institute switched off one by one never sees it)."
+        ),
+        type="enum",
+        options=("OFF", "ALLOWLIST", "SEGMENTS", "ALL"),
+        default=lambda: "OFF",
+    )
+
+if "billing.invoice.series_v2.enabled" not in SETTING_SPECS:
+    SETTING_SPECS["billing.invoice.series_v2.enabled"] = SettingSpec(
+        key="billing.invoice.series_v2.enabled",
+        group="rollout",
+        label="Billing: new invoice numbers (VT/FY/I#####)",
+        description=(
+            "Off (default) = credit-pack invoices keep today's numbers. On = new invoices are numbered "
+            "VT/{financial year}/I##### and credit notes VT/{financial year}/C##### (financial year in "
+            "India time). Subscription invoices always use the new series."
+        ),
+        type="bool",
+        default=lambda: False,
+    )
+
+if "billing.buyer_state.required" not in SETTING_SPECS:
+    SETTING_SPECS["billing.buyer_state.required"] = SettingSpec(
+        key="billing.buyer_state.required",
+        group="rollout",
+        label="Billing: buyer state required for credit packs",
+        description=(
+            "Off (default) = buying credits works as before. On = the buyer's state must be given before "
+            "buying credits (place of supply for GST). Subscriptions always need it."
+        ),
+        type="bool",
+        default=lambda: False,
+    )
+
+if "billing.packs.reconcile.enabled" not in SETTING_SPECS:
+    SETTING_SPECS["billing.packs.reconcile.enabled"] = SettingSpec(
+        key="billing.packs.reconcile.enabled",
+        group="rollout",
+        label="Billing: hourly check of unpaid credit-pack links",
+        description=(
+            "Off (default) = unpaid credit-pack payments are only settled by the Razorpay webhook, as before. "
+            "On = once an hour, unpaid credit-pack payment links older than 30 minutes are checked with "
+            "Razorpay: a paid link gets its credits (a lost webhook), an expired one is closed."
+        ),
+        type="bool",
+        default=lambda: False,
+    )
 
 GROUP_LABELS = {
     "chatbot": "Student chatbot",
@@ -629,8 +921,10 @@ def list_platform_settings(db: Session) -> List[Dict[str, Any]]:
 def _check_model_routes(raw: Any) -> Optional[str]:
     """None if the map parses and every routed model answers one token through
     its gateway with the platform key; else why not. A route whose gateway key
-    is missing would silently stay on OpenRouter, so that is refused too."""
-    from .llm_router import ROUTERS, parse_routes
+    is missing would silently stay on OpenRouter, so that is refused too.
+    An "anthropic" entry is probed through the key pool (no OpenRouter
+    failover), so a map is refused while no Anthropic key is active."""
+    from .llm_router import ROUTERS, parse_routes, probe_anthropic_route
 
     try:
         routes = parse_routes(raw)
@@ -639,6 +933,11 @@ def _check_model_routes(raw: Any) -> Optional[str]:
     for model_id, entry in routes.items():
         spec = ROUTERS[entry["router"]]
         if entry["router"] == "openrouter":
+            continue
+        if spec.transport == "anthropic":
+            err = probe_anthropic_route(model_id, routes)
+            if err:
+                return f"{model_id} failed through {spec.label}: {err}"
             continue
         if not spec.api_key():
             return f"{spec.label} API key is not configured on ai-service (needed for {model_id})"

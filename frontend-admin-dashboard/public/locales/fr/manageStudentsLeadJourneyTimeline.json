@@ -19,7 +19,8 @@
         "followupScheduled": "Relance planifiée",
         "statusChange": "Statut modifié",
         "fallback": "Événement",
-        "reEnquiry": "Nouvelle prise de contact"
+        "reEnquiry": "Nouvelle prise de contact",
+        "reattempt": "Nouvelle tentative"
     },
     "statusChangeMeta": {
         "previous": "Précédent"

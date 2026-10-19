@@ -26,7 +26,7 @@ from ..config import Settings, get_settings
 from ..core.security import get_pinned_principal
 from ..db import db_session
 from ..models.ai_token_usage import RequestType
-from ..services.ai_billing import charge_tool, preflight_tool_credits
+from ..services.ai_billing import UC, charge_tool, preflight_tool_credits
 from ..services.kb.repository import KbRepository
 from ..services.kb_companion import ask as ask_svc
 from ..services.kb_companion import lesson as lesson_svc
@@ -47,8 +47,10 @@ QUESTIONS_PER_MINUTE = 6
 # ── auth ─────────────────────────────────────────────────────────────────────
 
 class Caller:
-    def __init__(self, institute_id: str, user_id: str, roles: List[str], is_root: bool):
+    def __init__(self, institute_id: str, user_id: str, roles: List[str], is_root: bool, metering: Any = None):
         self.institute_id, self.user_id, self.roles, self.is_root = institute_id, user_id, roles, is_root
+        # Usage-event attribution for this caller's charges (never changes one).
+        self.metering = metering
 
     @property
     def is_staff(self) -> bool:
@@ -63,7 +65,9 @@ async def _caller(request: Request, authorization: Optional[str] = Header(defaul
     p = await get_pinned_principal(request, authorization, settings)
     if not p.user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Could not identify the user")
-    return Caller(p.institute_id, p.user_id, sorted(normalize_roles(p.roles)), bool(p.is_root_user))
+    from ..services.ai_billing import metering_from_request
+    return Caller(p.institute_id, p.user_id, sorted(normalize_roles(p.roles)), bool(p.is_root_user),
+                  metering=metering_from_request(request, p.institute_id, user=p))
 
 
 def _staff(caller: Caller) -> None:
@@ -78,9 +82,20 @@ def _estimate(tool_key: str, institute_id: str) -> Dict[str, Any]:
     try:
         with db_session() as pdb:
             return preflight_tool_credits(pdb, tool_key=tool_key, tool_params={}, institute_id=institute_id)
-    except Exception:  # noqa: BLE001 — a pricing lookup failure must not block learning
+    except Exception as exc:  # noqa: BLE001 — a pricing lookup failure must not block learning
+        if _is_usage_limit(exc):
+            raise  # an AI usage limit (HTTP 429), not a pricing failure
         logger.warning("kbc preflight failed for %s", tool_key, exc_info=True)
         return {}
+
+
+def _is_usage_limit(exc: BaseException) -> bool:
+    try:
+        from ..services.metering.limit_gate import is_limit_exceeded
+
+        return is_limit_exceeded(exc)
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def _credits_or_402(db, tool_key: str, institute_id: str) -> None:
@@ -389,7 +404,8 @@ async def prepare_lessons(companion_id: str, body: PrepareIn, caller: Caller = D
                                             created_by=caller.user_id)
             if lesson_id:
                 jobs.append(lesson_svc.CompileJob(lesson_id=lesson_id, institute_id=caller.institute_id,
-                                                  user_id=caller.user_id, kb=kb, node=node, language=c["language"]))
+                                                  user_id=caller.user_id, kb=kb, node=node, language=c["language"],
+                                                  metering=getattr(caller, "metering", None)))
     for job in jobs:
         lesson_svc.start_compile(job)
     return {**summary, "started": len(jobs)}
@@ -496,7 +512,8 @@ async def open_lesson(companion_id: str, node_id: str, caller: Caller = Depends(
                                             fingerprint=fingerprint, created_by=caller.user_id)
             if lesson_id:
                 if_start = lesson_svc.CompileJob(lesson_id=lesson_id, institute_id=caller.institute_id,
-                                                 user_id=caller.user_id, kb=kb, node=node, language=c["language"])
+                                                 user_id=caller.user_id, kb=kb, node=node, language=c["language"],
+                                                 metering=getattr(caller, "metering", None))
             row = repo.get_artifact("lesson", caller.institute_id, kb["id"], node_id, c["language"])
     if if_start:
         lesson_svc.start_compile(if_start)
@@ -542,7 +559,8 @@ async def open_practice(companion_id: str, node_id: str, caller: Caller = Depend
             pid = repo.claim_artifact("practice", caller.institute_id, kb["id"], node_id, c["language"])
             if pid:
                 job = practice_svc.PracticeJob(practice_id=pid, institute_id=caller.institute_id,
-                                               user_id=caller.user_id, kb=kb, node=node, language=c["language"])
+                                               user_id=caller.user_id, kb=kb, node=node, language=c["language"],
+                                               metering=getattr(caller, "metering", None))
             row = repo.get_artifact("practice", caller.institute_id, kb["id"], node_id, c["language"])
     if job:
         practice_svc.start_practice(job)
@@ -655,7 +673,9 @@ async def ask(companion_id: str, body: AskIn, caller: Caller = Depends(_caller))
             charge_tool(db, tool_key=ask_svc.ASK_TOOL, tool_params={}, request_type=RequestType.KNOWLEDGE_BASE,
                         model=res.model, prompt_tokens=res.prompt_tokens, completion_tokens=res.completion_tokens,
                         institute_id=caller.institute_id, user_id=caller.user_id, request_id=f"kbc_msg:{mid}",
-                        idempotency_key=f"kbc_ask:{mid}")
+                        idempotency_key=f"kbc_ask:{mid}",
+                        use_case=UC.KB_COMPANION, metering=getattr(caller, "metering", None),
+                        usage_context={"companion_id": companion_id, "feature": "kbc_ask"})
         except Exception:  # noqa: BLE001
             logger.warning("kbc ask billing failed for message %s", mid, exc_info=True)
     return {"message": {"id": mid, "role": "assistant", "content": shaped["answer"], "meta": meta}}
@@ -694,7 +714,9 @@ async def speech(companion_id: str, body: SpeechIn, caller: Caller = Depends(_ca
             try:
                 charge_tool(db, tool_key=speech_svc.SPEECH_TOOL, tool_params={}, request_type=RequestType.KNOWLEDGE_BASE,
                             model=provider, institute_id=caller.institute_id, user_id=caller.user_id,
-                            character_count=len(text_))
+                            character_count=len(text_),
+                            use_case=UC.KB_COMPANION, metering=getattr(caller, "metering", None),
+                            usage_context={"companion_id": companion_id, "feature": "kbc_speech"})
             except Exception:  # noqa: BLE001
                 logger.warning("kbc speech billing failed", exc_info=True)
     return {"url": url, "cached": hit}

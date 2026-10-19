@@ -1015,7 +1015,7 @@
         "iconColor": "#facc15",
         "fontSize": "sm"
       },
-      "capabilities": "A continuously scrolling strip of short claims. items[]: {icon (emoji is correct here), text, image, label}. speed: slow|medium|fast. direction: left|right. pauseOnHover. Emoji icons are the intended style for this component only."
+      "capabilities": "A continuously scrolling strip of short claims. items[]: {icon (emoji is correct here), text, link, image, label}. link (optional) makes the item clickable: a page slug, \"#anchorId\" of a section on the page, or a full URL. speed: slow|medium|fast. direction: left|right. pauseOnHover. Emoji icons are the intended style for this component only."
     },
     {
       "type": "productPageOffer",
@@ -1049,6 +1049,20 @@
         "scrollMaxHeight": 640
       },
       "dataBound": "Renders a LIVE Product Page's sellable courses (names, prices, images) and deep-links each card into that page's cart. Set ONLY title/subtitle/ctaLabel/columns, the header props (align: left|center — left with headerScale 'md' and showViewAll true is the app-style rail look; headerScale: md|lg; viewAllLabel), the browse props (layout: grid|carousel — carousel is one swipeable edge-to-edge row, pair it with align 'left'; pageSize — courses per page, 9 is a good default, 0 disables paging; showSearch; scrollable + scrollMaxHeight to cap a grid's height) and the display toggles — productPageCode must be chosen by the admin from their existing product pages, so leave it as an empty string and NEVER invent a code or course entries. Use it when the brief mentions selling/enrolling a specific set of paid programs; use courseCatalog for the full course grid."
+    },
+    {
+      "type": "accessPassGrid",
+      "templateKey": "accessPassGrid",
+      "exampleProps": {
+        "title": "Memberships",
+        "subtitle": "One purchase, several courses.",
+        "tag": "",
+        "columns": 3,
+        "buyLabel": "Get the pass",
+        "showCourses": true,
+        "showPrice": true
+      },
+      "dataBound": "Renders the institute's LIVE published Access Passes (one purchase that unlocks several courses) as cards with a details dialog and a Buy button into the pass's checkout. Passes are created by the admin in LMS → Access Passes, so NEVER invent pass names, prices or courses. Set ONLY title/subtitle/buyLabel/columns (2-4) and the showCourses/showPrice toggles; leave tag as an empty string unless the admin names a pass tag to filter by. Use it when the brief mentions memberships, passes or all-access bundles; it renders nothing until a pass is published."
     },
     {
       "type": "folderBrowser",

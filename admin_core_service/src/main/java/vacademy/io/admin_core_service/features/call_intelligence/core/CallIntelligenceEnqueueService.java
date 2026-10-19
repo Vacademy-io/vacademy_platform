@@ -154,6 +154,43 @@ public class CallIntelligenceEnqueueService {
         return "QUEUED";
     }
 
+    /**
+     * Analysis a client asked for explicitly on one call — the public API's
+     * {@code analyze: true} on POST /v1/human-calls. Unlike {@link #triggerManual} this
+     * also bypasses the institute's CRM Intelligence switch (off by default): the API
+     * client opted in for this call and is billed for it (credit_pricing
+     * 'call_intelligence', charged per minute by ai_service), so an institute toggle must
+     * not silently drop it. Still needs a recording, and never resets an existing row —
+     * one the recording flow already enqueued (institute auto-analysis) may be running,
+     * and resetting it would start a second transcription.
+     *
+     * @return QUEUED | EXISTS | NOT_FOUND | NO_RECORDING.
+     */
+    @Transactional
+    public String enqueueRequested(String callLogId) {
+        if (isBlank(callLogId)) return "NOT_FOUND";
+        TelephonyCallLog row = callLogRepo.findById(callLogId).orElse(null);
+        if (row == null) return "NOT_FOUND";
+        if (isBlank(row.getRecordingStorageKey())) return "NO_RECORDING";
+        if (repo.existsByCallLogId(callLogId)) return "EXISTS";
+        repo.save(CallIntelligence.builder()
+                .callLogId(row.getId())
+                .instituteId(row.getInstituteId())
+                .counsellorUserId(row.getCounsellorUserId())
+                .responseId(row.getResponseId())
+                .userId(row.getUserId())
+                .source(sourceBucket(row.getProviderType()))
+                .direction(row.getDirection())
+                .callStartedAt(callStartedAt(row))
+                .durationSeconds(row.getDurationSeconds())
+                .status("PENDING")
+                .attempts(0)
+                .build());
+        log.info("call-intelligence: API-requested analysis queued for call {} (institute {})",
+                row.getId(), row.getInstituteId());
+        return "QUEUED";
+    }
+
     /** Bucket a provider type into the source toggle keys: MANUAL | AI | TELEPHONY. */
     private static String sourceBucket(String providerType) {
         if (ProviderType.MANUAL.equals(providerType)) return "MANUAL";

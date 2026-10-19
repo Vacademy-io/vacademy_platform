@@ -16,6 +16,8 @@ import { LayoutContainer } from "@/components/common/layout-container/layout-con
 import { addHours } from "date-fns";
 import { formatTime } from "@/lib/format-date";
 import { useTranslation } from "react-i18next";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ComparisonDashboard } from "@/components/common/student-test-records/comparison-dashboard";
 
 const aiReportParamsSchema = z.object({
   assessmentId: z.string(),
@@ -94,6 +96,10 @@ function RouteComponent() {
   const [parsedProcessedJSON, setParsedProcessedJSON] =
     useState<ParsedProcessedJSON | null>(null);
   const [comparisonData, setComparisonData] = useState<any>(null);
+  const [instituteId, setInstituteId] = useState<string>("");
+  // The AI report is the one report per attempt: its second tab is the full normal
+  // report (question by question, marks, class comparison), so nothing is lost.
+  const [tab, setTab] = useState<"ai" | "questions">("ai");
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
 
@@ -126,6 +132,7 @@ function RouteComponent() {
           try {
             const stored = await Preferences.get({ key: "InstituteDetails" });
             const instId = JSON.parse(stored.value || "{}").id || "";
+            setInstituteId(instId);
             const compRes = await authenticatedAxiosInstance({
               method: "GET",
               url: LEARNER_REPORT_COMPARISON_URL,
@@ -237,6 +244,32 @@ function RouteComponent() {
                 </span>
               </p>
             </div>
+          </div>
+        ) : comparisonData && attemptId && instituteId ? (
+          <div className="flex flex-col gap-4">
+            <Tabs value={tab} onValueChange={(v) => setTab(v as "ai" | "questions")}>
+              <TabsList className="w-full justify-start sm:w-auto">
+                <TabsTrigger value="ai">{t("aiReport.tabs.analysis")}</TabsTrigger>
+                <TabsTrigger value="questions">{t("aiReport.tabs.questions")}</TabsTrigger>
+              </TabsList>
+            </Tabs>
+            {tab === "ai" ? (
+              <AIReportDetailsPage
+                report={parsedProcessedJSON}
+                assessmentId={assessmentId as string}
+                assessmentName={assessmentName as string}
+                attemptId={attemptId as string}
+                comparisonData={comparisonData}
+              />
+            ) : (
+              <ComparisonDashboard
+                data={comparisonData}
+                assessmentName={assessmentName as string}
+                assessmentId={assessmentId as string}
+                attemptId={attemptId as string}
+                instituteId={instituteId}
+              />
+            )}
           </div>
         ) : (
           <AIReportDetailsPage

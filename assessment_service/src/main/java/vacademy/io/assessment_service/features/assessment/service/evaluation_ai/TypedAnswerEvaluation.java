@@ -40,6 +40,10 @@ public class TypedAnswerEvaluation {
     private final QuestionWiseMarksRepository questionWiseMarksRepository;
     private final ObjectMapper objectMapper;
 
+    /** Internal choice ("any 4 of 5"); null in unit tests that do not need it. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private DashboardChoiceGroups choiceGroups;
+
     public boolean hasAnswerSheet(StudentAttempt attempt) {
         if (attempt == null || attempt.getAttemptData() == null) return false;
         String fileId = evaluationUtilityService.extractFileId(attempt.getAttemptData());
@@ -104,9 +108,13 @@ public class TypedAnswerEvaluation {
     public double attemptTotal(StudentAttempt attempt, List<AiQuestionEvaluation> processRows) {
         double total = 0.0;
         Set<String> coveredByRun = new HashSet<>();
+        // Internal choice: the extra answers in an "any N of M" group are graded but
+        // not counted. Empty for an assessment without groups - the total as before.
+        Set<String> notCounted = notCounted(attempt, processRows);
         for (AiQuestionEvaluation row : processRows) {
             if (row.getQuestion() != null) {
                 coveredByRun.add(row.getQuestion().getId());
+                if (notCounted.contains(row.getQuestion().getId())) continue;
             }
             if ("COMPLETED".equals(row.getStatus()) && row.getMarksAwarded() != null) {
                 total += row.getMarksAwarded().doubleValue();
@@ -121,5 +129,13 @@ public class TypedAnswerEvaluation {
             }
         }
         return total;
+    }
+
+    private Set<String> notCounted(StudentAttempt attempt, List<AiQuestionEvaluation> rows) {
+        if (choiceGroups == null || attempt == null || attempt.getRegistration() == null
+                || attempt.getRegistration().getAssessment() == null) {
+            return Set.of();
+        }
+        return choiceGroups.notCounted(attempt.getRegistration().getAssessment().getId(), rows);
     }
 }

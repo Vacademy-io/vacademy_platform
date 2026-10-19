@@ -470,4 +470,100 @@ class ProductPageCatalogueSyncServiceTest {
         assertEquals("RAZORPAY", pick.inviteVendor());
         assertEquals("Hindi", pick.levelName());
     }
+
+    @Test
+    @DisplayName("the auto sync runs the same plan without the admin check, and skips building the page body")
+    void systemSyncSkipsTheAccessValidator() {
+        page.setCode("store1");
+        mapping("m1", 0, "a");
+        ProductPageInviteMapping gone = mapping("m2", 1, "gone");
+        catalogueRow("a");
+        catalogueRow("b");
+
+        ProductPageCatalogueSyncResponse res = service.syncCatalogueAsSystem(PAGE_ID, INSTITUTE, true);
+
+        org.mockito.Mockito.verifyNoInteractions(accessValidator);
+        verify(productPageRepository).lockByIdAndInstituteId(PAGE_ID, INSTITUTE);
+        assertEquals("INACTIVE", gone.getStatus());
+        assertEquals(2, saved().size());
+        verify(mappingRepository).flush();
+        verify(productPageService, never()).fillAdminResponseWithCustomFields(any(), any(), any());
+        verify(entityManager, never()).clear();
+        assertEquals(PAGE_ID, res.getId());
+        assertEquals("store1", res.getCode());
+        assertEquals(1, res.getAdded());
+        assertEquals(1, res.getDeactivated());
+        assertEquals(List.of("b"), res.getAddedPackageSessionIds());
+    }
+
+    @Test
+    @DisplayName("the auto sync is still scoped to the institute: another institute's page is not found")
+    void systemSyncIsTenantScoped() {
+        page.setInstituteId("inst-2");
+        assertThrows(VacademyException.class, () -> service.syncCatalogueAsSystem(PAGE_ID, INSTITUTE, true));
+        page.setInstituteId(INSTITUTE);
+        page.setStatus("DELETED");
+        assertThrows(VacademyException.class, () -> service.syncCatalogueAsSystem(PAGE_ID, INSTITUTE, true));
+        verify(mappingRepository, never()).saveAll(any());
+        org.mockito.Mockito.verifyNoInteractions(accessValidator);
+    }
+
+    @Test
+    @DisplayName("the admin path still checks the caller first and still returns the page body")
+    void userSyncStillChecksTheCaller() {
+        mapping("m1", 0, "a");
+        catalogueRow("a");
+
+        ProductPageCatalogueSyncResponse res = service.syncCatalogue(user, PAGE_ID, INSTITUTE, true);
+
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(accessValidator, productPageRepository);
+        order.verify(accessValidator).requireInstituteAdmin(user, INSTITUTE);
+        order.verify(productPageRepository).lockByIdAndInstituteId(PAGE_ID, INSTITUTE);
+        verify(productPageService).fillAdminResponseWithCustomFields(eq(res), eq(page), any());
+    }
+
+    @Test
+    @DisplayName("the auto sync only adds when it would switch off more than its limit; the admin sync does not")
+    void systemSyncMassDeactivationGuard() {
+        List<ProductPageInviteMapping> gone = new ArrayList<>();
+        for (int i = 0; i < 21; i++) gone.add(mapping("m" + i, i, "gone" + i));
+        catalogueRow("new");
+
+        ProductPageCatalogueSyncResponse res = service.syncCatalogueAsSystem(PAGE_ID, INSTITUTE, true);
+
+        assertEquals(1, res.getAdded());
+        assertEquals(0, res.getDeactivated());
+        assertTrue(gone.stream().allMatch(m -> "ACTIVE".equals(m.getStatus())));
+        assertTrue(res.getWarnings().stream().anyMatch(w -> w.contains("would have switched off 21")));
+        assertEquals(1, saved().size());
+
+        org.mockito.Mockito.clearInvocations(mappingRepository);
+        ProductPageCatalogueSyncResponse manual = service.syncCatalogue(user, PAGE_ID, INSTITUTE, true);
+        assertEquals(21, manual.getDeactivated());
+    }
+
+    @Test
+    @DisplayName("up to the limit, the auto sync switches off what left the catalogue")
+    void systemSyncDeactivatesUpToTheLimit() {
+        for (int i = 0; i < 20; i++) mapping("m" + i, i, "gone" + i);
+        catalogueRow("new");
+
+        ProductPageCatalogueSyncResponse res = service.syncCatalogueAsSystem(PAGE_ID, INSTITUTE, true);
+
+        assertEquals(1, res.getAdded());
+        assertEquals(20, res.getDeactivated());
+    }
+
+    @Test
+    @DisplayName("a restructure that adds as many as it switches off is not held back (Brahm Varchas, 2026-10-15)")
+    void systemSyncAllowsARestructure() {
+        for (int i = 0; i < 21; i++) mapping("m" + i, i, "old" + i);
+        for (int i = 0; i < 36; i++) catalogueRow("new" + i);
+
+        ProductPageCatalogueSyncResponse res = service.syncCatalogueAsSystem(PAGE_ID, INSTITUTE, true);
+
+        assertEquals(36, res.getAdded());
+        assertEquals(21, res.getDeactivated());
+        assertTrue(res.getWarnings().stream().noneMatch(w -> w.contains("would have switched off")));
+    }
 }

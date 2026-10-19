@@ -10,6 +10,7 @@ import vacademy.io.admin_core_service.features.institute.repository.InstituteRep
 import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.admin_core_service.features.institute.service.InstituteTimezoneService;
 import vacademy.io.admin_core_service.features.learner_tracking.repository.ActivityLogRepository;
+import vacademy.io.admin_core_service.features.live_session.repository.LiveSessionLogsRepository;
 import vacademy.io.admin_core_service.features.points_ledger.dto.DailyActivityProjection;
 import vacademy.io.admin_core_service.features.points_ledger.entity.PointsSourceType;
 import vacademy.io.admin_core_service.features.points_ledger.service.PointsLedgerService;
@@ -60,6 +61,7 @@ public class PointsAccrualJob {
     private final ActivityLogRepository activityLogRepository;
     private final ScoringConfigService scoringConfigService;
     private final PointsLedgerService pointsLedgerService;
+    private final LiveSessionLogsRepository liveSessionLogsRepository;
 
     /**
      * Off unless explicitly enabled. The first run writes points for every active
@@ -127,20 +129,40 @@ public class PointsAccrualJob {
                 Timestamp.from(readFrom.atStartOfDay(zone).toInstant()),
                 Timestamp.from(today.plusDays(1).atStartOfDay(zone).toInstant()),
                 ACTIVE_STATUSES);
-        if (rows == null || rows.isEmpty()) return 0;
 
-        Map<String, Set<LocalDate>> activeDaysByUser = new HashMap<>();
-        for (DailyActivityProjection row : rows) {
-            if (row.getUserId() == null || row.getActivityDate() == null) continue;
-            activeDaysByUser
-                    .computeIfAbsent(row.getUserId(), k -> new HashSet<>())
-                    .add(row.getActivityDate().toLocalDate());
+        // ACTIVITY points are earned on activity-log days only; the streak also counts
+        // days the learner attended a live class, matching the streak learners see.
+        Map<String, Set<LocalDate>> activityDaysByUser = new HashMap<>();
+        Map<String, Set<LocalDate>> streakDaysByUser = new HashMap<>();
+        if (rows != null) {
+            for (DailyActivityProjection row : rows) {
+                if (row.getUserId() == null || row.getActivityDate() == null) continue;
+                LocalDate day = row.getActivityDate().toLocalDate();
+                activityDaysByUser.computeIfAbsent(row.getUserId(), k -> new HashSet<>()).add(day);
+                streakDaysByUser.computeIfAbsent(row.getUserId(), k -> new HashSet<>()).add(day);
+            }
         }
+        if (streakPoints > 0) {
+            try {
+                for (LiveSessionLogsRepository.PresentDayProjection row
+                        : liveSessionLogsRepository.findPresentDaysForInstitute(instituteId, readFrom, today, ACTIVE_STATUSES)) {
+                    if (row.getUserId() == null || row.getActivityDate() == null) continue;
+                    streakDaysByUser.computeIfAbsent(row.getUserId(), k -> new HashSet<>())
+                            .add(row.getActivityDate().toLocalDate());
+                }
+            } catch (Exception e) {
+                // Attendance only lengthens streaks; without it the activity awards still stand.
+                log.warn("[points-accrual] institute {}: live attendance days unavailable: {}",
+                        instituteId, e.getMessage());
+            }
+        }
+        if (streakDaysByUser.isEmpty()) return 0;
 
         int written = 0;
-        for (Map.Entry<String, Set<LocalDate>> entry : activeDaysByUser.entrySet()) {
+        for (Map.Entry<String, Set<LocalDate>> entry : streakDaysByUser.entrySet()) {
             String userId = entry.getKey();
             Set<LocalDate> activeDays = entry.getValue();
+            Set<LocalDate> activityDays = activityDaysByUser.getOrDefault(userId, Set.of());
 
             for (LocalDate day : sorted(activeDays)) {
                 // Stamp the award with the END of the day it was earned, in the
@@ -151,7 +173,7 @@ public class PointsAccrualJob {
                 // can still gain activity. It is picked up by tomorrow's run.
                 if (!day.isBefore(today) || day.isBefore(awardFrom)) continue;
 
-                if (activityPoints > 0) {
+                if (activityPoints > 0 && activityDays.contains(day)) {
                     written += pointsLedgerService.award(
                             userId, instituteId, null,
                             PointsSourceType.ACTIVITY, null,

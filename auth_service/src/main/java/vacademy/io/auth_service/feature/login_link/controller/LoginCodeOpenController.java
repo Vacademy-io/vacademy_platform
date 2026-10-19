@@ -25,15 +25,17 @@ import java.util.Map;
  * <pre>
  * POST /auth-service/open/v1/login-codes
  * X-API-Key: vak_login_…      (admin dashboard: Settings → Security)
- * {"username": "rahul123", "expires_in_days": 7}
+ * {"username": "rahul123", "expires_in_days": 7}     (or "email": "rahul@example.com")
  * →
  * {"code": "…", "expires_at": "…", "user_id": "…", "username": "rahul123", "query_param": "lc"}
  * </pre>
  *
  * The key is checked by {@link ApiKeyAuthFilter} (product login_links) before this runs; the
- * institute comes from the key, never from the request. 404 when the username is not a learner
- * of that institute. Codes can be minted at any time but sign learners in only once the
- * institute switches on "require a login code"; until then links work by username as before.
+ * institute comes from the key, never from the request. 404 when no learner of that institute
+ * has that username / email. The response carries the username, for routes that put it in the
+ * path (e.g. /user-profile/edit/<username>?lc=<code>). Codes can be minted at any time but
+ * sign learners in only once the institute switches on "require a login code"; until then
+ * links work by username as before.
  */
 @RestController
 @RequestMapping("/auth-service/open/v1/login-codes")
@@ -56,7 +58,7 @@ public class LoginCodeOpenController {
         }
         CreateLoginCodeRequest req = body == null ? new CreateLoginCodeRequest() : body;
         LoginCodeService.MintedCode minted = loginCodeService.mint(principal.getInstituteId(), req.getUsername(),
-                req.getUserId(), req.getExpiresInDays(), LearnerLoginCode.VIA_API_KEY, principal.actorId());
+                req.getEmail(), req.getUserId(), req.getExpiresInDays(), LearnerLoginCode.VIA_API_KEY, principal.actorId());
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(view(minted));
     }
 

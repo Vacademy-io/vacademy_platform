@@ -83,9 +83,89 @@ def _redact_audit(value: Any, depth: int = 0) -> Any:
     return value
 
 
-def _audit_args_json(args: Optional[Dict[str, Any]]) -> str:
-    """args for mcp_tool_call_log.args_json: secrets-free, bounded in size."""
-    redacted = _redact_audit(args or {})
+#: CRM tools (``crm_*``) carry lead contact details and free text (phone numbers,
+#: names, notes, message variables) in arguments of every shape, so their audit
+#: row keeps an ALLOW-list instead: the action, id fields, numbers / booleans,
+#: values from the tool schema's own enums and ISO dates. Everything else is
+#: stored as {"redacted": true, "bytes": n} — no hash, which a phone number
+#: would not survive.
+_CRM_AUDIT_PREFIX = "crm_"
+_CRM_AUDIT_ID_KEY_RE = re.compile(r"(^|_)ids?$", re.I)
+_CRM_AUDIT_ISO_DATE_RE = re.compile(
+    r"^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2}(\.\d{1,9})?)?(Z|[+-]\d{2}(:?\d{2})?)?)?$")
+#: Dates that are personal data (a date of birth), whatever their format.
+_CRM_AUDIT_PERSONAL_DATE_RE = re.compile(r"(birth|dob)", re.I)
+_CRM_AUDIT_ID_MAX_CHARS = 128
+_CRM_AUDIT_NUMBER_MAX = 10_000_000
+
+
+def _crm_redacted(value: Any) -> Dict[str, Any]:
+    text_value = value if isinstance(value, str) else json.dumps(value, default=str)
+    return {"redacted": True, "bytes": len(text_value.encode("utf-8", "replace"))}
+
+
+def _crm_tool_parameters(tool_name: str) -> Dict[str, Any]:
+    """The tool's JSON-schema parameters (for its enums), or {} when it is not registered."""
+    try:
+        from ..services.assistant_tool_registry import ASSISTANT_TOOLS
+
+        spec = ASSISTANT_TOOLS.get(tool_name)
+        params = ((spec.schema or {}).get("function") or {}).get("parameters") if spec else None
+        return params if isinstance(params, dict) else {}
+    except Exception:  # noqa: BLE001 — no schema means no enum values are kept
+        return {}
+
+
+def _crm_sub_schema(schema: Dict[str, Any], key: Any) -> Dict[str, Any]:
+    props = schema.get("properties") if isinstance(schema, dict) else None
+    sub = props.get(key) if isinstance(props, dict) else None
+    return sub if isinstance(sub, dict) else {}
+
+
+def _crm_audit_value(key: Any, value: Any, schema: Dict[str, Any], depth: int) -> Any:
+    """One CRM argument value under the allow-list (``schema`` is this value's own JSON schema)."""
+    if value is None or isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        # Counts, limits, scores and amounts are kept; a number long enough to be a phone number is not.
+        return value if abs(value) < _CRM_AUDIT_NUMBER_MAX else _crm_redacted(value)
+    name = key if isinstance(key, str) else ""
+    if depth > 8:
+        return _crm_redacted(value)
+    if isinstance(value, dict):
+        return {str(k)[:100]: _crm_audit_value(k, v, _crm_sub_schema(schema, k), depth + 1)
+                for k, v in list(value.items())[:100]}
+    if isinstance(value, list):
+        items = schema.get("items") if isinstance(schema.get("items"), dict) else {}
+        return [_crm_audit_value(name, v, items, depth + 1) for v in value[:500]]
+    if isinstance(value, str):
+        if depth == 0 and name == "action":
+            return value[:64]
+        if _CRM_AUDIT_ID_KEY_RE.search(name):
+            return value[:_CRM_AUDIT_ID_MAX_CHARS]
+        enum = schema.get("enum")
+        if isinstance(enum, list) and value in enum:
+            return value
+        if _CRM_AUDIT_ISO_DATE_RE.match(value.strip()) and not _CRM_AUDIT_PERSONAL_DATE_RE.search(name):
+            return value.strip()
+    return _crm_redacted(value)
+
+
+def _redact_crm_audit(tool_name: str, args: Dict[str, Any]) -> Dict[str, Any]:
+    schema = _crm_tool_parameters(tool_name)
+    return {str(k)[:100]: _crm_audit_value(k, v, _crm_sub_schema(schema, k), 0)
+            for k, v in list(args.items())[:100]}
+
+
+def _audit_args_json(args: Optional[Dict[str, Any]], tool_name: Optional[str] = None) -> str:
+    """args for mcp_tool_call_log.args_json: secrets-free, bounded in size.
+
+    ``crm_*`` tools keep only the allow-list above; every other tool is logged
+    as before (secrets redacted, artwork digested)."""
+    if tool_name and tool_name.startswith(_CRM_AUDIT_PREFIX) and isinstance(args, dict):
+        redacted = _redact_crm_audit(tool_name, args)
+    else:
+        redacted = _redact_audit(args or {})
     out = json.dumps(redacted, default=str)
     if len(out) <= _AUDIT_ARGS_MAX_CHARS or not isinstance(redacted, dict):
         return out if len(out) <= _AUDIT_ARGS_MAX_CHARS else json.dumps({"_truncated": True, **_digest(out)})
@@ -554,7 +634,7 @@ class McpOAuthRepository:
                     "cid": client_id,
                     "cname": client_name,
                     "tool": tool_name,
-                    "args": _audit_args_json(args),
+                    "args": _audit_args_json(args, tool_name),
                     "ok": ok,
                     "err": error_code,
                     "ms": duration_ms,

@@ -30,6 +30,16 @@ from .routers.super_admin import router as super_admin_router
 from .routers.super_admin_models import router as super_admin_models_router
 from .routers.super_admin_ai_video_policy import router as super_admin_ai_video_policy_router
 from .routers.internal_llm import router as internal_llm_router
+from .routers.llm_keys_admin import router as llm_keys_admin_router
+from .routers.credits_v2 import router as credits_v2_router
+from .routers.metering_admin import router as metering_admin_router
+from .routers.credits_limits import router as credits_limits_router
+from .routers.metering_limits_admin import router as metering_limits_admin_router
+from .routers.metering_internal import router as metering_internal_router
+from .routers.plans_admin import router as plans_admin_router
+from .routers.plans_internal import router as plans_internal_router
+from .routers.plans_billing_internal import router as plans_billing_internal_router
+from .routers.credits_plan import router as credits_plan_router
 from .routers.content_ingestion import router as content_ingestion_router
 from .routers.learning_analytics import router as learning_analytics_router
 from .routers.mathpix import router as mathpix_router
@@ -85,6 +95,25 @@ logging.basicConfig(
 
 
 @asynccontextmanager
+def _warm_billing_indexes(logger: logging.Logger) -> None:
+    """Load the AI-plan subscription index and the usage-limits policy index once,
+    before the pod serves traffic. Both are otherwise loaded lazily in the
+    background, so a fresh pod's first requests saw empty sets: a plan-covered use
+    was charged to the wallet (the engine's fail-safe) until the first refresh
+    landed. A failure here only logs; the lazy refresh still runs as before."""
+    try:
+        from .services.metering import plans as _plans
+        if not _plans.refresh_index():
+            logger.warning("ai plans index warm-up did not load; lazy refresh will retry")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("ai plans index warm-up skipped: %s", exc)
+    try:
+        from .services.metering import limits as _limits
+        _limits.refresh_policy_index()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("ai limits index warm-up skipped: %s", exc)
+
+
 async def _lifespan(app: FastAPI):
     """Startup: ensure the ai_task schema exists (idempotent) and sweep any
     PROGRESS rows orphaned by a prior restart to FAILED."""
@@ -105,6 +134,7 @@ async def _lifespan(app: FastAPI):
         sweep_stale_tasks()
     except Exception as exc:  # noqa: BLE001
         _logger.warning("ai_task startup init skipped: %s", exc)
+    _warm_billing_indexes(_logger)
     # Orphaned AI-video runs (deploy/crash killed the in-process pipeline
     # task): refund + mark FAILED so slides stop spinning forever. Sweeps at
     # startup and every 30 min (a crash's own orphans are younger than the TTL
@@ -161,17 +191,19 @@ async def _lifespan(app: FastAPI):
             ensure_mcp_schema(db)
     except Exception as exc:  # noqa: BLE001
         _logger.warning("mcp schema init skipped: %s", exc)
-    # Tables only admin_core Flyway creates (V561, V562, V565): no DDL here, only a check
+    # Tables only admin_core Flyway creates (V561, V562, V565, V583): no DDL here, only a check
     # that logs an error naming the migration when one is missing. Never raises.
     try:
         with db_session() as db:
             from .models.catalog_data_edit import check_catalog_data_schema
+            from .models.crm_confirm import check_crm_confirm_schema
             from .models.design_import import check_design_import_schema
             from .models.file_export import check_file_export_schema
             from .models.publish_confirm import check_publish_confirm_schema
             check_design_import_schema(db)
             check_catalog_data_schema(db)
             check_publish_confirm_schema(db)
+            check_crm_confirm_schema(db)
             check_file_export_schema(db)
     except Exception as exc:  # noqa: BLE001
         _logger.error("mcp table check skipped: %s", exc)
@@ -272,6 +304,17 @@ def create_app() -> FastAPI:
         expose_headers=["Server-Timing", "Mcp-Session-Id", "Mcp-Protocol-Version"],
     )
 
+    # AI usage limits (services/metering/limit_gate.py): LimitExceeded -> HTTP 429
+    # {"error": "AI_USAGE_LIMIT", ...} + Retry-After, and the soft-limit header
+    # X-AI-Usage-Warning. The middleware sits OUTSIDE CORS so it can expose its
+    # headers; it passes every response through untouched unless a limits gate
+    # of that request produced a warning or a 429 (only institutes with a limits
+    # policy ever do), and installs nothing at all while no institute has one.
+    from .services.metering import limit_gate as _limit_gate
+    for _exc_type in _limit_gate.limit_exceeded_types():
+        app.add_exception_handler(_exc_type, _limit_gate.limit_exceeded_handler)
+    app.add_middleware(_limit_gate.LimitHeadersMiddleware)
+
     # Outermost middleware: stamps how long we took, so the browser can subtract it
     # and attribute the rest of the round trip to the network.
     app.add_middleware(ServerTimingMiddleware)
@@ -305,6 +348,22 @@ def create_app() -> FastAPI:
     app.include_router(super_admin_ai_video_policy_router, prefix=settings.api_base_path)
     # Service-to-service chat completion by use case (assessment / community services).
     app.include_router(internal_llm_router, prefix=settings.api_base_path)
+    # Vendor API keys for direct LLM gateways (/super-admin/v1/llm/keys), platform staff only.
+    app.include_router(llm_keys_admin_router, prefix=settings.api_base_path)
+    # AI usage metering: tenant History/Analytics v2 reads + super-admin catalog/role map/parity
+    app.include_router(credits_v2_router, prefix=settings.api_base_path)
+    app.include_router(metering_admin_router, prefix=settings.api_base_path)
+    # AI usage limits: tenant admin (/credits/v2/institutes/{id}/limits) + super admin (/super-admin/v1/metering/limits)
+    app.include_router(credits_limits_router, prefix=settings.api_base_path)
+    app.include_router(metering_limits_admin_router, prefix=settings.api_base_path)
+    # AI usage limits, service-to-service: /internal/metering/v1/authorize + counters/rebuild
+    app.include_router(metering_internal_router, prefix=settings.api_base_path)
+    # AI subscription plans: super admin (/super-admin/v1/plans), tenant view
+    # (/credits/v2/institutes/{id}/plan) and the renewal job (/internal/plans/v1/roll)
+    app.include_router(plans_admin_router, prefix=settings.api_base_path)
+    app.include_router(credits_plan_router, prefix=settings.api_base_path)
+    app.include_router(plans_internal_router, prefix=settings.api_base_path)
+    app.include_router(plans_billing_internal_router, prefix=settings.api_base_path)
     app.include_router(content_ingestion_router, prefix=settings.api_base_path)
     app.include_router(learning_analytics_router, prefix=settings.api_base_path)
     app.include_router(mathpix_router, prefix=settings.api_base_path)

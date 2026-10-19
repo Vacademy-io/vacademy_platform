@@ -364,8 +364,20 @@ export interface HeaderNavItem {
   openInSameTab?: boolean;
   /** `false` hides the item without losing it; absent = visible. */
   enabled?: boolean;
-  type?: "link" | "megaMenu";
+  type?: "link" | "megaMenu" | "dropdown";
   megaMenu?: HeaderMegaMenuConfig;
+  /** type "dropdown": the links it opens; a link may hold one more level of children. */
+  children?: HeaderNavChild[];
+}
+
+/** A link inside a "dropdown" nav item (Exams → SSC → CGL). */
+export interface HeaderNavChild {
+  label: string;
+  /** Page route, "blog/<slug>" or a full URL; empty on a pure group. */
+  route?: string;
+  openInSameTab?: boolean;
+  enabled?: boolean;
+  children?: HeaderNavChild[];
 }
 
 /** Look of a header auth/CTA button. Absent = the original rule (first filled, the rest outlined). */
@@ -437,6 +449,10 @@ export interface CourseCatalogProps {
    *  Unset or unrecognised falls back to DEFAULT_COURSE_CATALOG_SORT; either
    *  way the learner can still change the sort from the dropdown. */
   defaultSort?: CourseCatalogSortOption;
+  /** Option order inside the Level / Popular Tags filter groups, by name.
+   *  Listed names come first in this order; the rest follow naturally. */
+  levelOrder?: string[];
+  tagOrder?: string[];
   filtersConfig?: Array<{
     id: string;
     /** Built-in filters use Naming Settings for their label. */

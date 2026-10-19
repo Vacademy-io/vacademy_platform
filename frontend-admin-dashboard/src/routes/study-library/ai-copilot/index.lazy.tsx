@@ -2487,6 +2487,7 @@ function RouteComponent() {
                         <ToolCostBadge
                             credits={outlineCost.credits}
                             sufficient={outlineCost.sufficient}
+                            coverage={outlineCost.coverage}
                             loading={outlineCost.isLoading}
                             className="max-sm:self-start sm:mr-auto"
                         />

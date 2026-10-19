@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional
 
 from ...db import db_session
 from ...models.ai_token_usage import RequestType
-from ..ai_billing import charge_tool
+from ..ai_billing import UC, charge_tool, metering_user
 from . import llm, model_choice
 from .lesson import GROUNDING_RULES, LANG_NAMES, MIN_MATERIAL_CHARS, _POD_LLM_SLOTS, citation_for, gather_material
 from .repository import CompanionRepository
@@ -85,6 +85,8 @@ class PracticeJob:
     kb: Dict[str, Any]
     node: Dict[str, Any]
     language: str
+    # Usage-event attribution for the charge (never changes it).
+    metering: Any = None
 
 
 def start_practice(job: PracticeJob) -> None:
@@ -120,6 +122,10 @@ async def _run(job: PracticeJob) -> None:
                     model=res.model, prompt_tokens=res.prompt_tokens, completion_tokens=res.completion_tokens,
                     institute_id=job.institute_id, user_id=job.user_id, request_id=job.practice_id,
                     idempotency_key=f"kbc_practice:{job.practice_id}:{material.fingerprint}",
+                    use_case=UC.KB_COMPANION,
+                    metering=getattr(job, "metering", None) or metering_user(getattr(job, "user_id", None)),
+                    usage_context={"kb_id": (job.kb or {}).get("id"), "kb_name": (job.kb or {}).get("name"),
+                                   "node_id": (job.node or {}).get("id"), "feature": "kbc_practice"},
                 )
                 repo.set_credits("practice", job.practice_id, float(charged))
             except Exception as exc:  # noqa: BLE001

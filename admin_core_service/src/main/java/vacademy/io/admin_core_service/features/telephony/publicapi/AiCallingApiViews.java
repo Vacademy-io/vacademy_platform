@@ -33,7 +33,12 @@ import java.util.*;
  * {@link #STUCK_AFTER}, so every call gets exactly one webhook.
  *
  * <p>The only writes here are targeted, idempotent column fills (call_log_id,
- * terminal_seen_at); nothing saves the whole row.
+ * terminal_seen_at); nothing saves the whole row. The entity passed in is never changed
+ * either: under open-session-in-view (on in admin_core) a GET's row stays managed for
+ * the whole request, so a setter here was flushed by the next targeted write as a
+ * whole-row UPDATE from the row as it was loaded, wiping final_status / finalized_at /
+ * webhook_status that the finaliser or the webhook pass wrote in between (review of
+ * v1.1, 2026-10-14). The values derived here travel in {@link State} instead.
  */
 @Slf4j
 @Component
@@ -64,24 +69,35 @@ public class AiCallingApiViews {
     private final MediaService mediaService;
     private final AiCallingUsageService usageService;
 
-    /** A computed state: the public status, whether it is final, and the records behind it. */
+    /**
+     * A computed state: the public status, whether it is final, the records behind it, and
+     * when the call was first seen ended (the row's terminal_seen_at, or now when this is
+     * the first look at an ended call).
+     */
     public record State(String status, boolean isFinal, String reason, Instant scheduledFor,
-                        AiCallQueueItem queueItem, TelephonyCallLog callLog, AiCallResult result) {
+                        AiCallQueueItem queueItem, TelephonyCallLog callLog, AiCallResult result,
+                        Instant terminalSeenAt) {
+
+        State(String status, boolean isFinal, String reason, Instant scheduledFor,
+              AiCallQueueItem queueItem, TelephonyCallLog callLog, AiCallResult result) {
+            this(status, isFinal, reason, scheduledFor, queueItem, callLog, result, null);
+        }
     }
 
     public State state(AiCallApiCall c) {
         Instant now = Instant.now();
         AiCallQueueItem q = c.getQueueItemId() == null ? null
                 : queueRepository.findById(c.getQueueItemId()).orElse(null);
-        if (c.getCallLogId() == null && q != null && q.getCallLogId() != null) {
-            c.setCallLogId(q.getCallLogId());
+        String callLogId = c.getCallLogId();
+        if (callLogId == null && q != null && q.getCallLogId() != null) {
+            callLogId = q.getCallLogId();
             try {
-                callRepository.setCallLogIdIfNull(c.getId(), q.getCallLogId());
+                callRepository.setCallLogIdIfNull(c.getId(), callLogId);
             } catch (RuntimeException e) {
                 log.debug("ai-calling-api: could not record call log id for {}: {}", c.getId(), e.getMessage());
             }
         }
-        TelephonyCallLog l = c.getCallLogId() == null ? null : callLogRepository.findById(c.getCallLogId()).orElse(null);
+        TelephonyCallLog l = callLogId == null ? null : callLogRepository.findById(callLogId).orElse(null);
         AiCallResult r = l == null ? null : newestResult(l.getId());
 
         if (l == null) {
@@ -119,8 +135,9 @@ public class AiCallingApiViews {
         }
 
         String ls = l.getStatus() == null ? "" : l.getStatus();
-        if (CALL_LOG_TERMINAL.contains(ls) && c.getTerminalSeenAt() == null) {
-            c.setTerminalSeenAt(now);
+        Instant terminalSeenAt = c.getTerminalSeenAt();
+        if (CALL_LOG_TERMINAL.contains(ls) && terminalSeenAt == null) {
+            terminalSeenAt = now;
             try {
                 callRepository.setTerminalSeenAtIfNull(c.getId(), now);
             } catch (RuntimeException e) {
@@ -131,25 +148,26 @@ public class AiCallingApiViews {
         return switch (ls) {
             case "COMPLETED" -> {
                 boolean processed = r != null && "PROCESSED".equalsIgnoreCase(r.getProcessingStatus());
-                Instant ended = c.getTerminalSeenAt() == null ? now : c.getTerminalSeenAt();
+                Instant ended = terminalSeenAt == null ? now : terminalSeenAt;
                 // A test call never has a recording; a real one gets it copied shortly after
                 // the outcome. Send once both are in, or give up waiting for either.
                 boolean recordingSettled = c.isTestMode() || l.getRecordingStorageKey() != null
                         || ended.plus(RECORDING_WAIT).isBefore(now);
                 boolean waitedOut = ended.plus(OUTCOME_WAIT).isBefore(now);
-                yield new State("completed", (processed && recordingSettled) || waitedOut, null, null, q, l, r);
+                yield new State("completed", (processed && recordingSettled) || waitedOut, null, null, q, l, r,
+                        terminalSeenAt);
             }
-            case "NO_ANSWER" -> new State("no_answer", true, reason, null, q, l, r);
-            case "BUSY" -> new State("busy", true, reason, null, q, l, r);
-            case "FAILED" -> new State("failed", true, reason, null, q, l, r);
-            case "CANCELLED" -> new State("canceled", true, reason, null, q, l, r);
+            case "NO_ANSWER" -> new State("no_answer", true, reason, null, q, l, r, terminalSeenAt);
+            case "BUSY" -> new State("busy", true, reason, null, q, l, r, terminalSeenAt);
+            case "FAILED" -> new State("failed", true, reason, null, q, l, r, terminalSeenAt);
+            case "CANCELLED" -> new State("canceled", true, reason, null, q, l, r, terminalSeenAt);
             default -> {
                 Instant dialed = l.getCreatedAt() == null ? null : l.getCreatedAt().toInstant();
                 if (dialed != null && dialed.plus(STUCK_AFTER).isBefore(now)) {
-                    yield new State("failed", true, NO_RESULT, null, q, l, r);
+                    yield new State("failed", true, NO_RESULT, null, q, l, r, terminalSeenAt);
                 }
                 boolean talking = "IN_PROGRESS".equals(ls) || "COUNSELLOR_ANSWERED".equals(ls);
-                yield new State(talking ? "in_progress" : "dialing", false, null, null, q, l, r);
+                yield new State(talking ? "in_progress" : "dialing", false, null, null, q, l, r, terminalSeenAt);
             }
         };
     }
@@ -189,7 +207,8 @@ public class AiCallingApiViews {
                 ? s.queueItem().getDispatchedAt()
                 : l != null && l.getCreatedAt() != null ? l.getCreatedAt().toInstant() : null;
         m.put("dialed_at", dialedAt == null ? null : dialedAt.toString());
-        Instant endedAt = s.isFinal() ? endedAt(c, l, r, dialedAt, duration, s.queueItem()) : null;
+        Instant seenEnded = s.terminalSeenAt() != null ? s.terminalSeenAt() : c.getTerminalSeenAt();
+        Instant endedAt = s.isFinal() ? endedAt(c, seenEnded, l, r, dialedAt, duration, s.queueItem()) : null;
         m.put("ended_at", endedAt == null ? null : endedAt.toString());
 
         String recordingUrl = recordingUrl(l);
@@ -207,8 +226,8 @@ public class AiCallingApiViews {
      * dialed, until the finaliser stamps it). Never a time that has not come yet: a test
      * call carries a made-up duration and finishes the moment it starts.
      */
-    static Instant endedAt(AiCallApiCall c, TelephonyCallLog l, AiCallResult r, Instant dialedAt, Integer duration,
-                           AiCallQueueItem item) {
+    static Instant endedAt(AiCallApiCall c, Instant terminalSeenAt, TelephonyCallLog l, AiCallResult r,
+                           Instant dialedAt, Integer duration, AiCallQueueItem item) {
         Instant now = Instant.now();
         if (l != null && l.getEndTime() != null && !l.getEndTime().toInstant().isAfter(now)) {
             return l.getEndTime().toInstant();
@@ -217,7 +236,7 @@ public class AiCallingApiViews {
         if (start != null && duration != null && l != null && !start.plusSeconds(duration).isAfter(now)) {
             return start.plusSeconds(duration);
         }
-        if (c.getTerminalSeenAt() != null) return c.getTerminalSeenAt();
+        if (terminalSeenAt != null) return terminalSeenAt;
         if (c.getFinalizedAt() != null) return c.getFinalizedAt();
         return item != null && item.getUpdatedAt() != null ? item.getUpdatedAt() : now;
     }

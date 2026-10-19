@@ -80,14 +80,14 @@ public class LoginCodeService {
     // ── Mint ─────────────────────────────────────────────────────────────────
 
     /**
-     * Mints a code for a learner of the institute, found by username or user id (exactly one).
+     * Mints a code for a learner of the institute, found by username, email or user id (exactly one).
      * The returned {@link MintedCode#code()} is the only time the code is visible.
      *
      * @param expiresInDays 1..{@value #MAX_TTL_DAYS}; null = {@value #DEFAULT_TTL_DAYS}
      * @param createdVia    {@link LearnerLoginCode#VIA_API_KEY} or {@link LearnerLoginCode#VIA_INTERNAL}
      */
     @Transactional
-    public MintedCode mint(String instituteId, String username, String userId, Integer expiresInDays,
+    public MintedCode mint(String instituteId, String username, String email, String userId, Integer expiresInDays,
                            String createdVia, String createdBy) {
         if (isBlank(instituteId)) {
             throw new VacademyException(HttpStatus.BAD_REQUEST, "institute_id is required");
@@ -97,7 +97,7 @@ public class LoginCodeService {
             throw new VacademyException(HttpStatus.BAD_REQUEST,
                     "expires_in_days must be between 1 and " + MAX_TTL_DAYS);
         }
-        User user = findLearner(instituteId, username, userId);
+        User user = findLearner(instituteId, username, email, userId);
 
         String code = newCode();
         Instant now = clock.instant();
@@ -118,22 +118,26 @@ public class LoginCodeService {
         return new MintedCode(code, row.getExpiresAt(), user.getId(), user.getUsername());
     }
 
-    private User findLearner(String instituteId, String username, String userId) {
+    private User findLearner(String instituteId, String username, String email, String userId) {
         boolean byUsername = !isBlank(username);
+        boolean byEmail = !isBlank(email);
         boolean byId = !isBlank(userId);
-        if (byUsername == byId) {
-            throw new VacademyException(HttpStatus.BAD_REQUEST, "Send exactly one of username or user_id");
+        if ((byUsername ? 1 : 0) + (byEmail ? 1 : 0) + (byId ? 1 : 0) != 1) {
+            throw new VacademyException(HttpStatus.BAD_REQUEST, "Send exactly one of username, email or user_id");
         }
         Optional<User> user;
         if (byUsername) {
             // STUDENT role (ACTIVE/INVITED) in this institute, by construction of the query.
             user = userRepository.findUserByUsernameAndInstituteId(username.trim(), instituteId);
+        } else if (byEmail) {
+            // Same STUDENT role rule, by construction of the query.
+            user = codeRepository.findLearnerIdByEmail(email.trim(), instituteId).flatMap(userRepository::findById);
         } else {
             user = userRepository.findById(userId.trim())
                     .filter(u -> isLearnerOf(u.getId(), instituteId));
         }
         return user.orElseThrow(() ->
-                new VacademyException(HttpStatus.NOT_FOUND, "No learner with that username in this institute"));
+                new VacademyException(HttpStatus.NOT_FOUND, "No learner with that username, email or id in this institute"));
     }
 
     private boolean isLearnerOf(String userId, String instituteId) {

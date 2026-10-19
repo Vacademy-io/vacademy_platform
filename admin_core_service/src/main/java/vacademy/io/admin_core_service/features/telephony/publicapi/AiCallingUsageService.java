@@ -6,6 +6,7 @@ import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.telephony.core.AiCallService;
+import vacademy.io.admin_core_service.features.telephony.core.CallBillingService;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.AiCallResult;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.TelephonyCallLog;
 import vacademy.io.admin_core_service.features.telephony.publicapi.entity.AiCallApiCall;
@@ -99,6 +100,12 @@ public class AiCallingUsageService {
         Instant end = to.plusDays(1).atStartOfDay(zone).toInstant();
 
         // telephony_call_log / credit_transactions hold naive UTC timestamps.
+        // "unbilled" = a leg CallBillingService will still charge (the same gates as
+        // voiceLegPending / aiLegPending below and the reconciliation sweep): the voice leg
+        // only on Vacademy-paid trunks (PLIVO, VACADEMY_AI), the AI leg on VACADEMY_AI and
+        // AAVTAAR. Reading only telephony_call_log.credits_billed_at counted every connected
+        // AAVTAAR call as unbilled forever (no voice leg is ever stamped for it), and called
+        // a VACADEMY_AI call billed while its AI leg was still owed.
         MapSqlParameterSource p = new MapSqlParameterSource()
                 .addValue("i", instituteId)
                 .addValue("start", Timestamp.valueOf(LocalDateTime.ofInstant(start, ZoneOffset.UTC)))
@@ -107,7 +114,17 @@ public class AiCallingUsageService {
                 .addValue("apiOnly", SOURCE_API.equals(source));
         String sql = """
                 WITH logs AS (
-                    SELECT l.id, l.created_at, l.status, l.duration_seconds, l.credits_billed_at
+                    SELECT l.id, l.created_at, l.status, l.duration_seconds,
+                           ((l.provider_type IN ('PLIVO', 'VACADEMY_AI') AND l.status = 'COMPLETED'
+                                AND COALESCE(l.duration_seconds, 0) > 0 AND l.credits_billed_at IS NULL)
+                            OR EXISTS (SELECT 1 FROM ai_call_result r
+                                        WHERE r.call_log_id = l.id
+                                          AND r.provider IN ('VACADEMY_AI', 'AAVTAAR')
+                                          AND r.processing_status = 'PROCESSED'
+                                          AND lower(trim(coalesce(r.status, ''))) IN ('completed', 'complete')
+                                          AND (r.duration_seconds IS NULL OR r.duration_seconds > 0)
+                                          AND (r.call_uuid IS NOT NULL OR r.correlation_id IS NOT NULL)
+                                          AND r.credits_billed_at IS NULL)) AS unbilled
                       FROM telephony_call_log l
                      WHERE l.institute_id = :i
                        AND l.created_at >= :start AND l.created_at < :end
@@ -131,8 +148,7 @@ public class AiCallingUsageService {
                        COUNT(*) FILTER (WHERE logs.status = 'COMPLETED') AS connected,
                        COALESCE(SUM(logs.duration_seconds) FILTER (WHERE logs.status = 'COMPLETED'), 0) AS seconds,
                        COALESCE(SUM(cost.credits), 0) AS credits,
-                       COUNT(*) FILTER (WHERE logs.status = 'COMPLETED' AND COALESCE(logs.duration_seconds, 0) > 0
-                                          AND logs.credits_billed_at IS NULL) AS unbilled
+                       COUNT(*) FILTER (WHERE logs.unbilled) AS unbilled
                   FROM logs LEFT JOIN cost ON cost.log_id = logs.id
                  GROUP BY 1
                  ORDER BY 1
@@ -177,6 +193,82 @@ public class AiCallingUsageService {
         out.put("timezone", zone.getId());
         out.put("totals", totals);
         out.put("days", days);
+        // Added in v1.2, after every v1.1 field so those stay byte-identical.
+        out.put("human_calls", humanUsage(p, from, to));
+        return out;
+    }
+
+    /**
+     * Human (counsellor) calls in the same range and day cut: source=api counts the calls
+     * placed through POST /v1/human-calls, source=all every outbound counsellor call placed
+     * on a telephony provider (PLIVO, EXOTEL, AIRTEL: the dashboard's Call button, the API,
+     * and Airtel calls imported from the counsellor's extension). MANUAL rows are uploads
+     * of calls made off the platform, never placed here, so they are not counted. Only
+     * Vacademy Voice (PLIVO) talk time is charged to the wallet ("voice_call:{log}"); calls
+     * on the institute's own Exotel/Airtel account count with 0 credits.
+     */
+    private Map<String, Object> humanUsage(MapSqlParameterSource p, LocalDate from, LocalDate to) {
+        String sql = """
+                WITH logs AS (
+                    SELECT l.id, l.created_at, l.status, l.duration_seconds,
+                           (l.provider_type = 'PLIVO' AND l.status = 'COMPLETED'
+                                AND COALESCE(l.duration_seconds, 0) > 0 AND l.credits_billed_at IS NULL) AS unbilled
+                      FROM telephony_call_log l
+                     WHERE l.institute_id = :i
+                       AND l.created_at >= :start AND l.created_at < :end
+                       AND l.direction = 'OUTBOUND' AND l.counsellor_user_id IS NOT NULL
+                       AND l.provider_type IN ('PLIVO', 'EXOTEL', 'AIRTEL')
+                       AND (:apiOnly = FALSE OR EXISTS (SELECT 1 FROM human_call_api_call h WHERE h.call_log_id = l.id))
+                ), cost AS (
+                    SELECT logs.id AS log_id, SUM(ABS(t.amount)) AS credits
+                      FROM logs JOIN credit_transactions t
+                        ON t.external_reference_id = 'voice_call:' || logs.id AND t.institute_id = :i
+                       AND t.transaction_type = 'USAGE_DEDUCTION'
+                     GROUP BY logs.id
+                )
+                SELECT to_char((logs.created_at AT TIME ZONE 'UTC') AT TIME ZONE :tz, 'YYYY-MM-DD') AS day,
+                       COUNT(*) AS calls,
+                       COUNT(*) FILTER (WHERE logs.status = 'COMPLETED') AS connected,
+                       COALESCE(SUM(logs.duration_seconds) FILTER (WHERE logs.status = 'COMPLETED'), 0) AS seconds,
+                       COALESCE(SUM(cost.credits), 0) AS credits,
+                       COUNT(*) FILTER (WHERE logs.unbilled) AS unbilled
+                  FROM logs LEFT JOIN cost ON cost.log_id = logs.id
+                 GROUP BY 1
+                 ORDER BY 1
+                """;
+        Map<String, Map<String, Object>> byDay = new HashMap<>();
+        for (Map<String, Object> row : jdbc.queryForList(sql, p)) byDay.put((String) row.get("day"), row);
+        List<Map<String, Object>> days = new ArrayList<>();
+        long calls = 0, connected = 0, seconds = 0, unbilled = 0;
+        BigDecimal credits = BigDecimal.ZERO;
+        for (LocalDate d = from; !d.isAfter(to); d = d.plusDays(1)) {
+            Map<String, Object> row = byDay.get(d.toString());
+            long c = row == null ? 0 : ((Number) row.get("calls")).longValue();
+            long cn = row == null ? 0 : ((Number) row.get("connected")).longValue();
+            long s = row == null ? 0 : ((Number) row.get("seconds")).longValue();
+            BigDecimal cr = row == null ? BigDecimal.ZERO : new BigDecimal(String.valueOf(row.get("credits")));
+            unbilled += row == null ? 0 : ((Number) row.get("unbilled")).longValue();
+            calls += c;
+            connected += cn;
+            seconds += s;
+            credits = credits.add(cr);
+            Map<String, Object> day = new LinkedHashMap<>();
+            day.put("date", d.toString());
+            day.put("calls", c);
+            day.put("connected", cn);
+            day.put("talk_seconds", s);
+            day.put("credits", round(cr));
+            days.add(day);
+        }
+        Map<String, Object> totals = new LinkedHashMap<>();
+        totals.put("calls", calls);
+        totals.put("connected", connected);
+        totals.put("talk_seconds", seconds);
+        totals.put("credits", round(credits));
+        totals.put("calls_not_yet_billed", unbilled);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("totals", totals);
+        out.put("days", days);
         return out;
     }
 
@@ -218,10 +310,39 @@ public class AiCallingUsageService {
             log.warn("ai-calling-api: cost lookup failed for {}: {}", c.getId(), e.getMessage());
             return null;
         }
-        boolean billed = l.getCreditsBilledAt() != null && (r == null || r.getCreditsBilledAt() != null);
         m.put("credits", round(credits));
-        m.put("billed", billed);
+        m.put("billed", !voiceLegPending(l) && !aiLegPending(r));
         return m;
+    }
+
+    /**
+     * The voice leg is still to be charged: CallLogService.maybeBillVoiceLeg and the sweep
+     * charge it only on Vacademy-paid trunks (PLIVO, VACADEMY_AI), for a COMPLETED call with
+     * talk time, and stamp telephony_call_log.credits_billed_at. Any other provider never
+     * gets the stamp, so its absence there means nothing is owed.
+     */
+    static boolean voiceLegPending(TelephonyCallLog l) {
+        return l != null && l.getCreditsBilledAt() == null
+                && CallBillingService.isVoiceBillable(l.getProviderType())
+                && "COMPLETED".equals(l.getStatus())
+                && l.getDurationSeconds() != null && l.getDurationSeconds() > 0;
+    }
+
+    /**
+     * The AI leg is still to be charged: the same gates as AiCallOutcomeProcessor's live
+     * charge and the reconciliation sweep (an AI-billable provider, a PROCESSED report whose
+     * own status is completed, talk time unknown or positive, and a stable identity:
+     * call_uuid, or correlation_id bound to a call log). A report that fails any gate is
+     * never charged, so it is not "not yet billed" either.
+     */
+    static boolean aiLegPending(AiCallResult r) {
+        if (r == null || r.getCreditsBilledAt() != null) return false;
+        if (!CallBillingService.isAiBillable(r.getProvider())) return false;
+        if (!"PROCESSED".equals(r.getProcessingStatus())) return false;
+        String status = r.getStatus() == null ? "" : r.getStatus().trim().toLowerCase(Locale.ROOT);
+        if (!"completed".equals(status) && !"complete".equals(status)) return false;
+        if (r.getDurationSeconds() != null && r.getDurationSeconds() <= 0) return false;
+        return r.getCallUuid() != null || (r.getCorrelationId() != null && r.getCallLogId() != null);
     }
 
     private static double round(BigDecimal v) {

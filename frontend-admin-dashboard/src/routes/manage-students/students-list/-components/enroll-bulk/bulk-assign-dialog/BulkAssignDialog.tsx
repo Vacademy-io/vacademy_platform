@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Dialog, DialogContent, DialogHeader } from '@/components/ui/dialog';
 import { MyButton } from '@/components/design-system/button';
@@ -34,6 +34,7 @@ import {
 } from '@/services/admin-discounts';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { useCourseSettings } from '@/hooks/useCourseSettings';
+import { toOfflinePaymentDetailsPayload } from '@/services/offline-payment-modes';
 import {
     getTerminology,
     getTerminologyPlural,
@@ -219,9 +220,23 @@ export const BulkAssignDialog = ({
             new_users: newUsers.length > 0 ? newUsers : undefined,
             assignments: selectedPackageSessions.map((ps) => ({
                 package_session_id: ps.packageSessionId,
-                enroll_invite_id: ps.enrollInviteId ?? null,
+                // Auto mode sends the invite the row showed: left null, the backend only finds a
+                // DEFAULT invite and otherwise enrolls through a new free one.
+                enroll_invite_id: ps.enrollInviteId ?? ps.autoResolvedInviteId ?? null,
                 access_days: ps.accessDays ?? null,
-                cpo_config: ps.cpoConfig ?? null,
+                cpo_config: ps.cpoConfig
+                    ? {
+                          ...ps.cpoConfig,
+                          // discount_split is the wizard's own; the rows already carry the result.
+                          installment_schedule: ps.cpoConfig.installment_schedule
+                              ? { ...ps.cpoConfig.installment_schedule, discount_split: undefined }
+                              : ps.cpoConfig.installment_schedule,
+                          payment_details:
+                              ps.cpoConfig.payment_mode === 'OFFLINE'
+                                  ? toOfflinePaymentDetailsPayload(ps.cpoConfig.payment_details)
+                                  : null,
+                      }
+                    : null,
                 // Omitted entirely when "No discount" so the request is unchanged from before.
                 ...(toAdminDiscountPayload(ps.adminDiscount)
                     ? { admin_discount: toAdminDiscountPayload(ps.adminDiscount) }
@@ -255,6 +270,13 @@ export const BulkAssignDialog = ({
                 send_credentials: showSendCredentials ? options.sendCredentials : false,
                 transaction_id: options.transactionId || undefined,
                 payment_date: options.paymentDate || undefined,
+                // Only with an actual payment: the fields preselect a mode on their own. And only
+                // while the shared fields are shown — hidden ones (every course records its
+                // payment in its own fee panel) must not reach a payment the admin never saw.
+                ...((options.paymentDate || options.transactionId) &&
+                selectedPackageSessions.some((ps) => !ps.ownsPayment)
+                    ? { payment_details: toOfflinePaymentDetailsPayload(options.paymentDetails) }
+                    : {}),
                 dry_run: dryRun,
             },
         };
@@ -574,16 +596,38 @@ export const BulkAssignDialog = ({
         if (currentStep === 'courses') return selectedPackageSessions.length > 0;
         // An admin discount that's half filled in (no value / no reason) must not be sent.
         if (currentStep === 'config')
-            return selectedPackageSessions.every(
-                (ps) =>
-                    !getAdminDiscountValidationError(ps.adminDiscount) &&
-                    !(ps.adminDiscount && ps.adminDiscount.mode !== 'NONE' && ps.adminDiscountError)
+            return (
+                selectedPackageSessions.every(
+                    (ps) =>
+                        !getAdminDiscountValidationError(ps.adminDiscount) &&
+                        !(ps.adminDiscount && ps.adminDiscount.mode !== 'NONE' && ps.adminDiscountError) &&
+                        // An installment schedule the backend would reject (e.g. amounts that
+                        // don't add up) must be fixed before Preview.
+                        !ps.cpoScheduleError &&
+                        // Offline payment details the institute requires (mode, reference, proof).
+                        !(ps.cpoConfig?.payment_mode === 'OFFLINE' && ps.cpoPaymentError) &&
+                        // Auto mode could not tell which invite is meant.
+                        !ps.inviteNeedsChoice
+                ) &&
+                !(
+                    (options.paymentDate || options.transactionId) &&
+                    selectedPackageSessions.some((ps) => !ps.ownsPayment) &&
+                    options.paymentDetailsError
+                )
             );
         // Every org-associated batch must name the organisation being enrolled into —
         // the backend rejects the enrollment outright without one.
         if (currentStep === 'suborg') return selectedPackageSessions.every(isSubOrgSelectionReady);
         return false;
     };
+
+    // One existing learner: their own value of the numbering-series field (e.g. branch) is
+    // preselected in the payment fields. Several learners share whatever is picked.
+    const numberingUserId = useMemo(() => {
+        const targets = selectedLearners.filter((l) => l.parentLink?.mode !== 'is_guardian');
+        const only = targets.length === 1 ? targets[0] : undefined;
+        return only?.type === 'existing' ? only.userId : null;
+    }, [selectedLearners]);
 
     const handleNext = async () => {
         if (currentStep === 'learners') {
@@ -690,6 +734,7 @@ export const BulkAssignDialog = ({
                             onSelectedPackageSessionsChange={setSelectedPackageSessions}
                             options={options}
                             onOptionsChange={setOptions}
+                            numberingUserId={numberingUserId}
                         />
                     )}
                     {currentStep === 'suborg' && (

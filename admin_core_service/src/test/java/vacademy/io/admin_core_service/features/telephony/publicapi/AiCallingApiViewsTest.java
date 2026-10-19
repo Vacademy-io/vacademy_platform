@@ -21,6 +21,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 class AiCallingApiViewsTest {
@@ -28,6 +29,7 @@ class AiCallingApiViewsTest {
     private AiCallQueueItemRepository queue;
     private TelephonyCallLogRepository logs;
     private AiCallResultRepository results;
+    private AiCallApiCallRepository calls;
     private AiCallingApiViews views;
 
     @BeforeEach
@@ -35,7 +37,8 @@ class AiCallingApiViewsTest {
         queue = mock(AiCallQueueItemRepository.class);
         logs = mock(TelephonyCallLogRepository.class);
         results = mock(AiCallResultRepository.class);
-        views = new AiCallingApiViews(mock(AiCallApiCallRepository.class), queue, logs, results, mock(MediaService.class),
+        calls = mock(AiCallApiCallRepository.class);
+        views = new AiCallingApiViews(calls, queue, logs, results, mock(MediaService.class),
                 mock(AiCallingUsageService.class));
         when(results.findByCallLogIdIn(any())).thenReturn(List.of());
     }
@@ -190,20 +193,18 @@ class AiCallingApiViewsTest {
     void endedAtPrefersTheCarriersEndTime() {
         Instant end = Instant.parse("2026-10-14T05:00:00Z");
         TelephonyCallLog l = TelephonyCallLog.builder().id("l1").endTime(Timestamp.from(end)).build();
-        assertEquals(end, AiCallingApiViews.endedAt(call(null, "l1"), l, null, null, 90, null));
+        assertEquals(end, AiCallingApiViews.endedAt(call(null, "l1"), null, l, null, null, 90, null));
         TelephonyCallLog noEnd = TelephonyCallLog.builder().id("l1").build();
         Instant dialed = Instant.parse("2026-10-14T04:58:00Z");
-        assertEquals(dialed.plusSeconds(90), AiCallingApiViews.endedAt(call(null, "l1"), noEnd, null, dialed, 90, null));
+        assertEquals(dialed.plusSeconds(90), AiCallingApiViews.endedAt(call(null, "l1"), null, noEnd, null, dialed, 90, null));
     }
 
     @Test
     void endedAtIsNeverInTheFuture() {
         // A test call: dialed now with a made-up 90 s duration, already final.
         Instant dialed = Instant.now();
-        AiCallApiCall c = call(null, "l1");
-        c.setTerminalSeenAt(dialed);
         TelephonyCallLog noEnd = TelephonyCallLog.builder().id("l1").build();
-        assertEquals(dialed, AiCallingApiViews.endedAt(c, noEnd, null, dialed, 90, null));
+        assertEquals(dialed, AiCallingApiViews.endedAt(call(null, "l1"), dialed, noEnd, null, dialed, 90, null));
     }
 
     @Test
@@ -211,7 +212,25 @@ class AiCallingApiViewsTest {
         Instant canceled = Instant.parse("2026-10-14T05:10:00Z");
         AiCallQueueItem item = new AiCallQueueItem();
         item.setUpdatedAt(canceled);
-        assertEquals(canceled, AiCallingApiViews.endedAt(call(null, null), null, null, null, null, item));
+        assertEquals(canceled, AiCallingApiViews.endedAt(call(null, null), null, null, null, null, null, item));
+    }
+
+    @Test
+    void readingACallNeverChangesTheEntity() {
+        // Under open-session-in-view a GET's row is managed: a setter here was flushed as a
+        // whole-row UPDATE over the finaliser's columns. Derived values travel in State.
+        AiCallQueueItem q = AiCallQueueItem.builder().id("q1").status("DIALED").callLogId("l1").build();
+        when(queue.findById("q1")).thenReturn(Optional.of(q));
+        callLog("NO_ANSWER", Instant.now());
+        AiCallApiCall c = call("q1", null);
+        AiCallingApiViews.State s = views.state(c);
+        assertEquals("no_answer", s.status());
+        assertNotNull(s.terminalSeenAt());
+        assertNull(c.getCallLogId(), "call_log_id is filled by a targeted UPDATE only");
+        assertNull(c.getTerminalSeenAt(), "terminal_seen_at is filled by a targeted UPDATE only");
+        verify(calls).setCallLogIdIfNull("call_1", "l1");
+        verify(calls).setTerminalSeenAtIfNull(eq("call_1"), any(Instant.class));
+        assertEquals(s.terminalSeenAt().toString(), views.call(c, s, false).get("ended_at"));
     }
 
     @Test

@@ -47,6 +47,7 @@ export function CompletedFollowUpsTable({
      */
     const extraColumns = (
         [
+            ['interestLevel', 'interest_level', followUpFields.interestLevels],
             ['studentResponse', 'student_response', followUpFields.studentResponses],
             ['followUpMode', 'follow_up_mode', followUpFields.followUpModes],
             ['nextAction', 'next_action', followUpFields.nextActions],
@@ -68,6 +69,7 @@ export function CompletedFollowUpsTable({
                         {[
                             'lead',
                             'contact',
+                            ...(followUpFields.showHistory ? ['createdAt'] : []),
                             'wasDue',
                             'completedAt',
                             'completedBy',
@@ -99,6 +101,12 @@ export function CompletedFollowUpsTable({
                                 </span>
                             </td>
                             <td className="px-4 py-3 text-neutral-500">{row.lead_mobile || '—'}</td>
+                            {/* Created date only with the follow-up history switch on. */}
+                            {followUpFields.showHistory && (
+                                <td className="whitespace-nowrap px-4 py-3 text-neutral-500">
+                                    {cell(toDate(row.created_at ?? null))}
+                                </td>
+                            )}
                             <td className="whitespace-nowrap px-4 py-3 text-neutral-500">
                                 {cell(toDate(row.schedule_time))}
                             </td>

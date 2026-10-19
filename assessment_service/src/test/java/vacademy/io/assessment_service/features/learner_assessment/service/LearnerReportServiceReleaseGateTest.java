@@ -64,6 +64,14 @@ class LearnerReportServiceReleaseGateTest {
     }
 
     @Test
+    void anUnreleasedNoAutoReleaseResultIsRefused() {
+        assertThatThrownBy(() -> access(attempt("NO_AUTO_RELEASE", null)))
+                .isInstanceOf(VacademyException.class)
+                .hasMessageContaining("not been released");
+        access(attempt("NO_AUTO_RELEASE", "RELEASED"));
+    }
+
+    @Test
     void autoResultTypesAreNotGatedHere() {
         // The card offers "Show report" for these unless the attempt is held.
         access(attempt("AUTO_AFTER_SUBMISSION", null));

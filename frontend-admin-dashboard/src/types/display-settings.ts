@@ -159,12 +159,16 @@ export interface AssessmentActionSettings {
     showEditAssessment?: boolean;
     // "Delete Assessment" / "Delete Homework" in the card "…" menu.
     showDeleteAssessment?: boolean;
+    // Assessment folders: New folder, folder edit/copy link/delete, drag-and-drop and
+    // "Move to folder". Off still lets the role browse folders.
+    showManageFolders?: boolean;
 }
 
 export const DEFAULT_ASSESSMENT_ACTION_SETTINGS: AssessmentActionSettings = {
     showCreateAssessment: true,
     showEditAssessment: true,
     showDeleteAssessment: true,
+    showManageFolders: true,
 };
 
 // Stable identifiers for the student side-view tabs. Used as keys in the

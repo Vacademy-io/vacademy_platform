@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useRouter } from "@tanstack/react-router";
+import { matchesCataloguePost } from "@/lib/catalogue-post-route";
 import { Preferences } from "@capacitor/preferences";
 import {
   resolveDomainRouting,
@@ -84,6 +85,7 @@ let globalDomainRoutingState: DomainRoutingState | null = null;
 
 export const useDomainRouting = () => {
   const navigate = useNavigate();
+  const router = useRouter();
   const { setPrimaryColor } = useTheme();
   const { setInstituteId } = useInstituteFeatureStore();
 
@@ -580,7 +582,8 @@ export const useDomainRouting = () => {
       if (
         isOnPublicRoute ||
         isOnCourseDetailsPage ||
-        isOnLiveClassDynamicRoute
+        isOnLiveClassDynamicRoute ||
+        matchesCataloguePost(router.state.matches)
       ) {
         return;
       }
@@ -641,6 +644,8 @@ export const useDomainRouting = () => {
 
       if (
         isOnPublicRoute ||
+        // A blog post on a tagged catalogue site, /<tag>/<page>/<slug>.
+        matchesCataloguePost(router.state.matches) ||
         isOnCourseDetailsPage ||
         isOnLiveClassDynamicRoute ||
         isOnMyFilesRoute

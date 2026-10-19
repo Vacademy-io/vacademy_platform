@@ -3,6 +3,19 @@ title: "Changelog"
 description: "Changes to the Telleo API."
 ---
 
+<Update label="17 October 2026" description="v1.2">
+  - **Human calls need new scopes**, `human_calls:read` and `human_calls:write`. Existing keys do not have them and keep working exactly as before: an AI calling key cannot ring your staff or list them. Create a new key with **Can ring counsellors (human calls)** ticked to use the endpoints below.
+  - New: [human calls](/concepts/human-calls). `POST /v1/human-calls` rings one of your counsellors and connects them to a number on your own calling provider (Vacademy Voice, Exotel or Airtel); `GET /v1/human-calls`, `GET /v1/human-calls/{id}`, `GET /v1/counsellors`, `GET /v1/dispositions` and `POST /v1/human-calls/{id}/disposition`. See the [click-to-call guide](/guides/click-to-call).
+  - New webhook events: `human_call.completed`, `human_call.not_connected` and `human_call.analysis_ready`, on your existing endpoint.
+  - `GET /v1/usage` adds a `human_calls` block (calls, connected, talk time, credits); the existing fields are unchanged.
+</Update>
+
+<Update label="14 October 2026" description="v1.1.1">
+  - A batch retried with the same `Idempotency-Key` must be the same request (`409 idempotency_key_reused` otherwise) and returns the same accepted **and** rejected rows; a retry while the first request is still running gets `409 request_in_progress`. Batch keys are at most 251 characters.
+  - Variables named `name`, `lead_name` or a date/time word (`date`, `time`, `year`…) are accepted again, with a `warnings` entry; they never replace the built-in values.
+  - `calls_not_yet_billed` and `cost.billed` count only charges that will actually be made.
+</Update>
+
 <Update label="14 October 2026" description="v1.1">
   - New: [`GET /v1/credits`](/platform/credits-and-usage) and [`GET /v1/usage`](/platform/credits-and-usage), and `cost` on every call.
   - New: `outcome.call_quality`; calls that broke down on our side no longer report the contact as not interested.

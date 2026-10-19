@@ -22,8 +22,10 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * <p>Keys: {@code vak_call_…} institute API keys (hashed, product {@code ai_calling},
  * issued in Settings). The first-generation {@code vak_live_…} keys (ai_call_api_key,
- * stored in plaintext) are still accepted with every scope, so nothing that used them
- * breaks; new keys are only issued as {@code vak_call_}.
+ * stored in plaintext) are still accepted with the default AI calling scopes, so nothing
+ * that used them breaks; new keys are only issued as {@code vak_call_}. They never get the
+ * human_calls scopes: those let a key ring staff phones and list staff, and must be granted
+ * explicitly on a new key.
  *
  * <p>Sent as {@code X-API-Key: <key>} or {@code Authorization: Bearer <key>}.
  */

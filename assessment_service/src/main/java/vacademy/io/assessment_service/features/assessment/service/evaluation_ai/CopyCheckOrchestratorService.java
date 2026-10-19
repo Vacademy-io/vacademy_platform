@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -21,6 +22,7 @@ import vacademy.io.assessment_service.features.assessment.enums.AiEvaluationStat
 import vacademy.io.assessment_service.features.assessment.repository.AiEvaluationProcessRepository;
 import vacademy.io.assessment_service.features.assessment.service.evaluation_ai.billing.AiEvaluationCharge;
 import vacademy.io.assessment_service.features.assessment.service.evaluation_ai.billing.AiEvaluationCreditGate;
+import vacademy.io.assessment_service.features.client.AdminCoreServiceClient;
 import vacademy.io.assessment_service.features.learner_assessment.entity.QuestionWiseMarks;
 import vacademy.io.assessment_service.features.learner_assessment.repository.QuestionWiseMarksRepository;
 import vacademy.io.assessment_service.features.question_core.entity.Option;
@@ -36,6 +38,11 @@ import vacademy.io.assessment_service.features.assessment.entity.Assessment;
 import vacademy.io.assessment_service.features.assessment.entity.QuestionAssessmentSectionMapping;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 
 /**
  * New copy-check pipeline: ai_service (Python) owns the AI work, this class
@@ -59,6 +66,23 @@ public class CopyCheckOrchestratorService {
     private final PlatformTransactionManager transactionManager;
     private final AiEvaluationCreditGate creditGate;
     private final CopyCheckGradeRequestEnricher gradeRequestEnricher;
+
+    /** The institute's default checked-copy template; null in unit tests that do not need it. */
+    @Autowired(required = false)
+    private AdminCoreServiceClient adminCoreServiceClient;
+
+    /**
+     * How long a dispatch waits for the institute's template. The lookup shares
+     * admin-core's 30 s client; a slow admin-core must cost a copy at most this,
+     * never hold the dispatch executor. A lookup that overruns finishes in the
+     * background and fills the cache for the next copy.
+     */
+    private static final long TEMPLATE_LOOKUP_WAIT_MS = 3000;
+    private static final ExecutorService TEMPLATE_LOOKUP = Executors.newFixedThreadPool(2, r -> {
+        Thread t = new Thread(r, "copy-template-lookup");
+        t.setDaemon(true);
+        return t;
+    });
 
     @Value("${media.service.baseurl}")
     private String mediaServiceUrl;
@@ -152,6 +176,7 @@ public class CopyCheckOrchestratorService {
         if (request == null) {
             return;
         }
+        request.setCommentPlacement(commentPlacementFor(request, facts));
 
         String jobId;
         try {
@@ -275,11 +300,46 @@ public class CopyCheckOrchestratorService {
                 .preferredModel(preferredModel)
                 .callbackBaseUrl(callbackBaseUrl)
                 .questions(questionPayloads)
+                // The assessment's own template choice; dispatch resolves it (with the
+                // institute default) to OUTSIDE or nothing before sending.
+                .commentPlacement(typed ? null : CopyCommentPlacement.chosenOn(assessmentOf(process)))
                 .build();
         if (gradeRequestEnricher != null) {
             gradeRequestEnricher.enrich(process, request);
         }
         return request;
+    }
+
+    /**
+     * The checked-copy template for this copy: OUTSIDE, or null for the usual copy
+     * (the request is then exactly what it was before templates existed). Online
+     * (typed) answers have no copy to lay out, and partner API traffic never takes
+     * the dashboard's institute default. Read outside any transaction; a failed
+     * lookup means the usual copy, never a failed check.
+     */
+    private String commentPlacementFor(CopyCheckGradeRequestDto request, DispatchFacts facts) {
+        if (!"COPY".equals(request.getAnswerMode())) {
+            return null;
+        }
+        AdminCoreServiceClient client = adminCoreServiceClient;
+        Supplier<String> instituteDefault = facts.apiTraffic() || client == null
+                ? null
+                : () -> {
+                    try {
+                        return CompletableFuture
+                                .supplyAsync(() -> client.getAiCopyCommentPlacement(facts.instituteId()),
+                                        TEMPLATE_LOOKUP)
+                                .get(TEMPLATE_LOOKUP_WAIT_MS, TimeUnit.MILLISECONDS);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        return null;
+                    } catch (Exception e) {
+                        log.info("[copy-check] institute template lookup for {} not back in time; usual copy ({})",
+                                facts.instituteId(), e.getClass().getSimpleName());
+                        return null;
+                    }
+                };
+        return CopyCommentPlacement.effective(request.getCommentPlacement(), instituteDefault);
     }
 
     /** What dispatch reads about a claimed row in its first, short transaction. */

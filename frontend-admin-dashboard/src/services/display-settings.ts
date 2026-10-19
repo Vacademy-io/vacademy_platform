@@ -734,6 +734,10 @@ export function mergeDisplayWithDefaults(
             incoming?.assessmentPage?.showDeleteAssessment ??
             defAssessmentPage.showDeleteAssessment ??
             true,
+        showManageFolders:
+            incoming?.assessmentPage?.showManageFolders ??
+            defAssessmentPage.showManageFolders ??
+            true,
     };
 
     const defCourseCreation = defaults.courseCreation || {

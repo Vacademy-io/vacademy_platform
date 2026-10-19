@@ -12,7 +12,7 @@ from typing import Optional
 
 from ....db import db_session
 from ....models.ai_token_usage import RequestType
-from ...ai_billing import record_llm_billing
+from ...ai_billing import UC, metering_user, record_llm_billing
 from ...api_key_resolver import ApiKeyResolver
 from ...chat_llm_client import ChatLLMClient
 from ..compile_prompts import extract_json
@@ -67,6 +67,8 @@ async def rewrite_rolling_summary(
             total_tokens=int(u.get("prompt_tokens") or 0) + int(u.get("completion_tokens") or 0),
             institute_id=institute_id, user_id=user_id, request_id=tutor_session_id,
             metadata={"surface": "tutor", "kind": "session_summary"},
+            use_case=UC.TUTOR_CHAT, metering=metering_user(user_id, surface="LEARNER_APP"),
+            usage_context={"tutor_session_id": tutor_session_id, "feature": "session_summary"},
         )
         data = extract_json(resp.get("content") or "")
         if not isinstance(data, dict):

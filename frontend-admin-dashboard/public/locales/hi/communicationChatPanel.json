@@ -40,5 +40,39 @@
         "workflowUnnamed": "एक वर्कफ़्लो द्वारा भेजा गया",
         "chatbotFlow": "चैटबॉट फ़्लो “{{name}}” द्वारा भेजा गया",
         "chatbotFlowUnnamed": "एक चैटबॉट फ़्लो द्वारा भेजा गया"
+    },
+    "templateCategory": {
+        "MARKETING": "मार्केटिंग",
+        "UTILITY": "यूटिलिटी",
+        "AUTHENTICATION": "ऑथेंटिकेशन"
+    },
+    "noFailureReason": "WhatsApp ने इस संदेश के न पहुँचने का कारण नहीं बताया।",
+    "inbound": {
+        "kind": {
+            "image": "फ़ोटो",
+            "video": "वीडियो",
+            "audio": "ऑडियो",
+            "voice": "वॉइस मैसेज",
+            "sticker": "स्टिकर",
+            "document": "दस्तावेज़",
+            "location": "लोकेशन",
+            "contacts": "संपर्क कार्ड",
+            "reaction": "रिएक्शन",
+            "unsupported": "ऐसा संदेश जिसे WhatsApp बिज़नेस ऐप्स के साथ साझा नहीं करता",
+            "form_response": "फ़ॉर्म का जवाब",
+            "other": "अटैचमेंट"
+        },
+        "mediaError": {
+            "expired": "यह फ़ाइल अब WhatsApp पर उपलब्ध नहीं है — मीडिया लगभग 30 दिन तक रखा जाता है।",
+            "tooLarge": "यह फ़ाइल यहाँ दिखाने के लिए बहुत बड़ी है।",
+            "notConfigured": "इस संस्थान के लिए WhatsApp सेट नहीं है, इसलिए फ़ाइल नहीं लाई जा सकती।",
+            "failed": "WhatsApp से यह फ़ाइल लोड नहीं हो सकी।"
+        },
+        "loading": "{{kind}} लोड हो रहा है…",
+        "openInMaps": "Google Maps में खोलें",
+        "unnamedContact": "बिना नाम का संपर्क",
+        "reactedTo": "“{{preview}}” पर {{emoji}} रिएक्ट किया",
+        "reactedToMessage": "एक संदेश पर {{emoji}} रिएक्ट किया",
+        "reactionRemoved": "रिएक्शन हटा दिया"
     }
 }

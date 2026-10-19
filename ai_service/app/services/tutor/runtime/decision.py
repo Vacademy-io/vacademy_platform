@@ -8,7 +8,7 @@ from uuid import uuid4
 
 from ....db import db_session
 from ....models.ai_token_usage import RequestType
-from ...ai_billing import record_llm_billing
+from ...ai_billing import UC, metering_user, record_llm_billing
 from ...api_key_resolver import ApiKeyResolver
 from ...chat_llm_client import ChatLLMClient
 from ..compile_prompts import extract_json
@@ -177,6 +177,8 @@ async def run_turn(
             prompt_tokens=usage["prompt_tokens"], completion_tokens=usage["completion_tokens"],
             total_tokens=usage["prompt_tokens"] + usage["completion_tokens"], institute_id=institute_id, user_id=user_id,
             request_id=tutor_session_id, metadata={"surface": "tutor", "kind": kind},
+            use_case=UC.TUTOR_CHAT, metering=metering_user(user_id, surface="LEARNER_APP"),
+            usage_context={"tutor_session_id": tutor_session_id, "feature": kind},
         )
         decision = parse_decision(resp.get("content") or "", board_ops=board_ops,
                                   pass_threshold=float(check.get("pass_threshold") or 0.7))
@@ -244,6 +246,8 @@ async def run_predict(
             prompt_tokens=usage["prompt_tokens"], completion_tokens=usage["completion_tokens"],
             total_tokens=usage["prompt_tokens"] + usage["completion_tokens"], institute_id=institute_id, user_id=user_id,
             request_id=tutor_session_id, metadata={"surface": "tutor", "kind": "predict"},
+            use_case=UC.TUTOR_CHAT, metering=metering_user(user_id, surface="LEARNER_APP"),
+            usage_context={"tutor_session_id": tutor_session_id, "feature": "predict"},
         )
         data = extract_json(resp.get("content") or "")
         say = str((data or {}).get("say") or "").strip() if isinstance(data, dict) else ""

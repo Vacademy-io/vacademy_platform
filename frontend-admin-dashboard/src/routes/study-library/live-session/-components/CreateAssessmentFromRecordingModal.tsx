@@ -434,6 +434,7 @@ export function CreateAssessmentFromRecordingModal({
                         <ToolCostBadge
                             credits={costPreview.credits}
                             sufficient={costPreview.sufficient}
+                            coverage={costPreview.coverage}
                             loading={costPreview.isLoading}
                         />
                         <MyButton

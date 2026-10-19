@@ -46,7 +46,13 @@
             "installments_other": " · {{count}} قسط",
             "totalAmount": " · الإجمالي ₹{{amount}}",
             "recordingNow": "يتم تسجيل ₹{{amount}} الآن",
-            "noInitialPayment": "لم يتم تسجيل أي دفعة أولى"
+            "noInitialPayment": "لم يتم تسجيل أي دفعة أولى",
+            "schedule_one": "قسط واحد، مستحق {{first}}",
+            "schedule_other": "{{count}} أقساط، {{first}} ← {{last}}",
+            "schedule_zero": "{{count}} أقساط، {{first}} ← {{last}}",
+            "schedule_two": "قسطان، {{first}} ← {{last}}",
+            "schedule_few": "{{count}} أقساط، {{first}} ← {{last}}",
+            "schedule_many": "{{count}} قسطًا، {{first}} ← {{last}}"
         }
     },
     "noPlanConfigured": "لم يتم تحديد سعر لهذه الدعوة بعد — اختر Auto (Default) للتسجيل المجاني، أو حدد السعر في إعدادات الدفع أولاً."

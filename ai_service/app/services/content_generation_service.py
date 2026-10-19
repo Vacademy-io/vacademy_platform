@@ -4,7 +4,7 @@ import json
 import logging
 import os
 import asyncio
-from typing import AsyncGenerator, Optional
+from typing import Any, AsyncGenerator, Optional
 from uuid import uuid4
 
 from ..ports.llm_client import OutlineLLMClient
@@ -12,7 +12,7 @@ from ..schemas.course_outline import Todo
 from .youtube_service import YouTubeService
 from .content_prompts import ContentGenerationPrompts
 from .document_postprocess import (
-    DOC_IMAGE_MODEL,
+    doc_image_model,
     illustrate_document,
     normalize_code_blocks,
     strip_wrapping_fence,
@@ -48,9 +48,12 @@ class ContentGenerationService:
         db_session: Optional[Session] = None,
         institute_id: Optional[str] = None,
         user_id: Optional[str] = None,
+        metering: Any = None,
     ) -> None:
         logger.info("[ContentGenService] Initializing ContentGenerationService")
         self._llm_client = llm_client
+        # Usage-event attribution for this run's charges (never changes one).
+        self._metering = metering
         self._youtube_service = youtube_service or YouTubeService()
         self._db_session = db_session
         self._institute_id = institute_id
@@ -159,11 +162,28 @@ class ContentGenerationService:
             "quality_tier": metadata.get("quality_tier", "ultra"),
         }
 
+    def _meter(self) -> Any:
+        """The router's verified metering context (JWT), else an UNVERIFIED
+        one: the user id here comes from the request body, so it is kept only
+        as usage_context.claimed_user_id and never becomes the event actor."""
+        try:
+            ctx = getattr(self, "_metering", None)
+            if ctx is not None:
+                return ctx
+            from .ai_billing import metering_unverified
+            return metering_unverified(getattr(self, "_user_id", None), surface="ADMIN_APP")
+        except Exception:  # noqa: BLE001 - attribution must never cost a charge
+            return None
+
+    def _meter_kwargs(self, use_case: str, usage_context: Optional[dict] = None) -> dict:
+        from .ai_billing import metering_kwargs
+        return metering_kwargs(use_case, self._meter(), usage_context)
+
     def _bill_slide(self, *, tool_key: str, todo: Todo, model: str, usage_info: Optional[dict] = None) -> None:
         """Parametric per-slide charge = max(DB rate for tool_key, actual token
         cost). Best-effort on a fresh session; idempotent per request+slide so a
         retried/duplicated event never double-charges."""
-        from .ai_billing import record_tool_billing
+        from .ai_billing import UC, record_tool_billing
 
         usage_info = usage_info or {}
         record_tool_billing(
@@ -179,6 +199,11 @@ class ContentGenerationService:
             idempotency_key=(
                 f"course_slide:{self._request_id}:{todo.path}" if self._request_id else None
             ),
+            use_case=UC.CONTENT,
+            metering=self._meter(),
+            usage_context={"slide_path": getattr(todo, "path", None),
+                           "slide_title": getattr(todo, "title", None) or getattr(todo, "name", None),
+                           "request_id": getattr(self, "_request_id", None)},
         )
 
     async def _generate_with_model_fallback(self, prompt: str, model: str):
@@ -351,8 +376,25 @@ class ContentGenerationService:
                 generated_content, slide_path=todo.path, max_images=_COURSE_SLIDE_MAX_IMAGES
             )
             if image_count and self._db_session:
+                # billing.image_registry_pricing: off (default) = the flat
+                # image rate as before; shadow adds would_be_credits to the
+                # usage metadata; on charges the model's registry price.
+                image_model = doc_image_model()
                 try:
+                    from .image_model_resolver import plan_image_charge
+                    charge = plan_image_charge(image_model, 1, feature="document_illustration")
+                except Exception as e:  # noqa: BLE001
+                    logger.warning(f"Image pricing plan failed ({e}); billing illustrations as before")
+                    charge = None
+                try:
+                    from .ai_billing import UC, supported_kwargs
                     token_service = TokenUsageService(self._db_session)
+                    base_metadata = {"slide_path": todo.path, "feature": "document_illustration"}
+                    _meter = supported_kwargs(
+                        token_service.record_usage_and_deduct_credits,
+                        self._meter_kwargs(UC.CONTENT_IMAGE, {"slide_path": todo.path,
+                                                              "feature": "document_illustration"}),
+                    )
                     for _ in range(image_count):
                         token_service.record_usage_and_deduct_credits(
                             api_provider=ApiProvider.OPENAI,  # via OpenRouter
@@ -362,8 +404,10 @@ class ContentGenerationService:
                             request_type=RequestType.IMAGE,
                             institute_id=self._institute_id,
                             user_id=self._user_id,
-                            model=DOC_IMAGE_MODEL,
-                            metadata={"slide_path": todo.path, "feature": "document_illustration"},
+                            model=image_model,
+                            metadata=charge.metadata(dict(base_metadata)) if charge else dict(base_metadata),
+                            precomputed_credits=charge.precomputed_credits if charge else None,
+                            **_meter,
                         )
                 except Exception as e:
                     logger.warning(f"Failed to record document illustration usage: {str(e)}")
@@ -1246,6 +1290,7 @@ class ContentGenerationService:
                 # Record token usage for content generation
                 if self._db_session and usage_info:
                     try:
+                        from .ai_billing import UC, supported_kwargs
                         token_service = TokenUsageService(self._db_session)
                         # Determine provider based on model
                         api_provider = ApiProvider.GEMINI if "gemini" in self._model_for(todo).lower() else ApiProvider.OPENAI
@@ -1258,6 +1303,11 @@ class ContentGenerationService:
                             institute_id=self._institute_id,
                             user_id=self._user_id,
                             model=self._model_for(todo),
+                            **supported_kwargs(
+                                token_service.record_usage_and_deduct_credits,
+                                self._meter_kwargs(UC.CONTENT, {"slide_path": todo.path,
+                                                                "feature": "ai_video_code"}),
+                            ),
                         )
                     except Exception as e:
                         logger.warning(f"Failed to record content generation token usage: {str(e)}")

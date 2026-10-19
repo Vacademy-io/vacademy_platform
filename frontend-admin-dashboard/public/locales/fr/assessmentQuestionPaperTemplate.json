@@ -39,6 +39,7 @@
         "addTagFirst": "Ajoutez d'abord au moins une étiquette à cette question",
         "tagsApplied": "{{tags}} appliqué(es) à l'ensemble des {{questions}}",
         "updateSuccess": "Copie de questions mise à jour avec succès",
-        "incompleteQuestions": "certaines de vos questions sont incomplètes ou nécessitent votre attention !"
+        "incompleteQuestions": "certaines de vos questions sont incomplètes ou nécessitent votre attention !",
+        "numericAnswerMissing": "La question {{number}} doit avoir une bonne réponse avant l'enregistrement"
     }
 }

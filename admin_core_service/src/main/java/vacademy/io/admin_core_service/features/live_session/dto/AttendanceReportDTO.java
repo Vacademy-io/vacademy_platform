@@ -23,4 +23,13 @@ public interface AttendanceReportDTO {
     /** Exact seconds when the provider reports them (BBB); NULL for Zoom. */
     Integer getProviderTotalDurationSeconds();
     String getFeedbackDetails();
+
+    /** Batch the learner was scheduled through; NULL for individually added learners and guests. */
+    String getBatchName();
+
+    /**
+     * When the person joined this session list: form submit time for guests, the time the batch or
+     * learner was linked to the session for internal users.
+     */
+    Timestamp getRegisteredAt();
 }

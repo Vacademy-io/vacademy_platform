@@ -4,7 +4,9 @@
  * A stream (and a category) filters courses by COURSE TAG: a folder's tag is
  * its course_tag, else its slug (folderCourseTag). A course belongs to a
  * stream when it carries the stream's tag or the tag of any folder below it,
- * so an admin may tag courses at the category level only.
+ * so an admin may tag courses at the category level only. A course whose
+ * level is named like a folder (its course tag, title or subtitle) belongs to
+ * it too: those names are in `tags` as level keys (-utils/level-key.ts).
  *
  * Folders are never pruned for being empty here: whether a folder holds
  * product pages says nothing about whether courses carry its tag.
@@ -18,6 +20,7 @@ import {
 import type { CatalogStreamItem } from "../../../-types/course-catalogue-types";
 import { safeAccentColor, safeImageSrc } from "../../header/header-links";
 import type { StreamLabelMode } from "./catalog-config";
+import { levelKeys } from "../../../-utils/level-key";
 
 export interface CatalogCategory {
   id: string;
@@ -56,13 +59,14 @@ export interface CatalogStream {
 const norm = (s: string | null | undefined) => (s || "").trim().toLowerCase();
 const text = (s: string | null | undefined) => (s || "").trim();
 
-/** A folder's tag plus the tags of every folder below it, lower-case and unique. */
+/** A folder's tag plus the tags of every folder below it, lower-case and unique, with their level keys. */
 export const folderTagSet = (node: PublicFolderNode): string[] => {
   const out = new Set<string>();
   const walk = (n: PublicFolderNode) => {
     if (n.node_type !== "FOLDER") return;
     const tag = norm(folderCourseTag(n));
     if (tag) out.add(tag);
+    for (const k of levelKeys(folderCourseTag(n), n.title, n.subtitle)) out.add(k);
     (n.children || []).forEach(walk);
   };
   walk(node);
@@ -124,7 +128,7 @@ export const streamsFromTagItems = (items: CatalogStreamItem[]): CatalogStream[]
     title: item.label,
     subtitle: "",
     tag: norm(item.tag),
-    tags: [norm(item.tag)].filter(Boolean),
+    tags: [...new Set([norm(item.tag), ...levelKeys(item.tag, item.label)])].filter(Boolean),
     comingSoon: false,
     audienceId: null,
     imageUrl: safeImageSrc(item.imageUrl),

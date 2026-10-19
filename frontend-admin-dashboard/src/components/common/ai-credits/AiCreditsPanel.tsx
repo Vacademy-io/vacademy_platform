@@ -12,6 +12,19 @@ import { isIOS } from '@/native';
 import { toast } from 'sonner';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { TopUpModal } from './TopUpModal';
+import { UsageHistoryV2 } from './UsageHistoryV2';
+import { UsageAnalyticsV2 } from './UsageAnalyticsV2';
+import { PlanSummaryCard } from './PlanSummaryCard';
+import {
+    LowCreditPlansNudge,
+    goToPlans,
+    shouldNudgePlans,
+    useStorefrontVisible,
+} from './PlanEntryPoints';
+import { BillingDocumentRow, sortDocuments } from './PlanBillingDocuments';
+import { useBillingDocumentsQuery } from '@/services/ai-plans/storefront';
+import { useTranslation } from 'react-i18next';
+import { useUsageConfigQuery } from '@/services/ai-credits/usage-v2';
 import {
     usePlatformInvoicesQuery,
     downloadInvoicePdf,
@@ -105,7 +118,7 @@ const txTypeConfig: Record<
 };
 
 // ─── Overview Tab ──────────────────────────────────
-function OverviewTab() {
+function OverviewTab({ storefrontVisible = false }: { storefrontVisible?: boolean }) {
     const { data: credits, isLoading: isCreditsLoading } = useAiCreditsQuery(true);
     const { data: forecast, isLoading: isForecastLoading } = useAiUsageForecastQuery(true);
     const { data: analytics, isLoading: isAnalyticsLoading } = useAiUsageAnalyticsQuery(7, true);
@@ -120,6 +133,9 @@ function OverviewTab() {
     const usedCredits = parseFloat(credits?.used_credits || '0');
     const currentBalance = parseFloat(credits?.current_balance || '0');
     const usagePercent = totalCredits > 0 ? (usedCredits / totalCredits) * 100 : 0;
+    const nudgePlans =
+        storefrontVisible &&
+        shouldNudgePlans(!!credits?.is_low_balance, forecast?.estimated_days_remaining);
 
     const getBarColor = () => {
         if (usagePercent > 80) return 'bg-red-500';
@@ -171,6 +187,10 @@ function OverviewTab() {
                     <span>{usagePercent.toFixed(0)}% consumed</span>
                 </div>
             </div>
+
+            {/* AI plan (renders nothing unless the institute has a plan in effect,
+                or — storefront on — a small "Plans from …" card) */}
+            <PlanSummaryCard storefrontAllowed={storefrontVisible} />
 
             {/* Stats grid */}
             <div className="grid grid-cols-2 gap-2">
@@ -271,8 +291,11 @@ function OverviewTab() {
                 )}
             </div>
 
+            {/* Running low and plans are on offer: suggest a plan (replaces the tip) */}
+            {nudgePlans && <LowCreditPlansNudge />}
+
             {/* Forecast recommendation */}
-            {forecast?.recommendation && (
+            {!nudgePlans && forecast?.recommendation && (
                 <div className="rounded-lg border border-blue-100 bg-blue-50/60 px-3 py-2">
                     <p className="text-[11px] leading-relaxed text-blue-700">
                         💡 {forecast.recommendation}
@@ -553,8 +576,47 @@ function DailyUsageChart({ data }: { data: { date: string; total_credits: number
     );
 }
 
-// ─── Billing Tab (AI credit purchase invoices) ─────
-function BillingTab() {
+// ─── Billing Tab ───────────────────────────────────
+// Credit-pack invoices exactly as before; with the plan storefront on, AI plan
+// invoices and every credit note (from the plans facade) are listed below them.
+function BillingTab({ storefrontVisible = false }: { storefrontVisible?: boolean }) {
+    return (
+        <div className="space-y-3">
+            <PackInvoiceList />
+            {storefrontVisible && <PlanDocumentList />}
+        </div>
+    );
+}
+
+function PlanDocumentList() {
+    const { t } = useTranslation('aiPlans');
+    const instituteId = getCurrentInstituteId();
+    const { data } = useBillingDocumentsQuery(instituteId);
+    const docs = sortDocuments(
+        (data ?? []).filter((d) => d.doc_type === 'CREDIT_NOTE' || d.item_kind !== 'CREDIT_PACK')
+    );
+    if (!instituteId || docs.length === 0) return null;
+    return (
+        <div className="space-y-1.5">
+            <p className="text-2xs font-semibold uppercase tracking-wide text-neutral-500">
+                {t('invoices.popoverTitle')}
+            </p>
+            <ul className="space-y-1.5">
+                {docs.map((d) => (
+                    <BillingDocumentRow
+                        key={`${d.doc_type}-${d.id}`}
+                        instituteId={instituteId}
+                        doc={d}
+                        compact
+                    />
+                ))}
+            </ul>
+        </div>
+    );
+}
+
+// AI credit purchase invoices (credit packs).
+function PackInvoiceList() {
     const instituteId = getCurrentInstituteId();
     const { data, isLoading, isError } = usePlatformInvoicesQuery(instituteId);
     const [downloadingId, setDownloadingId] = useState<string | null>(null);
@@ -723,6 +785,22 @@ export function AiCreditsPanel({
     const [topUpOpen, setTopUpOpen] = useState(false);
     const [resumePaymentId, setResumePaymentId] = useState<string | null>(null);
 
+    // Usage metering v2 (History v2 / Analytics v2). Asked for only once the
+    // popover is opened; any error or a false flag keeps today's v1 tabs.
+    const instituteId = getCurrentInstituteId();
+    const usageConfig = useUsageConfigQuery(instituteId, isOpen);
+    // AI plan storefront: asked for only once the popover is open; admin-only,
+    // off by default, hidden on iOS — null keeps the popover exactly as before.
+    const storefront = useStorefrontVisible(instituteId, isOpen && !hideTopUp);
+    const storefrontVisible = !!storefront;
+    const { t: tPlans } = useTranslation('aiPlans');
+    const usageV2 =
+        !!instituteId && usageConfig.data?.history_v2_enabled === true ? instituteId : null;
+    const usageV2Admin = usageConfig.data?.is_admin === true;
+    // Hold the History/Analytics tabs on a skeleton while the flag is in
+    // flight so v1 and v2 never both fire their requests.
+    const usageConfigPending = isOpen && !!instituteId && usageConfig.isPending;
+
     // Returning from Razorpay's hosted payment lands on …?topup_pp=<id>.
     // Reopen the top-up modal straight into its polling/confirmation state, then
     // scrub the payment params from the URL so a refresh can't re-trigger it.
@@ -818,10 +896,41 @@ export function AiCreditsPanel({
                 {/* Content */}
                 <div className="max-h-[400px] overflow-y-auto">
                     <div className="p-3">
-                        {activeTab === 'overview' && <OverviewTab />}
-                        {activeTab === 'transactions' && <TransactionsTab />}
-                        {activeTab === 'analytics' && <AnalyticsTab />}
-                        {activeTab === 'billing' && <BillingTab />}
+                        {activeTab === 'overview' && (
+                            <OverviewTab storefrontVisible={storefrontVisible} />
+                        )}
+                        {(activeTab === 'transactions' || activeTab === 'analytics') &&
+                        usageConfigPending ? (
+                            <div className="space-y-2">
+                                {[...Array(4)].map((_, i) => (
+                                    <Skeleton key={i} className="h-12 w-full rounded-lg" />
+                                ))}
+                            </div>
+                        ) : (
+                            <>
+                                {activeTab === 'transactions' &&
+                                    (usageV2 ? (
+                                        <UsageHistoryV2
+                                            instituteId={usageV2}
+                                            isAdmin={usageV2Admin}
+                                        />
+                                    ) : (
+                                        <TransactionsTab />
+                                    ))}
+                                {activeTab === 'analytics' &&
+                                    (usageV2 ? (
+                                        <UsageAnalyticsV2
+                                            instituteId={usageV2}
+                                            isAdmin={usageV2Admin}
+                                        />
+                                    ) : (
+                                        <AnalyticsTab />
+                                    ))}
+                            </>
+                        )}
+                        {activeTab === 'billing' && (
+                            <BillingTab storefrontVisible={storefrontVisible} />
+                        )}
                     </div>
                 </div>
 
@@ -832,17 +941,31 @@ export function AiCreditsPanel({
                         <span />
                     ) : (
                         footerAction ?? (
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setIsOpen(false);
-                                    setTopUpOpen(true);
-                                }}
-                                className="flex items-center gap-1.5 rounded-lg bg-purple-600 px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-sm transition-colors hover:bg-purple-700"
-                            >
-                                <Sparkle className="size-3" weight="fill" />
-                                Top up
-                            </button>
+                            <div className="flex items-center gap-1.5">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setIsOpen(false);
+                                        setTopUpOpen(true);
+                                    }}
+                                    className="flex items-center gap-1.5 rounded-lg bg-purple-600 px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-sm transition-colors hover:bg-purple-700"
+                                >
+                                    <Sparkle className="size-3" weight="fill" />
+                                    Top up
+                                </button>
+                                {storefrontVisible && (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setIsOpen(false);
+                                            goToPlans();
+                                        }}
+                                        className="rounded-lg border border-primary-200 px-2.5 py-1.5 text-2xs font-semibold text-primary-600 transition-colors hover:bg-primary-50"
+                                    >
+                                        {tPlans('entry.plansLink')}
+                                    </button>
+                                )}
+                            </div>
                         )
                     )}
 

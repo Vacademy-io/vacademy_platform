@@ -12,6 +12,7 @@ import vacademy.io.admin_core_service.features.agent.dto.ConversationSession;
 import vacademy.io.admin_core_service.features.agent.service.LLMService;
 import vacademy.io.admin_core_service.features.ai_models.service.AiModelDefaultsResolver;
 import vacademy.io.admin_core_service.features.credits.client.CreditClient;
+import vacademy.io.admin_core_service.features.credits.client.MeteringFields;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.AiAgentAssistJob;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.AiCallResult;
 import vacademy.io.admin_core_service.features.telephony.persistence.repository.AiAgentAssistJobRepository;
@@ -260,7 +261,7 @@ public class AiAgentAssistService {
         require(brief, "brief");
         String system = expert("WRITE a complete, production-quality system prompt and opening line for "
                 + "the agent from the admin's plain-language brief, then score your output against the rubric.",
-                agent)
+                agent, AiAgentDomain.isGeneral(brief, AiAgentDomain.fieldsOf(agent)))
                 + KEEP_IN_SYNC + "\nReply with ONLY this JSON object:\n{\n" + OUTPUT_REWRITE_HEAD + OUTPUT_ANALYSIS + "\n}";
         String user = "BRIEF FROM THE ADMIN:\n" + brief + agentFacts(agent);
         return finish(instituteId, "draft", rewrite(instituteId, system, user, "draft", agent), agent, null);
@@ -271,7 +272,8 @@ public class AiAgentAssistService {
         String system = expert("Critique the given prompt and opening line STRICTLY against the rubric "
                 + "and rules. Be honest — a thin or pasted-from-a-doc prompt should score low with "
                 + "actionable suggestions. Never invent facts about the business; suggestions must be "
-                + "generic-safe or clearly marked for the admin to fill.", agent)
+                + "generic-safe or clearly marked for the admin to fill.", agent,
+                AiAgentDomain.isGeneral(prompt, AiAgentDomain.fieldsOf(agent)))
                 + "\nReply with ONLY this JSON object:\n{\n" + OUTPUT_ANALYSIS + "\n}";
         String user = "SYSTEM PROMPT TO REVIEW:\n" + prompt + agentFacts(agent);
         return finish(instituteId, "analyze", callJson(instituteId, system, user, "analyze"), agent, prompt);
@@ -290,7 +292,8 @@ public class AiAgentAssistService {
         String system = expert("REWRITE the given prompt to incorporate the selected improvements. "
                 + "Preserve the author's intent, structure, facts, language and voice — integrate, "
                 + "don't bolt on; remove content the improvements supersede. Then score the REVISED "
-                + "prompt against the rubric.", agent)
+                + "prompt against the rubric.", agent,
+                AiAgentDomain.isGeneral(prompt, AiAgentDomain.fieldsOf(agent)))
                 + KEEP_IN_SYNC + "\nReply with ONLY this JSON object:\n{\n" + OUTPUT_REWRITE_HEAD + OUTPUT_ANALYSIS + "\n}";
         String user = "CURRENT PROMPT:\n" + prompt + agentFacts(agent)
                 + "\n\nIMPROVEMENTS TO INCORPORATE:\n" + adds;
@@ -306,7 +309,8 @@ public class AiAgentAssistService {
                 + "actual recent call records (transcripts and the platform's fault codes may reveal "
                 + "problems the admin didn't articulate), REWRITE the prompt to fix the issues that a "
                 + "PROMPT can fix. Preserve intent, facts, language and voice. Then score the revised "
-                + "prompt against the rubric.", agent)
+                + "prompt against the rubric.", agent,
+                AiAgentDomain.isGeneral(prompt, AiAgentDomain.fieldsOf(agent)))
                 + KEEP_IN_SYNC + "\nReply with ONLY this JSON object:\n{\n" + OUTPUT_REWRITE_HEAD
                 + "\"call_insights\": [\"<0-5 short observations you drew from the actual call records>\"],\n"
                 + OUTPUT_ANALYSIS + "\n}";
@@ -336,7 +340,8 @@ public class AiAgentAssistService {
                       + "so the result follows every rule. Where the recent call records show a problem "
                       + "a prompt can fix, fix it too. "
                     : "")
-                + "Then score the result against the rubric.", agent)
+                + "Then score the result against the rubric.", agent,
+                AiAgentDomain.isGeneral(hasPrompt ? prompt : notes, AiAgentDomain.fieldsOf(agent, notes)))
                 + KEEP_IN_SYNC + "\nReply with ONLY this JSON object:\n{\n" + OUTPUT_REWRITE_HEAD
                 + "\"call_insights\": [\"<0-5 short observations from the call records, if any>\"],\n"
                 + OUTPUT_ANALYSIS + "\n}";
@@ -427,9 +432,25 @@ public class AiAgentAssistService {
 
     // ── Prompt pieces ────────────────────────────────────────────────────────
 
-    private static String expert(String task, AgentContext agent) {
-        return "You are an expert architect of real-time AI PHONE agents for education businesses "
-                + "in India. " + task + "\n\n"
+    /**
+     * For a non-education agent ({@link AiAgentDomain}). The rulebook's examples are all
+     * education (fees, batches, parents, "counsellor callback, demo slot"), and the voice bot
+     * showed what a model does with them when the script is thin: AAIBUZZ/IRPL calls c43e9ce7,
+     * e6cb5f47 (2026-10-16) invented an edtech product and booked a demo. An education agent's
+     * system prompt here is unchanged, byte for byte.
+     */
+    private static final String GENERAL_AGENT_NOTE = "This agent is NOT for an education business. "
+            + "The examples in the rules below come from education agents (classes, fees, batches, "
+            + "parents, children, counsellors, demos): copy their FORM, never their content, and do not "
+            + "add students, parents, courses, classes or a demo to this agent. Never invent what the "
+            + "business is, what it sells, its prices or offers, or why it is calling this person: use "
+            + "only what the admin wrote, and where that is missing, say so in a suggestion (or the "
+            + "change_summary) instead of filling it in. ";
+
+    private static String expert(String task, AgentContext agent, boolean general) {
+        return "You are an expert architect of real-time AI PHONE agents for "
+                + (general ? "businesses in India. " + GENERAL_AGENT_NOTE : "education businesses in India. ")
+                + task + "\n\n"
                 + VOICE_RULEBOOK.replace("{script_rule}", scriptRule(agent.language()))
                 + "\n" + RUBRIC;
     }
@@ -502,8 +523,123 @@ public class AiAgentAssistService {
             "\\b(aap|aapka|aapke|hai|hain|kya|mein|nahi|nahin|kaise|bataiye|batayein|ji haan|theek|accha|achha)\\b",
             Pattern.CASE_INSENSITIVE);
 
-    /** Plain-language findings the admin sees next to the result. Never blocks anything. */
+    /**
+     * The advisory finding for a non-education script that never says what is offered and/or why
+     * the person is called. Not a defect the model can fix — it could only invent the missing
+     * facts — so it is added only by the 4-argument lint, never by the 3-argument one that the
+     * repair pass ({@link #fixable}) uses.
+     */
+    static final String GROUNDING_LINT_PREFIX = "The script may not say ";
+
+    /**
+     * Above this length the advisory stays quiet: a long script nearly always says what it sells,
+     * in words a keyword check cannot list, and a wrong warning teaches admins to ignore the lint.
+     * The incident script was 512 characters.
+     */
+    static final int GROUNDING_LINT_MAX_CHARS = 1500;
+
+    /**
+     * A business stating what it sells: "we offer…", "SolarCo installs…", "X, a fitness studio",
+     * "X is a … company", "we are Acko", "our products…", a price (₹, rs, rupees, lakh, crore), or
+     * the Hinglish/Hindi forms ("humari company loans deti hai", "Tata की गाड़ियाँ बेचता है").
+     * Widened after review (2026-10-16): the first cut missed 6 of 6 realistic grounded scripts.
+     */
+    private static final Pattern STATES_OFFER = Pattern.compile(
+            "\\bwe(?:'re| are)? (?:offer|provide|sell|supply|make|manufacture|build|run|deliver|help"
+            + "|install|distribute|export|rent|lease|design|develop|manage|arrange|organi[sz]e)(?:s|ing)?\\b"
+            + "|\\bwe(?:'re| are) (?:a|an|the|india's)\\b"
+            // "We are Acko insurance": a capitalised name after "we are" (case-sensitive here only).
+            + "|\\bwe(?:'re| are) (?-i:\\p{Lu})"
+            // Any subject: "SolarCo installs rooftop solar", "Sharma Motors sells Tata cars".
+            + "|\\b(?:sells|installs|offers|provides|supplies|manufactures|deals in|distributes|exports"
+            + "|imports|rents out|leases|delivers|operates|repairs|builds|designs|develops)\\b"
+            + "|(?:\\b(?:is|are)|,) (?:a|an|india's|the) [\\p{L}\\s&,-]{0,50}?(?:company|platform|provider"
+            + "|manufacturer|agency|firm|brand|business|store|shop|startup|dealer|dealership|distributor"
+            + "|clinic|hospital|developer|builder|consultancy|bank|insurer|app|software|service|services"
+            + "|studio|gym|salon|spa|restaurant|cafe|hotel|resort|showroom|lab|pharmacy|centre|center"
+            + "|outlet|chain|maker|supplier|retailer|wholesaler|exporter|importer|contractor|nbfc|lender)\\b"
+            + "|\\bour (?:products?|services?|solutions?|platform|plans?|packages?|offers?|offerings?|range"
+            + "|catalog(?:ue)?|projects?|properties|polic(?:y|ies)|app|software|machines?|menu|brands?)\\b"
+            + "|[₹]\\s?\\d|\\brs\\.?\\s?\\d|\\d[\\d,]*\\s?(?:rupees|inr|/-)"
+            + "|\\d[\\d,.]*\\s?(?:lakhs?|lacs?|crores?)\\b"
+            + "|(?:hum|ham)\\s.{0,60}?(?:dete|karte|bechte|banate)\\s?hain"
+            + "|\\b(?:hamara|hamari|hamare|humara|humari|humare)\\s(?:company|product|service|plan|offer"
+            + "|package|brand)"
+            + "|\\b(?:deti|deta|dete|bechti|bechta|bechte|banati|banata|banate|(?:provide|offer|supply)"
+            + "\\s(?:karti|karta|karte))\\s(?:hai|hain)\\b"
+            + "|हम\\s.{0,60}?(?:देते|करते|बेचते|बनाते|प्रदान करते)\\s?हैं"
+            + "|(?:बेचता|बेचती|बेचते|बनाता|बनाती|बनाते|देता|देती|प्रदान करता|प्रदान करती)\\s?(?:है|हैं)"
+            + "|(?:हमारा|हमारी|हमारे)\\s(?:company|product|service|plan|offer|package|कंपनी|प्रोडक्ट|सर्विस"
+            + "|प्लान|ऑफ़र|ऑफर)"
+            + "|(?:रुपये|रुपए|लाख|करोड़)",
+            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+
+    /**
+     * A concrete reason for THIS call: their enquiry, a form, a visit, an order, a trial or test
+     * drive, a renewal or expiry, a follow-up on something.
+     */
+    private static final Pattern STATES_REASON = Pattern.compile(
+            "\\b(?:enquir|inquir)\\w*"
+            + "|\\b(?:filled|submitted|signed up|registered|visited|downloaded|requested|booked|ordered"
+            + "|purchased|bought|subscribed|applied|attended|responded|showed interest|expressed interest"
+            + "|left (?:their|your|a) (?:number|details))\\b"
+            + "|\\b(?:took|taken|tried|used) (?:a|an|the|our|your|their)?\\s?(?:free )?(?:trial|test drive"
+            + "|demo|sample|quote|quotation)\\b|\\btest[- ]drove\\b"
+            + "|\\bcalling (?:about|regarding|because|to (?:follow|confirm|remind|inform|tell|invite|update"
+            + "|offer|share|check|introduce|let))\\b"
+            + "|\\bfollow(?:ing)?[- ]?up (?:on|about|regarding|after)\\b"
+            + "|\\b(?:reason for (?:the|this|your|our) call|purpose of (?:the|this|your|our) call)\\s*(?:is|:)"
+            + "|\\b(?:renewal|renewing|reminder|expir\\w*|overdue|abandoned cart|feedback on)\\b"
+            + "|(?:आपने|aapne|inhone|unhone|इन्होंने|उन्होंने)\\s.{0,60}?(?:enquiry|inquiry|इन्क्वायरी|पूछताछ"
+            + "|form|फ़ॉर्म|फॉर्म|visit|विज़िट|विजिट|register|रजिस्टर|download|order|ऑर्डर|book|बुक"
+            + "|test drive|trial)"
+            + "|(?:form|फ़ॉर्म|फॉर्म)\\s?(?:bhara|bhari|bhare|भरा|भरी|भरे)"
+            + "|के (?:बारे|सिलसिले) में (?:कॉल|call)|ke (?:baare|silsile) mein call",
+            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+
+    /**
+     * Plain-language findings the admin sees next to the result. Never blocks anything. Exactly
+     * the findings this method gave before the grounding advisory existed (the repair pass in
+     * {@link #fixable} uses it, and must never be asked to "fix" a missing offer by inventing one).
+     */
     static List<String> lint(String prompt, String openingLine, String language) {
+        return lintSpokenLines(prompt, openingLine, language);
+    }
+
+    /**
+     * As {@link #lint(String, String, String)}, plus — for a non-education agent only — an
+     * advisory when the script never says what is offered or why the call is made. An education
+     * agent's findings are exactly what they were before this check existed.
+     */
+    static List<String> lint(String prompt, String openingLine, String language, AgentContext agent) {
+        List<String> issues = lintSpokenLines(prompt, openingLine, language);
+        String grounding = groundingFinding(prompt, openingLine, agent);
+        if (grounding != null) issues.add(grounding);
+        return issues;
+    }
+
+    /**
+     * AAIBUZZ/IRPL calls c43e9ce7, e6cb5f47 (2026-10-16): a 512-character script that said
+     * "briefly explain why you are calling" and never said why, nor what AAIBUZZ sells. The bot
+     * filled both gaps itself (an edtech product, a demo booking). Null when nothing is missing.
+     */
+    static String groundingFinding(String prompt, String openingLine, AgentContext agent) {
+        if (!AiAgentDomain.isGeneral(prompt, AiAgentDomain.fieldsOf(agent, openingLine))) return null;
+        if (prompt.length() > GROUNDING_LINT_MAX_CHARS) return null;
+        String all = prompt + "\n" + (openingLine == null ? "" : openingLine);
+        boolean offer = STATES_OFFER.matcher(all).find();
+        boolean reason = STATES_REASON.matcher(all).find();
+        if (offer && reason) return null;
+        String missing = !offer && !reason ? "what you offer or why you are calling this person"
+                : !offer ? "what you offer" : "why you are calling this person";
+        // "may not": a keyword check can miss a sentence that does say it; the admin decides.
+        return GROUNDING_LINT_PREFIX + missing + ". If it does not, the agent cannot know it, and an "
+                + "agent in that position has made it up on live calls (an invented product, a demo "
+                + "nobody offered). Consider a sentence or two: what the business sells and why this "
+                + "person is being called (for example, they enquired, visited or ordered).";
+    }
+
+    private static List<String> lintSpokenLines(String prompt, String openingLine, String language) {
         List<String> issues = new ArrayList<>();
         String fam = languageFamily(language);
         List<String> spoken = new ArrayList<>();
@@ -614,8 +750,8 @@ public class AiAgentAssistService {
             prompt = reviewedPrompt;
             opening = agent.openingLine();
         }
-        out.put("lint", lint(prompt, opening, agent.language()));
-        charge(instituteId, op);
+        out.put("lint", lint(prompt, opening, agent.language(), agent));
+        charge(instituteId, op, agent != null ? agent.name() : null);
         return out;
     }
 
@@ -638,6 +774,8 @@ public class AiAgentAssistService {
         FAULT_MEANING.put("DEAD_AIR", "long silence from the agent (platform/audio — not a prompt issue)");
         FAULT_MEANING.put("ANSWER_DELETED", "a caller answer was lost in speech recognition (platform)");
         FAULT_MEANING.put("STT_DEAF", "speech recognition heard nothing (platform)");
+        FAULT_MEANING.put("CALLER_IGNORED", "the caller spoke and the agent stayed silent while its "
+                + "opening was owed (platform — not a prompt issue)");
         FAULT_MEANING.put("LIKELY_MACHINE", "voicemail or IVR answered (ignore)");
     }
 
@@ -739,7 +877,7 @@ public class AiAgentAssistService {
     }
 
     /** Lint findings the model can fix in place (the length note is advice, not a defect). */
-    private static List<String> fixable(Map<String, Object> out, AgentContext agent) {
+    static List<String> fixable(Map<String, Object> out, AgentContext agent) {
         String prompt = out.get("prompt") instanceof String p ? p : null;
         if (prompt == null) return List.of();
         String opening = out.get("opening_line") instanceof String o ? o
@@ -809,6 +947,8 @@ public class AiAgentAssistService {
             session.getContext().put(LLMService.CTX_USE_CASE, USE_CASE);
             // This class runs its own primary -> fallback loop (callJson); one model per call.
             session.getContext().put(LLMService.CTX_NO_FAILOVER, Boolean.TRUE);
+            // Billed as a flat COST per operation (charge()), never per token on top.
+            session.getContext().put(LLMService.CTX_BILLED_BY_CALLER, Boolean.TRUE);
             // Anthropic via OpenRouter: extended thinking rejects a non-1 temperature and
             // json_object is not uniformly supported — the fallback runs plain.
             if (!useModel.startsWith("anthropic/")) {
@@ -852,14 +992,34 @@ public class AiAgentAssistService {
     }
 
     /** Post-paid flat charge; a metering failure never fails the delivered work. */
-    private void charge(String instituteId, String op) {
+    private void charge(String instituteId, String op, String agentName) {
         try {
             creditClient.deductPrecomputed(instituteId, "content",
                     "AI agent prompt assist: " + op, COST,
-                    "agent-assist:" + UUID.randomUUID());
+                    "agent-assist:" + UUID.randomUUID(),
+                    assistMetering(op, agentName));
         } catch (Exception e) {
             log.warn("agent-assist: credit charge failed for {} ({}): {}", instituteId, op, e.getMessage());
         }
+    }
+
+    /**
+     * Usage-metering fields for one assist operation. An admin started it from the
+     * voice-agent editor; who exactly is not threaded this deep, so the actor is sent
+     * as a USER with no id and no role: the event stays UNRESOLVED instead of taking
+     * the ledger's hard-coded "SYSTEM" billing label (deductPrecomputed) as its role.
+     */
+    static MeteringFields assistMetering(String op, String agentName) {
+        Map<String, Object> context = new LinkedHashMap<>();
+        if (op != null) context.put("operation", op);
+        if (agentName != null && !agentName.isBlank()) context.put("agent_name", agentName);
+        return MeteringFields.builder()
+                .useCase("agent_assist")
+                .actorKind(MeteringFields.ACTOR_USER)
+                .surface(MeteringFields.SURFACE_ADMIN_APP)
+                .sourceService(MeteringFields.SOURCE_ADMIN_CORE)
+                .usageContext(context)
+                .build();
     }
 
     private static String extractJson(String raw) {

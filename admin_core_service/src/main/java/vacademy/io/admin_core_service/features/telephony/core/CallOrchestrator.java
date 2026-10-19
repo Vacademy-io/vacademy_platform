@@ -81,6 +81,32 @@ public class CallOrchestrator {
 
         // ── Phase 1: gather + persist (transactional, fast) ──────────────────
         Prepared p = tx.prepareAndPersist(instituteId, req, actor);
+        return dispatch(p);
+    }
+
+    /**
+     * Phase 0 of a click-to-call for a counsellor named by id rather than by the request's
+     * principal — the public API's POST /v1/human-calls: the same voice credit gate as
+     * {@link #connect}. The API then reserves the call (its checks and
+     * {@link CallLifecycleTxOps#prepareAndPersistForCounsellor} in one transaction, under
+     * advisory locks) and hands the result to {@link #dispatchPrepared}.
+     */
+    public void assertCanDial(String instituteId) {
+        requireNonBlank(instituteId, "instituteId is required");
+        assertVoiceCreditsAvailable(instituteId);
+    }
+
+    /**
+     * Phases 1b–3 for a call whose INITIATED row is already committed. Deliberately not
+     * transactional: the provider HTTP call must never run inside a transaction (or under
+     * the API's advisory locks), for the reason in the class comment.
+     */
+    public ConnectCallResponseDTO dispatchPrepared(Prepared p) {
+        return dispatch(p);
+    }
+
+    /** Phases 1b–3 of a click-to-call, shared by both entry points (moved verbatim). */
+    private ConnectCallResponseDTO dispatch(Prepared p) {
         circuitBreaker.assertAvailable(p.providerType());
 
         // ── Phase 2: external HTTP (no DB connection held) ───────────────────

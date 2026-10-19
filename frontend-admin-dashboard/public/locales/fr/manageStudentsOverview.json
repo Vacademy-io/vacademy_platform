@@ -56,5 +56,11 @@
     },
     "actions": {
         "download": "Télécharger"
+    },
+    "otherContacts": {
+        "heading": "Autres coordonnées",
+        "hint": "Numéros et e-mails donnés par cette personne dans d'autres demandes.",
+        "phone": "Téléphone",
+        "email": "E-mail"
     }
 }

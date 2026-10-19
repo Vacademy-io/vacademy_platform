@@ -28,7 +28,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -92,6 +92,12 @@ class ToolContext:
     # True only for calls that came in over the MCP server (set by the adapter).
     # ``mcp_only`` tools refuse every other caller, whatever the settings say.
     via_mcp: bool = False
+    # The MCP OAuth client this call came through (set by the adapter; None in
+    # product), so a confirm token can be bound to the connection that saw the preview.
+    client_id: Optional[str] = None
+    # The institute's module entitlements (app/services/entitlements.py), loaded
+    # once per call by ``context_entitlements`` — never shared across calls.
+    entitlements: Optional[Any] = None
 
     def may_use(self, tool_name: str) -> bool:
         """True iff this caller may also call ``tool_name`` (same gates as execute_tool)."""
@@ -127,6 +133,12 @@ class ToolSpec:
     # Exposed only over MCP (an AI app with its own tools, e.g. Figma reads):
     # never offered to the in-product assistant's model.
     mcp_only: bool = False
+    # The institute's plan (module entitlements, V567) must include
+    # ``module_feature`` (e.g. "crm.leads") when set, and at least one of
+    # ``module_features_any`` when set; otherwise the tool is not listed and
+    # refuses calls with module_not_enabled. Both None = not tied to a module.
+    module_feature: Optional[str] = None
+    module_features_any: Optional[Tuple[str, ...]] = None
 
     def key(self) -> str:
         return self.setting_key or self.name
@@ -2343,6 +2355,35 @@ def is_tool_allowed(
     return any(k in enabled for k in spec.keys_any())
 
 
+# ──────────────────────────────────────────────────────────────────────────
+# The module leg: features the institute's plan includes (V567 entitlements).
+# Checked after the AND-gate, only for tools tied to a module, and only when a
+# DB session is at hand (unit tests and DB-less callers skip it).
+# ──────────────────────────────────────────────────────────────────────────
+
+def load_entitlements(db: Session, institute_id: str) -> Any:
+    """The institute's entitlements (``.on(key) -> bool``); never raises (LEGACY on a read error)."""
+    from .entitlements import entitlements
+
+    return entitlements(db, institute_id)
+
+
+def context_entitlements(ctx: ToolContext) -> Any:
+    """Entitlements for this call's institute, loaded once per ToolContext."""
+    if ctx.entitlements is None:
+        ctx.entitlements = load_entitlements(ctx.db, ctx.principal.institute_id)
+    return ctx.entitlements
+
+
+def missing_module_feature(spec: ToolSpec, ent: Any) -> Optional[str]:
+    """The feature key that keeps ``spec`` off for these entitlements, or None when it is on."""
+    if spec.module_feature and not ent.on(spec.module_feature):
+        return spec.module_feature
+    if spec.module_features_any and not any(ent.on(f) for f in spec.module_features_any):
+        return spec.module_features_any[0]
+    return None
+
+
 def build_offered_tools(
     principal: PinnedPrincipal,
     setting: Optional[Dict[str, Any]],
@@ -2401,6 +2442,28 @@ async def execute_tool(
             "tool": tool_name,
             "message": "This tool is only available to AI apps connected over the MCP server. Do not retry.",
         })
+    if (spec.module_feature or spec.module_features_any) and ctx.db is not None:
+        try:
+            missing = missing_module_feature(spec, context_entitlements(ctx))
+        except Exception:  # noqa: BLE001 — a broken entitlement check never runs a gated tool
+            logger.exception("Assistant module check failed for tool '%s' (institute=%s)",
+                             tool_name, ctx.principal.institute_id)
+            missing = spec.module_feature or (spec.module_features_any or ("unknown",))[0]
+        if missing:
+            logger.info("Assistant refused tool '%s': module feature %s is off for institute=%s",
+                        tool_name, missing, ctx.principal.institute_id)
+            refusal: Dict[str, Any] = {
+                "error": "module_not_enabled",
+                "tool": tool_name,
+                "feature": missing,
+                "message": (
+                    f"This institute's plan does not include '{missing}', which this tool needs. Do not retry. "
+                    "Tell the user the feature has to be added to the institute's plan first."
+                ),
+            }
+            if spec.module_features_any:
+                refusal["features_any"] = list(spec.module_features_any)
+            return json.dumps(refusal)
     ctx.gate_setting, ctx.gate_checked = setting, True
     safe_args: Dict[str, Any] = dict(args or {})
     # What the model put in `user_id` survives only as data (e.g. a model with a stale tool schema
@@ -2430,7 +2493,7 @@ async def execute_tool(
 
 # ──────────────────────────────────────────────────────────────────────────
 # Feature tools that live in their own modules (website builder, lead forms,
-# course builder, learners).
+# course builder, learners, CRM).
 # Each module self-registers into ASSISTANT_TOOLS / GROUP_LABELS when imported,
 # so importing it here is only to make sure that happens. The import is
 # tolerant of the cycle: a test that imports the feature module first will find
@@ -2450,6 +2513,9 @@ def _load_feature_tools() -> None:
         "assistant_tools_learners", "assistant_tools_learner_enroll", "assistant_tools_learner_edit",
         "assistant_tools_learner_report",
         "assistant_tools_sub_orgs", "assistant_tools_sub_org_edit", "assistant_tools_sub_org_enroll",
+        "assistant_tools_crm_leads", "assistant_tools_crm_lead_edit", "assistant_tools_crm_team",
+        "assistant_tools_crm_calls", "assistant_tools_crm_meetings", "assistant_tools_crm_messages",
+        "assistant_tools_crm_reports",
     ):
         try:
             __import__(f"{__package__}.{module}")
@@ -2470,4 +2536,7 @@ __all__ = [
     "build_offered_tools",
     "execute_tool",
     "load_assistant_tools_setting",
+    "load_entitlements",
+    "context_entitlements",
+    "missing_module_feature",
 ]

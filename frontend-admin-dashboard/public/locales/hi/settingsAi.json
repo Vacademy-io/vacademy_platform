@@ -11,7 +11,9 @@
         "knowledgeBase": "नॉलेज बेस",
         "coursePrompt": "कोर्स प्रॉम्प्ट",
         "video": "वीडियो",
-        "usage": "उपयोग"
+        "usage": "उपयोग",
+        "limits": "सीमाएँ",
+        "plan": "प्लान"
     },
     "common": {
         "saving": "सहेजा जा रहा है...",

@@ -272,5 +272,10 @@
         "subtitle": "Courses in the order we recommend taking them.",
         "title": "Learning paths",
         "viewPathLabel": "View path"
+    },
+    "accessPassGrid": {
+        "title": "Memberships",
+        "subtitle": "One purchase, several courses.",
+        "buyLabel": "Get the pass"
     }
 }

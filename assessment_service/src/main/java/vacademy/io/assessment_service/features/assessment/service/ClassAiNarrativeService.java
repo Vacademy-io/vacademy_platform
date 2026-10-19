@@ -105,6 +105,12 @@ public class ClassAiNarrativeService {
         try {
             completion = aiServiceLlmClient.complete(USE_CASE, messages, true, MAX_COMPLETION_TOKENS,
                     "low", instituteId, Duration.ofSeconds(RESPONSE_TIMEOUT_SECONDS));
+        } catch (AiServiceLlmClient.PolicyRefusalException e) {
+            // Refused by policy (AI usage limit / plan): no model ran, and the direct call
+            // must not run it unbilled. Terminal; the teacher sees the limit's own message.
+            log.info("Class AI report: refused by policy for '{}' ({}): {}", assessmentName, e.getCode(),
+                    e.getMessage());
+            throw new VacademyException(e.getMessage());
         } catch (AiServiceLlmClient.UnavailableException e) {
             // No model ran (token unset, endpoint not deployed yet, ai_service down):
             // the old direct call cannot double-bill anything.

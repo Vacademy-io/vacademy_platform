@@ -17,7 +17,7 @@ from typing import Any, Optional
 from sqlalchemy.orm import Session
 
 from ...models.ai_token_usage import RequestType
-from ..ai_billing import record_tool_billing
+from ..ai_billing import UC, metering_api_key, metering_user, record_tool_billing
 from ..api_key_resolver import ApiKeyResolver
 from ..chat_llm_client import ChatLLMClient
 from ...repositories.copy_check_rubric_repository import CopyCheckRubricRepository
@@ -324,6 +324,30 @@ def charge_plan(
     }
 
 
+def charge_metering(billing: dict[str, Any], req: dict[str, Any]) -> dict[str, Any]:
+    """Usage-event attribution for the copy's charge (never changes it): the
+    partner API key for API runs, else the dashboard (actor unknown here; the
+    teacher who queued the copy is not sent to ai_service)."""
+    try:
+        actor = billing.get("billing_actor")
+        if is_api_actor(actor):
+            meter = metering_api_key(actor[len(API_ACTOR_PREFIX):] or None)
+        else:
+            meter = metering_user(None, surface="ADMIN_APP")
+        return {
+            "use_case": UC.EVALUATION,
+            "metering": meter,
+            "usage_context": {
+                "assessment_id": req.get("assessment_id"),
+                "attempt_id": req.get("attempt_id"),
+                "process_id": req.get("process_id"),
+                "answer_mode": req.get("answer_mode"),
+            },
+        }
+    except Exception:  # noqa: BLE001 - attribution must never cost a charge
+        return {}
+
+
 def _snapshot_key(snapshot: Any) -> Optional[str]:
     return snapshot.get("tool_key") if isinstance(snapshot, dict) else None
 
@@ -331,6 +355,19 @@ def _snapshot_key(snapshot: Any) -> Optional[str]:
 def _layout_page_count(layout_map: Any) -> Optional[int]:
     pages = layout_map.get("pages") if isinstance(layout_map, dict) else None
     return len(pages) if isinstance(pages, list) else None
+
+
+def _printed_labels(questions: list[dict[str, Any]]) -> dict[str, str]:
+    """question_id -> the number printed on the paper, for the checked copy's
+    comment panel. Never raises: the copy is rendered after grading succeeded."""
+    labels: dict[str, str] = {}
+    for q in questions or []:
+        try:
+            if q.get("question_id"):
+                labels[str(q["question_id"])] = str(q.get("paper_label") or "").strip()
+        except Exception:
+            continue
+    return labels
 
 
 def billing_context(req: dict[str, Any]) -> dict[str, Any]:
@@ -586,6 +623,7 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> str:
                 request_id=job_id,
                 idempotency_key=process_id,
                 **plan,
+                **charge_metering(billing, req),
             )
             return RUN_BILLED
 
@@ -844,8 +882,12 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> str:
         total_awarded = counted_awarded(verdicts)
         if paper_max is not None:
             total_max = paper_max
+        # The "Teacher comments outside the copy" template; the default copy is
+        # rendered exactly as before.
+        panel = ({"comment_placement": "OUTSIDE", "question_labels": _printed_labels(questions)}
+                 if str(req.get("comment_placement") or "").strip().upper() == "OUTSIDE" else {})
         evaluated_file_id = await annotator.render_and_upload(
-            pdf_url, layout_map, verdicts, req.get("attempt_id") or process_id,
+            pdf_url, layout_map, verdicts, req.get("attempt_id") or process_id, **panel,
         )
 
         # 5. Done.
@@ -885,6 +927,7 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> str:
             request_id=job_id,
             idempotency_key=process_id,
             **plan,
+            **charge_metering(billing, req),
         )
         return RUN_BILLED
     except (cancellation.Cancelled, OcrCancelled):

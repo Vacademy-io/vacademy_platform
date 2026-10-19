@@ -24,6 +24,7 @@ import {
     transformLocalPlanToApiFormatArray,
 } from '@/services/payment-options';
 import { DeletePaymentOptionDialog } from './DeletePaymentOptionDialog';
+import { RegionalPricingDialog } from './RegionalPricingDialog';
 import { toast } from 'sonner';
 import { currencyOptions } from '../../-constants/payments';
 import { getInstituteId } from '@/constants/helper';
@@ -34,6 +35,7 @@ import { useCreateCPO } from '@/routes/financial-management/fee-plans/-services/
 import { buildCreateCPOPayload } from '@/routes/financial-management/fee-plans/-components/CreateCPODialog';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import PackageSessionRenewalSettings from './PackageSessionRenewalSettings';
+import OfflinePaymentModesSettings from './OfflinePaymentModesSettings';
 import { useTranslation } from 'react-i18next';
 
 interface Interval {
@@ -75,12 +77,16 @@ const PaymentSettings = () => {
     const [isSaving, setIsSaving] = useState(false);
     const [showDeleteDialog, setShowDeleteDialog] = useState(false);
     const [planToDelete, setPlanToDelete] = useState<PaymentPlan | null>(null);
+    const [regionalPricingPlan, setRegionalPricingPlan] = useState<PaymentPlan | null>(null);
     const previewDialogRef = useRef<HTMLDivElement>(null);
     const [requireApproval, setRequireApproval] = useState(false);
     // Option-level master switch for plan change; the per-plan checkboxes are inert
     // while this is off. Held here, like requireApproval, because it belongs to the
     // payment option rather than to any one plan inside it.
     const [planChangeAllowed, setPlanChangeAllowed] = useState(false);
+    // Regional pricing is an option-level setting too, edited in the creator and saved with it.
+    const [regionalPricingEnabled, setRegionalPricingEnabled] = useState(false);
+    const [regionalPricingCurrencies, setRegionalPricingCurrencies] = useState<string[]>([]);
 
     const [paymentPlans, setPaymentPlans] = useState<PaymentPlan[]>([]);
     const instituteId = getInstituteId();
@@ -324,9 +330,20 @@ const PaymentSettings = () => {
                     })
                     .filter((plan): plan is PaymentPlan => plan !== null) || [];
 
+            // Regional pricing lives on the option; stitch it onto every plan type in one place.
+            const regionalByOptionId = new Map(
+                (response ?? []).map((o) => [
+                    o.id,
+                    {
+                        regionalPricingEnabled: o.regional_pricing_enabled ?? false,
+                        regionalPricingCurrencies: o.regional_pricing_currencies ?? [],
+                    },
+                ])
+            );
             setPaymentPlans(
                 transformedPlans.map((plan) => ({
                     ...plan,
+                    ...(regionalByOptionId.get(plan.id) ?? {}),
                     id: plan.id || '',
                     isDefault: !!plan.isDefault,
                     config: plan.config || {},
@@ -407,10 +424,17 @@ const PaymentSettings = () => {
             // next save turns the feature off for everyone on it.
             setRequireApproval(plan.requireApproval || false);
             setPlanChangeAllowed(plan.planChangeAllowed || false);
+            setRegionalPricingEnabled(plan.regionalPricingEnabled || false);
+            setRegionalPricingCurrencies(plan.regionalPricingCurrencies || []);
             setShowPaymentPlanCreator(true);
         } catch (error) {
             handleError(error, 'edit plan');
         }
+    };
+
+    const resetRegionalPricing = () => {
+        setRegionalPricingEnabled(false);
+        setRegionalPricingCurrencies([]);
     };
 
     const handleClosePaymentPlanCreator = () => {
@@ -418,6 +442,7 @@ const PaymentSettings = () => {
         setEditingPlan(null);
         setRequireApproval(false);
         setPlanChangeAllowed(false);
+        resetRegionalPricing();
     };
 
     // Helper function to calculate discounted prices for intervals
@@ -466,6 +491,7 @@ const PaymentSettings = () => {
                 setShowPaymentPlanCreator(false);
                 setRequireApproval(false);
                 setPlanChangeAllowed(false);
+                resetRegionalPricing();
                 return;
             }
 
@@ -491,6 +517,16 @@ const PaymentSettings = () => {
                 // Master switch. The per-plan checkboxes only take effect while this is on,
                 // so it rides alongside require_approval on the option itself.
                 plan_change_allowed: planChangeAllowed,
+                // Only paid one-time / subscription options can price by region; for any other
+                // type the fields are omitted, which the backend reads as "leave as is".
+                ...(plan.type === PaymentPlans.SUBSCRIPTION || plan.type === PaymentPlans.UPFRONT
+                    ? {
+                          regional_pricing_enabled: regionalPricingEnabled,
+                          regional_pricing_currencies: regionalPricingEnabled
+                              ? regionalPricingCurrencies
+                              : editingPlan?.regionalPricingCurrencies ?? [],
+                      }
+                    : {}),
                 payment_plans: apiPlans,
                 payment_option_metadata_json: JSON.stringify({
                     currency: plan.currency,
@@ -545,9 +581,17 @@ const PaymentSettings = () => {
 
             const savedPaymentOption = await savePaymentOption(paymentOptionRequest);
 
+            const regionalEligible =
+                plan.type === PaymentPlans.SUBSCRIPTION || plan.type === PaymentPlans.UPFRONT;
+            const regionalFields = regionalEligible
+                ? { regionalPricingEnabled, regionalPricingCurrencies }
+                : {};
+
             if (editingPlan) {
                 // Update existing plan in the list
-                setPaymentPlans((plans) => plans.map((p) => (p.id === editingPlan.id ? plan : p)));
+                setPaymentPlans((plans) =>
+                    plans.map((p) => (p.id === editingPlan.id ? { ...plan, ...regionalFields } : p))
+                );
                 toast.success(t('toasts.planUpdated'));
             } else {
                 // Add new plan to the list
@@ -586,12 +630,26 @@ const PaymentSettings = () => {
                 await loadPaymentOptions();
             }
 
+            // Regional pricing on: open its panel straight away, so the admin sees the
+            // automatic prices just created and can add fixed prices for specific countries.
+            const openRegionalPanel =
+                regionalEligible && regionalPricingEnabled && !!savedPaymentOption?.id;
+
             setEditingPlan(null);
             setShowPaymentPlanCreator(false);
             setRequireApproval(false);
             setPlanChangeAllowed(false);
+            resetRegionalPricing();
             // Clear features after successfully creating/updating a plan
             setFeaturesGlobal([]);
+
+            if (openRegionalPanel) {
+                setRegionalPricingPlan({
+                    ...plan,
+                    id: savedPaymentOption.id,
+                    name: savedPaymentOption.name || plan.name,
+                } as PaymentPlan);
+            }
         } catch (error) {
             handleError(error, 'save payment plan');
         } finally {
@@ -750,6 +808,7 @@ const PaymentSettings = () => {
                                 onDelete={handleDeletePlan}
                                 onSetDefault={handleSetDefaultPlan}
                                 onPreview={handlePreviewPlan}
+                                onRegionalPricing={setRegionalPricingPlan}
                             />
                         )}
                     </div>
@@ -758,6 +817,10 @@ const PaymentSettings = () => {
 
             <div className="mt-6">
                 <PackageSessionRenewalSettings />
+            </div>
+
+            <div className="mt-6">
+                <OfflinePaymentModesSettings />
             </div>
 
             <PaymentPlanCreator
@@ -778,6 +841,10 @@ const PaymentSettings = () => {
                 setRequireApproval={setRequireApproval}
                 planChangeAllowed={planChangeAllowed}
                 setPlanChangeAllowed={setPlanChangeAllowed}
+                regionalPricingEnabled={regionalPricingEnabled}
+                setRegionalPricingEnabled={setRegionalPricingEnabled}
+                regionalPricingCurrencies={regionalPricingCurrencies}
+                setRegionalPricingCurrencies={setRegionalPricingCurrencies}
             />
 
             <Dialog open={showPlanPreview} onOpenChange={setShowPlanPreview}>
@@ -805,6 +872,22 @@ const PaymentSettings = () => {
                 allPaymentOptions={paymentPlans}
                 onDeleted={handleDeleteConfirmed}
             />
+
+            {regionalPricingPlan && (
+                <RegionalPricingDialog
+                    open={!!regionalPricingPlan}
+                    onOpenChange={(open) => {
+                        if (!open) {
+                            setRegionalPricingPlan(null);
+                            // The dialog may have switched regional pricing on or off; reload so
+                            // the next edit of this option starts from what is really saved.
+                            void loadPaymentOptions();
+                        }
+                    }}
+                    paymentOptionId={regionalPricingPlan.id}
+                    paymentOptionName={regionalPricingPlan.name}
+                />
+            )}
         </>
     );
 };

@@ -5,10 +5,8 @@
         "codeFormat": "استخدم أحرفًا كبيرة وأرقامًا و_ أو -",
         "discountValueRequired": "قيمة الخصم مطلوبة",
         "discountValuePositive": "يجب أن تكون قيمة الخصم أكبر من 0",
-        "endDateRequired": "تاريخ الانتهاء مطلوب",
         "usageLimitInvalid": "أدخل رقمًا أو اتركه فارغًا",
         "percentageMax": "لا يمكن أن تتجاوز النسبة المئوية 100",
-        "maxCapRequired": "الحد الأقصى مطلوب لخصومات النسبة المئوية",
         "endDateAfterStart": "يجب أن يكون تاريخ الانتهاء بعد تاريخ البدء"
     },
     "priceLine": {
@@ -51,7 +49,8 @@
         },
         "maxCap": {
             "label": "الحد الأقصى (₹)",
-            "placeholder": "1000"
+            "placeholder": "بلا حد أقصى",
+            "noCapHint": "(فارغ = بلا حد أقصى)"
         }
     },
     "validity": {
@@ -61,7 +60,8 @@
             "optional": "(اختياري)"
         },
         "endDate": {
-            "label": "تاريخ الانتهاء"
+            "label": "تاريخ الانتهاء",
+            "noExpiryHint": "(فارغ = لا ينتهي أبدًا)"
         },
         "usageLimit": {
             "label": "حد الاستخدام",

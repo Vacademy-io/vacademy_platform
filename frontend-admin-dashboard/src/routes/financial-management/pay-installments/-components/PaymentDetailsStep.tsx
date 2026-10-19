@@ -4,25 +4,19 @@ import { ArrowLeft } from '@phosphor-icons/react';
 import dayjs from 'dayjs';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
-import type { TFunction } from 'i18next';
 import { Input } from '@/components/ui/input';
 import { StudentFeePaymentRowDTO, StudentFeeDueDTO } from '@/types/manage-finances';
 import { allocateSelectedPayment, AllocatePaymentResponse, getStudentDuesQueryKey } from '@/services/manage-finances';
 import { getInstituteId } from '@/constants/helper';
 import { cn } from '@/lib/utils';
 import { ConfirmPaymentDialog } from './ConfirmPaymentDialog';
-
-// ─── Types ──────────────────────────────────────────────────────────────────
-
-type PaymentMode = 'CASH' | 'ONLINE' | 'UPI' | 'CARD' | 'CHEQUE';
-
-const buildPaymentModes = (t: TFunction): { value: PaymentMode; label: string }[] => [
-    { value: 'CASH', label: t('paymentMode.cash') },
-    { value: 'ONLINE', label: t('paymentMode.online') },
-    { value: 'UPI', label: t('paymentMode.upi') },
-    { value: 'CARD', label: t('paymentMode.card') },
-    { value: 'CHEQUE', label: t('paymentMode.cheque') },
-];
+import { OfflinePaymentFields } from '@/components/common/payments/OfflinePaymentFields';
+import {
+    findActiveMode,
+    toOfflinePaymentDetailsPayload,
+    useOfflinePaymentModes,
+    type OfflinePaymentDetails,
+} from '@/services/offline-payment-modes';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -46,10 +40,15 @@ export function PaymentDetailsStep({
 }: PaymentDetailsStepProps) {
     const queryClient = useQueryClient();
     const { t } = useTranslation('financialManagementPaymentDetailsStep');
-    const PAYMENT_MODES = useMemo(() => buildPaymentModes(t), [t]);
-
-    const [paymentMode, setPaymentMode] = useState<PaymentMode>('CASH');
-    const [transactionId, setTransactionId] = useState('');
+    // How it was paid: the institute's offline payment modes (Settings → Payment Settings).
+    const { data: offlineModes } = useOfflinePaymentModes();
+    const [details, setDetails] = useState<OfflinePaymentDetails>({});
+    const [detailsError, setDetailsError] = useState<string | null>(null);
+    const mode = findActiveMode(offlineModes, details.mode);
+    const modeLabel = mode
+        ? [mode.label, mode.sub_modes?.find((s) => s.code === details.sub_mode)?.label].filter(Boolean).join(' · ')
+        : '';
+    const transactionId = details.reference ?? '';
     const [amount, setAmount] = useState('');
     const [remarks, setRemarks] = useState('');
     const [showConfirm, setShowConfirm] = useState(false);
@@ -86,8 +85,10 @@ export function PaymentDetailsStep({
             const instituteId = getInstituteId();
             if (!instituteId) throw new Error(t('errors.instituteIdNotFound'));
 
+            // The remarks text stays as before for the allocation ledger and older receipts;
+            // the structured details travel in payment_details.
             const remarkParts: string[] = [];
-            remarkParts.push(`${t('remarks.modePrefix')}: ${paymentMode}`);
+            if (modeLabel) remarkParts.push(`${t('remarks.modePrefix')}: ${modeLabel}`);
             if (transactionId.trim()) remarkParts.push(`${t('remarks.txnIdPrefix')}: ${transactionId.trim()}`);
             if (remarks.trim()) remarkParts.push(remarks.trim());
 
@@ -96,6 +97,7 @@ export function PaymentDetailsStep({
                 student_fee_payment_ids: selectedDues.map((d) => d.id),
                 amount: parsedAmount,
                 remarks: remarkParts.join(' | '),
+                payment_details: toOfflinePaymentDetailsPayload(details),
             });
         },
         onSuccess: (data) => {
@@ -285,41 +287,17 @@ export function PaymentDetailsStep({
                         {t('paymentDetails')}
                     </h3>
 
-                    {/* Payment Mode */}
-                    <div className="space-y-2">
-                        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                            {t('paymentModeLabel')}
-                        </label>
-                        <div className="grid grid-cols-2 gap-2">
-                            {PAYMENT_MODES.map((mode) => (
-                                <button
-                                    key={mode.value}
-                                    type="button"
-                                    onClick={() => setPaymentMode(mode.value)}
-                                    className={`px-3 py-2 text-sm font-semibold rounded-lg border transition-colors ${
-                                        paymentMode === mode.value
-                                            ? 'bg-blue-50 text-blue-700 border-blue-300'
-                                            : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
-                                    }`}
-                                >
-                                    {mode.label}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* Transaction ID */}
-                    <div className="space-y-2">
-                        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                            {t('transactionId')} <span className="text-gray-400 normal-case">({t('optional')})</span>
-                        </label>
-                        <Input
-                            value={transactionId}
-                            onChange={(e) => setTransactionId(e.target.value)}
-                            placeholder={t('placeholders.transactionId')}
-                            className="text-sm"
-                        />
-                    </div>
+                    {/* How it was paid: mode, option (e.g. PhonePe), reference, proof. */}
+                    <OfflinePaymentFields
+                        value={details}
+                        onChange={setDetails}
+                        onErrorChange={setDetailsError}
+                        showDate
+                        numbering={{
+                            userPlanId: selectedDues[0]?.user_plan_id ?? null,
+                            userId: student.student_id,
+                        }}
+                    />
 
                     {/* Amount */}
                     <div className="space-y-2">
@@ -360,7 +338,7 @@ export function PaymentDetailsStep({
                     {/* Submit */}
                     <button
                         onClick={handleSubmit}
-                        disabled={parsedAmount <= 0 || mutation.isPending}
+                        disabled={parsedAmount <= 0 || mutation.isPending || !!detailsError}
                         className="w-full px-5 py-3 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
                         {mutation.isPending ? t('processing') : `${t('submitPayment')} \u2014 ${formatCurrency(parsedAmount || 0)}`}
@@ -374,7 +352,7 @@ export function PaymentDetailsStep({
                 studentName={student.student_name}
                 amount={parsedAmount}
                 installmentCount={selectedDues.length}
-                paymentMode={paymentMode}
+                paymentMode={modeLabel}
                 transactionId={transactionId.trim() || undefined}
                 isSubmitting={mutation.isPending}
                 onConfirm={handleConfirm}

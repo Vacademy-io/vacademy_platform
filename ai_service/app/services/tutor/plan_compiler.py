@@ -22,7 +22,7 @@ from ...models.ai_token_usage import RequestType
 from ...models.teaching_plan import TeachingPlan
 from ...constants.model_defaults import GLM_DEFAULT
 from ...schemas.tutor import CompileKbGrounding, MediaTaskOp, SvgPart, TeachingPlanDraft
-from ..ai_billing import record_llm_billing, record_tool_billing
+from ..ai_billing import UC, metering_user, record_llm_billing, record_tool_billing, supported_kwargs
 from ..api_key_resolver import ApiKeyResolver
 from ..chat_llm_client import ChatLLMClient
 from ..platform_settings_service import get_platform_setting
@@ -167,8 +167,14 @@ class PlanCompiler:
         transcribe_videos: bool = True,
         ocr_pdfs: bool = True,
         voice_prepare: Optional[Dict[str, Any]] = None,
+        metering: Any = None,
     ) -> None:
         self.institute_id = institute_id
+        # Usage-event attribution for every charge of this compile (never
+        # changes a charge). Callers with a request pass
+        # MeteringContext.from_request; otherwise the authoring user with
+        # roles left for the nightly lookup.
+        self.metering = metering if metering is not None else metering_user(user_id, surface="ADMIN_APP")
         # Prepared voice: {"provider", "voice", "base_pace", "languages", "course_lang"}
         # — every spoken line of a READY plan is synthesised once, in the
         # background, so lessons play it instead of paying per learner.
@@ -391,6 +397,9 @@ class PlanCompiler:
                 user_id=self.user_id,
                 user_role="ADMIN",
                 request_id=self.compile_run_id,
+                use_case=UC.TUTOR_SETUP,
+                metering=getattr(self, "metering", None),
+                usage_context={"slide_id": slide_id, "plan_id": plan_id, "feature": "tutor_compile"},
                 # A retried request (same run id) or a concurrent duplicate of
                 # the same slide must not bill twice.
                 idempotency_key=(f"tutor_compile:{self.compile_run_id}:{slide_id}"
@@ -429,6 +438,8 @@ class PlanCompiler:
             prompt_tokens=pt, completion_tokens=ct, total_tokens=pt + ct,
             institute_id=self.institute_id, user_id=self.user_id, request_id=self.compile_run_id,
             metadata={"tool": "tutor_compile_slide", "slide_id": slide_id, "outcome": "failed"},
+            use_case=UC.TUTOR_SETUP, metering=getattr(self, "metering", None),
+            usage_context={"slide_id": slide_id, "feature": "tutor_compile", "outcome": "failed"},
         )
 
     def _schedule_voice_prepare(self, plan_id: str, slide_id: str) -> None:
@@ -444,6 +455,7 @@ class PlanCompiler:
             provider=str(vp.get("provider") or "sarvam"), voice=str(vp.get("voice") or ""),
             base_pace=float(vp.get("base_pace") or 1.0), languages=list(vp.get("languages") or ["en"]),
             course_lang=str(vp.get("course_lang") or self.language), request_id=self.compile_run_id,
+            **supported_kwargs(warm_plan, {"metering": getattr(self, "metering", None)}),
         ))
         _VOICE_TASKS.add(task)
         task.add_done_callback(_VOICE_TASKS.discard)
@@ -460,6 +472,8 @@ class PlanCompiler:
                     institute_id=self.institute_id, user_id=self.user_id, user_role="ADMIN",
                     request_id=self.compile_run_id, idempotency_key=f"tutor_media:{url}"[:255],
                     provider_cost_usd=cost,
+                    use_case=UC.TUTOR_SETUP, metering=getattr(self, "metering", None),
+                    usage_context={"feature": "tutor_compile"},
                 )
             except Exception:  # noqa: BLE001
                 logger.warning("Image billing failed for %s", url, exc_info=True)
@@ -483,7 +497,8 @@ class PlanCompiler:
             # The one paid text source: Whisper on the render worker, cached per file.
             try:
                 run.transcription_minutes = await source_text.transcribe_upload(
-                    source, institute_id=self.institute_id, user_id=self.user_id, request_id=self.compile_run_id)
+                    source, institute_id=self.institute_id, user_id=self.user_id, request_id=self.compile_run_id,
+                    **supported_kwargs(source_text.transcribe_upload, {"metering": getattr(self, "metering", None)}))
             except source_text.TranscriptionPending as pending:
                 # Long lecture: the transcript arrives later; the next Prepare
                 # picks the job up. Not a failure of the material.
@@ -495,7 +510,8 @@ class PlanCompiler:
         if source.kind == "pdf" and not source.text and source.media_file_id and self.ocr_pdfs:
             try:
                 run.ocr_pages = await source_text.ocr_pdf(
-                    source, institute_id=self.institute_id, user_id=self.user_id, request_id=self.compile_run_id)
+                    source, institute_id=self.institute_id, user_id=self.user_id, request_id=self.compile_run_id,
+                    **supported_kwargs(source_text.ocr_pdf, {"metering": getattr(self, "metering", None)}))
             except Exception as exc:  # noqa: BLE001
                 if not (description or "").strip():
                     raise RuntimeError(f"OCR failed ({str(exc)[:160]}); add what this PDF teaches instead") from exc

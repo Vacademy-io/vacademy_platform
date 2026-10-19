@@ -671,6 +671,7 @@ public class EnrollInviteService {
                 .requireApproval(paymentOption.isRequireApproval())
                 .unit(paymentOption.getUnit())
                 .complexPaymentOptionId(paymentOption.getComplexPaymentOptionId())
+                .regionalPricingEnabled(Boolean.TRUE.equals(paymentOption.getRegionalPricingEnabled()))
                 .paymentPlans(paymentPlans)
                 .build();
     }

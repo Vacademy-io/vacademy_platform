@@ -108,6 +108,18 @@ public class CopyIntakeController {
         return ResponseEntity.ok(service.toDto(batch, true));
     }
 
+    /** The batch's checked copies, for downloading them all at once. Read-only. */
+    @GetMapping("/batch/{batchId}/checked-copies")
+    public ResponseEntity<List<CopyIntakeDtos.CheckedCopyDto>> checkedCopies(
+            @RequestAttribute("user") CustomUserDetails user,
+            @RequestHeader(value = "clientId", required = false) String clientId,
+            @RequestParam("instituteId") String instituteId,
+            @PathVariable String batchId) {
+        requireBatch(user, clientId, instituteId, batchId);
+        accessValidator.requireStaffRole(user);
+        return ResponseEntity.ok(service.checkedCopies(batchId));
+    }
+
     @PostMapping("/item/{itemId}/resolve")
     public ResponseEntity<CopyIntakeDtos.ItemDto> resolve(@RequestAttribute("user") CustomUserDetails user,
                                                           @RequestHeader(value = "clientId", required = false) String clientId,

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import {
@@ -13,9 +14,11 @@ import {
     CaretLeft,
     CaretRight,
     Sparkle,
+    Star,
 } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
@@ -35,6 +38,10 @@ import {
 } from '@/services/message-template-service';
 import { TemplatePreview } from '@/components/templates/shared/TemplatePreview';
 import { toast } from 'sonner';
+import { fetchDefaultInvoiceTemplateIds, setDefaultInvoiceTemplate } from './invoice-settings-service';
+
+/** Separate from the settings form's ['invoice-settings'] query so refreshing it never resets unsaved form edits. */
+const DEFAULT_TEMPLATES_QUERY_KEY = ['invoice-default-template-ids'];
 
 interface InvoiceTemplatesSectionProps {
     /** DB template type: INVOICE = PDF layout, INVOICE_EMAIL = email body. */
@@ -74,6 +81,20 @@ export const InvoiceTemplatesSection: React.FC<InvoiceTemplatesSectionProps> = (
     const [isDeleting, setIsDeleting] = useState(false);
     const [isGenerating, setIsGenerating] = useState(false);
 
+    const queryClient = useQueryClient();
+    const { data: defaultIds } = useQuery({
+        queryKey: DEFAULT_TEMPLATES_QUERY_KEY,
+        queryFn: fetchDefaultInvoiceTemplateIds,
+    });
+    const { mutate: makeDefault, isPending: isSettingDefault } = useMutation({
+        mutationFn: (templateId: string) => setDefaultInvoiceTemplate(type, templateId),
+        onSuccess: () => {
+            toast.success(t('toasts.defaultSet'));
+            queryClient.invalidateQueries({ queryKey: DEFAULT_TEMPLATES_QUERY_KEY });
+        },
+        onError: () => toast.error(t('toasts.defaultSetFailed')),
+    });
+
     const loadTemplates = async () => {
         setIsLoading(true);
         try {
@@ -98,6 +119,15 @@ export const InvoiceTemplatesSection: React.FC<InvoiceTemplatesSectionProps> = (
     const totalElements = allTemplates.length;
     const totalPages = Math.max(1, Math.ceil(totalElements / PAGE_SIZE));
     const templates = allTemplates.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
+
+    // Mirrors the backend (InvoiceDefaultTemplatePicker): the chosen default while it
+    // still exists, otherwise the newest template — the list arrives newest first.
+    const storedDefaultId = defaultIds?.[type] ?? null;
+    const inUseId =
+        storedDefaultId &&
+        allTemplates.some((tpl) => tpl.id === storedDefaultId && !!tpl.content?.trim())
+            ? storedDefaultId
+            : allTemplates[0]?.id;
 
     const handleCreate = () => {
         navigate({ to: '/templates/create', search: { type } });
@@ -246,7 +276,17 @@ export const InvoiceTemplatesSection: React.FC<InvoiceTemplatesSectionProps> = (
                                 {templates.map((template) => (
                                     <TableRow key={template.id}>
                                         <TableCell className="font-medium text-xs sm:text-sm">
-                                            {template.name}
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <span>{template.name}</span>
+                                                {template.id === inUseId && (
+                                                    <Badge
+                                                        variant="secondary"
+                                                        title={t('table.defaultBadgeTitle')}
+                                                    >
+                                                        {t('table.defaultBadge')}
+                                                    </Badge>
+                                                )}
+                                            </div>
                                         </TableCell>
                                         <TableCell className="hidden sm:table-cell">
                                             <div className="max-w-xs truncate text-xs sm:text-sm text-muted-foreground">
@@ -260,6 +300,18 @@ export const InvoiceTemplatesSection: React.FC<InvoiceTemplatesSectionProps> = (
                                         </TableCell>
                                         <TableCell className="text-right">
                                             <div className="flex items-center justify-end gap-1">
+                                                {template.id !== inUseId && (
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        onClick={() => makeDefault(template.id)}
+                                                        disabled={isSettingDefault}
+                                                        className="p-1 sm:p-2"
+                                                        title={t('table.actions.setDefault')}
+                                                    >
+                                                        <Star className="size-4" />
+                                                    </Button>
+                                                )}
                                                 <Button
                                                     variant="ghost"
                                                     size="sm"

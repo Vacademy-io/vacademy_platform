@@ -37,6 +37,10 @@ export interface CampaignLeadUser {
     tat_due_at?: string | null;
     /** True when an admin set tat_due_at by hand. */
     tat_due_overridden?: boolean | null;
+    /** This enquiry repeats an existing lead (flagged by repeat-lead handling). */
+    is_duplicate?: boolean | null;
+    /** Open priority follow-up (opened for a reattempt). */
+    follow_up_priority?: boolean | null;
     /** First time the assigned counselor acted — drives "Responded in N" in the Reach-out-by cell. */
     first_response_at?: string | null;
     /** Follow-up deadline = last counselor action + followUpSlaHours (null until acted). */

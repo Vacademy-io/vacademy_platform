@@ -103,6 +103,8 @@ export interface CounselorPoolDTO {
     schedule_pattern?: SchedulePattern;
     /** ROUND_ROBIN opt-in: rotate only among counsellors on shift right now. */
     shift_aware?: boolean;
+    /** Rotation follows one pool-wide order; per-campaign orders are ignored. */
+    unified_rotation_order?: boolean;
     created_by?: string;
     created_at?: string;
     updated_at?: string;
@@ -135,6 +137,8 @@ export interface UpdatePoolRequest {
     schedule_pattern?: SchedulePattern;
     /** ROUND_ROBIN opt-in: gate rotation to on-shift counsellors. Omit to leave unchanged. */
     shift_aware?: boolean;
+    /** Rotate in one pool-wide order instead of each campaign's own. Omit to leave unchanged. */
+    unified_rotation_order?: boolean;
 }
 
 export interface UpdateMemberStatusRequest {

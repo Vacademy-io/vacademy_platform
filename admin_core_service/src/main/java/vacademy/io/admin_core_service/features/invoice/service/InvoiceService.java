@@ -1,5 +1,6 @@
 package vacademy.io.admin_core_service.features.invoice.service;
 
+import vacademy.io.admin_core_service.features.invoice.util.InvoiceDefaultTemplatePicker;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.itextpdf.styledxmlparser.jsoup.Jsoup;
 import com.itextpdf.styledxmlparser.jsoup.nodes.Document;
@@ -18,6 +19,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
+import vacademy.io.admin_core_service.features.regional_pricing.service.RegionalPriceLock;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.institute.service.TemplateService;
@@ -47,6 +49,7 @@ import vacademy.io.admin_core_service.features.user_subscription.repository.Paym
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentLog;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentLogLineItem;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
+import vacademy.io.admin_core_service.features.common.util.TemplateConditionals;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionRepository;
@@ -78,6 +81,9 @@ import java.util.stream.Collectors;
 @Slf4j
 @Service
 public class InvoiceService {
+
+    @Autowired
+    private vacademy.io.admin_core_service.features.offline_payment.service.OfflinePaymentDetailsService offlinePaymentDetailsService;
 
     @Autowired
     private InvoiceRepository invoiceRepository;
@@ -398,6 +404,31 @@ public class InvoiceService {
         PLACEHOLDER_META.put("next_installment_date",
                 new PlaceholderMeta("Next Installment Due On", "RECEIPT", false, "date"));
         PLACEHOLDER_META.put("amount_in_words", new PlaceholderMeta("Amount In Words", "RECEIPT", false, "text"));
+        // Only the mode ("Cash", "Cheque"): {{payment_method}} also names the account the money
+        // went into, which an institute may not want printed on a learner's receipt.
+        PLACEHOLDER_META.put("payment_mode", new PlaceholderMeta("Payment Mode", "RECEIPT", false, "text"));
+        // Single-item invoice layouts (one row: description / qty / unit price / amount) and the
+        // customer-details names an email-editor template uses. The aliases resolve to the same
+        // values as their canonical keys (customer_name = user_name, total = total_amount, ...);
+        // the item fields come from the plan line, see primaryLineItem. Read-only: the canonical
+        // keys are the editable ones.
+        PLACEHOLDER_META.put("customer_name", new PlaceholderMeta("Customer Name", "BILL TO", false, "text"));
+        PLACEHOLDER_META.put("customer_email", new PlaceholderMeta("Customer Email", "BILL TO", false, "text"));
+        PLACEHOLDER_META.put("practice_name", new PlaceholderMeta("Practice / Clinic Name", "BILL TO", false, "text"));
+        PLACEHOLDER_META.put("job_title", new PlaceholderMeta("Job Title", "BILL TO", false, "text"));
+        PLACEHOLDER_META.put("state", new PlaceholderMeta("State", "BILL TO", false, "text"));
+        PLACEHOLDER_META.put("customer_country", new PlaceholderMeta("Customer Country", "BILL TO", false, "text"));
+        PLACEHOLDER_META.put("date_issued", new PlaceholderMeta("Date Issued", "INVOICE", false, "date"));
+        PLACEHOLDER_META.put("date_paid", new PlaceholderMeta("Date Paid", "INVOICE", false, "date"));
+        PLACEHOLDER_META.put("abn", new PlaceholderMeta("ABN (Tax Registration No.)", "TAX", false, "text"));
+        PLACEHOLDER_META.put("invoice_item_description",
+                new PlaceholderMeta("Item Description", "ITEM", false, "text"));
+        PLACEHOLDER_META.put("invoice_item_tag", new PlaceholderMeta("Item Tag (plan name)", "ITEM", false, "text"));
+        PLACEHOLDER_META.put("qty", new PlaceholderMeta("Quantity", "ITEM", false, "text"));
+        PLACEHOLDER_META.put("unit_price", new PlaceholderMeta("Unit Price", "ITEM", false, "text"));
+        PLACEHOLDER_META.put("amount", new PlaceholderMeta("Item Amount", "ITEM", false, "text"));
+        PLACEHOLDER_META.put("total", new PlaceholderMeta("Total", "AMOUNTS", false, "text"));
+        PLACEHOLDER_META.put("balance_due", new PlaceholderMeta("Balance Due", "AMOUNTS", false, "text"));
     }
 
     /**
@@ -922,8 +953,8 @@ public class InvoiceService {
 
         log.info("Final currency used for invoice: '{}'", currency);
 
-        String paymentMethod = firstPaymentLog.getVendor();
-        String transactionId = firstPaymentLog.getVendorId();
+        String paymentMethod = invoicePaymentMethod(firstPaymentLog);
+        String transactionId = invoiceTransactionId(firstPaymentLog);
         LocalDateTime paymentDate = firstPaymentLog.getDate() != null
                 ? firstPaymentLog.getDate().toInstant().atZone(java.time.ZoneId.systemDefault()).toLocalDateTime()
                 : LocalDateTime.now();
@@ -945,8 +976,8 @@ public class InvoiceService {
             // Get payment log line items (discounts, coupons, etc.)
             List<PaymentLogLineItem> paymentLogLineItems = paymentLogLineItemRepository.findByPaymentLog(paymentLog);
 
-            // Calculate plan price first
-            BigDecimal planPrice = BigDecimal.valueOf(paymentPlan.getActualPrice());
+            // Calculate plan price first (the locked regional price when the plan has one)
+            BigDecimal planPrice = BigDecimal.valueOf(RegionalPriceLock.listPrice(userPlan));
 
             // For multi-package invoices, use the plan's actual_price (per-book price)
             // instead of paymentLog.getPaymentAmount() (which may contain the total gateway charge)
@@ -1018,7 +1049,7 @@ public class InvoiceService {
 
             // Build line items for this payment log - use payment amount
             List<InvoiceLineItemData> lineItems = buildLineItemsForPlan(
-                    paymentPlan, paymentLogLineItems, paymentLog.getId(), paymentAmount);
+                    paymentPlan, paymentLogLineItems, paymentLog.getId(), paymentAmount, planPrice);
             allLineItems.addAll(lineItems);
         }
 
@@ -1181,10 +1212,12 @@ public class InvoiceService {
      * For multi-package enrollments, creates descriptive line items for each
      * package session
      */
+    /** @param grossPlanPrice the UserPlan's list price — base, or its locked regional price */
     private List<InvoiceLineItemData> buildLineItemsForPlan(PaymentPlan paymentPlan,
             List<PaymentLogLineItem> paymentLogLineItems,
             String paymentLogId,
-            BigDecimal paymentAmount) {
+            BigDecimal paymentAmount,
+            BigDecimal grossPlanPrice) {
         List<InvoiceLineItemData> lineItems = new ArrayList<>();
 
         // CPO / fee-installment payments are allocated across specific StudentFeePayment
@@ -1213,7 +1246,7 @@ public class InvoiceService {
             // actually charged. Falls back to paymentAmount when paymentPlan is
             // unavailable so we don't blank the line.
             BigDecimal grossUnitPrice = paymentPlan != null
-                    ? BigDecimal.valueOf(paymentPlan.getActualPrice())
+                    ? grossPlanPrice
                     : paymentAmount;
             InvoiceLineItemData planItem = InvoiceLineItemData.builder()
                     .itemType("PLAN")
@@ -1587,8 +1620,8 @@ public class InvoiceService {
                 .divide(BigDecimal.valueOf(100), 10, RoundingMode.HALF_UP);
         String taxLabel = (String) invoiceSettings.getOrDefault("taxLabel", "Tax");
 
-        // Use payment amount from payment log
-        BigDecimal planPrice = BigDecimal.valueOf(paymentPlan.getActualPrice());
+        // Use payment amount from payment log (plan price = locked regional price when set)
+        BigDecimal planPrice = BigDecimal.valueOf(RegionalPriceLock.listPrice(userPlan));
         BigDecimal paymentAmount;
 
         if (paymentLog.getPaymentAmount() != null && paymentLog.getPaymentAmount() > 0) {
@@ -1622,7 +1655,7 @@ public class InvoiceService {
 
         // Build line items - use package session description instead of plan name
         List<InvoiceLineItemData> lineItems = buildLineItems(paymentPlan, paymentLogLineItems,
-                taxIncluded, taxRate, taxLabel, subtotal, taxAmount, totalAmount, paymentLog.getId());
+                taxIncluded, taxRate, taxLabel, subtotal, taxAmount, totalAmount, paymentLog.getId(), planPrice);
 
         // Build invoice data
         InvoiceData invoiceData = InvoiceData.builder()
@@ -1643,8 +1676,8 @@ public class InvoiceService {
                 .taxIncluded(taxIncluded)
                 .taxRate(taxRate)
                 .taxLabel(taxLabel)
-                .paymentMethod(paymentLog.getVendor())
-                .transactionId(paymentLog.getVendorId())
+                .paymentMethod(invoicePaymentMethod(paymentLog))
+                .transactionId(invoiceTransactionId(paymentLog))
                 .paymentDate(paymentLog.getDate() != null
                         ? paymentLog.getDate().toInstant().atZone(java.time.ZoneId.systemDefault()).toLocalDateTime()
                         : LocalDateTime.now())
@@ -1741,7 +1774,8 @@ public class InvoiceService {
             BigDecimal subtotal,
             BigDecimal taxAmount,
             BigDecimal totalAmount,
-            String paymentLogId) {
+            String paymentLogId,
+            BigDecimal grossPlanPrice) {
         List<InvoiceLineItemData> lineItems = new ArrayList<>();
 
         // Get package session description (package name) instead of plan name
@@ -1759,7 +1793,7 @@ public class InvoiceService {
         // course line would double-count the discount on the rendered
         // invoice. Falls back to totalAmount when paymentPlan is unavailable.
         BigDecimal grossUnitPrice = paymentPlan != null
-                ? BigDecimal.valueOf(paymentPlan.getActualPrice())
+                ? grossPlanPrice
                 : totalAmount;
         InvoiceLineItemData planItem = InvoiceLineItemData.builder()
                 .itemType("PLAN")
@@ -2263,7 +2297,26 @@ public class InvoiceService {
                 .docType(StringUtils.hasText(docType) ? docType : DOC_TYPE_ENROLLMENT)
                 .enrollmentNumberSupplier(() -> lookupEnrollmentNumber(userPlan))
                 .packageContextSupplier(() -> lookupPackageContext(userPlan))
+                .learnerFieldLookup(learnerFieldLookup(userPlan != null ? userPlan.getId() : null,
+                        user != null ? user.getId() : null))
                 .build();
+    }
+
+    /**
+     * A learner's value of a custom field for picking a numbering series: the value pinned on
+     * the enrolment first (so every installment of a course stays in one series), then the
+     * profile, then the latest lead. Null when there is neither a plan nor a learner.
+     */
+    java.util.function.Function<String, String> learnerFieldLookup(String userPlanId, String userId) {
+        if (!StringUtils.hasText(userPlanId) && !StringUtils.hasText(userId)) {
+            return null;
+        }
+        return fieldId -> {
+            String pinned = StringUtils.hasText(userPlanId)
+                    ? customFieldValuesRepository.findLatestValueForEnrollment(fieldId, userPlanId) : null;
+            return pinned != null || !StringUtils.hasText(userId)
+                    ? pinned : customFieldValuesRepository.findLatestValueForUser(fieldId, userId);
+        };
     }
 
     /**
@@ -2323,18 +2376,22 @@ public class InvoiceService {
     /**
      * Load institute invoice PDF layout template (defines how the invoice PDF looks: line items, totals, placeholders like default_invoice.html).
      * Uses templates table with type=INVOICE (institute invoice PDF templates), not email templates.
-     * If the institute has one or more INVOICE templates, the last-created one is used; otherwise
-     * resources/templates/invoice/default_invoice.html is used.
+     * If the institute has one or more INVOICE templates, the one marked default in
+     * Settings &gt; Invoice is used, else the last-created one (see InvoiceDefaultTemplatePicker);
+     * otherwise resources/templates/invoice/default_invoice.html is used.
      */
     private String loadInvoiceTemplate(String instituteId) {
         try {
             var templates = templateService.getTemplatesByInstituteAndType(instituteId, INVOICE_TEMPLATE_TYPE);
             log.info("Found {} INVOICE templates for institute: {}", templates.size(), instituteId);
-            if (!templates.isEmpty()) {
-                String content = templates.get(0).getContent();
+            var chosen = templates.isEmpty() ? null : InvoiceDefaultTemplatePicker.pick(templates,
+                    readDefaultInvoiceTemplateId(instituteId, InvoiceDefaultTemplatePicker.PDF_SETTING_KEY))
+                    .orElse(null);
+            if (chosen != null) {
+                String content = chosen.getContent();
                 if (StringUtils.hasText(content)) {
                     log.info("Using custom INVOICE template '{}' (id={}) for institute: {}, content length: {}",
-                            templates.get(0).getName(), templates.get(0).getId(), instituteId,
+                            chosen.getName(), chosen.getId(), instituteId,
                             content.length());
                     return content;
                 } else {
@@ -2347,6 +2404,20 @@ public class InvoiceService {
 
         log.info("Using default invoice PDF template from resources (default_invoice.html) for institute: {}", instituteId);
         return loadDefaultInvoiceTemplateFromResources();
+    }
+
+    /**
+     * The template id the admin marked default for invoices ({@code INVOICE_SETTING.<key>}),
+     * or null. Never throws: a settings read failure falls back to the newest template.
+     */
+    private String readDefaultInvoiceTemplateId(String instituteId, String key) {
+        try {
+            return InvoiceDefaultTemplatePicker.defaultIdFrom(
+                    instituteSettingService.getSettingByInstituteIdAndKey(instituteId, "INVOICE_SETTING"), key);
+        } catch (Exception e) {
+            log.warn("Could not read {} for institute {}: {}", key, instituteId, e.getMessage());
+            return null;
+        }
     }
 
     /**
@@ -2452,7 +2523,8 @@ public class InvoiceService {
      * Replace template placeholders with actual data
      */
     private String replaceTemplatePlaceholders(String template, InvoiceData invoiceData) {
-        String filled = template;
+        // {{#if key}}...{{/if}} blocks are resolved by this same substitution; see TemplateConditionals.
+        String filled = TemplateConditionals.prepare(template);
         // Institutes can supply their own INVOICE template, and those predate the proforma
         // tokens. Note what this template supports so the proforma marking can be injected
         // below rather than silently not happening. Checked against the RAW template, before
@@ -2621,6 +2693,8 @@ public class InvoiceService {
         // Payment info
         filled = filled.replace("{{payment_method}}",
                 invoiceData.getPaymentMethod() != null ? invoiceData.getPaymentMethod() : "");
+        filled = filled.replace("{{payment_mode}}",
+                nz(invoicePaymentMode(invoiceData.getPaymentLog(), invoiceData.getPaymentMethod())));
         filled = filled.replace("{{transaction_id}}",
                 invoiceData.getTransactionId() != null ? invoiceData.getTransactionId() : "");
         filled = filled.replace("{{payment_date}}",
@@ -2724,6 +2798,34 @@ public class InvoiceService {
         // The whole sum, in one conditional block — see buildTotalsRowsHtml.
         filled = filled.replace("{{totals_rows}}", buildTotalsRowsHtml(invoiceData, currencySymbol));
 
+        // Customer-details aliases and the single-row item layout used by email-editor
+        // templates. Each mirrors an existing value above, so the two spellings never disagree.
+        filled = filled.replace("{{customer_name}}", ov.apply("user_name", user.getFullName()));
+        filled = filled.replace("{{customer_email}}", ov.apply("user_email", user.getEmail()));
+        filled = filled.replace("{{date_issued}}",
+                ov.apply("invoice_date", invoiceData.getInvoiceDate() != null
+                        ? invoiceData.getInvoiceDate().format(DISPLAY_DATE_FORMATTER) : ""));
+        filled = filled.replace("{{date_paid}}",
+                invoiceData.getPaymentDate() != null ? invoiceData.getPaymentDate().format(DISPLAY_DATE_FORMATTER)
+                        : "");
+        filled = filled.replace("{{abn}}", ov.apply("tax_registration_number", taxRegistrationNumber));
+        filled = filled.replace("{{total}}", currencySymbol + money(invoiceData.getTotalAmount()));
+        filled = filled.replace("{{balance_due}}", currencySymbol + money(balanceDue(invoiceData)));
+        filled = filled.replace("{{practice_name}}", escapeHtml(lpf.practiceName()));
+        filled = filled.replace("{{job_title}}", escapeHtml(lpf.jobTitle()));
+        filled = filled.replace("{{state}}", escapeHtml(lpf.state()));
+        filled = filled.replace("{{customer_country}}", escapeHtml(lpf.country()));
+        InvoiceLineItemData primaryItem = primaryLineItem(invoiceData.getLineItems());
+        filled = filled.replace("{{invoice_item_description}}",
+                primaryItem != null ? escapeHtml(nz(primaryItem.getDescription())) : "");
+        filled = filled.replace("{{invoice_item_tag}}", escapeHtml(invoiceItemTag(invoiceData, primaryItem)));
+        filled = filled.replace("{{qty}}", primaryItem != null
+                ? String.valueOf(primaryItem.getQuantity() != null ? primaryItem.getQuantity() : 1) : "");
+        filled = filled.replace("{{unit_price}}", primaryItem != null && primaryItem.getUnitPrice() != null
+                ? currencySymbol + money(primaryItem.getUnitPrice()) : "");
+        filled = filled.replace("{{amount}}", primaryItem != null && primaryItem.getAmount() != null
+                ? currencySymbol + money(primaryItem.getAmount()) : "");
+
         // Terms & Conditions
         String termsHtml = buildTermsAndConditionsHtml(invoiceData);
         if (termsHtml == null || termsHtml.trim().isEmpty()) {
@@ -2738,8 +2840,43 @@ public class InvoiceService {
             filled = filled.replace("{{terms_and_conditions}}", termsHtml);
         }
 
-        return applyProformaFallbackMarkup(filled, invoiceData,
+        return applyProformaFallbackMarkup(TemplateConditionals.finish(filled), invoiceData,
                 templateNamesDocument, templateShowsProformaRef);
+    }
+
+    /**
+     * The line a one-row invoice layout prints: the plan line, else the first line. Discount
+     * and tax lines are not items, they are folded into the totals.
+     */
+    static InvoiceLineItemData primaryLineItem(List<InvoiceLineItemData> lineItems) {
+        if (lineItems == null || lineItems.isEmpty()) {
+            return null;
+        }
+        for (InvoiceLineItemData item : lineItems) {
+            if (item != null && "PLAN".equalsIgnoreCase(item.getItemType())) {
+                return item;
+            }
+        }
+        return lineItems.get(0);
+    }
+
+    /** The payment plan's name, when it adds something the item description does not already say. */
+    static String invoiceItemTag(InvoiceData invoiceData, InvoiceLineItemData primaryItem) {
+        PaymentPlan plan = invoiceData != null ? invoiceData.getPaymentPlan() : null;
+        String name = plan != null ? Objects.toString(plan.getName(), "").trim() : "";
+        String description = primaryItem != null ? Objects.toString(primaryItem.getDescription(), "") : "";
+        if (name.isEmpty() || description.toLowerCase(Locale.ENGLISH).contains(name.toLowerCase(Locale.ENGLISH))) {
+            return "";
+        }
+        return name;
+    }
+
+    /** Nothing is owed once the invoice carries a payment date; until then, the whole total. */
+    static BigDecimal balanceDue(InvoiceData invoiceData) {
+        if (invoiceData == null || invoiceData.getPaymentDate() != null || invoiceData.getTotalAmount() == null) {
+            return BigDecimal.ZERO;
+        }
+        return invoiceData.getTotalAmount();
     }
 
     /**
@@ -3998,11 +4135,12 @@ public class InvoiceService {
             boolean attachPdf = pdfBytes != null && pdfBytes.length > 0;
 
             // First: try INVOICE_EMAIL type templates (created via easy-email editor)
-            // Uses most recently created template for the institute
+            // Uses the template marked default in Settings > Invoice, else the most recently created
             var invoiceEmailTemplates = templateService.getTemplatesByInstituteAndType(instituteId, "INVOICE_EMAIL");
             var invoiceEmailTemplate = invoiceEmailTemplates.isEmpty()
                     ? Optional.<vacademy.io.admin_core_service.features.institute.dto.template.TemplateResponse>empty()
-                    : Optional.of(invoiceEmailTemplates.get(0));
+                    : InvoiceDefaultTemplatePicker.pick(invoiceEmailTemplates,
+                            readDefaultInvoiceTemplateId(instituteId, InvoiceDefaultTemplatePicker.EMAIL_SETTING_KEY));
 
             // Fallback: legacy EMAIL type with name "Invoice Email"
             if (invoiceEmailTemplate.isEmpty()) {
@@ -5224,6 +5362,13 @@ public class InvoiceService {
         double amount = invoice.getTotalAmount() != null
                 ? invoice.getTotalAmount().doubleValue() : 0d;
 
+        // How it was paid, validated against the institute's offline payment modes before
+        // anything is written.
+        vacademy.io.admin_core_service.features.offline_payment.service.OfflinePaymentDetailsService.Resolved paidVia =
+                offlinePaymentDetailsService.resolve(invoice.getInstituteId(),
+                        request != null ? request.getPaymentDetails() : null,
+                        request != null ? request.getTransactionId() : null);
+
         // 1. PaymentLog — userPlan=null because admin invoices aren't bound to enrollments.
         String paymentLogId = paymentLogService.createPaymentLog(
                 invoice.getUserId(),
@@ -5233,7 +5378,8 @@ public class InvoiceService {
                 currency,
                 null,
                 null,
-                new java.util.Date());
+                paidVia != null && paidVia.paymentDate() != null
+                        ? java.sql.Date.valueOf(paidVia.paymentDate()) : new java.util.Date());
 
         // 2. Promote to SUCCESS/PAID + audit metadata
         Map<String, Object> paymentSpecificData = new HashMap<>();
@@ -5257,6 +5403,8 @@ public class InvoiceService {
         } catch (Exception e) {
             throw new VacademyException("Failed to promote payment log to SUCCESS: " + e.getMessage());
         }
+        offlinePaymentDetailsService.apply(paymentLogId, paidVia,
+                userDetails != null ? userDetails.getUserId() : null);
 
         // 3. A proforma becomes a real invoice at the moment it is paid — this is where the
         // institute's actual invoice number gets drawn. Runs before the PAID flip so the
@@ -6415,6 +6563,10 @@ public class InvoiceService {
                 : LearnerProfileFields.EMPTY;
         d.put("parent_name", lpf.parentName());
         d.put("year_group", lpf.yearGroup());
+        d.put("practice_name", lpf.practiceName());
+        d.put("job_title", lpf.jobTitle());
+        d.put("state", lpf.state());
+        d.put("customer_country", lpf.country());
 
         // Seed the receipt fields too, so the review step shows what the PDF will actually
         // print rather than an empty box next to every amount.
@@ -6434,6 +6586,7 @@ public class InvoiceService {
         d.put("next_installment_date", rfd.nextInstallmentDate != null
                 ? rfd.nextInstallmentDate.format(DISPLAY_DATE_FORMATTER) : "");
         d.put("amount_in_words", amountInWords(invoiceData.getTotalAmount()));
+        d.put("payment_mode", nz(invoicePaymentMode(invoiceData.getPaymentLog(), invoiceData.getPaymentMethod())));
 
         // Effective (possibly per-invoice-overridden) tax, not the raw institute default —
         // matches what replaceTemplatePlaceholders renders and what create will persist.
@@ -6808,9 +6961,10 @@ public class InvoiceService {
         return date != null ? date.getMonth().getDisplayName(java.time.format.TextStyle.FULL, Locale.ENGLISH) : "";
     }
 
-    /** Parent and year group as the learner's own custom fields hold them; "" when absent. */
-    record LearnerProfileFields(String parentName, String yearGroup) {
-        static final LearnerProfileFields EMPTY = new LearnerProfileFields("", "");
+    /** Learner-profile values as the learner's own custom fields hold them; "" when absent. */
+    record LearnerProfileFields(String parentName, String yearGroup, String practiceName, String jobTitle,
+                                String state, String country) {
+        static final LearnerProfileFields EMPTY = new LearnerProfileFields("", "", "", "", "", "");
     }
 
     /**
@@ -6837,10 +6991,25 @@ public class InvoiceService {
                 "year level").contains(n)) {
             return "year_group";
         }
+        // A practice-membership customer is a person at a clinic: "Clinic Name", "Practice Name".
+        if (Set.of("clinic name", "practice name", "clinic", "practice").contains(n)) {
+            return "practice_name";
+        }
+        if (Set.of("job title", "job role", "designation").contains(n)) {
+            return "job_title";
+        }
+        // Exact names only: "State" must not catch "Statement" or "Estate Name".
+        if (Set.of("state", "state territory", "state province", "province").contains(n)) {
+            return "state";
+        }
+        if (Set.of("country", "country of residence").contains(n)) {
+            return "customer_country";
+        }
         return null;
     }
 
-    private static final List<String> LEARNER_PROFILE_PLACEHOLDERS = List.of("{{parent_name}}", "{{year_group}}");
+    private static final List<String> LEARNER_PROFILE_PLACEHOLDERS = List.of("{{parent_name}}", "{{year_group}}",
+            "{{practice_name}}", "{{job_title}}", "{{state}}", "{{customer_country}}");
 
     /** Whether a template asks for a value that needs the learner's custom fields. */
     static boolean usesLearnerProfileFields(String template) {
@@ -6856,7 +7025,7 @@ public class InvoiceService {
     }
 
     /**
-     * Parent name and year group from the billed learner's custom fields in this institute.
+     * Parent name, year group, practice, job title, state and country from the billed learner's custom fields in this institute.
      * The newest answer wins (the query is newest first). Never throws: a failed lookup leaves
      * the fields blank for the admin to fill in, rather than failing the invoice.
      */
@@ -6870,6 +7039,7 @@ public class InvoiceService {
                     "USER", List.of(invoiceData.getUser().getId()), invoiceData.getInstitute().getId());
             String parentName = "";
             String yearGroup = "";
+            Map<String, String> extra = new HashMap<>();
             for (Object[] row : rows) {
                 // [sourceId, customFieldId, fieldKey, fieldName, fieldType, value, sourceType]
                 String value = row[5] != null ? row[5].toString().trim() : "";
@@ -6881,11 +7051,15 @@ public class InvoiceService {
                     parentName = value;
                 } else if ("year_group".equals(target) && yearGroup.isEmpty()) {
                     yearGroup = value;
+                } else if (target != null) {
+                    extra.putIfAbsent(target, value);
                 }
             }
-            return new LearnerProfileFields(parentName, yearGroup);
+            return new LearnerProfileFields(parentName, yearGroup, extra.getOrDefault("practice_name", ""),
+                    extra.getOrDefault("job_title", ""), extra.getOrDefault("state", ""),
+                    extra.getOrDefault("customer_country", ""));
         } catch (Exception e) {
-            log.warn("Could not read parent / year group custom fields for user {}: {}",
+            log.warn("Could not read learner-profile custom fields for user {}: {}",
                     invoiceData.getUser().getId(), e.getMessage());
             return LearnerProfileFields.EMPTY;
         }
@@ -6987,6 +7161,7 @@ public class InvoiceService {
                         paymentLogId, e);
             }
         }
+        rf.totalFees = billedTotal(rf.totalFees, expected);
         rf.totalPaid = totalCollected(paid, thisPayment, alreadyAllocated);
         rf.previousPaid = paidBefore(rf.totalPaid, thisPayment);
         BigDecimal courseTotal = rf.totalFees != null ? rf.totalFees : expected;
@@ -7009,6 +7184,15 @@ public class InvoiceService {
         return rf;
     }
 
+
+    /**
+     * What the learner is actually billed for the course. The schedule carries the amounts after
+     * any discount or concession; the plan only knows the list price, which is {{course_fees}}.
+     * Falls back to the plan price when the schedule has nothing.
+     */
+    static BigDecimal billedTotal(BigDecimal planPrice, BigDecimal scheduleExpected) {
+        return scheduleExpected != null && scheduleExpected.signum() > 0 ? scheduleExpected : planPrice;
+    }
 
     /**
      * A DATE column arrives as {@link java.sql.Date}, whose {@code toInstant()} throws, so the
@@ -7108,4 +7292,64 @@ public class InvoiceService {
         return n % 10 == 0 ? tens : tens + " " + WORDS_BELOW_TWENTY[n % 10];
     }
 
+
+    /**
+     * What the invoice prints as the payment method: for an offline payment recorded with a
+     * mode, the mode as the admin chose it ("UPI · PhonePe"); otherwise the gateway, as before.
+     */
+    static String invoicePaymentMethod(PaymentLog paymentLog) {
+        if (paymentLog == null) return null;
+        if (StringUtils.hasText(paymentLog.getPaymentMode())) {
+            String mode = paymentLog.getPaymentMode();
+            String sub = paymentLog.getPaymentSubMode();
+            if (StringUtils.hasText(paymentLog.getPaymentDetailsJson())) {
+                try {
+                    com.fasterxml.jackson.databind.JsonNode json =
+                            new ObjectMapper().readTree(paymentLog.getPaymentDetailsJson());
+                    mode = json.path("mode_label").asText(mode);
+                    sub = json.path("sub_mode_label").asText(sub);
+                } catch (Exception ignored) {
+                    // Fall back to the codes.
+                }
+            }
+            return StringUtils.hasText(sub) ? mode + " · " + sub : mode;
+        }
+        return paymentLog.getVendor();
+    }
+
+    /**
+     * Just how the payment was made ("Cash", "Google Pay"), without the account that
+     * {@link #invoicePaymentMethod} adds. Uses the payment log when the invoice has one, else
+     * the mode part of the stored payment method; the gateway name for an online payment.
+     */
+    static String invoicePaymentMode(PaymentLog paymentLog, String paymentMethod) {
+        if (paymentLog != null) {
+            if (StringUtils.hasText(paymentLog.getPaymentMode())) {
+                String mode = paymentLog.getPaymentMode();
+                if (StringUtils.hasText(paymentLog.getPaymentDetailsJson())) {
+                    try {
+                        mode = new ObjectMapper().readTree(paymentLog.getPaymentDetailsJson())
+                                .path("mode_label").asText(mode);
+                    } catch (Exception ignored) {
+                        // Fall back to the code.
+                    }
+                }
+                return mode;
+            }
+            if (StringUtils.hasText(paymentLog.getVendor())) {
+                return paymentLog.getVendor();
+            }
+        }
+        if (!StringUtils.hasText(paymentMethod)) return null;
+        int sep = paymentMethod.indexOf(" · ");
+        return sep > 0 ? paymentMethod.substring(0, sep) : paymentMethod;
+    }
+
+    /** The admin's reference for an offline payment; the gateway's id otherwise. */
+    static String invoiceTransactionId(PaymentLog paymentLog) {
+        if (paymentLog == null) return null;
+        return StringUtils.hasText(paymentLog.getPaymentReference())
+                ? paymentLog.getPaymentReference()
+                : paymentLog.getVendorId();
+    }
 }

@@ -45,6 +45,10 @@ import java.util.stream.StreamSupport;
 @Service
 public class StudentAttemptService {
 
+    /** Internal choice ("any 4 of 5"); absent in unit tests that do not need it. */
+    @Autowired(required = false)
+    private vacademy.io.assessment_service.features.assessment.service.evaluation_ai.DashboardChoiceGroups choiceGroups;
+
     @Autowired
     StudentAttemptRepository studentAttemptRepository;
 
@@ -640,6 +644,18 @@ public class StudentAttemptService {
 
         for (QuestionWiseMarks questionWiseMarks : allQuestionWiseMarks) {
             totalMarks += questionWiseMarks.getMarks();
+        }
+        // Internal choice ("any 4 of 5"): the extra answers keep their marks but leave
+        // the total. Nothing changes for a paper without groups.
+        if (choiceGroups != null) {
+            java.util.Map<String, Double> byQuestion = new java.util.HashMap<>();
+            for (QuestionWiseMarks m : allQuestionWiseMarks) {
+                if (m.getQuestion() != null) byQuestion.put(m.getQuestion().getId(), m.getMarks());
+            }
+            for (String left : choiceGroups.notCountedByMarks(assessmentId, byQuestion)) {
+                Double marks = byQuestion.get(left);
+                if (marks != null) totalMarks -= marks;
+            }
         }
 
         studentAttempt.setTotalMarks(totalMarks);

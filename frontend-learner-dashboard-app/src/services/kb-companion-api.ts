@@ -7,6 +7,7 @@
  */
 import axios from "axios";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
+import { aiUsageLimitMessage, claimAiUsageLimit } from "@/lib/ai-usage-limit-notify";
 import { AI_SERVICE_URL } from "@/constants/urls";
 
 const BASE = `${AI_SERVICE_URL}/kb-companion/v1`;
@@ -315,6 +316,10 @@ export interface CompanionApiError {
 export function readCompanionError(error: unknown): CompanionApiError {
   if (!axios.isAxiosError(error)) return { status: null, code: null, message: null };
   const status = error.response?.status ?? null;
+  // AI usage limit (429 AI_USAGE_LIMIT, top-level body): shown inline by the
+  // caller, so the global toast is skipped. Other 429s read exactly as before.
+  const usageLimit = claimAiUsageLimit(error);
+  if (usageLimit) return { status, code: usageLimit.error, message: aiUsageLimitMessage(usageLimit) };
   const detail = (error.response?.data as { detail?: unknown } | undefined)?.detail;
   if (detail && typeof detail === "object") {
     const d = detail as { code?: unknown; message?: unknown };

@@ -36,6 +36,13 @@ import java.util.concurrent.TimeoutException;
  * the key is configured and the gateway is not cooling down after a failure, so a
  * missing key or an Isoquant outage degrades to OpenRouter instead of failing.
  *
+ * A model routed to "anthropic" goes to ai_service's internal bridge
+ * ({@value #ANTHROPIC_BRIDGE_PATH}), which holds the Anthropic key pool and does its own
+ * OpenRouter failover. admin_core never holds an Anthropic key, nor the ai_service-only
+ * LLM_KEY_ENCRYPTION_KEY that decrypts the stored ones. Without an ai_service URL
+ * and internal token the route is skipped (OpenRouter, as before); a bridge failure gets
+ * the same one OpenRouter try and cooldown as an Isoquant failure.
+ *
  * Callers keep their OpenRouter payload and registry model id; {@link #post} turns
  * the payload into the gateway's shape. Usage must still be recorded and charged
  * under the registry id - that is what ai_models prices.
@@ -58,6 +65,10 @@ public class LlmGatewayRouter {
 
     public static final String OPENROUTER = "openrouter";
     public static final String ISOQUANT = "isoquant";
+    public static final String ANTHROPIC = "anthropic";
+
+    /** ai_service's OpenAI-shaped bridge to the Anthropic key pool (X-Internal-Service-Token). */
+    static final String ANTHROPIC_BRIDGE_PATH = "/ai-service/internal/llm/v1/chat/completions";
 
     static final String ROUTES_SETTING_KEY = "llm.model_routes";
 
@@ -92,8 +103,9 @@ public class LlmGatewayRouter {
     private static final String DEFAULT_EFFORT = "low";
 
     /**
-     * @param gateway         OPENROUTER or ISOQUANT
-     * @param wireModel       the id the gateway expects (Isoquant uses bare names)
+     * @param gateway         OPENROUTER, ISOQUANT or ANTHROPIC
+     * @param wireModel       the id the gateway expects (Isoquant uses bare names; the
+     *                        Anthropic bridge takes the registry id and maps it itself)
      * @param reasoningEffort effort to send; null sends none
      */
     public record Route(String gateway, String wireModel, String reasoningEffort) {
@@ -168,6 +180,8 @@ public class LlmGatewayRouter {
     private final WebClient isoquantClient;
     private final String openRouterApiKey;
     private final WebClient openRouterClient;
+    /** Null when ai_service's URL or internal token is not configured: anthropic routes are skipped. */
+    private final WebClient anthropicBridgeClient;
 
     private final Map<String, Long> cooldownUntil = new ConcurrentHashMap<>();
     private volatile Map<String, Route> routes = Collections.emptyMap();
@@ -182,6 +196,23 @@ public class LlmGatewayRouter {
                 isoquantApiKey, isoquantBaseUrl, "", "https://openrouter.ai/api/v1");
     }
 
+    /** No Anthropic bridge: anthropic routes are skipped. */
+    public LlmGatewayRouter(JdbcTemplate jdbcTemplate,
+                            ObjectMapper objectMapper,
+                            AiModelDefaultsResolver modelDefaults,
+                            String isoquantApiKey,
+                            String isoquantBaseUrl,
+                            String openRouterApiKey,
+                            String openRouterBaseUrl) {
+        this(jdbcTemplate, objectMapper, modelDefaults, isoquantApiKey, isoquantBaseUrl,
+                openRouterApiKey, openRouterBaseUrl, "", "");
+    }
+
+    /**
+     * @param aiServiceUrl  ai_service base URL (the bridge path is appended); blank = no bridge
+     * @param internalToken X-Internal-Service-Token for the bridge, the same secret CreditClient
+     *                      sends; blank = no bridge
+     */
     @Autowired
     public LlmGatewayRouter(JdbcTemplate jdbcTemplate,
                             ObjectMapper objectMapper,
@@ -189,7 +220,9 @@ public class LlmGatewayRouter {
                             @Value("${isoquant.api.key:}") String isoquantApiKey,
                             @Value("${isoquant.base.url:https://api.isoquant.ai/v1}") String isoquantBaseUrl,
                             @Value("${openrouter.api.key:}") String openRouterApiKey,
-                            @Value("${openrouter.base.url:https://openrouter.ai/api/v1}") String openRouterBaseUrl) {
+                            @Value("${openrouter.base.url:https://openrouter.ai/api/v1}") String openRouterBaseUrl,
+                            @Value("${ai.service.url:}") String aiServiceUrl,
+                            @Value("${ai.service.internal-token:${internal.service.token:}}") String internalToken) {
         this.jdbcTemplate = jdbcTemplate;
         this.objectMapper = objectMapper;
         this.modelDefaults = modelDefaults;
@@ -211,6 +244,19 @@ public class LlmGatewayRouter {
                 .defaultHeader("Isoquant-ZDR", "required")
                 .codecs(c -> c.defaultCodecs().maxInMemorySize(4 * 1024 * 1024))
                 .build();
+        String bridgeBase = aiServiceUrl == null ? "" : aiServiceUrl.trim().replaceAll("/+$", "");
+        String token = internalToken == null ? "" : internalToken.trim();
+        this.anthropicBridgeClient = bridgeBase.isEmpty() || token.isEmpty() ? null : WebClient.builder()
+                .baseUrl(bridgeBase)
+                .defaultHeader("X-Internal-Service-Token", token)
+                .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                .codecs(c -> c.defaultCodecs().maxInMemorySize(4 * 1024 * 1024))
+                .build();
+    }
+
+    /** True when anthropic routes can be served (ai_service URL and internal token are set). */
+    public boolean anthropicBridgeConfigured() {
+        return anthropicBridgeClient != null;
     }
 
     /**
@@ -222,14 +268,15 @@ public class LlmGatewayRouter {
         if (route == null) {
             return new Route(OPENROUTER, modelId, null);
         }
-        if (ISOQUANT.equals(route.gateway())) {
-            if (isoquantApiKey.isEmpty()) {
-                return openRouterFallback(modelId, route);
-            }
-            Long until = cooldownUntil.get(ISOQUANT);
-            if (until != null && until > System.currentTimeMillis()) {
-                return openRouterFallback(modelId, route);
-            }
+        if (ISOQUANT.equals(route.gateway()) && isoquantApiKey.isEmpty()) {
+            return openRouterFallback(modelId, route);
+        }
+        if (ANTHROPIC.equals(route.gateway()) && anthropicBridgeClient == null) {
+            return openRouterFallback(modelId, route);
+        }
+        Long until = cooldownUntil.get(route.gateway());
+        if (until != null && until > System.currentTimeMillis()) {
+            return openRouterFallback(modelId, route);
         }
         return route;
     }
@@ -247,18 +294,32 @@ public class LlmGatewayRouter {
      * is swapped for the wire id and reasoning becomes the gateway's effort field.
      */
     public Mono<String> post(Route route, Map<String, Object> openRouterPayload, Duration timeout) {
-        if (!ISOQUANT.equals(route.gateway())) {
+        boolean anthropic = ANTHROPIC.equals(route.gateway());
+        if (!ISOQUANT.equals(route.gateway()) && !anthropic) {
             return Mono.error(new IllegalArgumentException("No client for gateway " + route.gateway()));
+        }
+        if (anthropic && anthropicBridgeClient == null) {
+            return Mono.error(new IllegalStateException("ai_service URL or internal token is not configured"));
         }
         Map<String, Object> payload = new LinkedHashMap<>();
         openRouterPayload.forEach((k, v) -> {
-            if (!OPENROUTER_ONLY_KEYS.contains(k)) {
+            // The Anthropic bridge speaks the OpenRouter "reasoning" shape (its adapter maps it
+            // to thinking / effort), so a caller's reasoningEffort reaches Claude on either leg.
+            if (!OPENROUTER_ONLY_KEYS.contains(k) || (anthropic && "reasoning".equals(k))) {
                 payload.put(k, v);
             }
         });
         payload.put("model", route.wireModel());
         if (route.reasoningEffort() != null) {
             payload.put("reasoning_effort", route.reasoningEffort());
+        }
+        if (anthropic) {
+            return anthropicBridgeClient.post()
+                    .uri(ANTHROPIC_BRIDGE_PATH)
+                    .bodyValue(payload)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .timeout(timeout);
         }
         return isoquantClient.post()
                 .uri("/chat/completions")
@@ -512,6 +573,10 @@ public class LlmGatewayRouter {
      * {model_id: {"router": "...", "model": "...", "reasoning_effort": "low" | false}}.
      * The jsonb column holds the map either as an object or as a JSON string of it
      * (prod has the string form). Unknown gateways and bad efforts are skipped.
+     *
+     * An "anthropic" entry's "model" is the Anthropic API id, which only ai_service uses:
+     * the bridge takes the registry id, so the Java route's wire model is the registry id
+     * and it carries no effort.
      */
     static Map<String, Route> parseRoutes(String raw, ObjectMapper mapper) {
         if (raw == null || raw.isBlank()) {
@@ -539,6 +604,10 @@ public class LlmGatewayRouter {
             String gateway = entry.isTextual() ? entry.asText() : entry.path("router").asText("");
             gateway = gateway.trim().toLowerCase();
             if (OPENROUTER.equals(gateway)) {
+                continue;
+            }
+            if (ANTHROPIC.equals(gateway)) {
+                out.put(modelId, new Route(ANTHROPIC, modelId, null));
                 continue;
             }
             if (!ISOQUANT.equals(gateway)) {

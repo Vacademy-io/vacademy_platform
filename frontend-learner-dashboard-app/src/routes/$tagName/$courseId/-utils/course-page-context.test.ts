@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { CatalogStream } from "../../-components/components/catalog/catalog-streams";
 import {
   coursePageContext,
+  coursePageTrail,
   findCatalogSection,
   relatedCardStyle,
   showsDuration,
@@ -48,6 +49,16 @@ describe("findCatalogSection", () => {
     expect(findCatalogSection([])).toBeNull();
     expect(findCatalogSection([pages[2]!])).toBeNull();
   });
+
+  it("names the crumb after the header menu item, not the page's SEO title", () => {
+    const site = [{ route: "books-copy", title: "Books & Kits — Acme Academy (Copy)", components: [{ type: "courseCatalog" }] }];
+    const header = (navigation: unknown[]) => ({ layout: { header: { props: { navigation } } } });
+    expect(findCatalogSection(site, header([{ label: "Home", route: "home" }, { label: "Courses", route: "books-copy" }]))?.title).toBe("Courses");
+    // Inside a mega-menu column too.
+    expect(findCatalogSection(site, header([{ type: "megaMenu", label: "Learn", columns: [{ links: [{ label: "All courses", route: "/books-copy" }] }] }]))?.title).toBe("All courses");
+    // Not in the menu: the page title, as before.
+    expect(findCatalogSection(site, header([{ label: "Home", route: "home" }]))?.title).toBe("Books & Kits — Acme Academy (Copy)");
+  });
 });
 
 describe("coursePageContext", () => {
@@ -63,7 +74,7 @@ describe("coursePageContext", () => {
     });
     expect(ctx.formatKeys).toEqual(["ebook"]);
     expect(ctx.formatLabels).toEqual(["E-books"]);
-    expect(ctx.stream).toEqual({ slug: "swasthya", label: "Swasthya" });
+    expect(ctx.stream).toEqual({ slug: "swasthya", label: "Swasthya", imageUrl: null, accentColor: null });
     expect(ctx.category).toEqual({ slug: "garbha-vigyan", label: "Garbha Vigyan" });
     expect(ctx.breadcrumb).toEqual([
       { label: "All courses", route: "courses" },
@@ -93,6 +104,28 @@ describe("coursePageContext", () => {
     expect(ctx.breadcrumb).toEqual([{ label: "All courses", route: "courses" }]);
     expect(ctx.related).toBeNull();
     expect(coursePageContext({ tags: null, globalSettings: null, streams: [], catalog: null }).breadcrumb).toEqual([]);
+  });
+});
+
+describe("coursePageTrail", () => {
+  const catalog = findCatalogSection(pages);
+  const trailOf = (tags: string[]) =>
+    coursePageTrail(coursePageContext({ tags, globalSettings: GS, streams: STREAMS, catalog }).breadcrumb);
+
+  it("reads stream then category, without the Courses section's crumb", () => {
+    expect(trailOf(["swasthya", "garbha-vigyan"])).toEqual([
+      { label: "Swasthya", route: "courses", search: { stream: "swasthya" } },
+      { label: "Garbha Vigyan", route: "courses", search: { stream: "swasthya", category: "garbha-vigyan" } },
+    ]);
+  });
+
+  it("stops at the stream when the course has no category", () => {
+    expect(trailOf(["swasthya"])).toEqual([{ label: "Swasthya", route: "courses", search: { stream: "swasthya" } }]);
+  });
+
+  it("keeps the Courses crumb for a course in no stream, and is empty without a Courses section", () => {
+    expect(trailOf(["anything"])).toEqual([{ label: "All courses", route: "courses" }]);
+    expect(coursePageTrail([])).toEqual([]);
   });
 });
 

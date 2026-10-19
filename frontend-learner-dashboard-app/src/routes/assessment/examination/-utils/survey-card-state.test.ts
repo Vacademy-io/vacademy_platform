@@ -55,6 +55,24 @@ describe("surveyCardState", () => {
     expect(released.resultsPending).toBe(false);
   });
 
+  it("holds a NO_AUTO_RELEASE exam until the admin releases it", () => {
+    const unreleased = surveyCardState(
+      { play_mode: "EXAM", result_type: "NO_AUTO_RELEASE", report_release_status: null },
+      past,
+      1
+    );
+    expect(unreleased.canShowReport).toBe(false);
+    expect(unreleased.resultsPending).toBe(true);
+
+    const released = surveyCardState(
+      { play_mode: "EXAM", result_type: "NO_AUTO_RELEASE", report_release_status: "RELEASED" },
+      past,
+      1
+    );
+    expect(released.canShowReport).toBe(true);
+    expect(released.resultsPending).toBe(false);
+  });
+
   it("holds an auto-marked exam that is PENDING for a teacher (AI-graded typed answers)", () => {
     const held = surveyCardState(
       { play_mode: "EXAM", result_type: "AUTO_AFTER_SUBMISSION", report_release_status: "PENDING" },

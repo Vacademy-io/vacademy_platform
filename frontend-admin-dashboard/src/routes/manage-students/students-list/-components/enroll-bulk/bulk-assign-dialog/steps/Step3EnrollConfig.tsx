@@ -21,7 +21,7 @@ import { CalendarBlank as CalendarIcon } from '@phosphor-icons/react';
 import { format, parseISO } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useQueries, useQuery } from '@tanstack/react-query';
-import { useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { ArrowSquareOut } from '@phosphor-icons/react';
@@ -43,22 +43,36 @@ import {
 } from '@/components/common/payments/AdminDiscountField';
 import { isDiscountablePlanType } from '@/services/admin-discounts';
 import { useCanApplyDiscounts } from '@/hooks/useCanApplyDiscounts';
+import { OfflinePaymentFields } from '@/components/common/payments/OfflinePaymentFields';
+import type { NumberingTarget } from '@/services/numbering-field';
 
 interface Props {
     instituteId: string;
     selectedPackageSessions: SelectedPackageSession[];
-    onSelectedPackageSessionsChange: (sessions: SelectedPackageSession[]) => void;
+    /**
+     * Takes an updater: rows patch themselves from effects (the fee-plan panel), and two
+     * rows can do so in the same commit — a plain value would let the second overwrite the first.
+     */
+    onSelectedPackageSessionsChange: React.Dispatch<React.SetStateAction<SelectedPackageSession[]>>;
     options: BulkEnrollOptions;
-    onOptionsChange: (opts: BulkEnrollOptions) => void;
+    /** Takes an updater too: the payment fields patch options from effects. */
+    onOptionsChange: React.Dispatch<React.SetStateAction<BulkEnrollOptions>>;
+    /**
+     * The one existing learner being enrolled, if exactly one: preselects their own value of
+     * the numbering-series field (e.g. branch). With several learners the picked value applies
+     * to all of them.
+     */
+    numberingUserId?: string | null;
 }
 
 interface CourseConfigRowProps {
     instituteId: string;
+    numbering: NumberingTarget;
     ps: SelectedPackageSession;
     onUpdate: (patch: Partial<SelectedPackageSession>) => void;
 }
 
-const CourseConfigRow = ({ instituteId, ps, onUpdate }: CourseConfigRowProps) => {
+const CourseConfigRow = ({ instituteId, numbering, ps, onUpdate }: CourseConfigRowProps) => {
     const { t } = useTranslation('manageStudentsStep3EnrollConfig');
     const { data: resolved } = useResolvedInviteDetails({
         instituteId,
@@ -75,6 +89,32 @@ const CourseConfigRow = ({ instituteId, ps, onUpdate }: CourseConfigRowProps) =>
         (p) => p.status === 'ACTIVE'
     );
     const resolvedPlan = activePlans.find((p) => p.tag === 'DEFAULT') ?? activePlans[0] ?? null;
+    // A one-time price can be paid in installments: the backend builds a hidden fee plan
+    // for it (docs/CPO_FLEXIBLE_INSTALLMENTS.md). The plan discount replaces the admin
+    // discount while this is on, as for any fee plan.
+    const canPayInInstallments =
+        resolved?.paymentOption?.type === 'ONE_TIME' && (resolvedPlan?.actual_price ?? 0) > 0;
+    const oneTimeInstallments = canPayInInstallments && ps.cpoConfig != null;
+    // Unknown until the invite resolves; the shared payment fields stay shown meanwhile.
+    const ownsPayment = resolved ? isCpo || oneTimeInstallments : undefined;
+    useEffect(() => {
+        if (ps.ownsPayment !== ownsPayment) onUpdate({ ownsPayment });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [ownsPayment]);
+
+    // In Auto mode, send the invite this row shows (the backend only finds DEFAULT invites by
+    // itself) and block Preview while there are several to choose from.
+    const autoInviteId =
+        !ps.enrollInviteId && (resolved?.resolution === 'DEFAULT' || resolved?.resolution === 'ONLY_ACTIVE')
+            ? (resolved.invite?.id ?? null)
+            : null;
+    const inviteNeedsChoice = !ps.enrollInviteId && resolved?.resolution === 'AMBIGUOUS';
+    useEffect(() => {
+        if ((ps.autoResolvedInviteId ?? null) !== autoInviteId || !!ps.inviteNeedsChoice !== inviteNeedsChoice) {
+            onUpdate({ autoResolvedInviteId: autoInviteId, inviteNeedsChoice });
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [autoInviteId, inviteNeedsChoice]);
 
     return (
         <div className="rounded-lg border border-neutral-200 bg-white p-4">
@@ -101,6 +141,8 @@ const CourseConfigRow = ({ instituteId, ps, onUpdate }: CourseConfigRowProps) =>
                                 // Reset CPO state on invite change — different invite may carry
                                 // a different (or no) CPO mirror.
                                 cpoConfig: undefined,
+                                cpoScheduleError: null,
+                                cpoPaymentError: null,
                                 // A discount priced against the old invite's plan no longer applies.
                                 adminDiscount: undefined,
                             })
@@ -141,15 +183,65 @@ const CourseConfigRow = ({ instituteId, ps, onUpdate }: CourseConfigRowProps) =>
                     >
                         {resolved.paymentOption.type}
                     </span>
-                    {resolved.resolvedFromDefault && (
+                    {resolved.resolution === 'DEFAULT' && (
                         <span className="text-caption text-neutral-400">
                             {t('courseInviteSection.autoResolvedFromDefault')}
+                        </span>
+                    )}
+                    {resolved.resolution === 'ONLY_ACTIVE' && (
+                        <span className="text-caption text-neutral-400">
+                            {t('courseInviteSection.autoResolvedOnlyActive')}
                         </span>
                     )}
                 </div>
             )}
 
-            {canDiscount && resolvedPlan && (
+            {/* Auto mode with no DEFAULT invite and several active ones: the backend would enroll
+                through a new free invite, so the admin has to say which one is meant. */}
+            {!ps.enrollInviteId && resolved?.resolution === 'AMBIGUOUS' && (
+                <p role="alert" className="mt-2 text-caption font-medium text-warning-700">
+                    {t('courseInviteSection.pickInvite', { count: resolved.activeInviteCount })}
+                </p>
+            )}
+            {!ps.enrollInviteId && resolved?.resolution === 'NONE' && (
+                <p className="mt-2 text-caption text-neutral-500">{t('courseInviteSection.noInvite')}</p>
+            )}
+
+            {canPayInInstallments && (
+                <div className="mt-3 flex items-center justify-between gap-3 rounded-md border border-neutral-100 bg-neutral-50 p-3">
+                    <div>
+                        <Label className="text-sm font-medium text-neutral-700">
+                            {t('courseInviteSection.payInInstallments.label')}
+                        </Label>
+                        <p className="text-xs text-neutral-400">
+                            {t('courseInviteSection.payInInstallments.description')}
+                        </p>
+                    </div>
+                    <Switch
+                        checked={oneTimeInstallments}
+                        onCheckedChange={(on) =>
+                            onUpdate(
+                                on
+                                    ? {
+                                          cpoConfig: {
+                                              installment_overrides: [],
+                                              cpo_discount: null,
+                                              payment_mode: 'SKIP',
+                                              payment_amount: null,
+                                              payment_reference: null,
+                                              installment_schedule: null,
+                                          },
+                                          adminDiscount: undefined,
+                                          adminDiscountError: null,
+                                      }
+                                    : { cpoConfig: undefined, cpoScheduleError: null, cpoPaymentError: null }
+                            )
+                        }
+                    />
+                </div>
+            )}
+
+            {canDiscount && resolvedPlan && !oneTimeInstallments && (
                 <div className="mt-3 rounded-md border border-neutral-100 bg-neutral-50 p-3">
                     <AdminDiscountField
                         value={ps.adminDiscount ?? EMPTY_ADMIN_DISCOUNT}
@@ -171,6 +263,21 @@ const CourseConfigRow = ({ instituteId, ps, onUpdate }: CourseConfigRowProps) =>
                     cpoId={cpoId}
                     value={ps.cpoConfig}
                     onChange={(v) => onUpdate({ cpoConfig: v })}
+                    onScheduleErrorChange={(e) => onUpdate({ cpoScheduleError: e })}
+                    onPaymentErrorChange={(e) => onUpdate({ cpoPaymentError: e })}
+                    numbering={numbering}
+                />
+            )}
+
+            {oneTimeInstallments && resolvedPlan && (
+                <CpoEnrollmentConfigPanel
+                    cpoId={null}
+                    oneTimePrice={{ amount: resolvedPlan.actual_price, currency: resolvedPlan.currency }}
+                    value={ps.cpoConfig}
+                    onChange={(v) => onUpdate({ cpoConfig: v })}
+                    onScheduleErrorChange={(e) => onUpdate({ cpoScheduleError: e })}
+                    onPaymentErrorChange={(e) => onUpdate({ cpoPaymentError: e })}
+                    numbering={numbering}
                 />
             )}
         </div>
@@ -183,7 +290,10 @@ export const Step3EnrollConfig = ({
     onSelectedPackageSessionsChange,
     options,
     onOptionsChange,
+    numberingUserId,
 }: Props) => {
+    // A new enrolment has no plan yet, so the field is always asked (when the institute has it).
+    const numbering = useMemo<NumberingTarget>(() => ({ userId: numberingUserId ?? null }), [numberingUserId]);
     const { t } = useTranslation('manageStudentsStep3EnrollConfig');
     const courseTerm = getTerminology(ContentTerms.Course, SystemTerms.Course);
     const learnerTerm = getTerminology(RoleTerms.Learner, SystemTerms.Learner);
@@ -194,10 +304,8 @@ export const Step3EnrollConfig = ({
     const showSendCredentials = enrollmentNotifications?.showSendCredentials ?? true;
 
     const updateSession = (packageSessionId: string, patch: Partial<SelectedPackageSession>) => {
-        onSelectedPackageSessionsChange(
-            selectedPackageSessions.map((ps) =>
-                ps.packageSessionId === packageSessionId ? { ...ps, ...patch } : ps
-            )
+        onSelectedPackageSessionsChange((prev) =>
+            prev.map((ps) => (ps.packageSessionId === packageSessionId ? { ...ps, ...patch } : ps))
         );
     };
 
@@ -216,6 +324,7 @@ export const Step3EnrollConfig = ({
                         <CourseConfigRow
                             key={ps.packageSessionId}
                             instituteId={instituteId}
+                            numbering={numbering}
                             ps={ps}
                             onUpdate={(patch) => updateSession(ps.packageSessionId, patch)}
                         />
@@ -388,6 +497,31 @@ export const Step3EnrollConfig = ({
                             {t('globalOptions.transactionId.description')}
                         </p>
                     </div>
+
+                    {/* How it was paid (mode, option, proof), recorded with the payment date /
+                        transaction id above; the transaction id is the reference. Only for
+                        courses without their own fee panel: a fee-plan course takes these from
+                        its panel above (the backend ignores the shared ones for it), so asking
+                        again would only duplicate them. */}
+                    {(options.paymentDate || options.transactionId) &&
+                        !selectedPackageSessions.some((ps) => !ps.ownsPayment) && (
+                            <p className="text-xs text-neutral-500">
+                                {t('globalOptions.paymentDetailsInCourse')}
+                            </p>
+                        )}
+                    {(options.paymentDate || options.transactionId) &&
+                        selectedPackageSessions.some((ps) => !ps.ownsPayment) && (
+                        <OfflinePaymentFields
+                            showReference={false}
+                            externalReference={options.transactionId}
+                            numbering={numbering}
+                            value={options.paymentDetails ?? {}}
+                            onChange={(v) => onOptionsChange((prev) => ({ ...prev, paymentDetails: v }))}
+                            onErrorChange={(e) =>
+                                onOptionsChange((prev) => ({ ...prev, paymentDetailsError: e }))
+                            }
+                        />
+                    )}
                 </div>
             </div>
 

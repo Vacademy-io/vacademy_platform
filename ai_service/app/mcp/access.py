@@ -107,8 +107,9 @@ def check_mcp_access(principal: PinnedPrincipal, setting: Dict[str, Any]) -> Opt
     """
     Return None when the caller may use the MCP server, else a denial reason.
 
-    Root users bypass the ROLE leg (they can grant themselves any role anyway),
-    but never the institute leg — a disabled server is disabled for everyone.
+    Membership is the roles the JWT carries for this institute. is_root_user is
+    set for ordinary admins and learners, so it grants nothing here: a principal
+    with no role in the institute is refused, root or not.
     """
     if not setting.get("enabled"):
         return DENY_DISABLED
@@ -120,10 +121,7 @@ def check_mcp_access(principal: PinnedPrincipal, setting: Dict[str, Any]) -> Opt
     if caller_roles and caller_roles.issubset(LEARNER_ROLES):
         return DENY_LEARNER
 
-    if principal.is_root_user:
-        return None
-
-    # A non-root principal with no roles for this institute has nothing to match.
+    # No roles for this institute = not a member of it (root users included).
     if not caller_roles:
         return DENY_ROLE
 

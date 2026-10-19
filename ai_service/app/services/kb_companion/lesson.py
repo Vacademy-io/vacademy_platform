@@ -19,7 +19,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from ...db import db_session
 from ...models.ai_token_usage import RequestType
-from ..ai_billing import charge_tool
+from ..ai_billing import UC, charge_tool, metering_user
 from ..kb.repository import KbRepository
 from . import llm, model_choice
 from .repository import CompanionRepository
@@ -343,6 +343,8 @@ class CompileJob:
     completion_tokens: int = 0
     model: Optional[str] = None
     cards: List[Dict[str, Any]] = field(default_factory=list)
+    # Usage-event attribution for the charge (never changes it).
+    metering: Any = None
 
 
 def start_compile(job: CompileJob) -> None:
@@ -463,6 +465,10 @@ def _bill(db, job: CompileJob) -> Optional[float]:
             # a re-ingest (new fingerprint) is a new lesson; two pods finishing
             # the same compile after a stale takeover are one.
             request_id=job.lesson_id, idempotency_key=f"kbc_lesson:{job.lesson_id}:{job.fingerprint}",
+            use_case=UC.KB_COMPANION,
+            metering=getattr(job, "metering", None) or metering_user(getattr(job, "user_id", None)),
+            usage_context={"kb_id": (job.kb or {}).get("id"), "kb_name": (job.kb or {}).get("name"),
+                           "node_id": (job.node or {}).get("id"), "feature": "kbc_lesson"},
         )
         return float(charged)
     except Exception as exc:  # noqa: BLE001

@@ -55,6 +55,7 @@ public class LeadLookupService {
     private final CounsellorScopeService counsellorScopeService;
     private final LeadFollowupRepository leadFollowupRepository;
     private final AuthService authService;
+    private final LeadDedupSettingService leadDedupSettingService;
 
     public LeadLookupResultDto lookup(String instituteId, String phone, String email, String name,
                                       CustomUserDetails caller) {
@@ -150,6 +151,7 @@ public class LeadLookupService {
                                     .mode(blankToNull(f.getFollowUpMode()))
                                     .comments(blankToNull(f.getContent()))
                                     .studentResponse(blankToNull(f.getStudentResponse()))
+                                    .interestLevel(blankToNull(f.getInterestLevel()))
                                     .closerReason(blankToNull(f.getCloserReason()))
                                     .closedAt(f.getClosedAt())
                                     .createdAt(f.getCreatedAt())
@@ -161,10 +163,19 @@ public class LeadLookupService {
 
     private List<LeadFollowup> followUpsFor(String instituteId, String last10, String email, String name) {
         List<String> responseIds = audienceResponseRepository
-                .lookupMatchingResponseIds(instituteId, last10, email, name);
+                .lookupMatchingResponseIds(instituteId, last10, email, name, reattemptsFlagged(instituteId));
         return responseIds.isEmpty()
                 ? List.of()
                 : leadFollowupRepository.findByAudienceResponseIdInOrderByScheduleTimeDesc(responseIds);
+    }
+
+    /** The institute's repeat-lead handling flags reattempts as duplicates (Lead Settings). */
+    private boolean reattemptsFlagged(String instituteId) {
+        try {
+            return leadDedupSettingService.get(instituteId).repeatLead().reattempt().markDuplicate();
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     /**

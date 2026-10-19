@@ -406,8 +406,10 @@ export const convertStep2Data = (data: z.infer<typeof sectionDetailsSchema>) => 
         section_duration:
             parseInt(section.section_duration.hrs) * 60 + parseInt(section.section_duration.min),
         section_order: index + 1,
-        total_marks: parseInt(section.total_marks) || 0,
-        cutoff_marks: section.cutoff_marks.checked ? parseInt(section.cutoff_marks.value) || 0 : 0,
+        total_marks: parseFloat(section.total_marks) || 0,
+        cutoff_marks: section.cutoff_marks.checked
+            ? parseFloat(section.cutoff_marks.value) || 0
+            : 0,
         problem_randomization: section.problem_randomization,
         question_and_marking: section.adaptive_marking_for_each_question.map(
             (question, qIndex) => ({

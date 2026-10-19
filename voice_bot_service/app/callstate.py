@@ -30,6 +30,10 @@ class CallState:
     # (VAD blips re-arming it made the hangup escalation unreachable — A10).
     nudged: bool = False
     nudge_count: int = 0
+    # When the idle timer last decided the CALLER owed the turn (a nudge, or the
+    # idle farewell, after a question the bot asked). The silence that line ends
+    # is theirs, not dead air (call afa21bf4, 2026-10-14).
+    idle_nudge_t: float = 0.0
     # Idle fired while a reply was on its way: times it looked again (≤3).
     idle_rechecks: int = 0
     # True while bot audio is playing / caller is audibly speaking (VAD).
@@ -115,9 +119,27 @@ class CallState:
     opening_queued_t: float = 0.0
     opening_seg_t: float = 0.0
     opening_play_secs: float = 0.0
+    # When the current delivery was really queued (opening_queued_t carries a
+    # +0.5 s grace for the cut that caused it), and the most of the opening any
+    # delivery played — a re-say resets opening_play_secs, but what the person
+    # already HEARD stays heard (call 4cb132a2, 2026-10-14).
+    opening_delivery_t: float = 0.0
+    opening_heard_secs: float = 0.0
+    # When RunGuard last told the model the person has not heard who is
+    # calling (0 = never). Cleared in effect once a reply after it plays.
+    intro_cue_t: float = 0.0
     # reply_started_t of the reply we already covered with a latency bridge
     # ("Just a second.") — one bridge per reply, never a loop of them.
     bridged_reply_t: float = 0.0
+    # The person has put the call on hold (TranscriptCollector.on_hold_for, copied
+    # in by run_bot's watchdog every tick). Nobody is listening for "please say
+    # that again" or "एक सेकंड।" (the replay of 6d81124d said "एक सेकंड।" into the
+    # hold), and hold music must not spend the call's two orphan re-asks — so
+    # those decisions are never MADE on hold, instead of being made, booked by
+    # apply_decision and then skipped (review of 53b6e16b04, 2026-10-14).
+    on_hold: bool = False
+    # When run_bot last escalated a hold past HOLD_MAX_SECS (nudge / hang-up).
+    hold_nudge_t: float = 0.0
 
     # ── dict-compat so existing callbacks keep working ──
     def __getitem__(self, key: str):
@@ -253,7 +275,7 @@ def watchdog_decide(s: CallState, now: float, cfg: WatchdogConfig) -> Decision:
     # would wait for that instead of the caller's actual silence. The window's
     # low edge (lo) is measured from the acoustic stop, so a caller who is
     # still talking (fresh voice ticks) can never be talked over.
-    if (not s.bot_speaking and s.deaf_streak < cfg.max_deaf_streak
+    if (not s.bot_speaking and not s.on_hold and s.deaf_streak < cfg.max_deaf_streak
             and s.user_started_t > 0 and acoustic_stop > s.user_started_t
             and not s.orphan_used and s.orphan_asks < cfg.max_orphan_asks
             and s.transcript_t < s.user_started_t - cfg.orphan_transcript_lookback_secs
@@ -278,7 +300,7 @@ def watchdog_decide(s: CallState, now: float, cfg: WatchdogConfig) -> Decision:
     #     are quiet (checked above) and nothing is ducked (returned above).
     #     Once per reply — bridged_reply_t remembers which one.
     st = s.reply_started_t
-    if (st > 0 and s.bot_stopped_t < st and s.bridged_reply_t != st
+    if (st > 0 and not s.on_hold and s.bot_stopped_t < st and s.bridged_reply_t != st
             and now - st >= cfg.llm_bridge_after_secs):
         return Decision(LLM_BRIDGE, now - st)
 
@@ -336,6 +358,39 @@ def reply_unheard(s: CallState, since: float, in_flight) -> bool:
     return bool(in_flight() if callable(in_flight) else in_flight)
 
 
+def opening_coming(s: CallState, greet_queued_t: float, now: float,
+                   start_grace_secs: float) -> bool:
+    """Will the owed opening actually reach the caller's ears? Its current
+    delivery is playing and nothing has cut it, or it was queued less than
+    `start_grace_secs` ago, has made no sound yet and nothing has cut it since
+    (the same "killed after it was queued" test as run_bot._resay_opening).
+    Not "the opening is owed" — call 5e979e3e (2026-10-14): the re-said
+    opening was killed 22 ms in, stayed owed for 14.6 s, and RunGuard
+    swallowed every turn waiting for it."""
+    seg = s.opening_seg_t
+    if s.bot_speaking and seg and not s.last_cut_t > seg:
+        return True
+    queued = s.opening_delivery_t
+    return bool(queued
+                and s.bot_started_t < queued
+                and not s.last_cut_t > max(greet_queued_t, s.opening_queued_t)
+                and now - queued < start_grace_secs)
+
+
+def intro_heard(s: CallState, played_secs: float, intro_secs: float,
+                transcript, names) -> bool:
+    """Has the person HEARD who is calling? By the opening's audio — the most
+    any delivery played (`played_secs` is the current one) reaching
+    `intro_secs` — or the agent's name / institute in what played. Never by
+    what the context says was queued (calls 9fd6489d, c3818b83, 2026-10-14)."""
+    if max(s.opening_heard_secs, played_secs) >= intro_secs:
+        return True
+    keys = [n.casefold() for n in names or () if len(n or "") >= 3]
+    return any(e.get("role") == "assistant"
+               and any(k in (e.get("text") or "").casefold() for k in keys)
+               for e in transcript or [])
+
+
 def unplayed_confirmed(s: CallState, now: float, cfg: WatchdogConfig) -> bool:
     """Did an interrupted reply REALLY never reach the caller?
 
@@ -376,6 +431,20 @@ def stall_recovery_still_needed(s: CallState, now: float,
     if s.bot_stopped_t and now - s.bot_stopped_t <= grace_secs:
         return False
     return True
+
+
+def hold_escalation_due(s: CallState, now: float, held: float, hold_max_secs: float,
+                        idle_secs: float) -> bool:
+    """On hold past the limit: is the next step of the usual idle escalation due
+    (nudge, nudge, goodbye — run_bot's _on_idle owns which)? One step per idle
+    period: the bot's own nudge moves bot_stopped_t, the step itself stamps
+    hold_nudge_t, so a step can never fire twice for one silence.
+
+    Measured from neither transcript_t nor the caller's VAD on purpose: every
+    piece of a looping hold recording stamps both, and that is what kept the
+    old idle-based limit from ever firing (review of 53b6e16b04, 2026-10-14)."""
+    return (held >= hold_max_secs and not s.bot_speaking and s.stopping_since is None
+            and now - max(s.hold_nudge_t, s.bot_stopped_t) >= idle_secs)
 
 
 def apply_decision(s: CallState, d: Decision, now: float) -> None:

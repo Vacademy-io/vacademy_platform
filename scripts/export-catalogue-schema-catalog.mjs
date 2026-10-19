@@ -183,7 +183,8 @@ const CAPABILITIES = {
         'Use it for a swipeable row of photos or videos; it carries no per-item button, so for cards that need ' +
         'a CTA use featureGrid with per-feature image + link.',
     marquee:
-        'A continuously scrolling strip of short claims. items[]: {icon (emoji is correct here), text, image, label}. ' +
+        'A continuously scrolling strip of short claims. items[]: {icon (emoji is correct here), text, link, image, label}. ' +
+        'link (optional) makes the item clickable: a page slug, "#anchorId" of a section on the page, or a full URL. ' +
         'speed: slow|medium|fast. direction: left|right. pauseOnHover. Emoji icons are the intended style for ' +
         'this component only.',
     tabsAccordion:
@@ -262,6 +263,13 @@ const DATA_BOUND = {
         "has one, keep its libraryId/rootFolderId exactly as they are; you may change only title/subtitle/" +
         "align and the look (layout: cards|tiles|list, imageShape: landscape|square|portrait|none, columns " +
         "2-5, show* toggles). For a generated course listing use courseCatalog or productPageOffer.",
+    accessPassGrid:
+        "Renders the institute's LIVE published Access Passes (one purchase that unlocks several courses) " +
+        "as cards with a details dialog and a Buy button into the pass's checkout. Passes are created by the " +
+        "admin in LMS → Access Passes, so NEVER invent pass names, prices or courses. Set ONLY " +
+        "title/subtitle/buyLabel/columns (2-4) and the showCourses/showPrice toggles; leave tag as an empty " +
+        "string unless the admin names a pass tag to filter by. Use it when the brief mentions memberships, " +
+        "passes or all-access bundles; it renders nothing until a pass is published.",
     learningPath:
         "Renders LIVE learning paths: one product page's courses as numbered steps (mode 'single', productPageCode) " +
         "or the product pages of a folder library as path cards (mode 'list', libraryId/folderId). The product page " +

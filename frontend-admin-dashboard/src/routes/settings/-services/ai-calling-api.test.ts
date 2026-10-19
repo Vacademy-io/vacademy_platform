@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
     AI_CALLING_PRODUCT,
     buildIssueAiCallingKeyPayload,
+    canPlaceHumanCalls,
     normalizeWebhook,
     startCallCurlExample,
     webhookUrlError,
@@ -28,6 +29,24 @@ describe('buildIssueAiCallingKeyPayload', () => {
             now
         );
         expect(body.expires_at).toBe(new Date(2026, 11, 31, 23, 59, 59, 999).toISOString());
+    });
+
+    it('grants human-call scopes only when asked', () => {
+        expect(
+            buildIssueAiCallingKeyPayload('i', { name: 'k', expiryDate: '' }, now).scopes
+        ).toBeUndefined();
+        expect(
+            buildIssueAiCallingKeyPayload('i', { name: 'k', expiryDate: '', humanCalls: true }, now)
+                .scopes
+        ).toEqual([
+            'calls:read',
+            'calls:write',
+            'webhooks:manage',
+            'human_calls:read',
+            'human_calls:write',
+        ]);
+        expect(canPlaceHumanCalls({ scopes: ['calls:write'] })).toBe(false);
+        expect(canPlaceHumanCalls({ scopes: ['calls:write', 'human_calls:write'] })).toBe(true);
     });
 
     it('rejects a missing name, a past date and a malformed date', () => {

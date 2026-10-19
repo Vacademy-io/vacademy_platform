@@ -316,5 +316,164 @@
         "confirmDescription": "Every link that has only a username stops working for your learners straight away, including messages already sent. Check that every system that sends links adds a code first.",
         "confirmCancel": "Cancel",
         "confirmAction": "Turn on"
+    },
+    "catalogApi": {
+        "title": "Catalogue API & websites",
+        "description": "Show your published courses on your own website and send its enquiries straight into your CRM.",
+        "docs": "Read the API docs",
+        "loading": "Loading…",
+        "retry": "Retry",
+        "copy": "Copy",
+        "copied": "Copied to clipboard",
+        "copiedShort": "Copied",
+        "copyFailed": "Could not copy. Select the text and copy it yourself.",
+        "websites": {
+            "title": "Your websites",
+            "description": "Your keys only work on these websites (and on localhost while you build). Prove each website is yours by adding a DNS record.",
+            "add": "Add website",
+            "loadError": "Could not load your websites.",
+            "emptyTitle": "No websites yet",
+            "emptyDescription": "Add the website that will show your courses, for example www.yourschool.com.",
+            "status": {
+                "PENDING": "Pending",
+                "VERIFIED": "Verified",
+                "REVOKED": "Revoked"
+            },
+            "verifiedOn": "Verified on {{date}}",
+            "lastChecked": "Last checked {{when}}",
+            "waiting": "Waiting for the DNS record",
+            "revoked": "Blocked by Vacademy — contact support",
+            "revokedReason": "Reason: {{reason}}",
+            "showRecord": "DNS record",
+            "verify": "Verify now",
+            "remove": "Remove",
+            "addDialog": {
+                "heading": "Add a website",
+                "label": "Website address",
+                "placeholder": "e.g. www.yourschool.com",
+                "hint": "You can paste the full link. A verified website also covers its subdomains.",
+                "preview": "We will add: {{host}}",
+                "cancel": "Cancel",
+                "submit": "Add website",
+                "errors": {
+                    "host_required": "Enter your website's address.",
+                    "host_invalid": "This does not look like a website address.",
+                    "host_ip": "Use your website's name, not an IP address.",
+                    "host_localhost": "localhost always works, so there is no need to add it.",
+                    "host_single_label": "Enter the full address, like yourschool.com.",
+                    "host_too_long": "This address is too long."
+                }
+            },
+            "dns": {
+                "heading": "Verify {{host}}",
+                "intro": "Add this TXT record where you manage your domain's DNS (GoDaddy, Cloudflare…). Then press Verify. DNS changes can take up to an hour.",
+                "step1": "Open the DNS settings of your domain, where you bought it or where it is hosted.",
+                "step2": "Create a new TXT record and copy in the name and value below.",
+                "step3": "Save it, come back here and press Verify now.",
+                "type": "Type",
+                "name": "Name",
+                "value": "Value",
+                "nameHint": "Some providers add your domain to the name for you. If yours does, enter only the part before your domain.",
+                "verified": "This website is verified. Your keys work on it now.",
+                "noRecord": "The DNS record is not available. Remove the website and add it again.",
+                "close": "Close"
+            },
+            "toasts": {
+                "added": "{{host}} added. Now add the DNS record.",
+                "addFailed": "Could not add the website.",
+                "verified": "{{host}} is verified.",
+                "notYet": "No TXT record found yet. DNS changes can take up to an hour.",
+                "verifyFailed": "Could not check the website right now. Try again in a minute.",
+                "removed": "Website removed.",
+                "removeFailed": "Could not remove the website."
+            },
+            "removeConfirm": {
+                "title": "Remove {{host}}?",
+                "description": "Your keys will stop working on this website straight away. You can add it again later, but you will need to verify it again.",
+                "cancel": "Cancel",
+                "confirm": "Remove"
+            }
+        },
+        "keys": {
+            "title": "Publishable API keys",
+            "description": "Your website's code uses a key to read your published courses and send enquiries.",
+            "create": "Create key",
+            "loadError": "Could not load the keys.",
+            "empty": "No keys yet. Create one when your website is ready to use the API.",
+            "needsWebsite": "Keys only work on verified websites. Add and verify your website above first.",
+            "name": "Name",
+            "prefix": "Key",
+            "created": "Created",
+            "lastUsed": "Last used",
+            "status": "Status",
+            "neverUsed": "Never",
+            "statusActive": "Active",
+            "statusExpired": "Expired",
+            "statusRevoked": "Revoked",
+            "revoke": "Revoke",
+            "form": {
+                "heading": "Create a publishable key",
+                "nameLabel": "Key name",
+                "namePlaceholder": "e.g. School website",
+                "hint": "Pick a name that tells you where the key is used.",
+                "cancel": "Cancel",
+                "submit": "Create key",
+                "errors": {
+                    "nameRequired": "Enter a name for the key.",
+                    "nameTooLong": "The name is too long.",
+                    "generic": "Check the form and try again."
+                }
+            },
+            "issued": {
+                "heading": "Your new key",
+                "warning": "Copy this key now. It is shown only once.",
+                "note": "Safe to use in your website's code. It only reads your published catalogue and sends enquiries, and only works from your verified websites (and localhost).",
+                "done": "I have copied the key",
+                "notCopiedWarning": "You have not copied this key yet. Copy it, or press the button below to close anyway."
+            },
+            "revokeConfirm": {
+                "title": "Revoke this key?",
+                "description": "Websites using \"{{name}}\" stop showing your courses until they switch to a new key. This cannot be undone.",
+                "cancel": "Cancel",
+                "confirm": "Revoke key"
+            },
+            "toasts": {
+                "issueFailed": "Could not create the key.",
+                "revoked": "Key revoked.",
+                "revokeFailed": "Could not revoke the key."
+            }
+        },
+        "address": {
+            "title": "Course page address",
+            "description": "Every course in the API links to its page on your course site, where learners enrol and pay.",
+            "loadError": "Could not load the course page address.",
+            "current": "Course pages open at",
+            "site": "Catalogue site: {{tag}}",
+            "source": {
+                "override": "Set by you",
+                "domain": "Set automatically from your course site's domain",
+                "portal": "Set automatically from your learner portal address",
+                "other": "Set automatically",
+                "none": "Not set yet"
+            },
+            "noneHint": "We could not work out where your course pages live. Enter the address below.",
+            "overrideLabel": "Use a different address",
+            "overridePlaceholder": "https://learning.yourschool.com/store",
+            "overrideHint": "Must start with https://. Course links become this address followed by the course.",
+            "save": "Save address",
+            "reset": "Reset to automatic",
+            "errors": {
+                "url_required": "Enter an address.",
+                "url_not_https": "The address must start with https://.",
+                "url_has_query": "Remove everything from ? or # onwards.",
+                "url_too_long": "This address is too long."
+            },
+            "toasts": {
+                "saved": "Course page address saved.",
+                "saveFailed": "Could not save the address.",
+                "reset": "Back to the automatic address.",
+                "resetFailed": "Could not reset the address."
+            }
+        }
     }
 }

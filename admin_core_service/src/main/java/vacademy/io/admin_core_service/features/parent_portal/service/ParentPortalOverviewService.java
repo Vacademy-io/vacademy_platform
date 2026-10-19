@@ -132,11 +132,10 @@ public class ParentPortalOverviewService {
         // fetches per-course progress on its own (lazily), so the home stays fast.
         if (available.contains("liveSessions") && primaryBatch != null) {
             try {
-                // Attendance-only institute: classes are never shown, so the count is 0.
-                List<GroupedSessionsByDateDTO> groups = attendanceOnlyModeService.isEnabled(child.instituteId())
-                        ? List.of()
-                        : getLiveSessionService.getLiveAndUpcomingSessionsForUserAndBatch(
-                                primaryBatch, child.childUserId(), child.instituteId(), 0, null, null, null, caller);
+                // Attendance-only institute: only classes marked show_to_learners count.
+                List<GroupedSessionsByDateDTO> groups = getLiveSessionService.getLiveAndUpcomingSessionsForUserAndBatch(
+                        primaryBatch, child.childUserId(), child.instituteId(), 0, null, null, null, caller,
+                        attendanceOnlyModeService.isEnabled(child.instituteId()));
                 int count = groups == null ? 0 : groups.stream()
                         .mapToInt(g -> g.getSessions() == null ? 0 : g.getSessions().size())
                         .sum();

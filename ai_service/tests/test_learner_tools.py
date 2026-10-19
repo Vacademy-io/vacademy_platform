@@ -623,6 +623,8 @@ def test_no_mcp_tool_takes_a_top_level_user_id_or_institute_id():
     acts on the caller. Targets must use other names (learner_id, target_user_id …)."""
     from app.mcp.constants import MCP_EXPOSED_TOOLS
     for name in MCP_EXPOSED_TOOLS:
+        if name not in ASSISTANT_TOOLS:     # not registered (yet): test_mcp_adapter checks every exposed name exists
+            continue
         props = ((ASSISTANT_TOOLS[name].schema.get("function") or {}).get("parameters") or {}).get("properties") or {}
         assert not {"user_id", "institute_id"} & set(props), name
 

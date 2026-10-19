@@ -1,6 +1,7 @@
 package vacademy.io.admin_core_service.features.telephony.publicapi;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpStatus;
 import vacademy.io.admin_core_service.features.telephony.core.AiCallService;
 import vacademy.io.admin_core_service.features.telephony.enums.CallTrigger;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.AiAgent;
@@ -9,6 +10,8 @@ import vacademy.io.admin_core_service.features.telephony.publicapi.entity.AiCall
 import vacademy.io.admin_core_service.features.telephony.publicapi.repository.AiCallApiCallRepository;
 import vacademy.io.common.exceptions.ConflictException;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -24,6 +27,8 @@ import static org.mockito.Mockito.*;
 class AiCallingApiServiceTest {
 
     private final AiCallingApiService service = new AiCallingApiService(null, null, null, null, null, null, null);
+    private static final AiCallingApiAuth.Principal P =
+            new AiCallingApiAuth.Principal("inst-1", "key-1", List.of("calls:write"));
 
     private static AiAgent agent() {
         AiAgent a = new AiAgent();
@@ -131,17 +136,30 @@ class AiCallingApiServiceTest {
     }
 
     @Test
-    void overLongContactFieldsAndReservedVariableNamesAreRejected() {
-        Map<String, Object> vars = new LinkedHashMap<>();
-        vars.put("date", "tomorrow");
-        vars.put("institute_name", "Shiksha Academy");
+    void overLongContactFieldsAreRejected() {
         AiCallingApiService.Validated v = service.validate("inst-1", new AiCallingApiService.CallInput(
-                "agent-1", "+919876543210", "x".repeat(121), null, "e".repeat(256), vars, null), agent());
+                "agent-1", "+919876543210", "x".repeat(121), null, "e".repeat(256), null, null), agent());
         List<String> fields = v.errors().stream().map(e -> e.get("field")).toList();
         assertTrue(fields.contains("contact.name"), fields.toString());
         assertTrue(fields.contains("contact.external_id"), fields.toString());
-        assertTrue(fields.contains("variables.date"), fields.toString());
-        assertFalse(fields.contains("variables.institute_name"), "institute_name is a client variable");
+    }
+
+    @Test
+    void reservedVariableNamesAreAcceptedWithAWarning() {
+        // Rejecting them (c7ff69b207) broke CRM integrations live since 10-13 that forward
+        // fields such as "date" or "Name"; they are kept, and never fill the built-in placeholder.
+        Map<String, Object> vars = new LinkedHashMap<>();
+        vars.put("date", "2026-10-20");
+        vars.put("Name", "Ravi");
+        vars.put("institute_name", "Shiksha Academy");
+        AiCallingApiService.Validated v = service.validate("inst-1", new AiCallingApiService.CallInput(
+                "agent-1", "+919876543210", "Asha", null, null, vars, null), agent());
+        assertTrue(v.errors().isEmpty(), v.errors().toString());
+        assertEquals(Map.of("date", "2026-10-20", "Name", "Ravi", "institute_name", "Shiksha Academy"), v.variables());
+        List<String> warned = v.warnings().stream().map(w -> w.get("field")).toList();
+        assertEquals(List.of("variables.date", "variables.Name"), warned);
+        assertEquals("reserved_variable", v.warnings().get(0).get("code"));
+        assertTrue(v.warnings().get(1).get("message").contains("contact.name"), v.warnings().get(1).toString());
     }
 
     @Test
@@ -164,5 +182,107 @@ class AiCallingApiServiceTest {
                 new AiCallingApiService.CallInput("agent-1", "+919876543210", "Ravi", null, null, null, null),
                 true, "k-1"));
         assertEquals("idempotency_key_reused", e.getCode());
+    }
+
+    // ── Batch Idempotency-Key ──────────────────────────────────────────────────
+
+    private static AiCallingApiService.CallInput row(String phone, String name) {
+        return new AiCallingApiService.CallInput("agent-1", phone, name, null, null, null, null);
+    }
+
+    private static AiCallApiCall storedRow(String key, int index, String phone, String name, boolean test, Instant at) {
+        return AiCallApiCall.builder().id("call_" + index).instituteId("inst-1").batchId("batch_1").agentId("agent-1")
+                .phoneNumber(phone).contactName(name).testMode(test).idempotencyKey(key + "#" + index)
+                .createdAt(at).build();
+    }
+
+    private AiCallingApiService batchService(AiCallApiCallRepository calls, AiCallApiCall... stored) {
+        AiAgentRepository agents = mock(AiAgentRepository.class);
+        when(agents.findByIdAndInstituteId("agent-1", "inst-1")).thenReturn(Optional.of(agent()));
+        when(calls.findByInstituteIdAndIdempotencyKeyStartingWithOrderByCreatedAtAsc("inst-1", "camp#"))
+                .thenReturn(List.of(stored));
+        return new AiCallingApiService(agents, calls, null, null, null, null, null);
+    }
+
+    @Test
+    void aBatchKeyLeavesRoomForTheRowIndex() {
+        // key#999 must fit idempotency_key VARCHAR(255); a 252+ character key used to 500 on the INSERT.
+        AiCallingApiException e = assertThrows(AiCallingApiException.class, () -> service.createBatch(P, "agent-1",
+                List.of(row("+919876543210", null)), false, "k".repeat(252)));
+        assertEquals("invalid_request", e.getCode());
+        assertEquals(251, AiCallingApiService.MAX_BATCH_IDEMPOTENCY_KEY);
+    }
+
+    @Test
+    void aBatchKeyReusedForALiveBatchAfterATestOneIsRefused() {
+        Instant at = Instant.now().minus(Duration.ofMinutes(30));
+        AiCallingApiService svc = batchService(mock(AiCallApiCallRepository.class),
+                storedRow("camp", 0, "+919876543210", "Asha", true, at));
+        AiCallingApiException e = assertThrows(AiCallingApiException.class, () -> svc.createBatch(P, "agent-1",
+                List.of(row("+919876543210", "Asha")), false, "camp"));
+        assertEquals("idempotency_key_reused", e.getCode());
+        assertEquals(HttpStatus.CONFLICT, e.getStatus());
+    }
+
+    @Test
+    void aBatchKeyReusedWithDifferentRowsIsRefused() {
+        Instant at = Instant.now().minus(Duration.ofMinutes(30));
+        AiCallingApiService svc = batchService(mock(AiCallApiCallRepository.class),
+                storedRow("camp", 0, "+919876543210", "Asha", false, at),
+                storedRow("camp", 1, "+919812345678", "Ravi", false, at));
+        // A different number at index 1.
+        assertEquals("idempotency_key_reused", assertThrows(AiCallingApiException.class, () -> svc.createBatch(P,
+                "agent-1", List.of(row("+919876543210", "Asha"), row("+919800000000", "Ravi")), false, "camp")).getCode());
+        // Fewer rows than were stored.
+        assertEquals("idempotency_key_reused", assertThrows(AiCallingApiException.class, () -> svc.createBatch(P,
+                "agent-1", List.of(row("+919876543210", "Asha")), false, "camp")).getCode());
+    }
+
+    @Test
+    void aMatchingBatchReplayReturnsTheSameAcceptedAndRejectedRows() {
+        Instant at = Instant.now().minus(Duration.ofMinutes(30));
+        AiCallApiCallRepository calls = mock(AiCallApiCallRepository.class);
+        AiCallingApiService svc = batchService(calls,
+                storedRow("camp", 0, "+919876543210", "Asha", false, at),
+                storedRow("camp", 3, "+919811111111", null, false, at));
+        Map<String, Object> out = svc.createBatch(P, "agent-1", List.of(
+                row("+91 98765 43210", "Asha"),   // 0: stored
+                row("12345", null),               // 1: invalid then, invalid now
+                row("+919876543210", null),       // 2: duplicate of row 0
+                row("+919811111111", null),       // 3: stored
+                row("+919822222222", null)),      // 4: valid but never stored (call_failed the first time)
+                false, "camp");
+        assertEquals(true, out.get("idempotent_replay"));
+        assertEquals("batch_1", out.get("id"));
+        assertEquals(2, out.get("accepted_count"));
+        assertEquals(3, out.get("rejected_count"));
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rejected = (List<Map<String, Object>>) out.get("rejected");
+        assertEquals(List.of(1, 2, 4), rejected.stream().map(r -> r.get("index")).toList());
+        assertEquals(List.of("invalid_request", "duplicate_in_batch", "call_not_placed"),
+                rejected.stream().map(r -> r.get("code")).toList());
+        // A replay never places anything.
+        verify(calls, never()).save(any());
+        verify(calls, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void aBatchReplayWhileTheFirstRequestIsStillWritingIsNotAPartialAnswer() {
+        AiCallingApiService svc = batchService(mock(AiCallApiCallRepository.class),
+                storedRow("camp", 0, "+919876543210", null, false, Instant.now().minusSeconds(3)));
+        AiCallingApiException e = assertThrows(AiCallingApiException.class, () -> svc.createBatch(P, "agent-1",
+                List.of(row("+919876543210", null), row("+919822222222", null)), false, "camp"));
+        assertEquals("request_in_progress", e.getCode());
+        assertEquals(HttpStatus.CONFLICT, e.getStatus());
+        assertNotNull(e.getRetryAfterSeconds());
+    }
+
+    @Test
+    void aBatchFullyStoredReplaysEvenWhileFresh() {
+        AiCallingApiService svc = batchService(mock(AiCallApiCallRepository.class),
+                storedRow("camp", 0, "+919876543210", null, false, Instant.now().minusSeconds(3)));
+        Map<String, Object> out = svc.createBatch(P, "agent-1", List.of(row("+919876543210", null)), false, "camp");
+        assertEquals(1, out.get("accepted_count"));
+        assertEquals(0, out.get("rejected_count"));
     }
 }

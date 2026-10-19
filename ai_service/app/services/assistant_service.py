@@ -88,6 +88,19 @@ def _msg_event(msg) -> dict:
     }
 
 
+def _usage_limit_body(exc: BaseException) -> Optional[dict]:
+    """The N3 body when `exc` is an AI usage-limit block, else None."""
+    try:
+        from .metering.limit_gate import is_limit_exceeded
+
+        if is_limit_exceeded(exc):
+            body = getattr(exc, "body", None)
+            return body if isinstance(body, dict) else {}
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
 def _error_event(code: int, message: str) -> dict:
     return {"event": "error", "data": {"type": "ERROR", "code": code, "message": message}}
 
@@ -393,6 +406,11 @@ class AssistantAgentService:
                 )
                 has_credits = check.has_sufficient_credits
             except Exception as e:
+                usage_limit = _usage_limit_body(e)
+                if usage_limit is not None:
+                    # An AI usage limit (contract N3), not a broken gate.
+                    yield _error_event(429, str(usage_limit.get("message") or "AI usage limit reached."))
+                    return
                 # Fail-open on a check error (the per-turn deduction still runs),
                 # but log loudly — a broken gate must be visible.
                 logger.warning("Assistant pre-flight credit check failed (allowing turn): %s", e)
@@ -572,8 +590,17 @@ class AssistantAgentService:
 
             if total_tokens > 0:
                 api_provider = ApiProvider.GEMINI if provider == "gemini" else ApiProvider.OPENAI
+                from .ai_billing import UC, metering_kwargs, metering_user, supported_kwargs
+
+                # Usage-event attribution only: the pinned principal's roles are
+                # read from the verified JWT for this institute (role_source JWT).
+                meter = metering_kwargs(UC.VACADEMY_ASSISTANT, metering_user(
+                    principal.user_id, surface="ADMIN_APP", display_name=principal.full_name,
+                    roles_raw=list(principal.roles or []),
+                ))
                 with self._get_db() as db:
-                    TokenUsageService(db).record_usage_and_deduct_credits(
+                    tus = TokenUsageService(db)
+                    tus.record_usage_and_deduct_credits(
                         api_provider=api_provider,
                         prompt_tokens=prompt_tokens,
                         completion_tokens=completion_tokens,
@@ -582,6 +609,7 @@ class AssistantAgentService:
                         institute_id=principal.institute_id,
                         user_id=principal.user_id,
                         model=model,
+                        **supported_kwargs(tus.record_usage_and_deduct_credits, meter),
                     )
         except Exception as e:
             logger.warning("Failed to record Assistant token usage: %s", e)

@@ -72,7 +72,7 @@ public class AiClientService {
                                                 log.warn("Failed to parse AI grading response");
                                         }
                                 })
-                                .retryWhen(Retry.fixedDelay(MAX_RETRIES_PER_MODEL, Duration.ofSeconds(2)))
+                                .retryWhen(retrySpec())
                                 .doOnError(error -> log.error("AI call failed after retries: {}", error.getMessage()))
                                 .onErrorResume(e -> {
                                         log.error("AI call failed: {}", e.getMessage());
@@ -86,7 +86,7 @@ public class AiClientService {
         public Mono<String> callAiForExtraction(String prompt, String model, WebClient webClient) {
                 return completion("You are an expert at extracting answers from Markdown documents with LaTeX equations. Extract answers accurately without evaluating them.",
                                 prompt, model, webClient, RESPONSE_TIMEOUT_SECONDS, "answer extraction")
-                                .retryWhen(Retry.fixedDelay(MAX_RETRIES_PER_MODEL, Duration.ofSeconds(2)));
+                                .retryWhen(retrySpec());
         }
 
         /**
@@ -95,7 +95,19 @@ public class AiClientService {
         public Mono<String> callAiForBatchExtraction(String prompt, String model, WebClient webClient) {
                 return completion("You are an expert at extracting answers from Markdown documents. Extract ALL answers accurately in a single response.",
                                 prompt, model, webClient, 60, "BATCH answer extraction")
-                                .retryWhen(Retry.fixedDelay(MAX_RETRIES_PER_MODEL, Duration.ofSeconds(2)));
+                                .retryWhen(retrySpec());
+        }
+
+        /**
+         * The per-call retry: two more tries 2 s apart, except for a policy refusal
+         * (AI usage limit / plan), which is final - retrying cannot succeed and only
+         * repeats a refused call. A refusal is also never sent to the direct OpenRouter
+         * path: {@link #completion} falls back only on UnavailableException.
+         * Package-private for tests.
+         */
+        static Retry retrySpec() {
+                return Retry.fixedDelay(MAX_RETRIES_PER_MODEL, Duration.ofSeconds(2))
+                                .filter(error -> !AiServiceLlmClient.isPolicyRefusal(error));
         }
 
         /**

@@ -2,6 +2,7 @@
 
 import type { DiscountSpec } from './cpo-side-view-types';
 import type { AdminDiscountRequest } from '@/services/admin-discounts';
+import type { OfflinePaymentDetails } from '@/services/offline-payment-modes';
 
 /**
  * Per-installment override carried inside `cpo_config.installment_overrides`.
@@ -29,6 +30,65 @@ export interface CpoEnrollmentConfig {
     payment_mode?: 'OFFLINE' | 'SKIP' | null;
     payment_amount?: number | null;
     payment_reference?: string | null;
+    /**
+     * Learner-specific schedule (count, gap, first due date, edited rows). When set, the
+     * bills are generated from it instead of the fee plan's fixed installments; it also
+     * lets a one-time price be paid in installments. Never combined with
+     * `installment_overrides`. See docs/CPO_FLEXIBLE_INSTALLMENTS.md.
+     */
+    installment_schedule?: InstallmentSchedule | null;
+    /** How the offline payment was made (mode, option, reference); used when payment_mode is OFFLINE. */
+    payment_details?: OfflinePaymentDetails | null;
+}
+
+export type InstallmentIntervalUnit = 'DAYS' | 'MONTHS';
+
+export interface InstallmentScheduleRow {
+    /** YYYY-MM-DD */
+    due_date: string;
+    /** Gross amount (before discount). Omitted when the plan splits more than one fee. */
+    amount?: number | null;
+    /**
+     * Plan discount taken off this installment. When any row has one, the enrollment's
+     * discount is exactly these amounts (InstallmentScheduleService.rowDiscounts).
+     */
+    discount?: number | null;
+}
+
+/**
+ * How the enrollment discount is split over a custom schedule (wizard only, not sent):
+ * the same amount off each installment, all off the first or the last one (spilling to the
+ * next when one is too small), or typed per installment.
+ */
+export type ScheduleDiscountSplit = 'EVEN' | 'FIRST' | 'LAST' | 'CUSTOM';
+
+export interface InstallmentSchedule {
+    count?: number | null;
+    interval?: { unit: InstallmentIntervalUnit; value: number } | null;
+    /** YYYY-MM-DD */
+    first_due_date?: string | null;
+    /** Final rows; the backend uses these when present. */
+    rows?: InstallmentScheduleRow[] | null;
+    /** Wizard-only: how the discount is split over the rows. Stripped before sending. */
+    discount_split?: ScheduleDiscountSplit | null;
+}
+
+/** What the backend will write for one learner (dry run `cpo_schedule`). */
+export interface InstallmentSchedulePreview {
+    total_amount: number;
+    bill_count: number;
+    installments: Array<{
+        installment_number: number;
+        start_date: string | null;
+        due_date: string;
+        amount: number;
+    }>;
+    upfront_fees: Array<{
+        fee_type_id: string | null;
+        fee_type_name: string | null;
+        due_date: string;
+        amount: number;
+    }>;
 }
 
 export interface AssignmentItem {
@@ -180,6 +240,8 @@ export interface AssignResultItem {
     cpo_installment_count?: number | null;
     cpo_initial_payment_amount?: number | null;
     cpo_initial_payment_mode?: 'OFFLINE' | 'SKIP' | null;
+    /** Bills an installment schedule creates (or would, on a dry run). */
+    cpo_schedule?: InstallmentSchedulePreview | null;
     /** Plan price before / discount / after the admin discount (also on dry_run). */
     gross_amount?: number | null;
     discount_amount?: number | null;
@@ -362,6 +424,23 @@ export interface SelectedPackageSession {
      * AssignmentItem. Applies to every learner selected in the bulk run.
      */
     cpoConfig?: CpoEnrollmentConfig;
+    /** Problem with the installment schedule in `cpoConfig`; blocks Preview while set. */
+    cpoScheduleError?: string | null;
+    /** Problem with the offline payment details in `cpoConfig`; blocks Preview while set. */
+    cpoPaymentError?: string | null;
+    /**
+     * This course records its payment in its own fee panel (a fee plan, or a one-time price
+     * paid in installments), so the shared "how was it paid" fields do not apply to it.
+     * Wizard-only; never sent.
+     */
+    ownsPayment?: boolean;
+    /**
+     * Auto mode: the invite the row resolved and shows (DEFAULT, or the only active one).
+     * Sent as enroll_invite_id so the enrollment uses exactly what the screen shows.
+     */
+    autoResolvedInviteId?: string | null;
+    /** Auto mode found several active invites and no DEFAULT one; blocks Preview. */
+    inviteNeedsChoice?: boolean;
 
     /**
      * Admin-granted discount for this course (Step 3). Applies to every learner in the
@@ -455,6 +534,10 @@ export interface BulkEnrollOptions {
     sendCredentials: boolean;
     transactionId: string;
     paymentDate: string;
+    /** How the payment was made; sent only with a payment date or transaction id. */
+    paymentDetails?: OfflinePaymentDetails;
+    /** What blocks Preview in those payment details (translated), if anything. */
+    paymentDetailsError?: string | null;
 }
 
 /** Full 4-step wizard state */

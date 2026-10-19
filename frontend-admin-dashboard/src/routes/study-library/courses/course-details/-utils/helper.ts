@@ -62,6 +62,8 @@ interface CourseWithSessionsType {
         tags: string;
         course_depth: number;
         course_html_description: string;
+        /** Course page extras JSON string; null when nothing is stored (course-init only). */
+        course_page_json?: string | null;
     };
     sessions: Session[];
 }
@@ -198,6 +200,9 @@ export const transformApiDataToCourseData = async (apiData: CourseWithSessionsTy
             courseBannerMediaPreview: courseBannerMediaId,
             courseMediaPreview: courseMediaPreview ?? '',
             courseHtmlDescription: apiData.course.course_html_description,
+            // Raw string (or null/undefined when nothing is stored or the payload does not
+            // load it) — parsed by the edit form; only a string lets an edit clear it.
+            coursePageJson: apiData.course.course_page_json,
             instructors: [], // This should be populated from your API if available
             sessions: (Array.isArray(apiData.sessions) ? apiData.sessions : []).map((session) => ({
                 levelDetails: (Array.isArray(session.level_with_details)

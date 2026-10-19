@@ -27,6 +27,8 @@ import vacademy.io.admin_core_service.features.learner_payment_option_operation.
 import vacademy.io.admin_core_service.features.learner_payment_option_operation.service.OneTimePaymentOptionOperation;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
 import vacademy.io.admin_core_service.features.payments.service.PaymentService;
+import vacademy.io.admin_core_service.features.regional_pricing.dto.RegionalQuote;
+import vacademy.io.admin_core_service.features.regional_pricing.service.RegionalPriceResolver;
 import vacademy.io.admin_core_service.features.user_subscription.entity.AppliedCouponDiscount;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentLog;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentLogLineItem;
@@ -138,6 +140,73 @@ public class ProductPageEnrollmentService {
 
     @Autowired
     private UtmAttributionService utmAttributionService;
+
+    @Autowired
+    private RegionalPriceResolver regionalPriceResolver;
+
+    /**
+     * Regional pricing for one product-page order. All or nothing: the basket is regionally
+     * priced only when every paid course in it resolves to a regional price in the SAME
+     * currency, and the page has no basket pricing or offers (those amounts are written in
+     * the base currency). Otherwise the whole order stays on base prices.
+     */
+    private record RegionalBasket(Map<String, RegionalQuote> quoteByMappingId, String currency) {
+        static final RegionalBasket NONE = new RegionalBasket(Map.of(), null);
+
+        boolean active() {
+            return currency != null;
+        }
+
+        RegionalQuote quote(String mappingId) {
+            return quoteByMappingId.get(mappingId);
+        }
+
+        /** The course's list price for this order: regional when the basket is, else the plan's. */
+        double listPrice(String mappingId, PaymentPlan plan) {
+            RegionalQuote q = quoteByMappingId.get(mappingId);
+            if (q != null) {
+                return q.actualPrice().doubleValue();
+            }
+            return plan != null ? plan.getActualPrice() : 0d;
+        }
+    }
+
+    /**
+     * Never fails a checkout: any error resolving regional prices leaves the order on base
+     * prices, i.e. exactly the flow that ran before regional pricing existed.
+     *
+     * @param vendor the gateway this order is charged through (already settled from the cart)
+     */
+    private RegionalBasket resolveRegionalBasket(Map<String, PaymentPlan> planByMappingId, ProductPage page,
+                                                 String vendor) {
+        try {
+            return resolveRegionalBasketOrThrow(planByMappingId, page, vendor);
+        } catch (Exception e) {
+            log.warn("Regional pricing skipped for product page {}: {}", page.getCode(), e.getMessage());
+            return RegionalBasket.NONE;
+        }
+    }
+
+    private RegionalBasket resolveRegionalBasketOrThrow(Map<String, PaymentPlan> planByMappingId, ProductPage page,
+                                                        String vendor) {
+        if (regionalPriceResolver.hasCurrencyBoundSettings(page.getSettingsJson())) {
+            return RegionalBasket.NONE;
+        }
+        Map<String, RegionalQuote> quotes = new LinkedHashMap<>();
+        String currency = null;
+        for (Map.Entry<String, PaymentPlan> e : planByMappingId.entrySet()) {
+            if (e.getValue() == null || e.getValue().getActualPrice() <= 0) {
+                continue;
+            }
+            Optional<RegionalQuote> q = regionalPriceResolver.quote(e.getValue(), vendor);
+            if (q.isEmpty() || (currency != null && !currency.equals(q.get().currency()))) {
+                return RegionalBasket.NONE;
+            }
+            currency = q.get().currency();
+            quotes.put(e.getKey(), q.get());
+        }
+        return quotes.isEmpty() ? RegionalBasket.NONE : new RegionalBasket(quotes, currency);
+    }
 
     // -------------------------------------------------------------------------
     // Step 1: form-submit — create user + ABANDONED_CART entries per invite
@@ -318,6 +387,19 @@ public class ProductPageEnrollmentService {
                 .orElseThrow(() -> new VacademyException(
                         "Course page not found: " + request.getProductPageCode()));
 
+        // Regional pricing, resolved server-side from the viewer's country. When it applies,
+        // every list price below is the regional one and the order is charged in its currency.
+        RegionalBasket regional = resolveRegionalBasket(planByMappingId, pricingPage, payReq.getVendor());
+        double baseTotal = serverTotal;
+        if (regional.active()) {
+            serverTotal = 0.0;
+            for (Map.Entry<String, PaymentPlan> e : planByMappingId.entrySet()) {
+                serverTotal += regional.listPrice(e.getKey(), e.getValue());
+            }
+            log.info("Product page {} priced regionally in {}: {} (base {})",
+                    request.getProductPageCode(), regional.currency(), serverTotal, baseTotal);
+        }
+
         // Each course's own price rides along: a DISCOUNT-basis page reduces
         // that sum rather than replacing it, so the single-subject rate is read
         // from the enroll invite's payment plan instead of being written down a
@@ -329,7 +411,7 @@ public class ProductPageEnrollmentService {
                     return new BasketPricingCalculator.BasketItem(
                             ps.getLevel() != null ? ps.getLevel().getLevelName() : null,
                             ps.getPackageEntity() != null ? ps.getPackageEntity().getPackageName() : null,
-                            plan != null ? plan.getActualPrice() : 0d);
+                            regional.listPrice(m.getPsInvitePaymentOption().getId(), plan));
                 })
                 .collect(Collectors.toList());
 
@@ -349,15 +431,27 @@ public class ProductPageEnrollmentService {
         AppliedCouponDiscount couponDiscount = null;
         double discountAmount = 0.0;
         if (request.getCouponCode() != null && !request.getCouponCode().isBlank()) {
+            // Coupon amounts and thresholds are in the base currency: on a regional basket
+            // validate against the base total (no basket/offer ran, so afterOffer == serverTotal)
+            // and scale the discount into the regional currency.
+            double couponScale = regional.active() && baseTotal > 0 ? afterOffer / baseTotal : 1.0;
             ProductPageCouponValidateResponse couponResp = coursePageService.validateCoupon(
-                    request.getProductPageCode(), request.getCouponCode(), afterOffer,
+                    request.getProductPageCode(), request.getCouponCode(),
+                    regional.active() ? baseTotal : afterOffer,
                     request.getSelectedMappings().size());
             if (!couponResp.isValid()) {
                 throw new VacademyException("Coupon invalid: " + couponResp.getMessage());
             }
             couponDiscount = appliedCouponDiscountRepository.findById(couponResp.getAppliedCouponDiscountId())
                     .orElse(null);
-            discountAmount = couponResp.getDiscountValue() != null ? couponResp.getDiscountValue() : 0.0;
+            if (regional.active()) {
+                discountAmount = couponResp.getDiscountValue() != null
+                        ? Math.round(couponResp.getDiscountValue() * couponScale * 100.0) / 100.0
+                        : 0.0;
+            } else {
+                // Exactly the pre-regional-pricing behaviour: the validator's figure, unrounded.
+                discountAmount = couponResp.getDiscountValue() != null ? couponResp.getDiscountValue() : 0.0;
+            }
         }
 
         double finalTotal = Math.max(0.0, afterOffer - discountAmount);
@@ -380,6 +474,9 @@ public class ProductPageEnrollmentService {
         if (serverCurrency != null) {
             payReq.setCurrency(serverCurrency);
         }
+        if (regional.active()) {
+            payReq.setCurrency(regional.currency());
+        }
 
         // Defensive: ensure currency always has a value (Razorpay gateway requires it).
         // Fall back to any plan's currency, then to "INR".
@@ -398,7 +495,7 @@ public class ProductPageEnrollmentService {
         // to the CURRENCY's own minor unit, and the currency is only settled
         // above.
         OrderAllocation allocation = allocateOrder(
-                request.getSelectedMappings(), selectedMappings, planByMappingId,
+                request.getSelectedMappings(), selectedMappings, planByMappingId, regional,
                 basketPrice, pricingPage, finalTotal, payReq.getCurrency());
 
         // Create / find user — use addLearnerRoute (same as learner/enroll) so the
@@ -439,7 +536,7 @@ public class ProductPageEnrollmentService {
             log.info("Razorpay Phase 1: order created, paymentLogId={}", paymentLogId);
 
             List<String> pendingEnrolledSessionIds = provisionPendingEnrollments(
-                    request, selectedMappings, planByMappingId, couponDiscount, discountAmount,
+                    request, selectedMappings, planByMappingId, regional, couponDiscount, discountAmount,
                     offer, offerDiscount, basketPrice, allocation, user, payReq, paymentLogId);
 
             String razorpayKeyId = null;
@@ -576,7 +673,7 @@ public class ProductPageEnrollmentService {
                 // in INVITED status now so the webhook can activate them when the gateway
                 // confirms payment via applyOperationsOnFirstPayment().
                 List<String> redirectEnrolledSessionIds = provisionPendingEnrollments(
-                        request, selectedMappings, planByMappingId, couponDiscount, discountAmount,
+                        request, selectedMappings, planByMappingId, regional, couponDiscount, discountAmount,
                         offer, offerDiscount, basketPrice, allocation, user, payReq,
                         parentPaymentLogId);
 
@@ -607,7 +704,7 @@ public class ProductPageEnrollmentService {
             PaymentPlan plan = planByMappingId.get(sel.getPsInvitePaymentOptionId());
 
             double charged = allocation.chargedFor(
-                    sel.getPsInvitePaymentOptionId(), plan.getActualPrice());
+                    sel.getPsInvitePaymentOptionId(), regional.listPrice(sel.getPsInvitePaymentOptionId(), plan));
 
             PaymentInitiationRequestDTO invitePayReq = clonePaymentRequest(payReq);
             invitePayReq.setAmount(charged);
@@ -626,7 +723,8 @@ public class ProductPageEnrollmentService {
                             user.getId(), plan,
                             couponDiscount, invite,
                             bridge.getPaymentOption(), invitePayReq,
-                            "INVITED");
+                            "INVITED", null, null, null,
+                            regional.quote(sel.getPsInvitePaymentOptionId()));
 
             Map<String, Object> extraData = new HashMap<>();
             extraData.put("SKIP_PAYMENT_INITIATION", true);
@@ -649,7 +747,7 @@ public class ProductPageEnrollmentService {
 
             if (enrollResp != null && enrollResp.getPaymentResponse() != null) {
                 recordBasketAdjustment(enrollResp.getPaymentResponse().getOrderId(),
-                        plan.getActualPrice(), charged,
+                        regional.listPrice(sel.getPsInvitePaymentOptionId(), plan), charged,
                         allocation.ruleFor(sel.getPsInvitePaymentOptionId()));
             }
 
@@ -793,6 +891,7 @@ public class ProductPageEnrollmentService {
             ProductPageEnrollRequest request,
             List<ProductPageInviteMapping> selectedMappings,
             Map<String, PaymentPlan> planByMappingId,
+            RegionalBasket regional,
             AppliedCouponDiscount couponDiscount,
             double discountAmount,
             OfferCalculator.AppliedOffer offer,
@@ -816,7 +915,7 @@ public class ProductPageEnrollmentService {
             PaymentPlan plan = planByMappingId.get(sel.getPsInvitePaymentOptionId());
 
             double charged = allocation.chargedFor(
-                    sel.getPsInvitePaymentOptionId(), plan.getActualPrice());
+                    sel.getPsInvitePaymentOptionId(), regional.listPrice(sel.getPsInvitePaymentOptionId(), plan));
 
             PaymentInitiationRequestDTO invitePayReq = clonePaymentRequest(payReq);
             invitePayReq.setAmount(charged);
@@ -834,7 +933,8 @@ public class ProductPageEnrollmentService {
             vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan userPlan =
                     userPlanService.createUserPlan(
                             user.getId(), plan, couponDiscount, invite,
-                            bridge.getPaymentOption(), invitePayReq, "INVITED");
+                            bridge.getPaymentOption(), invitePayReq, "INVITED", null, null, null,
+                            regional.quote(sel.getPsInvitePaymentOptionId()));
 
             Map<String, Object> extraData = new HashMap<>();
             extraData.put("SKIP_PAYMENT_INITIATION", true);
@@ -869,7 +969,7 @@ public class ProductPageEnrollmentService {
                     && StringUtils.hasText(enrollResp.getPaymentResponse().getOrderId())) {
                 childPaymentLogIds.add(enrollResp.getPaymentResponse().getOrderId());
                 recordBasketAdjustment(enrollResp.getPaymentResponse().getOrderId(),
-                        plan.getActualPrice(), charged,
+                        regional.listPrice(sel.getPsInvitePaymentOptionId(), plan), charged,
                         allocation.ruleFor(sel.getPsInvitePaymentOptionId()));
             }
 
@@ -1490,6 +1590,7 @@ public class ProductPageEnrollmentService {
             List<ProductPageSelectedMappingDTO> selections,
             List<ProductPageInviteMapping> selectedMappings,
             Map<String, PaymentPlan> planByMappingId,
+            RegionalBasket regional,
             BasketPricingCalculator.BasketPrice basketPrice,
             ProductPage page,
             double orderTotal,
@@ -1510,7 +1611,7 @@ public class ProductPageEnrollmentService {
                 : "Bundle";
 
         return new OrderAllocation(
-                allocateOrderTotal(selections, planByMappingId, orderTotal, currency),
+                allocateOrderTotal(selections, planByMappingId, regional, orderTotal, currency),
                 ruleByMapping,
                 fallback);
     }
@@ -1538,6 +1639,7 @@ public class ProductPageEnrollmentService {
     private Map<String, Double> allocateOrderTotal(
             List<ProductPageSelectedMappingDTO> selections,
             Map<String, PaymentPlan> planByMappingId,
+            RegionalBasket regional,
             double orderTotal,
             String currency) {
 
@@ -1550,8 +1652,8 @@ public class ProductPageEnrollmentService {
         double[] listPrices = new double[n];
         double listTotal = 0;
         for (int i = 0; i < n; i++) {
-            PaymentPlan plan = planByMappingId.get(selections.get(i).getPsInvitePaymentOptionId());
-            listPrices[i] = plan != null ? plan.getActualPrice() : 0d;
+            String mappingId = selections.get(i).getPsInvitePaymentOptionId();
+            listPrices[i] = regional.listPrice(mappingId, planByMappingId.get(mappingId));
             listTotal += listPrices[i];
         }
 

@@ -234,6 +234,7 @@
         "pinCodePlaceholder": "Saisissez le code postal"
       },
       "additionalInfo": "Informations complémentaires",
+      "selectParentFirst": "Choisissez d’abord {{name}}",
       "submit": "Envoyer la réponse",
       "submitting": "Envoi en cours..."
     },

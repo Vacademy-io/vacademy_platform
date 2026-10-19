@@ -190,7 +190,34 @@ public class AdminExportManager {
     ReportPdfUploadService reportPdfUploadService;
 
     @Autowired
+    vacademy.io.assessment_service.features.assessment.service.aireport.AiReportPdfService aiReportPdfService;
+
+    @Autowired
     ClassAiReportGenerationService classAiReportGenerationService;
+
+    /**
+     * Rank of each row by the platform rule (StudentAttemptRepository: DENSE_RANK over marks
+     * DESC, time taken ASC, nulls last), so a sheet shows the same rank as the learner's report:
+     * equal marks are split by who finished faster, and only an exact tie on both shares a rank.
+     * Ranks are returned in the input order; the rows themselves are not reordered.
+     */
+    static int[] platformRanks(List<Double> marks, List<Long> seconds) {
+        Comparator<Integer> order = Comparator
+                .comparing((Integer i) -> marks.get(i), Comparator.nullsLast(Comparator.<Double>reverseOrder()))
+                .thenComparing(i -> seconds.get(i), Comparator.nullsLast(Comparator.<Long>naturalOrder()));
+        List<Integer> idx = new ArrayList<>();
+        for (int i = 0; i < marks.size(); i++) idx.add(i);
+        idx.sort(order);
+        int[] ranks = new int[marks.size()];
+        int rank = 0;
+        Integer prev = null;
+        for (Integer i : idx) {
+            if (prev == null || order.compare(prev, i) != 0) rank++;
+            ranks[i] = rank;
+            prev = i;
+        }
+        return ranks;
+    }
 
     public static String convertToReadableTime(Long timeInSeconds) {
         if (Objects.isNull(timeInSeconds) || timeInSeconds < 0) {
@@ -352,7 +379,10 @@ public class AdminExportManager {
     private List<ParticipantsDetailExportDto> createExportDtoFromParticipantsDtoWithTotalMarks(
             List<ParticipantsDetailsDto> participantsDetailsDtos, Double totalMarks) {
         List<ParticipantsDetailExportDto> response = new ArrayList<>();
-        // Results arrive sorted by score DESC (ORDER BY in query), so index+1 = rank.
+        // Several of these queries list learners by name, so the row number is not a rank.
+        int[] ranks = platformRanks(
+                participantsDetailsDtos.stream().map(ParticipantsDetailsDto::getScore).toList(),
+                participantsDetailsDtos.stream().map(ParticipantsDetailsDto::getDuration).toList());
         for (int i = 0; i < participantsDetailsDtos.size(); i++) {
             ParticipantsDetailsDto dto = participantsDetailsDtos.get(i);
             Double obtained = dto.getScore();
@@ -368,7 +398,7 @@ public class AdminExportManager {
                     .marksObtained(obtained)
                     .totalMarks(totalMarks)
                     .percentage(pct)
-                    .rank(i + 1)
+                    .rank(ranks[i])
                     .duration(durationFormatted)
                     .attemptDate(dto.getAttemptDate())
                     .build());
@@ -423,7 +453,11 @@ public class AdminExportManager {
                 participants.stream().map(ResultExportRowDto::getBatchId)
                         .filter(Objects::nonNull).distinct().sorted().toList());
 
-        // Rows arrive sorted by score DESC (ORDER BY in query) → index+1 = rank.
+        // Rows arrive in rank order (ORDER BY in query); the rank itself is the platform's, so
+        // learners with equal marks are split by time taken, exactly as on their report.
+        int[] ranks = platformRanks(
+                participants.stream().map(ResultExportRowDto::getRankMarks).toList(),
+                participants.stream().map(ResultExportRowDto::getDuration).toList());
         for (int i = 0; i < participants.size(); i++) {
             ResultExportRowDto p = participants.get(i);
             Double obtained = p.getScore() != null ? p.getScore() : 0.0;
@@ -446,7 +480,7 @@ public class AdminExportManager {
                     .append(obtained).append(",")
                     .append(totalMarks).append(",")
                     .append(pct).append(",")
-                    .append(i + 1).append(",")
+                    .append(ranks[i]).append(",")
                     .append(escapeCsvField(duration)).append(",")
                     .append(escapeCsvField(attemptDate));
 
@@ -835,32 +869,29 @@ public class AdminExportManager {
 
     public ResponseEntity<byte[]> getStudentReportPdf(CustomUserDetails user, String assessmentId, String attemptId, String instituteId) {
         StudentReportOverallDetailDto studentReportOverallDetailDto = assessmentParticipantsManager.createStudentReportDetailResponse(assessmentId, attemptId, instituteId);
+
         Optional<Assessment> assessmentOptional = assessmentRepository.findById(assessmentId);
         if (assessmentOptional.isEmpty()) throw new VacademyException("Assessment Not Found");
 
-        // Comparison used to be passed as null here, so the admin's copy
-        // silently dropped rank, percentile, class average, marks distribution
-        // and section-wise comparison — i.e. everything that makes it a
-        // comparison report. Built the same way the learner download does it
-        // (LearnerReportService#getStudentReportPdf) so admin and learner get
-        // a byte-identical document.
-        StudentComparisonDto comparison = null;
+        // One report per student, identical to the learner's copy: the AI report once it
+        // exists, else the normal report, wrapped in the assessment's report-profile pages.
+        String studentUserId = resolveAttemptUserId(attemptId);
+        byte[] pdfBytes;
         try {
-            String studentUserId = studentAttemptRepository.findById(attemptId)
-                    .map(attempt -> attempt.getRegistration() != null
-                            ? attempt.getRegistration().getUserId()
-                            : null)
-                    .orElse(null);
-            comparison = learnerReportService.buildComparisonData(studentUserId, assessmentId, attemptId, instituteId);
-        } catch (Exception ignored) {
+            pdfBytes = aiReportPdfService.renderStudentReport(studentUserId, assessmentId, attemptId, instituteId,
+                    studentReportOverallDetailDto, null, () -> {
+                        StudentComparisonDto comparison = null;
+                        try {
+                            comparison = learnerReportService.buildComparisonData(studentUserId, assessmentId, attemptId, instituteId);
+                        } catch (Exception ignored) {
+                        }
+                        ReportClassContext ctx = learnerReportService.loadClassContext(assessmentId, instituteId);
+                        return reportPdfRenderService.render(studentReportOverallDetailDto, comparison, ctx);
+                    });
+        } catch (Exception e) {
+            log.error("Student report PDF failed for attempt {}", attemptId, e);
+            throw new VacademyException("Failed to generate report PDF");
         }
-
-        // Shared release-flow renderer (v2 report). The class context carries
-        // branding, option distribution and the full leaderboard — the source
-        // of the student name in the letterhead — so the admin download is the
-        // same professional document the learner gets, not the legacy layout.
-        ReportClassContext ctx = learnerReportService.loadClassContext(assessmentId, instituteId);
-        byte[] pdfBytes = reportPdfRenderService.render(studentReportOverallDetailDto, comparison, ctx);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=studentReport.pdf")
                 .contentType(MediaType.APPLICATION_PDF)
@@ -947,6 +978,21 @@ public class AdminExportManager {
 
         StudentReportOverallDetailDto detail =
                 assessmentParticipantsManager.createStudentReportDetailResponse(assessmentId, attemptId, instituteId);
+
+        // The same AI report the learner sees (2026-10 design). The teacher layout below is
+        // only the fallback if that render fails.
+        if (aiReportPdfService.isEnabled()) {
+            try {
+                byte[] pdf = aiReportPdfService.renderStudentReport(studentUserId, assessmentId, attemptId, instituteId,
+                        detail, processedJson, null);
+                return ResponseEntity.ok()
+                        .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=ai-student-report.pdf")
+                        .contentType(MediaType.APPLICATION_PDF)
+                        .body(pdf);
+            } catch (Exception e) {
+                log.error("[ai-report] student AI report failed for attempt {}, using the teacher layout", attemptId, e);
+            }
+        }
 
         // Class comparison is best-effort: a report without rank/percentile is
         // still a usable diagnostic, an exception here would give the teacher

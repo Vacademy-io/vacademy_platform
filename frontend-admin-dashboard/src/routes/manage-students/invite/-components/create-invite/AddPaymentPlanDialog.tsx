@@ -11,6 +11,7 @@ import { buildCreateCPOPayload } from '@/routes/financial-management/fee-plans/-
 import { useCreateCPO } from '@/routes/financial-management/fee-plans/-services/cpo-service';
 import { useTranslation } from 'react-i18next';
 import { splitPlansByType, type PaymentOption } from './-utils/helper';
+import { RegionalPricingDialog } from '@/routes/settings/-components/Payment/RegionalPricingDialog';
 
 interface PaymentPlansDialogProps {
     form: UseFormReturn<InviteLinkFormValues>;
@@ -29,6 +30,11 @@ const AddPaymentPlanDialog = ({ form }: PaymentPlansDialogProps) => {
     // Option-level master switch for plan change. Carried here so an option created from
     // the invite flow can opt into switching too, exactly as one created from Settings can.
     const [planChangeAllowed, setPlanChangeAllowed] = useState(false);
+    // Regional pricing, saved with the option exactly as from Settings.
+    const [regionalPricingEnabled, setRegionalPricingEnabled] = useState(false);
+    const [regionalPricingCurrencies, setRegionalPricingCurrencies] = useState<string[]>([]);
+    // After creating an option with regional pricing on, its panel opens for country prices.
+    const [regionalPanel, setRegionalPanel] = useState<{ id: string; name: string } | null>(null);
     const instituteId = getInstituteId();
     const createCPOMutation = useCreateCPO();
 
@@ -43,6 +49,8 @@ const AddPaymentPlanDialog = ({ form }: PaymentPlansDialogProps) => {
         setEditingPlan(null);
         setRequireApproval(false);
         setPlanChangeAllowed(false);
+        setRegionalPricingEnabled(false);
+        setRegionalPricingCurrencies([]);
     };
 
     const handleSavePaymentPlan = async (plan: PaymentPlan) => {
@@ -68,6 +76,8 @@ const AddPaymentPlanDialog = ({ form }: PaymentPlansDialogProps) => {
                 setShowPaymentPlanCreator(false);
                 setRequireApproval(false);
         setPlanChangeAllowed(false);
+                setRegionalPricingEnabled(false);
+                setRegionalPricingCurrencies([]);
                 return;
             }
 
@@ -88,6 +98,14 @@ const AddPaymentPlanDialog = ({ form }: PaymentPlansDialogProps) => {
                 type: plan.type,
                 require_approval: requireApproval,
                 plan_change_allowed: planChangeAllowed,
+                ...(plan.type === PaymentPlans.SUBSCRIPTION || plan.type === PaymentPlans.UPFRONT
+                    ? {
+                          regional_pricing_enabled: regionalPricingEnabled,
+                          regional_pricing_currencies: regionalPricingEnabled
+                              ? regionalPricingCurrencies
+                              : [],
+                      }
+                    : {}),
                 payment_plans: apiPlans,
                 payment_option_metadata_json: JSON.stringify({
                     currency: plan.currency,
@@ -147,6 +165,15 @@ const AddPaymentPlanDialog = ({ form }: PaymentPlansDialogProps) => {
             setShowPaymentPlanCreator(false);
             setRequireApproval(false);
         setPlanChangeAllowed(false);
+            if (
+                regionalPricingEnabled &&
+                saved?.id &&
+                (plan.type === PaymentPlans.SUBSCRIPTION || plan.type === PaymentPlans.UPFRONT)
+            ) {
+                setRegionalPanel({ id: saved.id, name: saved.name || plan.name });
+            }
+            setRegionalPricingEnabled(false);
+            setRegionalPricingCurrencies([]);
             queryClient.invalidateQueries({ queryKey: ['GET_PAYMENT_DETAILS'] });
         } catch (error) {
             handleError(error, t('errors.operations.savePaymentPlan'));
@@ -175,7 +202,21 @@ const AddPaymentPlanDialog = ({ form }: PaymentPlansDialogProps) => {
                 setRequireApproval={setRequireApproval}
                 planChangeAllowed={planChangeAllowed}
                 setPlanChangeAllowed={setPlanChangeAllowed}
+                regionalPricingEnabled={regionalPricingEnabled}
+                setRegionalPricingEnabled={setRegionalPricingEnabled}
+                regionalPricingCurrencies={regionalPricingCurrencies}
+                setRegionalPricingCurrencies={setRegionalPricingCurrencies}
             />
+            {regionalPanel && (
+                <RegionalPricingDialog
+                    open={!!regionalPanel}
+                    onOpenChange={(open) => {
+                        if (!open) setRegionalPanel(null);
+                    }}
+                    paymentOptionId={regionalPanel.id}
+                    paymentOptionName={regionalPanel.name}
+                />
+            )}
         </>
     );
 };

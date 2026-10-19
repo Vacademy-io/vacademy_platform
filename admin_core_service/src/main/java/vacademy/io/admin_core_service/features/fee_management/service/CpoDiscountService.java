@@ -45,9 +45,10 @@ import java.util.Map;
  *   <li>Subtract installment-level discount (percentage of original, or flat).</li>
  *   <li>If a manual amount override exists, replace the in-flight value
  *       with the override (this supersedes the installment discount).</li>
- *   <li>Subtract this row's share of the CPO-level discount. Share is
- *       proportional to the row's post-step-3 value over the sum across
- *       all SFPs in the plan.</li>
+ *   <li>Subtract this row's share of the CPO-level discount. By default the share is
+ *       proportional to the row's post-step-3 value over the sum across all SFPs in the
+ *       plan; a discount applied another way (see {@link CpoDiscountAllocator}) carries
+ *       frozen per-row shares instead.</li>
  *   <li>Clamp at 0. Recompute status from amount_paid vs new amount_expected.</li>
  * </ol>
  */
@@ -60,6 +61,7 @@ public class CpoDiscountService {
     private final StudentFeePaymentRepository studentFeePaymentRepository;
     private final vacademy.io.admin_core_service.features.user_account.service.UserAccountLedgerService userAccountLedgerService;
     private final vacademy.io.admin_core_service.features.user_account.repository.UserAccountLedgerRepository userAccountLedgerRepository;
+    private final vacademy.io.admin_core_service.features.fee_management.repository.AftInstallmentRepository aftInstallmentRepository;
 
     private static final int SCALE = 2;
     private static final RoundingMode RM = RoundingMode.HALF_UP;
@@ -83,6 +85,19 @@ public class CpoDiscountService {
 
     @Transactional
     public UserPlanDiscountJson setCpoDiscount(String userPlanId, DiscountSpecDTO spec, String appliedBy) {
+        return setCpoDiscount(userPlanId, spec, null, null, appliedBy);
+    }
+
+    /**
+     * Applies (or, with a null spec, removes) the whole-plan discount.
+     *
+     * @param allocation   how to spread it ({@link CpoDiscountAllocator} modes); null = every
+     *                     installment in proportion, the original behaviour
+     * @param customShares sfpId → amount off, for {@link CpoDiscountAllocator#CUSTOM}
+     */
+    @Transactional
+    public UserPlanDiscountJson setCpoDiscount(String userPlanId, DiscountSpecDTO spec, String allocation,
+                                               Map<String, BigDecimal> customShares, String appliedBy) {
         UserPlan plan = loadPlan(userPlanId);
         UserPlanDiscountJson snapshot = readOrInit(plan);
 
@@ -91,11 +106,13 @@ public class CpoDiscountService {
             snapshot.setCpoDiscount(null);
             recordHistory(snapshot, "REMOVE", "CPO", null, before, null, appliedBy);
         } else {
-            validateSpec(spec);
             UserPlanDiscountJson.DiscountEntry before = snapshot.getCpoDiscount();
+            CpoDiscountPlan planned = planCpoDiscount(plan, snapshot, spec, allocation, customShares);
             UserPlanDiscountJson.DiscountEntry entry = UserPlanDiscountJson.DiscountEntry.builder()
-                    .type(spec.getType())
-                    .value(spec.getValue())
+                    .type(planned.type())
+                    .value(planned.value())
+                    .allocation(planned.frozen() ? planned.allocation() : null)
+                    .shares(planned.frozen() ? new LinkedHashMap<>(planned.shares()) : null)
                     .reason(spec.getReason())
                     .appliedBy(appliedBy)
                     .appliedAt(LocalDateTime.now())
@@ -106,6 +123,99 @@ public class CpoDiscountService {
 
         recomputeAndPersist(plan, snapshot);
         return snapshot;
+    }
+
+    /**
+     * What a whole-plan discount would take off each installment, without saving anything —
+     * the side view shows it before the admin applies the discount.
+     */
+    @Transactional(readOnly = true)
+    public CpoDiscountPlan previewCpoDiscount(String userPlanId, DiscountSpecDTO spec, String allocation,
+                                               Map<String, BigDecimal> customShares) {
+        UserPlan plan = loadPlan(userPlanId);
+        return planCpoDiscount(plan, readOrInit(plan), spec, allocation, customShares);
+    }
+
+    /**
+     * A whole-plan discount worked out against the plan as it stands.
+     *
+     * @param requested what the admin asked for (a percentage resolved against the plan total)
+     * @param shares    sfpId → amount off; installments not listed get nothing
+     * @param frozen    true when the shares are stored (every way but the original)
+     */
+    public record CpoDiscountPlan(String type, Double value, String allocation, BigDecimal requested,
+                                   BigDecimal resolved, Map<String, BigDecimal> shares, boolean frozen) {
+    }
+
+    private CpoDiscountPlan planCpoDiscount(UserPlan plan, UserPlanDiscountJson snapshot, DiscountSpecDTO spec,
+                                             String allocation, Map<String, BigDecimal> customShares) {
+        if (spec == null) throw new VacademyException("Discount is required");
+        String mode = CpoDiscountAllocator.normalizeMode(allocation);
+        boolean custom = CpoDiscountAllocator.CUSTOM.equals(mode);
+        if (!custom) validateSpec(spec);
+
+        List<StudentFeePayment> sfps = studentFeePaymentRepository.findByUserPlanId(plan.getId());
+        Map<String, BigDecimal> step3 = new LinkedHashMap<>();
+        BigDecimal total = BigDecimal.ZERO;
+        for (StudentFeePayment sfp : sfps) {
+            BigDecimal v = step3Amount(sfp, snapshot);
+            step3.put(sfp.getId(), v);
+            total = total.add(v);
+        }
+
+        if (CpoDiscountAllocator.ALL_PROPORTIONAL.equals(mode)) {
+            UserPlanDiscountJson.DiscountEntry probe = UserPlanDiscountJson.DiscountEntry.builder()
+                    .type(spec.getType()).value(spec.getValue()).build();
+            BigDecimal resolved = resolveCpoDiscount(probe, total);
+            Map<String, BigDecimal> shares = proportionalShares(sfps, step3, total, resolved);
+            return new CpoDiscountPlan(spec.getType(), spec.getValue(), mode,
+                    requestedAmount(spec, total), resolved, shares, false);
+        }
+
+        List<CpoDiscountAllocator.Row> rows = new ArrayList<>(sfps.size());
+        boolean hasDiscount = snapshot.getCpoDiscount() != null;
+        for (StudentFeePayment sfp : sfps) {
+            BigDecimal expected = nz(sfp.getAmountExpected());
+            BigDecimal paid = nz(sfp.getAmountPaid());
+            // Paid in full by the learner, or waived. A row the discount itself took to zero
+            // reads PAID but nobody paid it, so it stays open to a new spread.
+            boolean settled = "WAIVED".equalsIgnoreCase(sfp.getStatus())
+                    || (paid.signum() > 0 && paid.compareTo(expected) >= 0);
+            BigDecimal currentShare = hasDiscount
+                    ? step3.get(sfp.getId()).subtract(expected).max(BigDecimal.ZERO)
+                    : BigDecimal.ZERO;
+            rows.add(new CpoDiscountAllocator.Row(sfp.getId(), step3.get(sfp.getId()), paid,
+                    toLocalDate(sfp.getDueDate()), settled, currentShare));
+        }
+        BigDecimal requested = custom ? null : requestedAmount(spec, total);
+        Map<String, BigDecimal> shares = CpoDiscountAllocator.allocate(mode, rows, requested, customShares);
+        BigDecimal resolved = shares.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (custom) {
+            return new CpoDiscountPlan(DiscountSpecDTO.TYPE_FLAT, resolved.doubleValue(), mode,
+                    resolved, resolved, shares, true);
+        }
+        return new CpoDiscountPlan(spec.getType(), spec.getValue(), mode, requested, resolved, shares, true);
+    }
+
+    private static BigDecimal requestedAmount(DiscountSpecDTO spec, BigDecimal total) {
+        BigDecimal value = BigDecimal.valueOf(spec.getValue() == null ? 0 : spec.getValue());
+        return DiscountSpecDTO.TYPE_PERCENTAGE.equalsIgnoreCase(spec.getType())
+                ? total.multiply(value).divide(BigDecimal.valueOf(100), SCALE, RM)
+                : scale(value);
+    }
+
+    /**
+     * The plan discount currently taken off each installment: its value before the plan
+     * discount minus what it is billed at. Read-only, for the side view.
+     */
+    public Map<String, BigDecimal> currentPlanDiscountShares(List<StudentFeePayment> sfps, UserPlanDiscountJson snapshot) {
+        Map<String, BigDecimal> out = new LinkedHashMap<>();
+        if (snapshot.getCpoDiscount() == null) return out;
+        for (StudentFeePayment sfp : sfps) {
+            BigDecimal share = scale(step3Amount(sfp, snapshot).subtract(nz(sfp.getAmountExpected())));
+            if (share.signum() > 0) out.put(sfp.getId(), share);
+        }
+        return out;
     }
 
     @Transactional
@@ -278,7 +388,12 @@ public class CpoDiscountService {
         }
         BigDecimal cpo = resolveCpoDiscount(snapshot, total);
         BigDecimal sourceStep3 = step3Amount(source, snapshot);
-        BigDecimal newSourceStep3 = step3ForNet(sourceNet.subtract(moveNet), total, cpo);
+        Map<String, BigDecimal> frozen = frozenShares(snapshot);
+        // Frozen shares stay on their installments, so the source keeps its share and the
+        // moved part carries none: step-3 value moves one for one with the net.
+        BigDecimal newSourceStep3 = frozen != null
+                ? scale(sourceNet.subtract(moveNet).add(nz(frozen.get(source.getId()))))
+                : step3ForNet(sourceNet.subtract(moveNet), total, cpo);
         BigDecimal movedStep3 = scale(sourceStep3.subtract(newSourceStep3));
         if (movedStep3.signum() <= 0) {
             throw new VacademyException("Amount is too small to split off this installment");
@@ -302,6 +417,15 @@ public class CpoDiscountService {
         added.setCpoId(source.getCpoId());
         added.setAsvId(source.getAsvId());
         added.setIId(null);
+        // Keep the position on screen and in reminders: both halves read "installment N".
+        // A template bill takes N from its template row; the new half has none to look up.
+        Integer number = source.getInstallmentNumber();
+        if (number == null && source.getIId() != null) {
+            number = aftInstallmentRepository.findById(source.getIId())
+                    .map(vacademy.io.admin_core_service.features.fee_management.entity.AftInstallment::getInstallmentNumber)
+                    .orElse(null);
+        }
+        added.setInstallmentNumber(number);
         added.setPackageSessionIds(source.getPackageSessionIds());
         added.setFeeTypeId(source.getFeeTypeId());
         added.setIsSkippable(source.getIsSkippable());
@@ -545,27 +669,27 @@ public class CpoDiscountService {
             totalPostStep3 = totalPostStep3.add(afterOverride);
         }
 
-        BigDecimal cpoResolved = resolveCpoDiscount(snapshot, totalPostStep3);
-        boolean noCpoShare = totalPostStep3.signum() == 0 || cpoResolved.signum() == 0;
-
-        // One row absorbs the rounding drift so SUM(cpoShare) == cpoResolved exactly; every
-        // other row gets its proportional share rounded to paise.
-        StudentFeePayment absorber = driftAbsorber(sfps);
-        Map<String, BigDecimal> shareById = new LinkedHashMap<>();
-        BigDecimal allocated = BigDecimal.ZERO;
-        for (StudentFeePayment sfp : sfps) {
-            if (sfp == absorber) continue;
-            BigDecimal share = noCpoShare
-                    ? BigDecimal.ZERO
-                    : postStep3.get(sfp.getId()).multiply(cpoResolved).divide(totalPostStep3, SCALE, RM);
-            shareById.put(sfp.getId(), share);
-            allocated = allocated.add(share);
+        Map<String, BigDecimal> frozen = frozenShares(snapshot);
+        Map<String, BigDecimal> shareById;
+        BigDecimal cpoResolved;
+        if (frozen != null) {
+            // Applied another way than the original: the shares were fixed when it was applied.
+            // A row an admin has since lowered below its share keeps no more than its value.
+            shareById = new LinkedHashMap<>();
+            cpoResolved = BigDecimal.ZERO;
+            for (StudentFeePayment sfp : sfps) {
+                BigDecimal share = nz(frozen.get(sfp.getId())).min(postStep3.get(sfp.getId())).max(BigDecimal.ZERO);
+                shareById.put(sfp.getId(), share);
+                cpoResolved = cpoResolved.add(share);
+            }
+        } else {
+            cpoResolved = resolveCpoDiscount(snapshot, totalPostStep3);
+            shareById = proportionalShares(sfps, postStep3, totalPostStep3, cpoResolved);
         }
-        shareById.put(absorber.getId(), noCpoShare ? BigDecimal.ZERO : cpoResolved.subtract(allocated));
 
         for (StudentFeePayment sfp : sfps) {
             BigDecimal step3Amount = postStep3.get(sfp.getId());
-            BigDecimal cpoShare = shareById.get(sfp.getId());
+            BigDecimal cpoShare = nz(shareById.get(sfp.getId()));
 
             BigDecimal net = step3Amount.subtract(cpoShare);
             if (net.signum() < 0) net = BigDecimal.ZERO;
@@ -590,6 +714,35 @@ public class CpoDiscountService {
     }
 
     // ---------------------------------------------------------------- helpers
+
+    /**
+     * The original spread: each row's proportional share rounded to paise, with one row
+     * absorbing the rounding drift so SUM(share) == resolved exactly.
+     */
+    private static Map<String, BigDecimal> proportionalShares(List<StudentFeePayment> sfps, Map<String, BigDecimal> step3,
+                                                              BigDecimal total, BigDecimal resolved) {
+        Map<String, BigDecimal> shareById = new LinkedHashMap<>();
+        if (sfps.isEmpty()) return shareById;
+        boolean none = total.signum() == 0 || resolved.signum() == 0;
+        StudentFeePayment absorber = driftAbsorber(sfps);
+        BigDecimal allocated = BigDecimal.ZERO;
+        for (StudentFeePayment sfp : sfps) {
+            if (sfp == absorber) continue;
+            BigDecimal share = none
+                    ? BigDecimal.ZERO
+                    : step3.get(sfp.getId()).multiply(resolved).divide(total, SCALE, RM);
+            shareById.put(sfp.getId(), share);
+            allocated = allocated.add(share);
+        }
+        shareById.put(absorber.getId(), none ? BigDecimal.ZERO : resolved.subtract(allocated));
+        return shareById;
+    }
+
+    /** The stored per-row shares, or null when the discount uses the original proportional spread. */
+    private static Map<String, BigDecimal> frozenShares(UserPlanDiscountJson snapshot) {
+        UserPlanDiscountJson.DiscountEntry e = snapshot.getCpoDiscount();
+        return e != null && e.getAllocation() != null && e.getShares() != null ? e.getShares() : null;
+    }
 
     /**
      * The row that takes the CPO discount's rounding remainder: the latest-due installment,
@@ -633,8 +786,11 @@ public class CpoDiscountService {
     }
 
     private BigDecimal resolveCpoDiscount(UserPlanDiscountJson snapshot, BigDecimal totalPostStep3) {
-        if (snapshot.getCpoDiscount() == null) return BigDecimal.ZERO;
-        UserPlanDiscountJson.DiscountEntry e = snapshot.getCpoDiscount();
+        return resolveCpoDiscount(snapshot.getCpoDiscount(), totalPostStep3);
+    }
+
+    private BigDecimal resolveCpoDiscount(UserPlanDiscountJson.DiscountEntry e, BigDecimal totalPostStep3) {
+        if (e == null) return BigDecimal.ZERO;
         if (e.getType() == null || e.getValue() == null) return BigDecimal.ZERO;
         BigDecimal value = BigDecimal.valueOf(e.getValue());
         BigDecimal resolved;

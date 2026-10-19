@@ -152,7 +152,7 @@ export const PdfViewerComponent = forwardRef<PdfViewerComponentRef, {
   }, []);
 
   return (
-    <Worker workerUrl="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js">
+    <Worker workerUrl="/pdfjs/3.11.174/pdf.worker.min.js">
       <div
         ref={containerRef}
         className="w-full max-w-full mx-0 px-0 overflow-y-scroll overflow-x-hidden custom-scrollbar"

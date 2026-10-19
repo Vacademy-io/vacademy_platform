@@ -21,6 +21,7 @@ import {
     BookOpen,
     WhatsappLogo,
     type Icon as PhosphorIcon,
+    Repeat,
 } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { ChipToggleGroup } from '@/components/design-system/chips';
@@ -67,6 +68,7 @@ const CATEGORY_MAP: Record<string, Category> = {
     MEETING: 'communication',
     DUPLICATE_MERGED: 'enrollment',
     RE_ENQUIRY: 'communication',
+    REATTEMPT: 'communication',
     CAMPUS_VISIT: 'admission',
 };
 
@@ -102,6 +104,7 @@ const EVENT_STYLE_MAP: Record<string, EventStyle> = {
     CAMPUS_VISIT:            { icon: Buildings,            tone: 'neutral' },
     DUPLICATE_MERGED:        { icon: GitMerge,             tone: 'neutral' },
     RE_ENQUIRY:              { icon: WhatsappLogo,         tone: 'info' },
+    REATTEMPT:               { icon: Repeat,               tone: 'warning' },
 };
 const FALLBACK_STYLE: EventStyle = { icon: BookOpen, tone: 'neutral' };
 

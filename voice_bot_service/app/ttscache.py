@@ -1686,6 +1686,41 @@ def install_tts_cache(tts, *, engine: str, model: str, voice: str, pace,
                                 except Exception:
                                     logger.exception("tts-cache: late context close failed")
                             asyncio.get_running_loop().create_task(_close_after_playout())
+                    elif per_sentence_contexts(tts) and engine_l in ("sarvam", "sarvam_v4"):
+                        # Sarvam's shape: pipecat pushes the start and the stop
+                        # (push_start_frame / push_stop_frames) and appends the
+                        # text after run_tts returns (push_text_frames) — but
+                        # nothing CLOSES a cached sentence's context: a live one
+                        # is closed by Sarvam's 'final' (providers.
+                        # _sarvam_sentence_routing) and on_turn_context_completed
+                        # only closes _turn_context_id. So the next sentence sat
+                        # behind pipecat's 3 s idle timeout (found while fixing
+                        # call c6847f91, 2026-10-14: a 0.6 s cached "ठीक है।"
+                        # then 3.1 s of nothing). Close it once the blob has
+                        # played — after the base class's late text copy (a
+                        # question keeps it), which lands as run_tts returns —
+                        # with keep-alives so a long blob is not timed out first.
+                        hold = max(0.0, entry.duration_ms / 1000.0
+                                   - (time.monotonic() - emit_t0) - 0.05)
+
+                        async def _close_sarvam_after_playout(cid=context_id, secs=hold):
+                            refresh = getattr(tts, "_refresh_audio_context", None)
+                            left = secs
+                            while left > 0:
+                                step = min(1.0, left)
+                                await asyncio.sleep(step)
+                                left -= step
+                                if refresh is not None and left > 0:
+                                    try:
+                                        refresh(cid)
+                                    except Exception:
+                                        pass
+                            try:
+                                if tts.audio_context_available(cid):
+                                    await tts.remove_audio_context(cid)
+                            except Exception:
+                                logger.exception("tts-cache: sarvam context close failed")
+                        asyncio.get_running_loop().create_task(_close_sarvam_after_playout())
                     if async_arrival and per_sentence_contexts(tts):
                         # Hold the next sentence back until this one has all but
                         # played (see _NEXT_SENTENCE_LEAD_SECS). An interruption

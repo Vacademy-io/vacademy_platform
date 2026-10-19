@@ -5,7 +5,7 @@ import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
 import { MyInput } from '@/components/design-system/input';
 import { cn } from '@/lib/utils';
-import type { DigitisedPaper } from '@/services/paper-digitise';
+import type { ChoicePolicy, DigitisedPaper } from '@/services/paper-digitise';
 import { MathHtml } from '@/routes/knowledge-base/-components/paper/MathHtml';
 
 /** One question the teacher has accepted, with the marks the checker will use. */
@@ -15,11 +15,42 @@ export interface ReviewedQuestion {
     marks: number;
 }
 
+/** "Answer any FOUR of these five", as the teacher confirmed it: positions in `paper.questions`. */
+export interface ReviewedChoice {
+    label: string;
+    indexes: number[];
+    attempt: number;
+    policy: ChoicePolicy;
+}
+
 interface RowState {
     index: number;
     marks: string;
     removed: boolean;
 }
+
+interface ChoiceState {
+    label: string;
+    indexes: number[];
+    attempt: string;
+    policy: ChoicePolicy;
+    removed: boolean;
+}
+
+/**
+ * The choices that still describe a real choice once rows are removed: at least two
+ * questions left and fewer to answer than there are.
+ */
+const liveChoices = (choices: ChoiceState[], keptIndexes: Set<number>): ReviewedChoice[] =>
+    choices
+        .filter((c) => !c.removed)
+        .map((c) => ({
+            label: c.label,
+            indexes: c.indexes.filter((i) => keptIndexes.has(i)),
+            attempt: parseInt(c.attempt, 10),
+            policy: c.policy,
+        }))
+        .filter((c) => c.indexes.length >= 2 && c.attempt >= 1 && c.attempt < c.indexes.length);
 
 const stripHtml = (html: string | null | undefined): string => {
     if (!html) return '';
@@ -65,7 +96,8 @@ export const PaperDigitiseReviewDialog = ({
     /** The total the teacher typed in the form, if any. */
     expectedTotal: number | null;
     busy: boolean;
-    onConfirm: (questions: ReviewedQuestion[]) => void;
+    /** `choices` is passed only when the paper has an internal choice. */
+    onConfirm: (questions: ReviewedQuestion[], choices?: ReviewedChoice[]) => void;
     onCreateWithoutAi: () => void;
     onClose: () => void;
     /** The secondary action's label; defaults to "Create without AI checking". */
@@ -75,6 +107,7 @@ export const PaperDigitiseReviewDialog = ({
 }) => {
     const { t } = useTranslation('studyLibraryAssessmentCreateForm');
     const [rows, setRows] = useState<RowState[]>([]);
+    const [choices, setChoices] = useState<ChoiceState[]>([]);
 
     useEffect(() => {
         if (!paper) return;
@@ -85,14 +118,44 @@ export const PaperDigitiseReviewDialog = ({
                 removed: false,
             }))
         );
+        setChoices(
+            (paper.choice_groups ?? []).map((g) => ({
+                label: g.label,
+                indexes: g.question_indexes,
+                attempt: String(g.attempt),
+                policy: g.policy === 'first' ? 'first' : 'best',
+                removed: false,
+            }))
+        );
     }, [paper]);
 
     const kept = rows.filter((row) => !row.removed);
     const invalid = kept.filter((row) => !(parseFloat(row.marks) > 0));
-    const total = useMemo(
+    const marksOf = (index: number) =>
+        parseFloat(rows.find((row) => row.index === index)?.marks ?? '') || 0;
+    const live = liveChoices(choices, new Set(kept.map((row) => row.index)));
+    const choiceOf = new Map<number, ReviewedChoice>();
+    live.forEach((c) => c.indexes.forEach((i) => choiceOf.set(i, c)));
+    // Every kept question added up - and what the paper is out of under its choices:
+    // "any FOUR of five 3-mark questions" adds 12, not 15.
+    const allMarks = useMemo(
         () => kept.reduce((sum, row) => sum + (parseFloat(row.marks) || 0), 0),
         [kept]
     );
+    const total =
+        kept
+            .filter((row) => !choiceOf.has(row.index))
+            .reduce((sum, row) => sum + (parseFloat(row.marks) || 0), 0) +
+        live.reduce(
+            (sum, c) =>
+                sum +
+                c.indexes
+                    .map(marksOf)
+                    .sort((a, b) => b - a)
+                    .slice(0, c.attempt)
+                    .reduce((x, y) => x + y, 0),
+            0
+        );
     const totalMismatch = expectedTotal != null && Math.abs(total - expectedTotal) > 0.001;
 
     if (!paper) return null;
@@ -104,8 +167,14 @@ export const PaperDigitiseReviewDialog = ({
     const restore = (index: number) =>
         setRows((prev) => prev.map((row) => (row.index === index ? { ...row, removed: false } : row)));
 
-    const confirm = () =>
-        onConfirm(kept.map((row) => ({ index: row.index, marks: parseFloat(row.marks) })));
+    const setChoice = (label: string, patch: Partial<ChoiceState>) =>
+        setChoices((prev) => prev.map((c) => (c.label === label ? { ...c, ...patch } : c)));
+
+    const confirm = () => {
+        const accepted = kept.map((row) => ({ index: row.index, marks: parseFloat(row.marks) }));
+        if (live.length > 0) onConfirm(accepted, live);
+        else onConfirm(accepted);
+    };
 
     return (
         <MyDialog
@@ -176,6 +245,9 @@ export const PaperDigitiseReviewDialog = ({
                     <span className="font-medium">
                         {t('review.totalLine', { count: kept.length, total })}
                     </span>
+                    {live.length > 0 && Math.abs(allMarks - total) > 0.001 && (
+                        <span>{t('review.allQuestionsAddUp', { total: allMarks })}</span>
+                    )}
                     {paper.total_marks != null && (
                         <span>{t('review.paperStates', { total: paper.total_marks })}</span>
                     )}
@@ -199,6 +271,104 @@ export const PaperDigitiseReviewDialog = ({
                             </li>
                         ))}
                     </ul>
+                )}
+
+                {/* Internal choice: "Answer any FOUR of these five" */}
+                {choices.length > 0 && (
+                    <div className="flex flex-col gap-2 rounded-lg border border-info-200 bg-info-50 p-3">
+                        <p className="text-sm font-medium text-neutral-800">
+                            {t('review.choice.title')}
+                        </p>
+                        <p className="text-caption text-neutral-600">{t('review.choice.hint')}</p>
+                        {choices.map((c) => {
+                            const members = c.indexes.filter((i) =>
+                                kept.some((row) => row.index === i)
+                            );
+                            const attempt = parseInt(c.attempt, 10);
+                            const valid = attempt >= 1 && attempt < members.length;
+                            return (
+                                <div
+                                    key={c.label}
+                                    className={cn(
+                                        'flex flex-wrap items-center gap-2 rounded-md bg-white p-2 text-sm text-neutral-700',
+                                        c.removed && 'opacity-60'
+                                    )}
+                                >
+                                    <span className="font-medium">{c.label}</span>
+                                    {c.removed ? (
+                                        <>
+                                            <span>{t('review.choice.allCompulsory')}</span>
+                                            <MyButton
+                                                buttonType="text"
+                                                scale="small"
+                                                disable={busy}
+                                                onClick={() =>
+                                                    setChoice(c.label, { removed: false })
+                                                }
+                                            >
+                                                {t('review.restore')}
+                                            </MyButton>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <span>{t('review.choice.answerAny')}</span>
+                                            <MyInput
+                                                inputType="number"
+                                                input={c.attempt}
+                                                onChangeFunction={(e) =>
+                                                    setChoice(c.label, { attempt: e.target.value })
+                                                }
+                                                size="small"
+                                                className="w-16 sm:w-16"
+                                                min={1}
+                                                step={1}
+                                                onWheel={(e) => e.currentTarget.blur()}
+                                            />
+                                            <span>
+                                                {t('review.choice.ofCount', {
+                                                    count: members.length,
+                                                })}
+                                            </span>
+                                            <span className="text-neutral-400">·</span>
+                                            <span>{t('review.choice.counting')}</span>
+                                            {(['best', 'first'] as const).map((policy) => (
+                                                <MyButton
+                                                    key={policy}
+                                                    buttonType={
+                                                        c.policy === policy
+                                                            ? 'primary'
+                                                            : 'secondary'
+                                                    }
+                                                    scale="small"
+                                                    disable={busy}
+                                                    onClick={() => setChoice(c.label, { policy })}
+                                                >
+                                                    {t(`review.choice.policy.${policy}`)}
+                                                </MyButton>
+                                            ))}
+                                            <MyButton
+                                                buttonType="text"
+                                                scale="small"
+                                                disable={busy}
+                                                onClick={() =>
+                                                    setChoice(c.label, { removed: true })
+                                                }
+                                            >
+                                                {t('review.choice.makeCompulsory')}
+                                            </MyButton>
+                                            {!valid && (
+                                                <span className="basis-full text-caption text-danger-600">
+                                                    {t('review.choice.invalid', {
+                                                        count: members.length,
+                                                    })}
+                                                </span>
+                                            )}
+                                        </>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
                 )}
 
                 {invalid.length > 0 && (
@@ -255,6 +425,14 @@ export const PaperDigitiseReviewDialog = ({
                                         {raw.section && (
                                             <span className="rounded-md bg-neutral-100 px-2 py-0.5 text-caption text-neutral-600">
                                                 {raw.section}
+                                            </span>
+                                        )}
+                                        {!row.removed && choiceOf.has(row.index) && (
+                                            <span className="rounded-md bg-info-50 px-2 py-0.5 text-caption text-info-700">
+                                                {t('review.choice.chip', {
+                                                    attempt: choiceOf.get(row.index)!.attempt,
+                                                    count: choiceOf.get(row.index)!.indexes.length,
+                                                })}
                                             </span>
                                         )}
                                         {raw.answer_source === 'model' && (

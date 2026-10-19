@@ -66,7 +66,11 @@ public class LeadDetailDTO {
 
     // ── Dedup Info ──
     private Boolean isDuplicate;
+    /** The lead has an open priority follow-up (opened for a repeat-lead reattempt). */
+    private Boolean followUpPriority;
     private String primaryResponseId;
+    /** Live duplicate enquiries that repeat this lead; null when there are none. */
+    private Integer duplicateCount;
 
     // ── Parent Info ──
     private String parentName;

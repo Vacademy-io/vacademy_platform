@@ -33,6 +33,7 @@ import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStat
 import vacademy.io.admin_core_service.features.packages.repository.PackageRepository;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
 import vacademy.io.admin_core_service.features.packages.repository.PackageInstituteRepository;
+import vacademy.io.admin_core_service.features.packages.service.PackagePageContentService;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.slide.entity.Slide;
 import vacademy.io.admin_core_service.features.slide.repository.SlideRepository;
@@ -82,6 +83,7 @@ public class CourseApprovalService {
     private final DefaultEnrollInviteService defaultEnrollInviteService;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final EnrollInviteService enrollInviteService;
+    private final PackagePageContentService packagePageContentService;
     /**
      * Create a temporary copy of a published course for teacher editing
      */
@@ -103,6 +105,9 @@ public class CourseApprovalService {
 
         // Copy package-institute linkages
         copyPackageInstituteLinkages(originalPackage, tempPackage);
+
+        // Course page content (FAQs, mode) lives in its own table, not on the package row
+        packagePageContentService.copy(originalPackage.getId(), tempPackage.getId());
 
         appendAuditLog(tempPackage, "ADD", teacher.getUserId(),
                 "Created editable copy from original " + originalCourseId, null);
@@ -1006,6 +1011,8 @@ public class CourseApprovalService {
         // Update original course with changes from temp course
         updatePackageFields(originalCourse, tempCourse);
         packageRepository.save(originalCourse);
+        // Course page content (FAQs, mode) is merged like the other package fields: temp wins
+        packagePageContentService.copy(tempCourse.getId(), originalCourse.getId());
 
         // Merge hierarchy changes (subjects, modules, chapters, slides)
         mergeHierarchyChanges(tempCourse, originalCourse);

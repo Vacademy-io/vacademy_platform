@@ -10,9 +10,12 @@ import { useFileUpload } from '@/hooks/use-file-upload';
 import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
 import { countPdfPages } from '@/services/pdf-page-count';
-import { DEFAULT_EVALUATION_MODEL } from '@/routes/ai-center/-types/ai-models';
 import { cn } from '@/lib/utils';
 import { startCopyIntake, type CopyIntakeBatch } from '../../-services/copy-intake-services';
+import {
+    CommentPlacementPicker,
+    useInstituteCommentPlacement,
+} from '@/components/common/ai-copy-check/CommentPlacementPicker';
 
 interface PendingFile {
     key: string;
@@ -54,6 +57,8 @@ export const BulkAiCheckDialog = ({
     const inputRef = useRef<HTMLInputElement>(null);
     const [files, setFiles] = useState<PendingFile[]>([]);
     const [notifyEmail, setNotifyEmail] = useState(true);
+    // Preselected from the institute's default (Settings → Assessment); the teacher can change it per batch.
+    const [commentPlacement, setCommentPlacement] = useInstituteCommentPlacement(open);
     const [, setIsUploading] = useState(false);
     const { uploadFile } = useFileUpload();
     const userId = getTokenDecodedData(getTokenFromCookie(TokenKey.accessToken))?.user ?? '';
@@ -186,12 +191,14 @@ export const BulkAiCheckDialog = ({
             };
             await Promise.all([worker(), worker()]);
             if (uploaded.length === 0) throw new Error(t('errors.nothingUploaded'));
+            // No preferred model: the platform's evaluation default applies.
             return startCopyIntake(
                 assessmentId,
                 instituteId,
                 uploaded,
-                DEFAULT_EVALUATION_MODEL,
-                notifyEmail
+                undefined,
+                notifyEmail,
+                commentPlacement
             );
         },
         onSuccess: (batch) => {
@@ -316,6 +323,12 @@ export const BulkAiCheckDialog = ({
                         {t('dialog.insufficient')}
                     </p>
                 )}
+
+                <CommentPlacementPicker
+                    value={commentPlacement}
+                    onChange={setCommentPlacement}
+                    disabled={start.isPending}
+                />
 
                 <label className="flex items-center gap-2 text-sm text-neutral-700">
                     <input

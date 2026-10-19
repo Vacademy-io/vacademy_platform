@@ -145,6 +145,8 @@ public class StudentReportHtmlV2Builder {
         /** Section id -> name/order source (ReportClassContext.sections); nullable. */
         private final List<SectionSnapshot> sections;
         private final StudentReportAnalyticsService.StudentReportAnalytics analytics;
+        /** Report option: leave out easy misses, expertise, answer review and question-wise detail. */
+        private final boolean hideQuestionWise;
     }
 
     // ------------------------------------------------------------------ entry
@@ -173,22 +175,27 @@ public class StudentReportHtmlV2Builder {
             appendPerformanceSummary(sb, in);
         }
         appendSectionComparison(sb, in, accent, manual);
+        boolean questionWise = !in.isHideQuestionWise();
         if (!manual) {
-            appendEasyMisses(sb, in);
-            appendExpertise(sb, in);
+            if (questionWise) {
+                appendEasyMisses(sb, in);
+                appendExpertise(sb, in);
+            }
             appendPotential(sb, in, accent);
         }
         appendLeaderboard(sb, in);
         if (manual) {
             appendEvaluatedSheetNote(sb, in);
-        } else {
+        } else if (questionWise) {
             appendAnswerReview(sb, in);
         }
         // The student's own attempt, question by question. Rendered for MANUAL
         // too — it self-skips when no per-question rows exist, which is the
         // usual pen-and-paper case, so the evaluated-sheet note still stands
         // alone there.
-        appendQuestionDetail(sb, in, manual);
+        if (questionWise) {
+            appendQuestionDetail(sb, in, manual);
+        }
         appendFooter(sb, in, branding);
         sb.append("</div></body></html>");
         return sb.toString();

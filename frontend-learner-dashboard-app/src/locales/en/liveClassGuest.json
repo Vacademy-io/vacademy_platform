@@ -64,6 +64,7 @@
         "description": "This campaign does not have any custom fields configured.",
         "debugCount": "Custom Fields from API: {{count}}"
       },
+      "selectParentFirst": "Select {{name}} first",
       "submitButton": {
         "submitting": "Submitting...",
         "default": "Submit Response"

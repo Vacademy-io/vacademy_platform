@@ -126,7 +126,7 @@ public class AdminAssessmentGetManager {
 
         makeFilterFieldEmptyArrayIfNull(adminAssessmentFilter);
 
-        assessmentsPage = assessmentRepository.filterAssessments(adminAssessmentFilter.getName(), adminAssessmentFilter.getBatchIds().isEmpty() ? null : true, adminAssessmentFilter.getBatchIds(), adminAssessmentFilter.getSubjectsIds().isEmpty() ? null : true, adminAssessmentFilter.getSubjectsIds(), adminAssessmentFilter.getAssessmentStatuses(), adminAssessmentFilter.getGetLiveAssessments(), adminAssessmentFilter.getGetPassedAssessments(), adminAssessmentFilter.getGetUpcomingAssessments(), adminAssessmentFilter.getAssessmentModes(), adminAssessmentFilter.getAccessStatuses(), adminAssessmentFilter.getInstituteIds(), adminAssessmentFilter.getEvaluationTypes(), adminAssessmentFilter.getAssessmentTypes(), adminAssessmentFilter.getSources().isEmpty() ? null : true, adminAssessmentFilter.getSources(), pageable);
+        assessmentsPage = assessmentRepository.filterAssessments(adminAssessmentFilter.getName(), adminAssessmentFilter.getBatchIds().isEmpty() ? null : true, adminAssessmentFilter.getBatchIds(), adminAssessmentFilter.getSubjectsIds().isEmpty() ? null : true, adminAssessmentFilter.getSubjectsIds(), adminAssessmentFilter.getAssessmentStatuses(), adminAssessmentFilter.getGetLiveAssessments(), adminAssessmentFilter.getGetPassedAssessments(), adminAssessmentFilter.getGetUpcomingAssessments(), adminAssessmentFilter.getAssessmentModes(), adminAssessmentFilter.getAccessStatuses(), adminAssessmentFilter.getInstituteIds(), adminAssessmentFilter.getEvaluationTypes(), adminAssessmentFilter.getAssessmentTypes(), adminAssessmentFilter.getSources().isEmpty() ? null : true, adminAssessmentFilter.getSources(), blankToNull(adminAssessmentFilter.getFolderId()), Boolean.TRUE.equals(adminAssessmentFilter.getUnfiledOnly()) ? true : null, pageable);
         List<AdminBasicAssessmentListItemDto> content = assessmentsPage.stream().map(AssessmentMapper::toDto).collect(Collectors.toList());
         int queryPageNo = assessmentsPage.getNumber();
         int queryPageSize = assessmentsPage.getSize();
@@ -136,6 +136,10 @@ public class AdminAssessmentGetManager {
         AllAdminAssessmentResponse response = AllAdminAssessmentResponse.builder().content(content).pageNo(queryPageNo).pageSize(queryPageSize).totalElements(totalElements).totalPages(totalPages).last(last).build();
 
         return ResponseEntity.ok(response);
+    }
+
+    private static String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value;
     }
 
     private void makeFilterFieldEmptyArrayIfNull(AdminAssessmentFilter adminAssessmentFilter) {

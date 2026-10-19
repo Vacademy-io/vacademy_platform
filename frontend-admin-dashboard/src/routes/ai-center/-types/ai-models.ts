@@ -22,8 +22,46 @@ const NAMESPACE = 'aiCenterAiModels';
  * `z-ai/glm-5.3-flash` is $0.075/$0.25 per M, reads handwriting (the copy-check
  * pipeline re-reads every page with it), and is the same default the grader
  * uses server-side, so picking nothing and picking this agree.
+ *
+ * The pickers no longer SEND this by default: they start on
+ * PLATFORM_DEFAULT_MODEL and omit `preferred_model`, so the super-admin's
+ * "evaluation" use-case default (ai_model_defaults) decides. This stays as
+ * the label key for GLM and the fallback the grader itself uses.
  */
 export const DEFAULT_EVALUATION_MODEL = 'z-ai/glm-5.3-flash';
+
+/**
+ * Picker value meaning "send no preferred_model; the platform default for the
+ * evaluation use case applies". Not a model id — never send it to the API
+ * (use toPreferredModel). Radix Select forbids an empty-string item value,
+ * hence a sentinel.
+ */
+export const PLATFORM_DEFAULT_MODEL = '__platform_default__';
+
+/** Picker value -> the preferred_model to send (undefined = platform default). */
+export const toPreferredModel = (pickerValue: string | null | undefined): string | undefined =>
+    pickerValue && pickerValue !== PLATFORM_DEFAULT_MODEL ? pickerValue : undefined;
+
+/**
+ * Models a teacher may pick explicitly for copy evaluation, in display order.
+ * `google/gemini-3-pro-preview` is gone: it is inactive in the model registry.
+ * The picker also hides any of these the live registry list (active models
+ * only) does not contain, once that list has loaded.
+ */
+export const EVALUATION_PICKER_MODEL_IDS: readonly string[] = [
+    DEFAULT_EVALUATION_MODEL,
+    'anthropic/claude-opus-4.5',
+    'google/gemini-3.1-pro-preview',
+    'openai/gpt-5.4',
+];
+
+/**
+ * The explicit choices to show: EVALUATION_PICKER_MODEL_IDS filtered to the
+ * registry's active models. `activeModelIds` undefined (still loading, or the
+ * registry call failed) keeps the static list, so the picker never empties.
+ */
+export const pickableEvaluationModels = (activeModelIds?: ReadonlySet<string>): string[] =>
+    EVALUATION_PICKER_MODEL_IDS.filter((id) => !activeModelIds || activeModelIds.has(id));
 
 export interface ModelInfo {
     id: string;

@@ -38,5 +38,18 @@
         "crmSaveFailed": "चैटबॉट इस लीड को CRM में सेव नहीं कर सका",
         "withLeadMessage": "{{why}}\n\nउनका संदेश: {{message}}",
         "withAnswers": "{{why}}\n\nउनके जवाब:\n{{message}}"
+    },
+    "lastKind": {
+        "image": "फ़ोटो",
+        "video": "वीडियो",
+        "audio": "ऑडियो",
+        "voice": "वॉइस मैसेज",
+        "sticker": "स्टिकर",
+        "document": "दस्तावेज़",
+        "location": "लोकेशन",
+        "contacts": "संपर्क कार्ड",
+        "other": "अटैचमेंट",
+        "reaction": "{{emoji}} रिएक्ट किया",
+        "reactionRemoved": "रिएक्शन हटा दिया"
     }
 }

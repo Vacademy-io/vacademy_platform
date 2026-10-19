@@ -33,6 +33,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 from ..models.ai_token_usage import RequestType
 from ..utils.html_tags import HtmlTagProtector
 from . import ai_billing, llm_json
+from .ai_billing import metering_user
 from .ai_prompts import question_extract as prompts
 
 logger = logging.getLogger(__name__)
@@ -837,6 +838,10 @@ def _charge(
         user_role="ADMIN" if user_id else None,
         request_id=billing_ref,
         idempotency_key=f"{TOOL_KEY}:{billing_ref}" if billing_ref else None,
+        # Usage-event attribution only (the ledger role above is unchanged).
+        use_case="questions",
+        metering=metering_user(user_id, surface="ADMIN_APP"),
+        usage_context={"billing_ref": billing_ref, "num_questions": num_questions},
     )
     if ocr_pages > 0:
         ai_billing.record_tool_billing(
@@ -849,6 +854,9 @@ def _charge(
             user_role="ADMIN" if user_id else None,
             request_id=billing_ref,
             idempotency_key=f"{OCR_TOOL_KEY}:{billing_ref}" if billing_ref else None,
+            use_case="questions",
+            metering=metering_user(user_id, surface="ADMIN_APP"),
+            usage_context={"billing_ref": billing_ref, "ocr_pages": ocr_pages},
         )
 
 

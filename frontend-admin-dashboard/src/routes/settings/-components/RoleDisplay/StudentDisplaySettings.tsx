@@ -47,7 +47,6 @@ import {
     type StudentAllCoursesCustomTabType,
     type OutlineMode,
     type StudentDefaultProvider,
-    type UsernameStrategy,
     type PasswordStrategy,
     type PasswordDelivery,
     type StudentAuthPresentation,
@@ -73,6 +72,7 @@ import {
     saveStudentDisplaySettings,
 } from '@/services/student-display-settings';
 import MaxActiveSessionsSetting from './MaxActiveSessionsSetting';
+import { UsernameStrategyFields } from './UsernameStrategyFields';
 
 /**
  * The widget rows this screen renders: retired ids filtered out (the learner
@@ -799,27 +799,10 @@ export default function StudentDisplaySettings(): JSX.Element {
                         </Select>
                     </div>
                     {/* Username / Password strategies */}
-                    <div className="flex flex-wrap items-center gap-3">
-                        <Label className="text-xs">{t('loginSignup.usernameStrategy')}</Label>
-                        <Select
-                            value={settings.signup.usernameStrategy}
-                            onValueChange={(v) =>
-                                update('signup', {
-                                    ...settings.signup,
-                                    usernameStrategy: v as UsernameStrategy,
-                                })
-                            }
-                        >
-                            <SelectTrigger className="h-8 w-48 text-xs">
-                                <SelectValue placeholder={t('loginSignup.selectStrategy')} />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="email">email</SelectItem>
-                                <SelectItem value="random">random</SelectItem>
-                                <SelectItem value="manual">manual</SelectItem>
-                            </SelectContent>
-                        </Select>
-                    </div>
+                    <UsernameStrategyFields
+                        signup={settings.signup}
+                        onChange={(signup) => update('signup', signup)}
+                    />
                     <div className="flex flex-wrap items-center gap-3">
                         <Label className="text-xs">{t('loginSignup.passwordStrategy')}</Label>
                         <Select

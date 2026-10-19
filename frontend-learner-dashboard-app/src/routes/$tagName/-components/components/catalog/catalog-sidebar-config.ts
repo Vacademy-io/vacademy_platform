@@ -9,6 +9,7 @@
  */
 
 import { routeHeaderLink, safeAccentColor, safeImageSrc } from "../../header/header-links";
+import { resolveAppStoreLinks, type AppStoreLinks } from "../promo/AppStoreBadges";
 import type { CatalogCategory, CatalogStream } from "./catalog-streams";
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
@@ -86,6 +87,8 @@ export interface ResolvedSidebarPromo {
   buttonTarget: string | null;
   buttonExternal: boolean;
   openInNewTab: boolean;
+  /** Store badges shown in place of the button; null = the button. */
+  appLinks: AppStoreLinks | null;
   backgroundColor: string | null;
   eyebrowColor: string | null;
   titleColor: string | null;
@@ -129,6 +132,7 @@ const resolvePromo = (raw: unknown): ResolvedSidebarPromo | null => {
     buttonTarget: buttonText && link ? link.href : null,
     buttonExternal: !!link?.external,
     openInNewTab: button.openInNewTab === true,
+    appLinks: resolveAppStoreLinks(raw.appLinks),
     backgroundColor: safeAccentColor(raw.backgroundColor),
     eyebrowColor: safeAccentColor(raw.eyebrowColor),
     titleColor: safeAccentColor(raw.titleColor),

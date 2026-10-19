@@ -69,6 +69,10 @@ public class AdminManualEvaluationManager {
     @Autowired
     ResultLockGuard resultLockGuard;
 
+    /** Internal choice ("any 4 of 5"); absent in unit tests that do not need it. */
+    @Autowired(required = false)
+    vacademy.io.assessment_service.features.assessment.service.evaluation_ai.DashboardChoiceGroups choiceGroups;
+
 
     public ResponseEntity<String> submitManualEvaluatedMarks(CustomUserDetails userDetails, String assessmentId, String instituteId, String attemptId, ManualSubmitMarksRequest request) {
         try {
@@ -292,6 +296,19 @@ public class AdminManualEvaluationManager {
         }
 
         questionWiseMarksService.createQuestionWiseMarks(allQuestionAttempts);
+
+        // Internal choice ("any 4 of 5"): every answer keeps its marks, the extra ones
+        // are left out of the total. Nothing changes for a paper without groups.
+        if (choiceGroups != null) {
+            Map<String, Double> byQuestion = new HashMap<>();
+            for (QuestionWiseMarks m : allQuestionAttempts) {
+                if (m.getQuestion() != null) byQuestion.put(m.getQuestion().getId(), m.getMarks());
+            }
+            for (String left : choiceGroups.notCountedByMarks(assessment.getId(), byQuestion)) {
+                Double marks = byQuestion.get(left);
+                if (marks != null) totalMarks -= marks;
+            }
+        }
 
         return totalMarks;
     }

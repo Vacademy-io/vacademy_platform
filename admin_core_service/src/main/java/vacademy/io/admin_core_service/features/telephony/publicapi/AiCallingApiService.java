@@ -1,8 +1,11 @@
 package vacademy.io.admin_core_service.features.telephony.publicapi;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.telephony.core.AiCallService;
@@ -77,6 +80,19 @@ public class AiCallingApiService {
     /** Test calls per institute per 24 hours (each one writes rows and can post a webhook). */
     static final int MAX_TEST_CALLS_PER_DAY = 500;
     static final java.time.Duration IDEMPOTENCY_TTL = java.time.Duration.ofHours(24);
+    /**
+     * A batch row is stored under "key#index" in idempotency_key VARCHAR(255), so a batch
+     * key leaves room for "#999": a 252+ character key made row 0's INSERT fail with
+     * "value too long" and the whole batch a 500 (review of v1.1, 2026-10-14).
+     */
+    static final int MAX_BATCH_IDEMPOTENCY_KEY = 255 - ("#" + (MAX_BATCH - 1)).length();
+    /**
+     * A batch replay that finds a placeable row with no stored call, while the newest stored
+     * call of that batch is this recent, is answered 409 request_in_progress: the first
+     * request may still be working through its rows (each is a separate insert + enqueue).
+     */
+    static final java.time.Duration BATCH_IN_PROGRESS_GRACE = java.time.Duration.ofMinutes(2);
+    static final int BATCH_IN_PROGRESS_RETRY_AFTER = 30;
     static final String SOURCE = "API";
 
     private static final SecureRandom RANDOM = new SecureRandom();
@@ -89,6 +105,9 @@ public class AiCallingApiService {
     private final AiCallService aiCallService;
     private final AiCallingApiViews views;
     private final ObjectMapper objectMapper = new ObjectMapper();
+    /** For detaching freshly saved rows; null in unit tests that build the service by hand. */
+    @PersistenceContext
+    private EntityManager entityManager;
 
     // ── Requests ─────────────────────────────────────────────────────────────────
 
@@ -125,8 +144,8 @@ public class AiCallingApiService {
         }
         AiCallApiCall call = newCall(p, v, null, test, idem);
         try {
-            call = callRepository.saveAndFlush(call);
-        } catch (org.springframework.dao.DataIntegrityViolationException race) {
+            call = detach(callRepository.saveAndFlush(call));
+        } catch (DataIntegrityViolationException race) {
             // A concurrent request with the same Idempotency-Key won the insert.
             if (idem != null) {
                 return callRepository.findByInstituteIdAndIdempotencyKey(p.instituteId(), idem)
@@ -160,7 +179,9 @@ public class AiCallingApiService {
             call.setQueueItemId(q.getQueueItemId());
             tryDialNow(call);
         }
-        return views.call(callRepository.findById(call.getId()).orElse(call), false);
+        Map<String, Object> out = views.call(callRepository.findById(call.getId()).orElse(call), false);
+        if (!v.warnings().isEmpty()) out.put("warnings", v.warnings());
+        return out;
     }
 
     public Map<String, Object> createBatch(AiCallingApiAuth.Principal p, String agentId,
@@ -172,15 +193,26 @@ public class AiCallingApiService {
      * Up to {@link #MAX_BATCH} calls; each row is accepted or rejected on its own. A row may
      * name its own agent_id; otherwise the batch's agent calls it. With an Idempotency-Key,
      * each accepted row is stored under "key#index", and a retry of the same request
-     * returns the batch it created instead of queueing the calls again.
+     * returns the batch it created instead of queueing the calls again (see
+     * {@link #batchReplay}); a different request under the key is refused with 409.
      */
     public Map<String, Object> createBatch(AiCallingApiAuth.Principal p, String agentId,
                                            List<CallInput> rows, boolean test, String idempotencyKey) {
         String idem = normaliseIdempotencyKey(idempotencyKey);
+        if (idem != null && idem.length() > MAX_BATCH_IDEMPOTENCY_KEY) {
+            throw AiCallingApiException.invalid("For a batch, Idempotency-Key is at most " + MAX_BATCH_IDEMPOTENCY_KEY
+                    + " characters (each call is stored under the key plus \"#\" and its index).",
+                    Map.of("max_length", MAX_BATCH_IDEMPOTENCY_KEY, "received", idem.length()));
+        }
         if (idem != null) {
-            List<AiCallApiCall> prior = callRepository
-                    .findByInstituteIdAndIdempotencyKeyStartingWithOrderByCreatedAtAsc(p.instituteId(), idem + "#");
-            if (!prior.isEmpty()) return batchReplay(prior);
+            List<AiCallApiCall> prior = priorBatchRows(p.instituteId(), idem);
+            if (!prior.isEmpty() && prior.get(0).getCreatedAt() != null
+                    && prior.get(0).getCreatedAt().plus(IDEMPOTENCY_TTL).isBefore(Instant.now())) {
+                // Keys are honoured for 24 hours; this batch is older, so the key may be reused.
+                callRepository.clearIdempotencyKeysBefore(Instant.now().minus(IDEMPOTENCY_TTL));
+                prior = List.of();
+            }
+            if (!prior.isEmpty()) return batchReplay(p, agentId, rows, test, idem, prior);
         }
         if (rows == null || rows.isEmpty()) throw AiCallingApiException.invalid("calls must contain at least one call.");
         if (rows.size() > MAX_BATCH) {
@@ -197,35 +229,27 @@ public class AiCallingApiService {
         List<Map<String, Object>> accepted = new ArrayList<>();
         List<Map<String, Object>> rejected = new ArrayList<>();
         Set<String> seenPhones = new HashSet<>();
-        Map<String, AiAgent> rowAgents = new HashMap<>();
-        rowAgents.put(agent.getId(), agent);
+        Map<String, Object> agents = new HashMap<>();
+        agents.put(agent.getId(), agent);
         for (int i = 0; i < rows.size(); i++) {
-            CallInput row = rows.get(i);
-            AiAgent rowAgent = agent;
-            String rowAgentId = row == null || row.agentId() == null || row.agentId().isBlank() ? null : row.agentId().trim();
-            if (rowAgentId != null && !rowAgents.containsKey(rowAgentId)) {
-                try {
-                    rowAgents.put(rowAgentId, requireAgent(p.instituteId(), rowAgentId));
-                } catch (AiCallingApiException e) {
-                    rejected.add(rejection(i, row.phoneNumber(), e.getCode(), e.getMessage()));
-                    continue;
+            RowCheck rc = checkRow(p.instituteId(), i, rows.get(i), agent.getId(), agents, seenPhones);
+            if (rc.rejection() != null) {
+                rejected.add(rc.rejection());
+                continue;
+            }
+            Validated v = rc.validated();
+            String rowKey = idem == null ? null : idem + "#" + i;
+            AiCallApiCall call;
+            try {
+                call = detach(callRepository.save(newCall(p, v, batchId, test, rowKey)));
+            } catch (DataIntegrityViolationException race) {
+                // Another request with this Idempotency-Key stored this row first: it is
+                // still running (it found no rows when it started, like this one did).
+                if (rowKey != null && callRepository.findByInstituteIdAndIdempotencyKey(p.instituteId(), rowKey).isPresent()) {
+                    throw batchInProgress(null);
                 }
+                throw race;
             }
-            if (rowAgentId != null) rowAgent = rowAgents.get(rowAgentId);
-            CallInput withAgent = new CallInput(rowAgent.getId(), row == null ? null : row.phoneNumber(),
-                    row == null ? null : row.contactName(), row == null ? null : row.contactEmail(),
-                    row == null ? null : row.externalId(), row == null ? null : row.variables(),
-                    row == null ? null : row.metadata());
-            Validated v = validate(p.instituteId(), withAgent, rowAgent);
-            if (!v.errors().isEmpty()) {
-                rejected.add(rejection(i, withAgent.phoneNumber(), "invalid_request", v.errors().get(0).get("message")));
-                continue;
-            }
-            if (!seenPhones.add(v.phone())) {
-                rejected.add(rejection(i, v.phone(), "duplicate_in_batch", "This number appears earlier in the batch."));
-                continue;
-            }
-            AiCallApiCall call = callRepository.save(newCall(p, v, batchId, test, idem == null ? null : idem + "#" + i));
             if (test) {
                 try {
                     placeTestCall(call, v);
@@ -258,24 +282,9 @@ public class AiCallingApiService {
                 }
                 call.setQueueItemId(q.getQueueItemId());
             }
-            Map<String, Object> a = new LinkedHashMap<>();
-            a.put("index", i);
-            a.put("id", call.getId());
-            a.put("phone_number", v.phone());
-            if (call.getExternalId() != null) a.put("external_id", call.getExternalId());
-            if (!rowAgent.getId().equals(agent.getId())) a.put("agent_id", rowAgent.getId());
-            accepted.add(a);
+            accepted.add(acceptedRow(i, call, agent.getId(), v.warnings()));
         }
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("id", batchId);
-        out.put("object", "batch");
-        out.put("agent_id", agent.getId());
-        out.put("test", test);
-        out.put("accepted_count", accepted.size());
-        out.put("rejected_count", rejected.size());
-        out.put("calls", accepted);
-        out.put("rejected", rejected);
-        return out;
+        return batchResponse(batchId, agent.getId(), test, accepted, rejected);
     }
 
     // ── Read ─────────────────────────────────────────────────────────────────────
@@ -374,7 +383,7 @@ public class AiCallingApiService {
 
     record Validated(String phone, AiAgent agent, String name, String email, String externalId,
                      Map<String, String> variables, Map<String, Object> metadata,
-                     List<Map<String, String>> errors) {
+                     List<Map<String, String>> errors, List<Map<String, String>> warnings) {
     }
 
     Validated validate(String instituteId, CallInput in, AiAgent knownAgent) {
@@ -414,13 +423,6 @@ public class AiCallingApiService {
                         errors.add(err("variables." + k, "Variable names start with a letter and use letters, digits, spaces or underscores (max 40)."));
                         continue;
                     }
-                    String lower = k.toLowerCase(Locale.ROOT);
-                    if (CLOCK_PLACEHOLDERS.contains(lower) || "name".equals(lower) || "lead_name".equals(lower)) {
-                        errors.add(err("variables." + k, "\"" + k + "\" is filled automatically"
-                                + ("name".equals(lower) || "lead_name".equals(lower) ? " from contact.name" : " with the current date and time")
-                                + "; use another variable name."));
-                        continue;
-                    }
                     Object val = e.getValue();
                     if (val instanceof Map || val instanceof Collection) {
                         errors.add(err("variables." + k, "Variable values must be text, numbers or booleans."));
@@ -446,7 +448,35 @@ public class AiCallingApiService {
             }
         }
         return new Validated(phone, agent, name, email, externalId, vars.isEmpty() ? null : vars,
-                metadata == null || metadata.isEmpty() ? null : metadata, errors);
+                metadata == null || metadata.isEmpty() ? null : metadata, errors, reservedVariableWarnings(vars));
+    }
+
+    /**
+     * Variables named like a placeholder the platform fills itself (name, lead_name and the
+     * clock words). They are accepted and stored, and reach the agent with the other
+     * variables as what it knows about the contact, but never fill the placeholder: the bot
+     * resolves its own values first (bot.py _fill_placeholders), so {{date}} is always today
+     * and {{name}} always contact.name. c7ff69b207 rejected them, which broke CRM
+     * integrations live since 10-13 that forward fields such as "date" or "year"; the client
+     * is told with a non-fatal warning instead (review of v1.1, 2026-10-14).
+     */
+    static List<Map<String, String>> reservedVariableWarnings(Map<String, ?> variables) {
+        List<Map<String, String>> out = new ArrayList<>();
+        if (variables == null) return out;
+        for (String raw : variables.keySet()) {
+            String k = raw == null ? "" : raw.trim();
+            String lower = k.toLowerCase(Locale.ROOT);
+            boolean isName = "name".equals(lower) || "lead_name".equals(lower);
+            if (!isName && !CLOCK_PLACEHOLDERS.contains(lower)) continue;
+            Map<String, String> w = new LinkedHashMap<>();
+            w.put("field", "variables." + k);
+            w.put("code", "reserved_variable");
+            w.put("message", "{{" + lower + "}} in the agent's script is always filled "
+                    + (isName ? "from contact.name" : "with the current date and time")
+                    + "; this value does not replace it. The agent receives it only as information about the contact.");
+            out.add(w);
+        }
+        return out;
     }
 
     AiAgent requireAgent(String instituteId, String agentId) {
@@ -562,28 +592,204 @@ public class AiCallingApiService {
         }
     }
 
-    private Map<String, Object> batchReplay(List<AiCallApiCall> rows) {
-        List<Map<String, Object>> accepted = new ArrayList<>();
-        for (AiCallApiCall c : rows) {
-            Map<String, Object> a = new LinkedHashMap<>();
-            String key = c.getIdempotencyKey();
-            int hash = key == null ? -1 : key.lastIndexOf('#');
-            a.put("index", hash < 0 ? null : Integer.valueOf(key.substring(hash + 1)));
-            a.put("id", c.getId());
-            a.put("phone_number", c.getPhoneNumber());
-            if (c.getExternalId() != null) a.put("external_id", c.getExternalId());
-            accepted.add(a);
+    /** One batch row checked: a rejection, or the validated call (its agent included). */
+    private record RowCheck(Map<String, Object> rejection, Validated validated) {
+    }
+
+    /**
+     * The checks a batch row passes before anything is written: its agent (cached in
+     * {@code agents} as the agent or the error it raised), validation, and the number not
+     * appearing earlier in the batch. Pure apart from the agent lookups, so a replay
+     * recomputes exactly the rejections the first request made at this stage.
+     */
+    private RowCheck checkRow(String instituteId, int i, CallInput row, String batchAgentId,
+                              Map<String, Object> agents, Set<String> seenPhones) {
+        String rowAgentId = row == null || row.agentId() == null || row.agentId().isBlank()
+                ? batchAgentId : row.agentId().trim();
+        String rawPhone = row == null ? null : row.phoneNumber();
+        Object found = rowAgentId == null ? null : agents.computeIfAbsent(rowAgentId, id -> {
+            try {
+                return requireAgent(instituteId, id);
+            } catch (AiCallingApiException e) {
+                return e;
+            }
+        });
+        if (found == null) {
+            return new RowCheck(rejection(i, rawPhone, "invalid_request",
+                    "agent_id is required. List your agents with GET /v1/agents."), null);
         }
-        AiCallApiCall first = rows.get(0);
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("id", first.getBatchId());
-        out.put("object", "batch");
-        out.put("agent_id", first.getAgentId());
-        out.put("test", first.isTestMode());
-        out.put("accepted_count", accepted.size());
-        out.put("calls", accepted);
+        if (found instanceof AiCallingApiException e) {
+            return new RowCheck(rejection(i, rawPhone, e.getCode(), e.getMessage()), null);
+        }
+        AiAgent rowAgent = (AiAgent) found;
+        Validated v = validate(instituteId, withAgent(row, rowAgent.getId()), rowAgent);
+        if (!v.errors().isEmpty()) {
+            return new RowCheck(rejection(i, rawPhone, "invalid_request", v.errors().get(0).get("message")), null);
+        }
+        if (!seenPhones.add(v.phone())) {
+            return new RowCheck(rejection(i, v.phone(), "duplicate_in_batch", "This number appears earlier in the batch."),
+                    null);
+        }
+        return new RowCheck(null, v);
+    }
+
+    private static CallInput withAgent(CallInput row, String agentId) {
+        return new CallInput(agentId, row == null ? null : row.phoneNumber(),
+                row == null ? null : row.contactName(), row == null ? null : row.contactEmail(),
+                row == null ? null : row.externalId(), row == null ? null : row.variables(),
+                row == null ? null : row.metadata());
+    }
+
+    /**
+     * The calls a keyed batch stored, oldest first: rows of a batch whose key is exactly
+     * "key#index" (a single call keyed "key#0" by hand is not one of them).
+     */
+    private List<AiCallApiCall> priorBatchRows(String instituteId, String idem) {
+        List<AiCallApiCall> out = new ArrayList<>();
+        for (AiCallApiCall c : callRepository.findByInstituteIdAndIdempotencyKeyStartingWithOrderByCreatedAtAsc(
+                instituteId, idem + "#")) {
+            if (c.getBatchId() != null && batchIndex(c, idem) >= 0) out.add(c);
+        }
+        return out;
+    }
+
+    private static int batchIndex(AiCallApiCall c, String idem) {
+        String key = c.getIdempotencyKey();
+        if (key == null || !key.startsWith(idem + "#")) return -1;
+        String suffix = key.substring(idem.length() + 1);
+        if (suffix.isEmpty() || suffix.length() > 4 || !suffix.chars().allMatch(Character::isDigit)) return -1;
+        return Integer.parseInt(suffix);
+    }
+
+    /**
+     * A batch retried with the same Idempotency-Key. The request must be the same one: same
+     * test flag, and every stored row's call equal (after normalising) to the row at its
+     * index; anything else is 409 idempotency_key_reused, as for a single call. A matching
+     * replay places nothing and answers what the first request answered: the stored rows as
+     * accepted, and the rejected rows recomputed by {@link #checkRow}.
+     *
+     * <p>A row that passes those checks but has no stored call was accepted and then
+     * dropped by the first request (call_failed, or call_already_queued after enqueue).
+     * Only accepted rows are stored (no migration for a response cache), so which of the two
+     * is not known: it comes back as call_not_placed. It is NOT placed now: a replay that
+     * dialled would turn a retried timeout into a second campaign leg, and the first
+     * response already told the client which rows to send again (under a new key).
+     *
+     * <p>The first request writes one row at a time, so a retry that arrives while it is
+     * still running would see only a prefix. A placeable row with no stored call while the
+     * newest stored call is under {@link #BATCH_IN_PROGRESS_GRACE} old is therefore 409
+     * request_in_progress with Retry-After, never a silently partial batch.
+     */
+    private Map<String, Object> batchReplay(AiCallingApiAuth.Principal p, String agentId, List<CallInput> rows,
+                                            boolean test, String idem, List<AiCallApiCall> prior) {
+        AiCallApiCall first = prior.get(0);
+        String batchAgentId = agentId == null || agentId.isBlank() ? first.getAgentId() : agentId.trim();
+        Map<Integer, AiCallApiCall> stored = new HashMap<>();
+        Instant newest = null;
+        for (AiCallApiCall c : prior) {
+            stored.put(batchIndex(c, idem), c);
+            if (c.getCreatedAt() != null && (newest == null || c.getCreatedAt().isAfter(newest))) newest = c.getCreatedAt();
+        }
+        boolean same = rows != null && !rows.isEmpty() && rows.size() <= MAX_BATCH && first.isTestMode() == test;
+        if (same) {
+            for (Map.Entry<Integer, AiCallApiCall> e : stored.entrySet()) {
+                int i = e.getKey();
+                CallInput row = i < rows.size() ? rows.get(i) : null;
+                if (row == null || !sameRequest(e.getValue(), withAgent(row, effectiveAgent(row, batchAgentId)))) {
+                    same = false;
+                    break;
+                }
+            }
+        }
+        if (!same) {
+            throw new AiCallingApiException(HttpStatus.CONFLICT, "idempotency_key_reused",
+                    "This Idempotency-Key was already used for a different batch.",
+                    Map.of("batch_id", first.getBatchId()));
+        }
+        List<Map<String, Object>> accepted = new ArrayList<>();
+        List<Map<String, Object>> rejected = new ArrayList<>();
+        Set<String> seenPhones = new HashSet<>();
+        Map<String, Object> agents = new HashMap<>();
+        boolean missing = false;
+        for (int i = 0; i < rows.size(); i++) {
+            AiCallApiCall c = stored.get(i);
+            if (c != null) {
+                // Passed every check the first time; its number still counts for duplicate_in_batch.
+                seenPhones.add(c.getPhoneNumber());
+                accepted.add(acceptedRow(i, c, batchAgentId, reservedVariableWarnings(rows.get(i).variables())));
+                continue;
+            }
+            RowCheck rc = checkRow(p.instituteId(), i, rows.get(i), batchAgentId, agents, seenPhones);
+            if (rc.rejection() != null) {
+                rejected.add(rc.rejection());
+                continue;
+            }
+            missing = true;
+            rejected.add(rejection(i, rc.validated().phone(), "call_not_placed",
+                    "The first request with this Idempotency-Key did not place this call. Send it again under a new key."));
+        }
+        if (missing && newest != null && newest.plus(BATCH_IN_PROGRESS_GRACE).isAfter(Instant.now())) {
+            throw batchInProgress(first.getBatchId());
+        }
+        Map<String, Object> out = batchResponse(first.getBatchId(), batchAgentId, first.isTestMode(), accepted, rejected);
         out.put("idempotent_replay", true);
         return out;
+    }
+
+    private static String effectiveAgent(CallInput row, String batchAgentId) {
+        return row.agentId() == null || row.agentId().isBlank() ? batchAgentId : row.agentId().trim();
+    }
+
+    private static AiCallingApiException batchInProgress(String batchId) {
+        Map<String, Object> d = new LinkedHashMap<>();
+        if (batchId != null) d.put("batch_id", batchId);
+        return new AiCallingApiException(HttpStatus.CONFLICT, "request_in_progress",
+                "A request with this Idempotency-Key is still being processed. Retry in "
+                        + BATCH_IN_PROGRESS_RETRY_AFTER + " seconds.", d, BATCH_IN_PROGRESS_RETRY_AFTER);
+    }
+
+    private static Map<String, Object> acceptedRow(int index, AiCallApiCall call, String batchAgentId,
+                                                   List<Map<String, String>> warnings) {
+        Map<String, Object> a = new LinkedHashMap<>();
+        a.put("index", index);
+        a.put("id", call.getId());
+        a.put("phone_number", call.getPhoneNumber());
+        if (call.getExternalId() != null) a.put("external_id", call.getExternalId());
+        if (call.getAgentId() != null && !call.getAgentId().equals(batchAgentId)) a.put("agent_id", call.getAgentId());
+        if (warnings != null && !warnings.isEmpty()) a.put("warnings", warnings);
+        return a;
+    }
+
+    private static Map<String, Object> batchResponse(String batchId, String agentId, boolean test,
+                                                     List<Map<String, Object>> accepted,
+                                                     List<Map<String, Object>> rejected) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("id", batchId);
+        out.put("object", "batch");
+        out.put("agent_id", agentId);
+        out.put("test", test);
+        out.put("accepted_count", accepted.size());
+        out.put("rejected_count", rejected.size());
+        out.put("calls", accepted);
+        out.put("rejected", rejected);
+        return out;
+    }
+
+    /**
+     * Under open-session-in-view the saved row stays managed for the rest of the request,
+     * and a setter on it (queue item, call log) is flushed by the next targeted write as a
+     * whole-row UPDATE from the row as it was saved, over what the finaliser wrote since
+     * (review of v1.1, 2026-10-14). Detached, the setters only feed this request's reply.
+     */
+    private AiCallApiCall detach(AiCallApiCall call) {
+        if (entityManager != null && call != null) {
+            try {
+                entityManager.detach(call);
+            } catch (RuntimeException e) {
+                log.debug("ai-calling-api: could not detach {}: {}", call.getId(), e.getMessage());
+            }
+        }
+        return call;
     }
 
     /**
@@ -600,6 +806,8 @@ public class AiCallingApiService {
         }
         Map<String, Object> view = views.call(prior, false);
         view.put("idempotent_replay", true);
+        List<Map<String, String>> warnings = reservedVariableWarnings(in.variables());
+        if (!warnings.isEmpty()) view.put("warnings", warnings);
         return view;
     }
 

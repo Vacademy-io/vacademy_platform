@@ -43,6 +43,9 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.*;
 
 class AssignmentAiEvaluationServiceTest {
@@ -226,6 +229,26 @@ class AssignmentAiEvaluationServiceTest {
         when(creditClient.readBalance(INSTITUTE)).thenReturn(Optional.of(0.0));
         assertThrows(VacademyException.class, () -> service.trigger(TRACKED, INSTITUTE, teacher));
         verifyNoInteractions(copyCheckClient);
+    }
+
+    @Test
+    void anEmptyWalletIsRefusedUnlessTheLivePlanCoversTheCopyCheck() {
+        when(creditClient.readBalance(INSTITUTE)).thenReturn(Optional.of(0.0));
+        when(creditClient.planCovers(eq(INSTITUTE), eq("evaluation"), isNull(), anyInt(), eq("teacher-1"),
+                argThat((vacademy.io.admin_core_service.features.credits.client.MeteringFields m) ->
+                        "evaluation".equals(m.useCase()) && "USER".equals(m.actorKind()))))
+                .thenReturn(true);
+        service.trigger(TRACKED, INSTITUTE, teacher);
+        verify(copyCheckClient).submitGrade(any());
+    }
+
+    @Test
+    void aFundedOrUnreadableWalletNeverAsksThePlan() {
+        service.trigger(TRACKED, INSTITUTE, teacher); // balance 100 (setUp)
+        when(creditClient.readBalance(INSTITUTE)).thenReturn(Optional.empty());
+        rows.clear();
+        service.trigger(TRACKED, INSTITUTE, teacher);
+        verify(creditClient, org.mockito.Mockito.never()).planCovers(any(), any(), any(), anyInt(), any(), any());
     }
 
     @Test

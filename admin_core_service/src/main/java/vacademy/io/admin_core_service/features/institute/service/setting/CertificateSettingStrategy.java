@@ -121,6 +121,7 @@ public class CertificateSettingStrategy extends IInstituteSettingStrategy{
                     dto.setVerificationShowCourse(incoming.getVerificationShowCourse() != null ? incoming.getVerificationShowCourse() : existing.getVerificationShowCourse());
                     dto.setVerificationShowIssueDate(incoming.getVerificationShowIssueDate() != null ? incoming.getVerificationShowIssueDate() : existing.getVerificationShowIssueDate());
                     dto.setVerificationShowCompletion(incoming.getVerificationShowCompletion() != null ? incoming.getVerificationShowCompletion() : existing.getVerificationShowCompletion());
+                    dto.setVerificationShowFullDetails(incoming.getVerificationShowFullDetails() != null ? incoming.getVerificationShowFullDetails() : existing.getVerificationShowFullDetails());
                     // Same preserve-on-null merge as every field above: the settings
                     // screen posts only what it edits, so a null here means "leave it",
                     // not "clear it". Clearing a verification document is done by

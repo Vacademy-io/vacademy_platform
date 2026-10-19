@@ -11,7 +11,9 @@ public enum EscalationReason {
     /**
      * The institute is out of AI credits (or the balance could not be confirmed), so no
      * model was called. Unlike AI_ERROR this will not clear on its own — an admin has to
-     * top up — which is why it is worth telling them apart in the Inbox.
+     * top up — which is why it is worth telling them apart in the Inbox. Also raised when an
+     * AI usage limit paused the bot (a cap the institute set; it resets on its own): the
+     * escalation's error message then starts with "AI usage limit reached".
      */
     NO_CREDITS,
     /** Raised by an admin from the Inbox rather than by the bot. */

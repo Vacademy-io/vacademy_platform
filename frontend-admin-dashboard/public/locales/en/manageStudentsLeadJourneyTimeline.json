@@ -19,7 +19,8 @@
         "followupScheduled": "Follow-up Scheduled",
         "statusChange": "Status Changed",
         "fallback": "Event",
-        "reEnquiry": "Contacted Again"
+        "reEnquiry": "Contacted Again",
+        "reattempt": "Reattempt"
     },
     "statusChangeMeta": {
         "previous": "Previous"

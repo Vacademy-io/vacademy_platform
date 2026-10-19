@@ -42,6 +42,12 @@ export interface LeadCardVM {
     responseId?: string;
     /** Current custom pipeline status (key or label); drives the editable status chip. */
     leadStatus?: string | null;
+    /** This enquiry repeats an existing lead (audience_response.is_duplicate). */
+    isDuplicate?: boolean | null;
+    /** Live duplicate enquiries that repeat this lead (recent-leads list only). */
+    duplicateCount?: number | null;
+    /** Has an open priority follow-up (opened for a reattempt); the Follow-ups page lists it first. */
+    followUpPriority?: boolean | null;
     // ── TAT / follow-up SLA (visual only; computed on the backend) ───────────
     tatOverdue?: boolean | null;
     tatDueSoon?: boolean | null;
@@ -273,6 +279,9 @@ export const recentLeadToVM = (lead: RecentLeadDetail): LeadCardVM => {
         submittedIso: lead.submitted_at_local,
         responseId: lead.response_id,
         leadStatus: lead.lead_status,
+        isDuplicate: lead.is_duplicate,
+        duplicateCount: lead.duplicate_count,
+        followUpPriority: lead.follow_up_priority,
         tatOverdue: lead.tat_overdue,
         tatDueSoon: lead.tat_due_soon,
         followUpOverdue: lead.follow_up_overdue,
@@ -312,6 +321,8 @@ export const campaignRowToVM = (row: CampaignUserTable): LeadCardVM => {
         submittedIso: typeof row._submitted_iso === 'string' ? row._submitted_iso : undefined,
         responseId: row._response_id ?? undefined,
         leadStatus: row._lead_status,
+        isDuplicate: row._is_duplicate,
+        followUpPriority: row._follow_up_priority,
         tatOverdue: row._tat_overdue,
         tatDueSoon: row._tat_due_soon,
         followUpOverdue: row._follow_up_overdue,

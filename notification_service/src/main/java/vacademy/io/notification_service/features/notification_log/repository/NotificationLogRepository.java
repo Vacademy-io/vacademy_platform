@@ -632,6 +632,37 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
             @Param("limit") int limit);
 
     /**
+     * Our outbound messages by provider message id (wamid) — what a learner's reaction points at.
+     * Rides idx_nl_source_id_outgoing; reactions on the learner's own messages are not looked up.
+     */
+    @Query(value = """
+            SELECT * FROM notification_log
+            WHERE notification_type = 'WHATSAPP_MESSAGE_OUTGOING'
+              AND source_id IS NOT NULL
+              AND source_id = ANY(CAST(:sourceIds AS text[]))
+              AND institute_id = :instituteId
+            """, nativeQuery = true)
+    List<NotificationLog> findOutgoingBySourceIds(@Param("instituteId") String instituteId,
+                                                  @Param("sourceIds") String[] sourceIds);
+
+    /**
+     * The failure events WhatsApp sent for these messages: source_id, body, error code, error
+     * message. Read when an outbound row says FAILED but carries no reason — the "failed" webhook
+     * can land before the send has written its row, and the reason then only exists here.
+     * Scoped by phone so it rides idx_nl_channel_date rather than scanning every status row.
+     */
+    @Query(value = """
+            SELECT source_id, body, delivery_error_code, delivery_error_message
+            FROM notification_log
+            WHERE channel_id = :phone
+              AND notification_type IN ('WHATSAPP_MESSAGE_FAILED', 'WHATSAPP_STATUS_EVENT')
+              AND source_id = ANY(CAST(:sourceIds AS text[]))
+            ORDER BY notification_date DESC
+            """, nativeQuery = true)
+    List<Object[]> findFailureEventsBySourceIds(@Param("phone") String phone,
+                                                @Param("sourceIds") String[] sourceIds);
+
+    /**
      * The learner's most recent inbound message on this conversation — the clock Meta's 24-hour
      * customer service window runs from. Same equality scoping as {@link #findMessagesForPhone}
      * (exact channel_id, exact institute_id), so the two agree about what "this conversation" is.

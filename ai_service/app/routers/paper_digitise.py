@@ -31,7 +31,7 @@ from ..models.ai_task import AiTaskInputType, AiTaskType
 from ..models.ai_token_usage import RequestType
 from ..repositories.ai_task_repository import AiTaskRepository
 from ..services import ai_task_service, paper_digitise
-from ..services.ai_billing import charge_tool, preflight_tool_credits
+from ..services.ai_billing import charge_tool, metering_user, preflight_tool_credits
 from ..services.ai_task_service import AiTaskService
 from ..services.model_selection import resolve_models
 from ..services.question_gen_service import QUESTIONS_USE_CASE
@@ -124,6 +124,10 @@ def _charge(
                 user_role="ADMIN",
                 request_id=task_id,
                 idempotency_key=f"paper_digitise:{task_id}",
+                # Usage-event attribution only (the ledger role above is unchanged).
+                use_case="questions",
+                metering=metering_user(user_id, surface="ADMIN_APP"),
+                usage_context={"task_id": task_id, "pages": pages},
             )
             from ..services.credit_service import CreditService  # local: avoids an import cycle
             balance = CreditService(db).get_balance(institute_id)

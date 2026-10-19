@@ -156,8 +156,14 @@ class AiChatAgentService:
                 if provider == "gemini":
                     api_provider = ApiProvider.GEMINI
 
+                from .ai_billing import UC, metering_kwargs, metering_user, supported_kwargs
+
+                # Usage-event attribution only (the learner chat agent is a
+                # learner-app surface); the charge and ledger row are unchanged.
+                meter = metering_kwargs(UC.LEARNER_ASSISTANT, metering_user(user_id, surface="LEARNER_APP"))
                 with self._get_db() as db:
-                    TokenUsageService(db).record_usage_and_deduct_credits(
+                    tus = TokenUsageService(db)
+                    tus.record_usage_and_deduct_credits(
                         api_provider=api_provider,
                         prompt_tokens=prompt_tokens,
                         completion_tokens=completion_tokens,
@@ -166,6 +172,7 @@ class AiChatAgentService:
                         institute_id=institute_id,
                         user_id=user_id,
                         model=model,
+                        **supported_kwargs(tus.record_usage_and_deduct_credits, meter),
                     )
                 logger.debug(f"Recorded usage for agent chat: {total_tokens} tokens")
         except Exception as e:

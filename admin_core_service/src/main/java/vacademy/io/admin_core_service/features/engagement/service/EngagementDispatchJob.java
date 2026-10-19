@@ -6,7 +6,9 @@ import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import vacademy.io.admin_core_service.features.credits.client.AuthorizeResult;
 import vacademy.io.admin_core_service.features.credits.client.CreditClient;
+import vacademy.io.admin_core_service.features.credits.client.MeteringFields;
 import vacademy.io.admin_core_service.features.engagement.entity.EngagementAction;
 import vacademy.io.admin_core_service.features.engagement.entity.EngagementEngine;
 import vacademy.io.admin_core_service.features.engagement.entity.EngagementMember;
@@ -18,6 +20,7 @@ import vacademy.io.common.exceptions.VacademyException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 
@@ -41,6 +44,15 @@ public class EngagementDispatchJob {
 
     private static final String ACTOR = "ENGAGEMENT_ENGINE";
     private static final String CREDIT_REQUEST_TYPE = "engagement_message";
+    /** ai_use_case_catalog key the usage-limit gate is asked about. */
+    static final String USE_CASE = "engagement_message";
+    /**
+     * A send an AI usage limit refused is moved this far out (or to the limit's reset, if
+     * sooner) rather than retried every tick: left due, it would be re-selected each cycle
+     * and, the scan being global and oldest-first, crowd out other institutes' sends. The
+     * 72 h expiry still applies.
+     */
+    static final Duration LIMIT_RETRY_DELAY = Duration.ofMinutes(30);
 
     private final EngagementActionRepository actionRepository;
     private final EngagementEngineRepository engineRepository;
@@ -149,6 +161,21 @@ public class EngagementDispatchJob {
             return false;
         }
 
+        // 2c. AI usage limits (institute policy in ENFORCE): skip this cycle, try again later.
+        // No limits on for the institute = no call at all; any gate failure = allowed.
+        AuthorizeResult limit = authorizeSend(instituteId, action);
+        if (AuthorizeResult.blocks(limit)) {
+            Instant retryAt = now.plus(LIMIT_RETRY_DELAY);
+            Instant resetsAt = limit.resetsAt();
+            if (resetsAt != null && resetsAt.isAfter(now) && resetsAt.isBefore(retryAt)) {
+                retryAt = resetsAt;
+            }
+            log.info("Auto-send for action {} skipped: AI usage limit reached for institute {}; retry at {}",
+                    action.getId(), instituteId, retryAt);
+            actionRepository.rescheduleDueSend(action.getId(), retryAt, now);
+            return false;
+        }
+
         // 3. Send-once claim, then dispatch.
         // Stamped with the claim time, not the batch start: in a slow batch the batch start is already
         // past the reaper's staleness cut-off, and it flipped rows to FAILED while they were sending.
@@ -190,7 +217,7 @@ public class EngagementDispatchJob {
             boolean ok = creditClient.deductPrecomputed(
                     instituteId, CREDIT_REQUEST_TYPE,
                     "Engagement Engine autonomous " + action.getChannel() + " send",
-                    perMessageCredits, action.getId());
+                    perMessageCredits, action.getId(), sendMetering(action));
             if (ok) {
                 actionRepository.markBilled(action.getId(), now);
             } else {
@@ -211,7 +238,7 @@ public class EngagementDispatchJob {
             try {
                 if (creditClient.deductPrecomputed(a.getInstituteId(), CREDIT_REQUEST_TYPE,
                         "Engagement Engine autonomous " + a.getChannel() + " send (reconciled)",
-                        perMessageCredits, a.getId())) {
+                        perMessageCredits, a.getId(), sendMetering(a))) {
                     actionRepository.markBilled(a.getId(), now);
                     fixed++;
                 }
@@ -220,6 +247,26 @@ public class EngagementDispatchJob {
             }
         }
         return fixed;
+    }
+
+    /** The limit gate for one send. Never throws. */
+    private AuthorizeResult authorizeSend(String instituteId, EngagementAction action) {
+        try {
+            return creditClient.authorize(instituteId, USE_CASE, CREDIT_REQUEST_TYPE, sendMetering(action),
+                    null, perMessageCredits, false);
+        } catch (Exception e) {
+            return AuthorizeResult.ALLOW_NONE;
+        }
+    }
+
+    /** Usage-metering fields for one autonomous send: a system job, with the action in the context. */
+    static MeteringFields sendMetering(EngagementAction action) {
+        java.util.Map<String, Object> context = new java.util.HashMap<>();
+        if (action.getId() != null) context.put("action_id", action.getId());
+        if (action.getEngineId() != null) context.put("engine_id", action.getEngineId());
+        if (action.getMemberId() != null) context.put("member_id", action.getMemberId());
+        if (action.getChannel() != null) context.put("channel", action.getChannel());
+        return MeteringFields.system("engagement_message").usageContext(context).build();
     }
 
     private boolean channelAutoEnabled(EngagementEngine engine, String channel) {

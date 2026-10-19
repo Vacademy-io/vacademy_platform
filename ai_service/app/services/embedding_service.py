@@ -84,6 +84,36 @@ def _embed_local_sync(model_id: str, texts: List[str], task: str) -> List[List[f
     return [[float(x) for x in vec] for vec in it]
 
 
+def _record_embedding_usage(data: Any, inputs: int, input_type: str, institute_id: Optional[str]) -> None:
+    """Record-only ai_token_usage row for one OpenRouter embeddings call: the
+    tokens it billed us, no credits charged. Queued off the request path;
+    never raises (usage_record_only swallows its own failures, this guards
+    the parsing)."""
+    try:
+        usage = data.get("usage") if isinstance(data, dict) else None
+        if not isinstance(usage, dict):
+            usage = {}
+        prompt_tokens = int(usage.get("prompt_tokens") or usage.get("total_tokens") or 0)
+        meta: Dict[str, Any] = {"source": "embedding_service", "inputs": inputs, "input_type": input_type}
+        if usage.get("cost") is not None:
+            meta["openrouter_cost_usd"] = usage.get("cost")
+        from ..models.ai_token_usage import ApiProvider, RequestType
+        from .usage_record_only import record_usage_only
+
+        record_usage_only(
+            api_provider=ApiProvider.OPENAI,
+            request_type=RequestType.EMBEDDING,
+            model=OPENROUTER_EMBED_MODEL,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=0,
+            total_tokens=int(usage.get("total_tokens") or prompt_tokens),
+            institute_id=institute_id,
+            metadata=meta,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("embedding usage record skipped: %s", exc)
+
+
 class EmbeddingService:
     """Generates text embeddings for RAG."""
 
@@ -138,7 +168,9 @@ class EmbeddingService:
             return response.json()
         raise RuntimeError("unreachable")
 
-    async def _embed_openrouter(self, texts: List[str], input_type: str, api_key: str) -> List[List[float]]:
+    async def _embed_openrouter(
+        self, texts: List[str], input_type: str, api_key: str, institute_id: Optional[str] = None
+    ) -> List[List[float]]:
         """Embed texts via OpenRouter's OpenAI-compatible embeddings endpoint."""
         payload = {
             "model": OPENROUTER_EMBED_MODEL,
@@ -148,6 +180,8 @@ class EmbeddingService:
         }
         headers = {"Authorization": f"Bearer {api_key}"}
         data = await self._post_with_retry(OPENROUTER_EMBEDDINGS_URL, payload, headers)
+        # OpenRouter billed this call whatever we make of the vectors below.
+        _record_embedding_usage(data, len(texts), input_type, institute_id)
         items = sorted(data["data"], key=lambda d: d["index"])
         if len(items) != len(texts):
             raise ValueError(f"OpenRouter returned {len(items)} embeddings for {len(texts)} inputs")
@@ -186,7 +220,7 @@ class EmbeddingService:
             return [None] * len(texts)
 
         try:
-            return await self._embed_openrouter(texts, openrouter_input_type, openrouter_key)
+            return await self._embed_openrouter(texts, openrouter_input_type, openrouter_key, institute_id)
         except Exception as e:
             # No cross-provider fallback — a failure means these chunks go
             # un-embedded (logged so it's diagnosable, not silent). Falling

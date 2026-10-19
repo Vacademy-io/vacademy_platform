@@ -11,7 +11,9 @@
         "knowledgeBase": "قاعدة المعرفة",
         "coursePrompt": "توجيه الدورة",
         "video": "الفيديو",
-        "usage": "الاستخدام"
+        "usage": "الاستخدام",
+        "limits": "الحدود",
+        "plan": "الخطة"
     },
     "common": {
         "saving": "جارٍ الحفظ...",

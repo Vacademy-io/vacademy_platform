@@ -20,6 +20,7 @@ a different dpi than the map claims, or if pages differ in size.
 from __future__ import annotations
 
 import asyncio
+import copy
 import hashlib
 import logging
 import math
@@ -234,7 +235,8 @@ def _page_k(page: Any) -> float:
     too small to read. The caps grow with the page; on A4 nothing changes.
     """
     try:
-        return max(1.0, min(4.0, float(page.rect.width) / 595.0))
+        width = (_SCAN_W[0] or {}).get(page.number, page.rect.width)
+        return max(1.0, min(4.0, float(width) / 595.0))
     except Exception:
         return 1.0
 
@@ -419,6 +421,10 @@ _PAPER: list = [None]
 # there by preference: it is blank paper beside the answer, which is exactly
 # where a teacher writes when the notebook gives them the room.
 _MARGIN_X: list = [None]
+# page_no -> width of the scan, when a comment panel has widened the page.
+# The pen is sized from the scan, so a mark is the same size with or without
+# the panel beside it.
+_SCAN_W: list = [None]
 
 
 # Per-page paper luminance, 0..1, sampled where the mark is going down. Real
@@ -3137,6 +3143,160 @@ def _fmt_marks(value: float) -> str:
     return f"{value:g}"
 
 
+# ---- "Teacher comments outside the copy" template --------------------------
+
+COMMENTS_INSIDE = "INSIDE"
+COMMENTS_OUTSIDE = "OUTSIDE"
+# Width of the comment panel as a share of the scan's width.
+_PANEL_RATIO = 0.45
+_PANEL_HEADING = (0.55, 0.16, 0.20)
+_PANEL_TEXT = (0.20, 0.20, 0.20)
+_PANEL_RULE = (0.80, 0.80, 0.80)
+# The longest stretch of a verdict's feedback used when the grader wrote no
+# remark for that answer - the panel is a margin, not the review screen.
+_PANEL_FEEDBACK_CHARS = 180
+
+
+def _panel_status(verdict: dict[str, Any]) -> str:
+    if (verdict.get("status") or "").upper() == "FAILED":
+        return "Needs review"
+    got = float(verdict.get("marks_awarded") or 0)
+    out_of = float(verdict.get("max_marks") or 0)
+    if out_of > 0 and got >= out_of:
+        return "Correct"
+    if got <= 0:
+        return "Incorrect"
+    return "Partial"
+
+
+def _panel_label(verdict: dict[str, Any], labels: dict[str, str]) -> str:
+    label = (labels.get(str(verdict.get("question_id"))) or "").strip()
+    if not label:
+        number = verdict.get("question_number")
+        return f"Q{number}" if number is not None else "Q"
+    return f"Q{label}" if label[0].isdigit() else label
+
+
+def _short_feedback(text: str) -> str:
+    """The first sentence or two of the grader's feedback, never cut mid-word."""
+    text = " ".join((text or "").split())
+    if len(text) <= _PANEL_FEEDBACK_CHARS:
+        return text
+    cut = text[:_PANEL_FEEDBACK_CHARS]
+    stop = cut.rfind(". ")
+    if stop >= 60:
+        return cut[:stop + 1]
+    return cut[:cut.rfind(" ")].rstrip(",;:") + "..."
+
+
+def _wrap_plain(text: str, fontname: str, size: float, width: float) -> list[str]:
+    import fitz
+
+    lines: list[str] = []
+    for para in text.split("\n"):
+        line = ""
+        for word in para.split():
+            trial = f"{line} {word}".strip()
+            if line and fitz.get_text_length(trial, fontname=fontname, fontsize=size) > width:
+                lines.append(line)
+                line = word
+            else:
+                line = trial
+        if line:
+            lines.append(line)
+    return lines
+
+
+def _draw_comment_panels(doc: Any, panels: dict[int, Any],
+                         anchors: dict[tuple[int, int], float],
+                         notes: dict[tuple[int, int], list[str]],
+                         verdicts: list[dict[str, Any]],
+                         labels: dict[str, str]) -> None:
+    """Type each page's remarks into the panel beside it, level with the answer
+    they are about: "Q4(iv): Partial" and the remark below it.
+
+    A question's status is given once, on the first page it is marked on; a
+    later page lists it again only when it carries a remark of its own there.
+    When the remarks do not fit at their answers' heights they are set smaller,
+    then stacked from the top, so nothing is dropped off the foot of the page.
+    """
+    import fitz
+
+    first_page: dict[int, int] = {}
+    for (pno, v_idx) in sorted(anchors):
+        first_page.setdefault(v_idx, pno)
+
+    for pno, panel in panels.items():
+        entries = []
+        for (p, v_idx), y in anchors.items():
+            if p != pno:
+                continue
+            verdict = verdicts[v_idx]
+            said = notes.get((p, v_idx)) or []
+            first = first_page.get(v_idx) == pno
+            if not first and not said:
+                continue
+            if first and not said and verdict.get("feedback"):
+                said = [_short_feedback(str(verdict["feedback"]))]
+            label = _panel_label(verdict, labels)
+            heading = f"{label}: {_panel_status(verdict)}" if first else f"{label} (contd.)"
+            entries.append((y, v_idx, _latin1(heading), [_latin1(s) for s in said if s]))
+        page = doc[pno]
+        k = max(1.0, min(4.0, panel.width / (595.0 * _PANEL_RATIO)))
+        pad = 14.0 * k
+        x0, x1 = panel.x0 + pad, panel.x1 - pad
+        top = panel.y0 + pad
+        bottom = panel.y1 - pad
+        page.draw_line(fitz.Point(panel.x0 + 1, panel.y0), fitz.Point(panel.x0 + 1, panel.y1),
+                       color=_PANEL_RULE, width=0.8 * k)
+        head_size = 13.0 * k
+        page.insert_text(fitz.Point(x0, top + head_size), "TEACHER COMMENTS",
+                         fontname="hebo", fontsize=head_size, color=_PANEL_HEADING)
+        first_y = top + head_size * 2.2
+        if not entries:
+            continue
+        entries.sort(key=lambda e: (e[0], e[1]))
+
+        def layout(scale: float, anchored: bool):
+            label_size, body_size = 11.0 * k * scale, 10.0 * k * scale
+            placed, y = [], first_y
+            for anchor, _v, heading, said in entries:
+                body = [ln for s in said
+                        for ln in _wrap_plain(s, "helv", body_size, x1 - x0)]
+                height = label_size * 1.35 + len(body) * body_size * 1.3 + label_size * 0.9
+                if anchored:
+                    y = max(y, anchor)
+                placed.append((y, heading, body, label_size, body_size))
+                y += height
+            return placed, y
+
+        plan = None
+        for anchored in (True, False):
+            for scale in (1.0, 0.9, 0.8, 0.7, 0.6):
+                placed, end = layout(scale, anchored)
+                if end <= bottom:
+                    plan = placed
+                    break
+            if plan is not None:
+                break
+        if plan is None:
+            plan, _ = layout(0.6, False)
+
+        for y, heading, body, label_size, body_size in plan:
+            if y + label_size > bottom:
+                break
+            y += label_size
+            page.insert_text(fitz.Point(x0, y), heading, fontname="hebo",
+                             fontsize=label_size, color=_PANEL_HEADING)
+            y += label_size * 0.35
+            for line in body:
+                if y + body_size * 1.3 > bottom:
+                    break
+                y += body_size * 1.3
+                page.insert_text(fitz.Point(x0, y), line, fontname="helv",
+                                 fontsize=body_size, color=_PANEL_TEXT)
+
+
 _DIGIT_FONTNAME = "hwdigit"
 
 
@@ -3665,8 +3825,17 @@ def build_annotated_pdf(
     overall: Optional[dict[str, Any]] = None,
     append_summary: bool = False,
     margin_ratio: float = 0.0,
+    comment_placement: Optional[str] = None,
+    question_labels: Optional[dict[str, str]] = None,
 ) -> bytes:
     """Draw every verdict's annotations onto the student's copy.
+
+    `comment_placement` OUTSIDE is the "Teacher comments" template: the marks
+    (ticks, crosses, rules, scores) stay on the scan, but every written remark
+    moves to a typed panel to the right of it, beside the answer it is about.
+    Anything else (the default, INSIDE) writes the remarks on the copy in pen.
+    `question_labels` maps question_id to the number printed on the paper, for
+    the panel's headings.
 
     `append_summary` is OFF by default. A typed "Evaluation Summary" sheet -
     heading, Total / Percentage / Grade, then an analytical paragraph per
@@ -3694,9 +3863,36 @@ def build_annotated_pdf(
     _INK_MAP[0] = None
     _PLACED[0] = None
     _ROW_SLOPE[0] = 0.0
+    _SCAN_W[0] = None
     _PEN[0] = _pen_for(pdf_bytes)
 
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+
+    outside = (comment_placement or "").strip().upper() == COMMENTS_OUTSIDE
+    content: dict[int, Any] = {}
+    # page_no -> the blank panel the remarks are typed into (OUTSIDE only).
+    panels: dict[int, Any] = {}
+    # (page_no, verdict index) -> top of its first mark / its remarks, in order.
+    panel_anchor: dict[tuple[int, int], float] = {}
+    panel_notes: dict[tuple[int, int], list[str]] = {}
+    verdict_index = {id(v): i for i, v in enumerate(verdicts)}
+    if outside:
+        # The panel is plain white paper of its own, not a continuation of the
+        # sheet: it is the teacher's comment sheet clipped beside the copy, so
+        # the pen-margin strip below (and its ruled-paper extension) is not used.
+        margin_ratio = 0.0
+        widened = fitz.open()
+        scan_w: dict[int, float] = {}
+        for i in range(doc.page_count):
+            src = doc[i].rect
+            page = widened.new_page(width=src.width * (1.0 + _PANEL_RATIO), height=src.height)
+            page.show_pdf_page(fitz.Rect(0, 0, src.width, src.height), doc, i)
+            content[i] = fitz.Rect(0, 0, src.width, src.height)
+            panels[i] = fitz.Rect(src.width, 0, page.rect.width, src.height)
+            scan_w[i] = src.width
+        doc.close()
+        doc = widened
+        _SCAN_W[0] = scan_w
 
     # A marking margin, when the scan has none of its own. This script is
     # written edge to edge - measured free margin is 1-16pt across the page -
@@ -3708,8 +3904,9 @@ def build_annotated_pdf(
     #
     # OFF by default: it changes the page geometry, so the copy is no longer
     # pixel-identical to what the student handed in. That is a product call.
-    content: dict[int, Any] = {}
-    if margin_ratio > 0.0:
+    if outside:
+        pass
+    elif margin_ratio > 0.0:
         widened = fitz.open()
         for i in range(doc.page_count):
             src = doc[i].rect
@@ -3854,6 +4051,18 @@ def build_annotated_pdf(
             paper[pid] = fitz.Rect(paper[pid].x0, paper[pid].y0,
                                    page_w - 6.0, paper[pid].y1)
 
+    if outside:
+        # Every mark stays on the scan. The fallbacks that place a mark "near
+        # the page's right edge" when no sheet was detected would otherwise
+        # put it in the comment panel.
+        for pid, pno in (order or {}).items():
+            if not 0 <= pno < doc.page_count:
+                continue
+            c = content[pno]
+            scan = fitz.Rect(c.x0 + 2, c.y0 + 2, c.x1 - 2, c.y1 - 2)
+            clipped = (paper[pid] & scan) if pid in paper else None
+            paper[pid] = clipped if clipped is not None and not clipped.is_empty else scan
+
     # Measured once per page, before a single mark is drawn: our own ink would
     # otherwise widen every span we then try to avoid.
     ink_maps: dict[str, Any] = {}
@@ -3963,7 +4172,7 @@ def build_annotated_pdf(
         # Keep the whole mark inside the sheet: measure the ring as it will
         # be drawn, and write the figure smaller when the sheet is narrow.
         text = _latin1(f"{_fmt_marks(total)}/{_fmt_marks(out_of)}")
-        sheet_w = sheet0.width if sheet0 is not None else first.rect.width
+        sheet_w = sheet0.width if sheet0 is not None else content.get(0, first.rect).width
         reach = _grand_total_reach(first, text, line_h)
         while reach[0] + reach[1] > sheet_w * 0.45 and line_h > 14.0:
             line_h = max(14.0, line_h * 0.9)
@@ -3973,7 +4182,7 @@ def build_annotated_pdf(
             by = sheet0.y0 + 62.0 + line_h * 1.2    # below the Page No / Date box
             edge = sheet0.x1
         else:
-            by, edge = 62.0 + line_h * 1.2, first.rect.width - 10.0
+            by, edge = 62.0 + line_h * 1.2, content.get(0, first.rect).x1 - 10.0
         # The paper's measured edge, not the sheet rect: on a scan the mask
         # ends a few points inside it, and the ring was gated there.
         pe = _paper_right_edge(_PAPER[0], by - reach_u, by + reach_d)
@@ -4102,6 +4311,17 @@ def build_annotated_pdf(
             ann_marks = ann.get("marks")
             if style in ("brace", "summary") and ann_marks is not None:
                 note = f"{note}  {_fmt_marks(float(ann_marks))}".strip()
+            if outside:
+                # The remark goes to the panel beside this answer; only the
+                # mark itself, and a written score, stay on the copy.
+                v_idx = verdict_index[id(verdict)]
+                key = (page_no, v_idx)
+                panel_anchor[key] = min(panel_anchor.get(key, rect.y0), rect.y0)
+                if note and style != "score":
+                    said = panel_notes.setdefault(key, [])
+                    if note not in said:
+                        said.append(note)
+                    note = ""
 
             placed = None
             if note:
@@ -4215,6 +4435,10 @@ def build_annotated_pdf(
                                           occupied, use_page)
 
     _CLIP[0] = None
+    if outside:
+        _draw_comment_panels(doc, panels, panel_anchor, panel_notes, verdicts,
+                             question_labels or {})
+    _SCAN_W[0] = None
     if append_summary:
         _append_summary(doc, verdicts, overall)
     out = doc.tobytes(deflate=True, garbage=3)
@@ -4433,8 +4657,23 @@ def _resize(pix: "fitz.Pixmap", factor: float) -> "fitz.Pixmap":
 _RENDER_POOL = ThreadPoolExecutor(max_workers=1, thread_name_prefix="copy-check-render")
 
 
-def _render_sync(pdf_bytes: bytes, layout_map: dict[str, Any], verdicts: list[dict[str, Any]]) -> bytes:
-    annotated = build_annotated_pdf(pdf_bytes, layout_map, verdicts)
+def _render_sync(pdf_bytes: bytes, layout_map: dict[str, Any], verdicts: list[dict[str, Any]],
+                 comment_placement: Optional[str] = None,
+                 question_labels: Optional[dict[str, str]] = None) -> bytes:
+    annotated = None
+    if (comment_placement or "").strip().upper() == COMMENTS_OUTSIDE:
+        # The panel template must never cost a student the checked copy: if it
+        # fails, the usual copy is rendered instead. It works on a copy of the
+        # verdicts so that fallback starts from exactly what the grader sent.
+        try:
+            annotated = build_annotated_pdf(pdf_bytes, layout_map, copy.deepcopy(verdicts),
+                                            comment_placement=COMMENTS_OUTSIDE,
+                                            question_labels=question_labels)
+        except Exception:
+            logger.warning("copy-check annotator: comment-panel template failed; rendering the usual copy",
+                           exc_info=True)
+    if annotated is None:
+        annotated = build_annotated_pdf(pdf_bytes, layout_map, verdicts)
     return shrink_scans(annotated)
 
 
@@ -4443,6 +4682,8 @@ async def render_and_upload(
     layout_map: dict[str, Any],
     verdicts: list[dict[str, Any]],
     attempt_id: str,
+    comment_placement: Optional[str] = None,
+    question_labels: Optional[dict[str, str]] = None,
 ) -> Optional[str]:
     """Produce the checked copy and return its media-service fileId.
 
@@ -4453,7 +4694,8 @@ async def render_and_upload(
     try:
         pdf_bytes = await _fetch_pdf(pdf_url)
         annotated = await asyncio.get_running_loop().run_in_executor(
-            _RENDER_POOL, _render_sync, pdf_bytes, layout_map, verdicts)
+            _RENDER_POOL, _render_sync, pdf_bytes, layout_map, verdicts,
+            comment_placement, question_labels)
         file_id = await _upload(annotated, f"evaluated-copy-{attempt_id}.pdf")
         if not file_id:
             logger.warning("copy-check annotator: media-service returned no id for attempt %s", attempt_id)

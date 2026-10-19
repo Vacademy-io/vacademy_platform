@@ -64,6 +64,7 @@
         "description": "इस अभियान में कोई कस्टम फ़ील्ड कॉन्फ़िगर नहीं की गई है।",
         "debugCount": "API से कस्टम फ़ील्ड: {{count}}"
       },
+      "selectParentFirst": "पहले {{name}} चुनें",
       "submitButton": {
         "submitting": "सबमिट हो रहा है...",
         "default": "प्रतिक्रिया सबमिट करें"

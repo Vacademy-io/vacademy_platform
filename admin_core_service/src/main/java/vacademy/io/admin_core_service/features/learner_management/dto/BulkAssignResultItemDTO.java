@@ -60,6 +60,13 @@ public class BulkAssignResultItemDTO {
      */
     private String cpoInitialPaymentMode;
 
+    /**
+     * The bills an installment schedule creates (or would create, on a dry run), before
+     * any CPO discount. Only populated when the assignment carried
+     * {@code cpo_config.installment_schedule}.
+     */
+    private vacademy.io.admin_core_service.features.fee_management.dto.InstallmentSchedulePreviewDTO cpoSchedule;
+
     /** Plan price before / discount / after an admin discount, when one was applied. */
     private Double grossAmount;
     private Double discountAmount;

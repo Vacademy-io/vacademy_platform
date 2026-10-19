@@ -81,12 +81,14 @@ from pipecat.turns.user_turn_strategies import (
 from . import admin_core
 from .callstate import (CallState, WatchdogConfig, Decision, watchdog_decide,
                         apply_decision, stall_recovery_still_needed, unplayed_confirmed,
-                        note_reply_cancelled, reply_unheard,
+                        note_reply_cancelled, reply_unheard, hold_escalation_due,
+                        opening_coming, intro_heard,
                         NONE, CANCEL_STARVED, REISSUE_STOP,
                         CAP_FAREWELL, STALL_RECOVER, ORPHAN_ASK, NUDGE, IDLE_HANGUP,
                         LLM_BRIDGE,
                         HEARING_FAILED, ARM_STOP, DUCK_RESUME)
 from .config import get_settings
+from .agent_domain import is_general_agent
 from .ambience import AmbienceDucker
 from .voice_eq import build_voice_eq, make_voice_eq_processor
 from .prosody import build_prosody_shaper, make_prosody_processor
@@ -99,9 +101,11 @@ from .turntake import (mid_reply_action, is_carrier_announcement,
                        caller_asked_to_repeat, caller_wants_to_end, is_farewell, normalize_spoken,
                        question_topic, strip_echo_opener, ABSORB, caller_checking_presence,
                        presence_cue, last_question_in, is_fragment_continuation,
-                       is_echo_of_answer, is_call_screener, caller_asks_who, caller_says_goodbye,
+                       is_echo_of_answer, is_call_screener, is_call_connect, is_voicemail_prompt,
+                       caller_asks_who,
+                       caller_says_goodbye,
                        is_screener_hold, spoken_key, takes_over_opening, is_question,
-                       is_hold_announcement, is_hold_fragment,
+                       is_hold_announcement, hold_absorbs, caller_is_busy,
                        opening_expected_secs, ends_on_question)
 
 from .sarvam_v4_voices import (SARVAM_V4_DEFAULT_VOICE, SARVAM_V4_MALE,  # noqa: E402
@@ -113,10 +117,45 @@ logger = logging.getLogger(__name__)
 HOLD_MAX_SECS = 300.0
 # Said to the model when the person comes back from putting the call on hold.
 HOLD_RESUME_CUE = ("[They had put the call on hold and are back now. Do NOT introduce yourself "
-                   "again and do not restart your pitch. Acknowledge in a few words that you "
-                   "are still here (e.g. 'जी, मैं यहीं हूँ।' / 'Yes, I'm still here.') and carry "
-                   "on from exactly where the conversation was — if you had asked a question, "
-                   "ask it again briefly.]")
+                   "again and do not restart your pitch. Answer what they say next first. If "
+                   "they only greeted you or checked the line, say in a few words that you are "
+                   "still here (e.g. 'जी, मैं यहीं हूँ।' / 'Yes, I'm still here.') and, if you "
+                   "had asked a question, ask it again briefly.]")
+
+# …when the hold began before the bot had spoken: an IVR answered the call
+# ("Welcome to New Light Institute. Stay on the line…", call 9519f8c6,
+# 2026-10-14), and the person now on the line has heard nothing from us.
+HOLD_FIRST_CUE = ("[A person has just come on the line after a recorded hold/queue message. "
+                  "They have NOT heard anything you said before. Answer what they say first, "
+                  "then introduce yourself briefly — your name, your institute and why you "
+                  "are calling.]")
+# The same cue for a non-education agent (app/agent_domain). "your institute"
+# tells a model with a thin script that it calls for a school or a coaching
+# centre, and "why you are calling" with no reason in the script is the gap the
+# AAIBUZZ/IRPL calls c43e9ce7, e6cb5f47 (2026-10-16) filled with an invented
+# edtech product. Education agents keep HOLD_FIRST_CUE, byte for byte.
+HOLD_FIRST_CUE_GENERAL = ("[A person has just come on the line after a recorded hold/queue "
+                          "message. They have NOT heard anything you said before. Answer what "
+                          "they say first, then introduce yourself briefly — your name, your "
+                          "company as your instructions name it, and why you are calling, "
+                          "only as your instructions or their enquiry give it; if neither "
+                          "gives a reason, do not make one up — ask if it is a good time to "
+                          "talk.]")
+
+# Said to the model when the caller asks who is calling ("aap kaun bol rahi
+# ho?"), so the answer comes first (TranscriptCollector).
+WHO_CUE = ("[They asked who is calling. FIRST sentence: your name and "
+           "your institute. SECOND: one short line on why you called. "
+           "Nothing before that — no filler, no question.]")
+# Non-education agents: "your company", and the reason only from the script or
+# their enquiry — "who is calling?" is the moment the AAIBUZZ/IRPL bot (calls
+# c43e9ce7, e6cb5f47, 2026-10-16) has to say who it is and why, with a script
+# that says neither. Education agents keep WHO_CUE, byte for byte.
+WHO_CUE_GENERAL = ("[They asked who is calling. FIRST sentence: your name and your "
+                   "company, as your instructions name it. SECOND: one short line on why "
+                   "you called — only the reason your instructions or their enquiry give; "
+                   "if neither gives one, do not make one up, just ask if this is a good "
+                   "time to talk. Nothing before your name — no filler, no question.]")
 
 END_MARKER = "<<END_CALL>>"
 TRANSFER_MARKER = "<<TRANSFER>>"
@@ -189,17 +228,22 @@ def _child_word(text: str) -> str:
     return "your child"
 
 
-def fill_template_slots(text: str):
+def fill_template_slots(text: str, child_slots: bool = True):
     """(text, n): name-like slots become "the child" in the reply's language
     (Marathi takes the oblique मुला- before a postposition: "मुलाच्या"), any
-    other slot is dropped — anything but reading the bracket aloud."""
+    other slot is dropped — anything but reading the bracket aloud.
+
+    child_slots=False (a non-education agent, app/agent_domain): every slot is
+    dropped. "<name>" there is the person on the line or a customer, and "your
+    child" would put a child into a call about something else entirely — the
+    AAIBUZZ/IRPL failure (calls c43e9ce7, e6cb5f47, 2026-10-16) said aloud."""
     n = 0
 
     def _rep(m):
         nonlocal n
         n += 1
         slot = m.group(1).strip()
-        if "name" in slot or slot in ("child", "student", "beta", "bachcha"):
+        if child_slots and ("name" in slot or slot in ("child", "student", "beta", "bachcha")):
             return _child_word(text)
         return ""
     out = _TEMPLATE_SLOT_RE.sub(_rep, text)
@@ -222,6 +266,16 @@ def mostly_played(sentence: str, played_key: str, share: float = 0.6) -> bool:
     if len(k) < 24:
         return False
     return k[:int(len(k) * share)] in played_key
+
+
+def cut_still_current(cut_t: float, bot_speaking: bool, bot_started_t: float) -> bool:
+    """Does a cut at cut_t still describe what is on the line now? A cut
+    belongs to the reply it stopped: once NEWER audio is playing, that is a
+    different reply and it was not cut. Call edbbe7b3 (2026-10-14): a "हम्म"
+    2.6 s after a barge-in counted as cutting the percent question then
+    playing, and a carry-on cue sent a second reply straight after the
+    question (bot audio continuous for 14.6 s) — the father never answered."""
+    return not (bot_speaking and bot_started_t > cut_t)
 
 
 # "करतो/करते", "सर/मॅडम", "शिकतो/शिकते": a prompt's either-or written as a
@@ -276,6 +330,12 @@ def _canonical_markers(text: str) -> str:
 # If a graceful stop (stop_when_done) hasn't ended the runner within this many
 # seconds, hard-cancel — a chatty caller can otherwise starve the drain forever.
 _GRACEFUL_STOP_DEADLINE_SECS = 25.0
+# A short "turn" followed this soon by another carrier line was a piece of that
+# recording (TranscriptCollector.looks_like_voicemail). The six voicemails of
+# 2026-10-14 put 0.9-2.5 s between a piece and the next carrier line; a person
+# who came on after the recording (a11e6709) spoke 3.6 s after its LAST line,
+# with no carrier line following.
+RECORDING_PIECE_SECS = 4.0
 
 
 @dataclass
@@ -337,9 +397,14 @@ class TranscriptCollector(FrameProcessor):
                  resume_max_chars: int = 600, resume_settle_secs: float = 0.6,
                  forget_resume=None, release_turn=None, noise_reask_wait_secs: float = 1.0,
                  voice_live=None, resay_opening=None, cut_after_voice_secs: float = 0.0,
-                 ack_answer_window_secs: float = 3.0):
+                 ack_answer_window_secs: float = 3.0, bot_started_t=None,
+                 greet_skipped=None, general_agent: bool = False):
         super().__init__()
         self._outcome = outcome
+        # A non-education agent (app/agent_domain): the who-is-calling and
+        # back-from-hold cues say "your company" and never ask for a reason the
+        # script does not give (WHO_CUE_GENERAL, HOLD_FIRST_CUE_GENERAL).
+        self._general_agent = general_agent
         # "voice" barge-in mode (config.barge_in_mode): 0 = off (onset mode).
         self._cut_after = cut_after_voice_secs
         self._ack_answer_window = ack_answer_window_secs
@@ -388,6 +453,13 @@ class TranscriptCollector(FrameProcessor):
         # _release_user_turn closes it when we swallow the final it is waiting for.
         self._user_turn_open = False
         self._vad_started_t = 0.0
+        # The VAD onset whose words already went to the model as a real
+        # barge-in. That burst's turn is taken: its VAD stop must not ALSO
+        # resume the cut words, and its voice-cut timer must not fire on what
+        # plays next. Call afa21bf4 (2026-10-14): "तो।" landed 95 ms before its
+        # own VAD stop, the model answered it AND the stop resumed the cut
+        # marks question — the caller heard that question twice back to back.
+        self._barged_onset = 0.0
         self._resumed_t = 0.0
         self._reran_for = ""
         self._resume_check = None
@@ -411,6 +483,9 @@ class TranscriptCollector(FrameProcessor):
         self._register_cue = register_cue or (lambda text: None)
         # The scripted opening is still owed (see run_bot._opening_pending).
         self._opening_owed = opening_owed or (lambda: False)
+        # The callee spoke first and the greet skipped our opening: nothing of
+        # ours is queued to answer a pickup "Hello." (call 9fd6489d, 2026-10-14).
+        self._greet_skipped = greet_skipped or (lambda: False)
         self._bot_spoke_once = bot_spoke_once or (lambda: True)
         # Have we already identified this line as a machine greeting? Kept for the
         # log/diagnostic trail only — the scrap filter below deliberately no
@@ -418,15 +493,45 @@ class TranscriptCollector(FrameProcessor):
         # FIRST one and it is never the recognisable one.
         self._carrier_seen = False
         self._human_turns = 0          # finals that reached the model as the callee's
+        # …of which turned out to be the operator's recording: a short turn that
+        # another carrier line followed within RECORDING_PIECE_SECS (a number, a
+        # Devanagari syllable or four capitalised words the STT made of the
+        # voicemail between its sentences, 2026-10-14). Only looks_like_voicemail
+        # and the carrier-adjacent guard read it; everything else keeps counting
+        # _human_turns as before.
+        self._recording_turns = 0
+        # The recorder's own prompt played ("…forwarded to voicemail.", "Please
+        # record your message.") — see turntake.is_voicemail_prompt.
+        self._voicemail_seen = False
+        self._turns_after_carrier = []  # times of short turns since the last carrier line
         self._prev_final = ""          # every final, carrier or not (split-phrase matching)
         self._prev_final_t = 0.0
         # When the person put us on hold (0 = not on hold); see the hold branch in
         # process_frame and turntake.is_hold_announcement.
         self._hold_since = 0.0
         self._hold_line_t = 0.0
+        # When the person last came back from a hold (0 = never): the silence
+        # before it was the hold's, not dead air (run_bot.set_bot_speaking).
+        self.hold_ended_t = 0.0
+        self._hold_unheard = False     # the hold began before anyone heard the bot
+        # Transcript entries that are the hold recording, absorbed on purpose: on
+        # the record, never meant for the model, so not a "deleted answer" either
+        # (ANSWER_DELETED quoted "Please stay on the line." on 22f80a85, d8146538
+        # and 68bdcbcf, 2026-10-14). The entry dicts themselves, matched by
+        # identity: an equal-text line the person says later is still theirs.
+        self._absorbed = []
         # A call-screening prompt was heard: the opening went to a recorder,
         # and the human's first hello must get it again (consumed by the resay).
         self.screener_seen = False
+        # STICKY: the line was screened at some point. screener_seen is cleared
+        # by the first "human" turn, and the screen's own "Thanks." is one —
+        # call 68bdcbcf (2026-10-14): "Thanks." cleared it, the screen's "Please
+        # stay on the line." then started an ordinary hold, and the person who
+        # came back was told "do NOT introduce yourself" having heard nothing.
+        # _heard_since_screen: someone has demonstrably heard us since (the
+        # opening re-said to their pickup, or a real 3+ word answer).
+        self._screened = False
+        self._heard_since_screen = False
         self._on_activity = on_activity
         self._is_bot_speaking = is_bot_speaking
         self._set_user_speaking = set_user_speaking or (lambda speaking: None)
@@ -460,6 +565,9 @@ class TranscriptCollector(FrameProcessor):
         # the bot has said nothing since the first copy; if it asked a NEW question
         # in between, an identical short answer ("haan") is a REAL answer.
         self._bot_stopped_t = bot_stopped_t or (lambda: 0.0)
+        # When the bot's audio last STARTED (see _was_cut: a cut belongs to the
+        # reply it stopped, not to newer audio playing after it).
+        self._bot_started_t = bot_started_t or (lambda: 0.0)
         # Dedupe window for identical consecutive transcripts ("Hello" x3 while the
         # pipeline warms up): each repeat triggered its own LLM run → the intro was
         # spoken twice back-to-back on a live call.
@@ -548,6 +656,22 @@ class TranscriptCollector(FrameProcessor):
                 # Voice mode and nothing was cut: the reply is still playing
                 # (or composing). There is nothing to resume or re-ask.
                 pass
+            elif self._vad_started_t and self._barged_onset == self._vad_started_t:
+                # This burst's final arrived FIRST and already went to the
+                # model as a real barge-in — the "cut" is that barge-in's own.
+                # One burst, one response: the model's. Resuming as well put
+                # two producers on the line for one "तो।" (call afa21bf4) and
+                # one "हं?" (call 4a594125, both 2026-10-14).
+                logger.info("turn-gate: this burst's words are already the model's turn "
+                            "— not resuming the cut words as well")
+                if (time.time() - self._vad_started_t <= self._resume_on_stop_secs
+                        and not self._is_bot_speaking()):
+                    # The safety net stays: if that turn's run never makes a
+                    # sound (swallowed, or cut before a word played), the
+                    # answer is asked for once. It stands down whenever the
+                    # model's reply is pending or playing.
+                    await self._answer_check_after_stt(
+                        FrameDirection.DOWNSTREAM, time.time() - self._vad_started_t)
             elif self._resume_on_stop_secs > 0 and self._vad_started_t:  # noqa: SIM102
                 # Their voice has stopped and it was SHORT, and we were cut
                 # before finishing a question — so they cannot have been
@@ -601,6 +725,10 @@ class TranscriptCollector(FrameProcessor):
             # "at the t" + "one, please record…" — 2026-09-15) and a piece may
             # match only when joined to the one before it.
             prev_final, self._prev_final = self._prev_final, text
+            # When the PREVIOUS final landed — read below by the carrier-adjacent
+            # guard, after self._prev_final_t has become this final's own time
+            # (that guard's "< 1.0 s" was always true; 2026-10-14 review).
+            prev_final_t = self._prev_final_t
             # Only a phrase that SPANS the boundary counts: a previous final that
             # matched on its own would otherwise make everything after it a
             # carrier line ("…forwarded to voicemail." + "haan ji bol raha hoon").
@@ -625,7 +753,7 @@ class TranscriptCollector(FrameProcessor):
             if self.screener_seen and self._human_turns == 0 and is_screener_hold(text):
                 # The screen is still talking ("Please stay on the line") —
                 # not the person. Keep waiting for their "Hello".
-                self._outcome.transcript.append({"role": "user", "text": text})
+                self._record_absorbed(text)
                 logger.info("turn-gate: screener hold line %r — waiting for the person", text[:40])
                 self._on_activity(user=True)
                 self._on_transcript(backchannel=True)
@@ -637,9 +765,38 @@ class TranscriptCollector(FrameProcessor):
                     self._diag.bump("carrier_announcements")
                 logger.info("turn-gate: carrier announcement %r — not the callee, "
                             "dropping from context", text[:48])
+                # The recording is still talking, so the short "turns" just
+                # before this line were pieces of it, not a person: six
+                # voicemails on 2026-10-14 (a5e314ee, 1c138e52, 36ac8abe,
+                # 2ba1ff7a, 5a180c97, 960251f2 — even a "Hello." between two
+                # of its sentences) disarmed the voicemail hang-up this way and
+                # ran 42-57 s of nudges and a farewell into the recorder. Only
+                # turns BEFORE a carrier line:
+                # whoever speaks after the recording's last line is a person.
+                # Not a screener or a call-connect bridge: those play while a
+                # person may be picking up, and their "Hello." is the person.
+                # (looks_like_voicemail only counts these pieces once the
+                # recorder's own prompt has played — _voicemail_seen.)
+                _pieces = ([] if is_call_screener(text) or is_call_connect(text) else
+                           [t for t in self._turns_after_carrier
+                            if now - t <= RECORDING_PIECE_SECS])
+                if is_voicemail_prompt(text) or (
+                        joined_carrier and is_voicemail_prompt(prev_final + " " + text)):
+                    self._voicemail_seen = True
+                if _pieces:
+                    self._recording_turns += len(_pieces)
+                    logger.info("turn-gate: %d short turn(s) just before this carrier line "
+                                "were the recording, not the callee", len(_pieces))
+                self._turns_after_carrier = []
                 self._carrier_seen = True
                 if is_call_screener(text):
                     self.screener_seen = True
+                    self._screened = True
+                    self._heard_since_screen = False
+                if self._hold_since:
+                    # "…has put your call on hold." is a carrier phrase too; it is
+                    # still a piece of the hold recording for the scrap timing.
+                    self._hold_line_t = now
                 # Heard, just not the callee: stamp it, or the silence after a
                 # recording reads as a swallowed utterance and the orphan
                 # re-ask apologises to a voicemail (timing sim, 2026-09-15).
@@ -648,6 +805,72 @@ class TranscriptCollector(FrameProcessor):
                     await self._on_absorb(None)
                 await self._release_user_turn(frame, direction)
                 return
+            # ── on hold ──────────────────────────────────────────────────────
+            # The person put the call on hold and the network plays its looping
+            # announcement (call 6d81124d, 2026-10-14: the bot answered the
+            # recording a dozen times, logged a reply loop, then introduced itself
+            # again when the father came back). While on hold the recording is
+            # neither an answer nor a barge-in: keep quiet until something that is
+            # not the recording arrives — that is the person — then carry on from
+            # where the conversation was. Only after the call has started, so the
+            # machine window's own screener/carrier handling above keeps the start.
+            # BEFORE the machine-window scrap rules below: an IVR that answers the
+            # call ("Welcome to New Light Institute. Stay on the line…", call
+            # 9519f8c6, 2026-10-14) puts us on hold inside that window, where a
+            # 1-2 word "See shortly." or the representative's "Hello." would
+            # otherwise be dropped as a machine-greeting scrap.
+            back_from_hold = False
+            if self._hold_since:
+                if hold_absorbs(text, now - self._hold_line_t):
+                    await self._absorb_hold_line(frame, direction, text)
+                    return
+                held = now - self._hold_since
+                self._hold_since = 0.0
+                self.hold_ended_t = now
+                back_from_hold = True
+                logger.info("turn-gate: back from hold after %.0fs — %r", held, text[:30])
+                if self._diag is not None:
+                    self._diag.bump("hold_returns")
+                if (self._hold_unheard and self._resay_opening is not None
+                        and not takes_over_opening(text)
+                        and await self._resay_opening(text, force=True)):
+                    # The IVR took our opening, as a call screener does: the
+                    # person's "Hello." gets it again from the top (the screener
+                    # pickup below, calls 612f5e37 / 91d1541e). Without this the
+                    # run-guard held their hello for an opening nobody was going
+                    # to say (replay of 9519f8c6: 2.7 s of silence, then the model
+                    # answered the SECOND hello with no introduction at all). A
+                    # question, a refusal or busy takes over, as it does over the
+                    # opening itself: the model answers it (HOLD_FIRST_CUE below).
+                    self._last_text = text.casefold()
+                    self._last_text_t = now
+                    self._outcome.transcript.append({"role": "user", "text": text})
+                    self._human_turns += 1
+                    self._heard_since_screen = True
+                    self._on_activity(user=True)
+                    self._on_transcript(backchannel=True)
+                    if self._duck is not None and self._duck.is_ducked():
+                        await self._on_absorb(None)
+                    await self._release_user_turn(frame, direction)
+                    return
+                # Their line is a NORMAL turn from here on: the gate below forwards
+                # it to the aggregator, which runs the model on their words, and
+                # "नहीं चाहिए, फ़ोन रखिए" still gets the forced goodbye. The first
+                # cut sent it straight to the model with "carry on… ask it again"
+                # and returned, so a refusal after a hold got the question again
+                # (review of 53b6e16b04, 2026-10-14). The cue goes in first, so it
+                # reads as context for the words that follow, not instead of them.
+                if not (caller_wants_to_end(text) or caller_is_busy(text)):
+                    # A hold that began before the bot had spoken (the IVR case):
+                    # whatever we said went to the recording, so this person has
+                    # heard nothing — "do not introduce yourself" would be wrong.
+                    cue = ((HOLD_FIRST_CUE_GENERAL if self._general_agent else HOLD_FIRST_CUE)
+                           if self._hold_unheard else HOLD_RESUME_CUE)
+                    if self._hold_unheard:
+                        self._heard_since_screen = True     # the model introduces us now
+                    await self.push_frame(LLMMessagesAppendFrame(
+                        messages=[{"role": "user", "content": cue}]),
+                        FrameDirection.DOWNSTREAM)
             # Once we KNOW the line is playing a recording, the scraps between
             # its recognisable sentences are that same recording. Call 38536b71
             # died on a single one: 'तो।' — one word, no phrase match, so it
@@ -682,6 +905,7 @@ class TranscriptCollector(FrameProcessor):
             # voicemail twice more — 46 s of telephony.
             _toks = text.split()
             if (self._in_machine_window() and self._carrier_seen and len(_toks) <= 4
+                    and not back_from_hold
                     and (len(_toks[-1].strip(".,?!")) == 1        # cut mid-word: "at the t"
                          or text[0].islower())):                  # a tail: "is available."
                 # NOT a capitalised word on its own — "Raman", "No.", "Yeah." after
@@ -696,9 +920,17 @@ class TranscriptCollector(FrameProcessor):
                     await self._on_absorb(None)
                 await self._release_user_turn(frame, direction)
                 return
+            # …and the premise is false outright once the greet has SKIPPED
+            # the opening because the callee spoke first: call 9fd6489d
+            # (2026-10-14) dropped the person's "Hello." twice here, the first
+            # reply was held off the line, and they heard nothing for 15 s.
+            # A line-check from them is the person, not a recording.
             if (self._in_machine_window()
                     and not self._bot_spoke_once()
-                    and len(text.split()) <= 2):
+                    and not back_from_hold
+                    and len(text.split()) <= 2
+                    and not (self._greet_skipped()
+                             and (is_audio_check(text) or caller_checking_presence(text)))):
                 self._outcome.transcript.append({"role": "user", "text": text})
                 # The premise above — "our opening is already queued and will
                 # answer this" — is false when the VAD killed the opening before
@@ -721,57 +953,34 @@ class TranscriptCollector(FrameProcessor):
                     await self._on_absorb(None)
                 await self._release_user_turn(frame, direction)
                 return
-            # ── on hold ──────────────────────────────────────────────────────
-            # The person put the call on hold and the network plays its looping
-            # announcement (call 6d81124d, 2026-10-14: the bot answered the
-            # recording a dozen times, logged a reply loop, then introduced itself
-            # again when the father came back). While on hold the recording is
-            # neither an answer nor a barge-in: keep quiet until something that is
-            # not the recording arrives — that is the person — then carry on from
-            # where the conversation was. Only after the call has started, so the
-            # machine window's own screener/carrier handling above keeps the start.
-            if self._hold_since:
-                if is_hold_announcement(text) or is_hold_fragment(text):
-                    await self._absorb_hold_line(frame, direction, text)
-                    return
-                # A lone "हाँ।" a moment after a piece of the recording is the STT
-                # hearing the recording (54.19 s on 6d81124d, 0.4 s after
-                # "Speaking with."). The person coming back says hello, says
-                # something, or speaks into the quiet after the recording.
-                if (len(text.split()) < 2
-                        and not (caller_checking_presence(text) or is_audio_check(text))
-                        and now - self._hold_line_t < 3.0):
-                    await self._absorb_hold_line(frame, direction, text)
-                    return
-                held = now - self._hold_since
-                self._hold_since = 0.0
-                logger.info("turn-gate: back from hold after %.0fs — %r", held, text[:30])
-                if self._diag is not None:
-                    self._diag.bump("hold_returns")
-                self._last_text = text.casefold()
-                self._last_text_t = now
-                self._outcome.transcript.append({"role": "user", "text": text})
-                self._human_turns += 1
-                self._on_activity(user=True)
-                self._on_transcript()
-                if self._duck is not None and self._duck.is_ducked():
-                    await self._on_absorb(None)
-                await self._release_user_turn(frame, direction)
-                await self.push_frame(LLMMessagesAppendFrame(
-                    messages=[{"role": "user", "content": text},
-                              {"role": "user", "content": HOLD_RESUME_CUE}],
-                    run_llm=True), direction)
-                return
-            if ((self._human_turns > 0 or self._bot_spoke_once())
+            # Not on the person's own return line: joined to the recording's last
+            # piece ("The person you are" + "speaking with, नाम ऋषभ है") it can
+            # spell a hold phrase that neither half is.
+            if ((self._human_turns > 0 or self._bot_spoke_once()) and not back_from_hold
                     and (is_hold_announcement(text) or joined_hold)):
                 self._hold_since = now
+                # Nobody has heard us yet: the bot has not spoken, the opening
+                # is still owed (it played into the IVR, cut before half of it),
+                # or it played in full to a call screener and nobody has heard
+                # us since (call 68bdcbcf, 2026-10-14: "Thanks." / "Please stay
+                # on the line." from the screen — the person's "Hello." then got
+                # "do NOT introduce yourself" and hung up without a name).
+                self._hold_unheard = (not self._bot_spoke_once() or self._opening_owed()
+                                      or (self._screened and not self._heard_since_screen))
                 if self._diag is not None:
                     self._diag.bump("holds")
                 logger.info("turn-gate: the call is on hold (%r) — quiet until the person "
-                            "is back", text[:40])
+                            "is back%s", text[:40],
+                            " (they have not heard us)" if self._hold_unheard else "")
                 if self._is_bot_speaking() or self._reply_in_flight():
                     # Nobody is listening to the rest of it.
                     await self.broadcast_interruption()
+                # A verbatim resume waiting out its settle would play into the
+                # hold; the words are un-recorded so the model may say them when
+                # the person is back. Runs (replies, cues, re-asks) are dropped
+                # at RunGuard's door while on hold (calls 22f80a85, d8146538,
+                # 68bdcbcf, 2026-10-14).
+                self._cancel_resume_check(stale=True)
                 await self._absorb_hold_line(frame, direction, text)
                 return
             ducked = self._duck is not None and self._duck.is_ducked()
@@ -848,12 +1057,23 @@ class TranscriptCollector(FrameProcessor):
             self._last_text_t = now
             self._outcome.transcript.append({"role": "user", "text": text})
             self._human_turns += 1
+            if (self._carrier_seen and self._in_machine_window()
+                    and len(text.split()) <= 4):
+                # Possibly a piece of the recording: decided by the next carrier
+                # line, if one follows (see the carrier branch above).
+                self._turns_after_carrier.append(now)
             # The person is on the line and talking to us: the screener is
             # history. Left armed, a mid-conversation "Hello?" replayed the whole
             # opening 2 min 20 s into call 196838de and the caller hung up. A
             # hello itself is the pickup the resay below is for — not this.
             if not (is_audio_check(text) or caller_checking_presence(text)):
                 self.screener_seen = False
+            # A real answer means a person is on the line hearing us. The
+            # screen's own relays are one or two words ("Available.", "Thanks.",
+            # calls d8146538 / 68bdcbcf) and must not count.
+            if (self._screened and len(text.split()) >= 3
+                    and not (is_call_screener(text) or is_screener_hold(text))):
+                self._heard_since_screen = True
             self._on_activity(user=True)
             # We said goodbye and they said "Thank you." / "Okay, bye." That is
             # their goodbye, not re-engagement. Call 82c1f95a (2026-09-15): it
@@ -881,6 +1101,7 @@ class TranscriptCollector(FrameProcessor):
                     logger.info("turn-gate: person picked up mid-opening — cutting it to restart")
                     await self.broadcast_interruption()
                 if await self._resay_opening(text, force=True):
+                    self._heard_since_screen = True
                     self._on_transcript(backchannel=True)
                     if self._duck is not None and self._duck.is_ducked():
                         await self._on_absorb(None)
@@ -1149,8 +1370,9 @@ class TranscriptCollector(FrameProcessor):
                 # re-opening seen on 8e1e00ad). The transcript is then forwarded
                 # below as a fresh, normal turn.
                 if (self._in_machine_window() and self._carrier_seen
-                        and self._prev_final_t and now - self._prev_final_t < 1.0
-                        and len(text.split()) <= 2 and self._human_turns <= 1):
+                        and prev_final_t and now - prev_final_t < 1.0
+                        and len(text.split()) <= 2
+                        and self._human_turns - self._recording_turns <= 1):
                     # Call 9050a3e1 (2026-09-21): the operator's "…is not
                     # available" landed as "The person you're trying to reach."
                     # / "Not." / "Not available." — the middle piece is
@@ -1172,6 +1394,16 @@ class TranscriptCollector(FrameProcessor):
                             "(ducked=%s)", text[:40], ducked)
                 # They took the turn: the words we were resuming are stale.
                 self._cancel_resume_check(stale=True)
+                # …and this voice onset is spent. Its VAD stop must not resume
+                # the cut words too, and the voice-cut timer armed for it must
+                # not fire later: on calls 5e979e3e and 662d1c80 (2026-10-14)
+                # it fired 22-500 ms into the opening this barge-in re-said,
+                # cut it, and the caller got 14 s of silence.
+                if self._vad_started_t:
+                    self._barged_onset = self._vad_started_t
+                t, self._voice_cut_task = self._voice_cut_task, None
+                if t is not None and not t.done():
+                    t.cancel()
                 # Their words go downstream BEFORE the cut. The interruption's
                 # job is the bot's audio, which does not care about order; the
                 # transcript, pushed 30 ms after our own interruption, has been
@@ -1284,9 +1516,8 @@ class TranscriptCollector(FrameProcessor):
                 logger.info("turn-gate: caller asked who is calling — answer first")
                 await self.push_frame(LLMMessagesAppendFrame(
                     messages=[{"role": "user", "content":
-                               "[They asked who is calling. FIRST sentence: your name and "
-                               "your institute. SECOND: one short line on why you called. "
-                               "Nothing before that — no filler, no question.]"}]), direction)
+                               WHO_CUE_GENERAL if self._general_agent else WHO_CUE}]),
+                    direction)
         if not forwarded:
             await self.push_frame(frame, direction)
 
@@ -1294,11 +1525,16 @@ class TranscriptCollector(FrameProcessor):
         """Seconds the person has had us on hold (0 when not on hold)."""
         return time.time() - self._hold_since if self._hold_since else 0.0
 
+    def on_hold(self) -> bool:
+        """The person has us on hold right now. Not on_hold_for() > 0: on a
+        coarse clock a run checked in the same tick as the hold began read 0."""
+        return self._hold_since > 0
+
     async def _absorb_hold_line(self, frame, direction, text: str) -> None:
         """A piece of the hold recording: on the record, out of the model's context,
         and not a barge-in. Stamped as heard, so the silence around it is not taken
         for a swallowed utterance (the VAD-orphan re-ask)."""
-        self._outcome.transcript.append({"role": "user", "text": text})
+        self._record_absorbed(text)
         self._hold_line_t = time.time()
         if self._diag is not None:
             self._diag.bump("hold_lines")
@@ -1308,14 +1544,64 @@ class TranscriptCollector(FrameProcessor):
             await self._on_absorb(None)
         await self._release_user_turn(frame, direction)
 
+    def answers_heard(self) -> List[str]:
+        """The caller lines the model was meant to receive — ANSWER_DELETED's
+        `heard` side (diagnostics.split_lost), read once at the end of the call."""
+        tr = self._outcome.transcript
+        # Carrier recordings are kept in the transcript (LIKELY_MACHINE reads
+        # those markers) but are deliberately NOT in the context — so they
+        # are not "answers the model never saw". Without this exclusion the
+        # fix that filters them MANUFACTURES an ANSWER_DELETED fault: call
+        # 14029bd6's panel read "2 caller answers were discarded", quoting
+        # the voicemail system back at us.
+        # Pickup noises said before the bot's first word are dropped ON
+        # PURPOSE — the opening is their answer (machine-greeting scrap) —
+        # so they are not answers the model missed either. Counting them
+        # put "हम दस।" and "कोन दीदी?" on the 23 Sep panel as lost answers.
+        first_bot = next((i for i, t in enumerate(tr)
+                          if t.get("role") == "assistant"), len(tr))
+        return [t.get("text") or "" for i, t in enumerate(tr)
+                if i > first_bot
+                and t.get("role") == "user"
+                and not (t.get("text") or "").lstrip().startswith("[")
+                and not is_carrier_announcement(t.get("text") or "")
+                # The hold recording, absorbed on purpose (_absorbed).
+                and not self.is_absorbed(t)
+                # An acknowledgement ("ठीक।", "Okay जी") is talked
+                # through in voice mode and kept OUT of the model's
+                # context on purpose — not a lost answer. 8 of the 11
+                # ANSWER_DELETED samples on 24 Sep were exactly these.
+                and mid_reply_action(t.get("text") or "") != ABSORB]
+
+    def _record_absorbed(self, text: str) -> None:
+        entry = {"role": "user", "text": text}
+        self._outcome.transcript.append(entry)
+        self._absorbed.append(entry)
+
+    def is_absorbed(self, entry) -> bool:
+        """A transcript entry the gate kept from the model on purpose (the hold
+        recording): not a caller answer the model lost."""
+        return any(entry is e for e in self._absorbed)
+
     def looks_like_voicemail(self) -> bool:
         """The carrier's recording is the only thing that has spoken. Call
         24089872 (2026-09-12): "forwarded to voicemail… at the tone" was the
         whole caller side, and the bot still nudged twice and left a
         "lost you" farewell — 40 s of telephony and three TTS lines to a
         machine. Only carrier PHRASES arm this (is_carrier_announcement), never
-        a scrap or silence, so a quiet human is not mistaken for a recording."""
-        return self._carrier_seen and self._human_turns == 0
+        a scrap or silence, so a quiet human is not mistaken for a recording.
+
+        Turns the recording itself produced (a piece that another carrier line
+        followed — see RECORDING_PIECE_SECS) do not count as the callee: a5e314ee,
+        1c138e52, 36ac8abe, 2ba1ff7a, 5a180c97 and 960251f2 (2026-10-14) each had
+        one or two and ran 42-57 s. Anything said after the recording's last
+        line still does, so a person who says "Hello" then is never hung up on."""
+        if not self._voicemail_seen:
+            # Only a recorder's own prompt makes the pieces the recording: a
+            # person's "हाँ" between two generic lines ("not available", "कृपया
+            # बाद में") must not be hung up on in silence (review 2026-10-14).
+            return self._carrier_seen and self._human_turns == 0
+        return self._carrier_seen and self._human_turns <= self._recording_turns
 
     def _last_reply_had_question(self) -> bool:
         """Did the bot's most recent played reply ask anything?"""
@@ -1345,9 +1631,16 @@ class TranscriptCollector(FrameProcessor):
         बिल्कुल" landed 0.1 s later, read as an aside over a still-playing reply,
         and nothing resumed — 8 s of silence, then "Hello?" re-asked the marks
         question the caller had already answered, because the closing question
-        he had never heard was not the last one PLAYED."""
-        return (self._interrupt_on_vad()
-                or (self._self_cut_t > 0 and time.time() - self._self_cut_t < 3.0))
+        he had never heard was not the last one PLAYED.
+
+        Only a cut of what is on the line NOW (cut_still_current, call
+        edbbe7b3)."""
+        if self._interrupt_on_vad():
+            return True
+        if self._self_cut_t <= 0 or time.time() - self._self_cut_t >= 3.0:
+            return False
+        return cut_still_current(self._self_cut_t, self._is_bot_speaking(),
+                                 self._bot_started_t())
 
     def _voice_stopped(self) -> bool:
         """Bookkeeping for a VAD stop; always True so it can sit in an elif."""
@@ -1378,6 +1671,8 @@ class TranscriptCollector(FrameProcessor):
             await asyncio.sleep(self._cut_after)
             if not self._voice_on or self._vad_started_t != onset_t:
                 return
+            if self._barged_onset == onset_t:
+                return                  # this onset already cut the reply (a real barge-in)
             if not (self._is_bot_speaking() or self._reply_in_flight()):
                 return
             logger.info("turn-gate: caller has talked %.1fs over the reply — stopping it",
@@ -1475,7 +1770,7 @@ class TranscriptCollector(FrameProcessor):
         async def _later():
             try:
                 await asyncio.sleep(self._noise_reask_wait_secs)
-                if self._last_text_t > stop_t:
+                if self._last_text_t > stop_t or self._hold_line_t > stop_t:
                     return                      # it was words, and they were handled
                 if self._is_bot_speaking() or self._reply_pending():
                     return
@@ -1493,6 +1788,12 @@ class TranscriptCollector(FrameProcessor):
         """Their turn was answered by a generation that a noise cancelled before
         one word of it played. Ask for that answer again — not for them to
         repeat themselves, which is what the orphan re-ask used to do."""
+        if self._hold_since:
+            # Nobody is there to hear it. Call 22f80a85 (2026-10-14): the
+            # screen's "Please stay on the line." landed after the VAD stop, was
+            # absorbed as the hold, and 1 s later this re-asked into the hold —
+            # with the hold line itself as "their turn".
+            return False
         t = self._outcome.transcript
         if not t or t[-1].get("role") != "user":
             return False                       # the last thing heard was ours
@@ -1519,7 +1820,15 @@ class TranscriptCollector(FrameProcessor):
         round trip (1.7-5.9 s of silence, fifteen times) and the re-generated
         sentence lost its opening clause to the no-echo trimmer, so the parent
         heard "नाम क्या है…" and had to ask "किसका नाम?"."""
-        if self._resume_unplayed is None:
+        if self._resume_unplayed is None or self._hold_since:
+            return False                       # on hold: nobody is there to hear it
+        if self._reply_pending():
+            # The model is already answering this moment (a real barge-in's
+            # turn, held or composing): the cut words are its to say or drop.
+            # A second short burst while it composed resumed them on top of it
+            # — two voices for one moment (afa21bf4 replayed, review
+            # 2026-10-14). The caller's reply is on its way; nothing to add.
+            logger.info("turn-gate: %s — a reply is already on its way, not resuming", why)
             return False
         try:
             tail = self._resume_unplayed(self._resume_max_chars)
@@ -1557,7 +1866,7 @@ class TranscriptCollector(FrameProcessor):
         model instead of leaving them marked as said."""
         try:
             await asyncio.sleep(self._resume_settle_secs)
-            if self._resume_stale:
+            if self._resume_stale or self._hold_since:
                 return
             logger.info("turn-gate: resume → pushing %d words", len(text.split()))
             await self.push_frame(TTSSpeakFrame(text, append_to_context=True), direction)
@@ -2092,9 +2401,12 @@ class NoRepeatGate(FrameProcessor):
                  no_echo=None, handbacks=None, played_text=None, end_forced=None,
                  request_next_step=None, drop_stale_bridge=None, max_sentences=None,
                  max_chars=None, ending=None, primary_errored_since=None,
-                 caller_turn_pending=None):
+                 caller_turn_pending=None, child_slots=True):
         super().__init__()
         self._enabled = enabled or (lambda: True)
+        # False for a non-education agent: a copied "<name>" slot is dropped,
+        # never spoken as "your child" (fill_template_slots).
+        self._child_slots = child_slots
         # (t) -> did the waterfall's primary LLM error at or after t, with a
         # fallback to take the turn? Then an empty reply is the failure, not the
         # model saying nothing — the fallback's re-run answers it.
@@ -2152,6 +2464,7 @@ class NoRepeatGate(FrameProcessor):
         # What take_unplayed_tail last handed to the turn-gate, so it can be
         # given back if the caller never actually heard it.
         self._resumed_entries: list = []
+        self._resumed_at = 0.0
         self._buf = ""
         # How the bot addresses the caller so far ("f" madam / "m" sir): picks
         # the side of a "सर/मॅडम" pair the model copies from its prompt.
@@ -2396,7 +2709,33 @@ class NoRepeatGate(FrameProcessor):
                 self._asked[topic] = norm
             self._pending.append((norm, topic, prev_exemplar, said))
         self._resumed_entries = entries
+        self._resumed_at = time.time()
         return tail
+
+    # How long after a hand-over its words can still be on their way to the
+    # caller: the settle, a re-send, and a long sentence playing out.
+    _RESUME_LIVE_SECS = 12.0
+
+    def _being_resumed(self, sentence: str) -> bool:
+        """Is this one of the cut words the turn-gate is saying again right
+        now — handed over moments ago and not yet fully heard? Then a model
+        reply that repeats it is not "the caller already answered it": they
+        have not even heard it yet, and the resume will say it. Call afa21bf4
+        (2026-10-14): the model's copy of the resumed marks question was
+        dropped, the gate decided the caller had "already answered" and asked
+        for a next step, and the caller heard the question twice."""
+        if (not self._resumed_entries or self._played_text is None
+                or time.time() - self._resumed_at > self._RESUME_LIVE_SECS):
+            return False
+        try:
+            played = spoken_key(self._played_text() or "")
+        except Exception:
+            return False
+        for norm, _topic, _prev, _said in self._resumed_entries:
+            if (norm and is_repeat(sentence, [norm], threshold=0.80)
+                    and spoken_key(norm) not in played):
+                return True
+        return False
 
     def forget_resumed(self) -> bool:
         """Undo the last hand-over: the caller never heard those words, so they
@@ -2463,6 +2802,15 @@ class NoRepeatGate(FrameProcessor):
         if not (is_repeat(sentence, self._spoken, threshold=bar)
                 or same_topic_reask):
             return True
+        if self._being_resumed(sentence):
+            # Dropped, but not counted against its budget: the caller has not
+            # had the chance to "move on" from words still playing. Call
+            # 4a594125 (2026-10-14): two drops during the resume of the
+            # WhatsApp line used the budget up, and the third copy was spoken
+            # right after the resume finished.
+            logger.info("no-repeat: %r is being resumed right now — dropping the "
+                        "model's copy", sentence.strip()[:56])
+            return False
         # ONE budget per topic, not one per mechanism. Keying the two branches
         # separately let a re-asked question burn 2 drops as a near-identical
         # sentence and 2 more as an already-asked topic — four silent drops for
@@ -2643,7 +2991,7 @@ class NoRepeatGate(FrameProcessor):
                 if self._diag is not None:
                     self._diag.bump("alternatives_collapsed", alts)
         if "<" in text:
-            text, slots = fill_template_slots(text)
+            text, slots = fill_template_slots(text, self._child_slots)
             if slots:
                 logger.info("no-repeat: filled %d template slot(s) the model copied from "
                             "the prompt -> %r", slots, text.strip()[:60])
@@ -2730,6 +3078,18 @@ class NoRepeatGate(FrameProcessor):
             # minutes later, mid-topic).
             self._unplayed_tail = ""
             self._unplayed_entries = []
+            # A resume still on its way is cut like any reply. Its words went
+            # into _pending when handed over, but a model response starting
+            # since then emptied _pending — and the cut resume stayed "said"
+            # though never heard (afa21bf4 replayed, 2026-10-14: the barge-in
+            # cut the resumed marks question, and the model's own copy of it
+            # was then dropped as a repeat). Judge them here with the rest.
+            if (self._resumed_entries
+                    and time.time() - self._resumed_at <= self._RESUME_LIVE_SECS):
+                for e in self._resumed_entries:
+                    if e not in self._pending:
+                        self._pending.append(e)
+            self._resumed_entries = []
             # A cancelled reply's unsaid tail was never heard, so it is not
             # "already said" — but what DID play is still in _spoken.
             #
@@ -3050,7 +3410,17 @@ class NoRepeatGate(FrameProcessor):
                 self._held_tail = self._held_question
             if (not self._real_this_reply and self._held_tail
                     and not self._end_forced() and not superseded):
-                if self._consecutive_handbacks >= 1:
+                if self._being_resumed(self._held_tail):
+                    # The whole reply repeated the cut words the turn-gate is
+                    # saying again right now. The caller has not answered them
+                    # — they have not heard them yet — so there is no next
+                    # step to ask for and nothing to hand back: the resume IS
+                    # the reply (call afa21bf4, 2026-10-14). Nothing held may
+                    # be spoken on top of it either.
+                    logger.info("no-repeat: whole reply repeats the words being resumed "
+                                "right now — adding nothing, they are about to hear them")
+                    self._echo_held = self._cf_held = ""
+                elif self._consecutive_handbacks >= 1:
                     # ESCALATE (call 3148ccd4). We already handed the turn back
                     # once and the caller still has nothing to answer. Saying
                     # "you talk" a second time is how a call becomes unrecoverable
@@ -3072,8 +3442,10 @@ class NoRepeatGate(FrameProcessor):
                     # बोलिए". A question is never handed back; it is answered.
                     # Once per turn, outside the per-call next-step budget.
                     self._next_step_for = normalize_spoken(self._last_caller_text() or "")
+                    # A request, not a handback: nothing was said to the caller
+                    # (call 4a594125, 2026-10-14 — see next_step_requests).
                     if self._diag is not None:
-                        self._diag.bump("handbacks")
+                        self._diag.bump("next_step_requests")
                     logger.info("no-repeat: whole reply was a repeat but the caller asked a "
                                 "question — asking the model to answer it")
                     try:
@@ -3085,6 +3457,8 @@ class NoRepeatGate(FrameProcessor):
                         logger.exception("no-repeat: answer-question request failed — handing back")
                         line = self._handbacks[self._handback % len(self._handbacks)]
                         self._handback += 1
+                        if self._diag is not None:
+                            self._diag.bump("handbacks")
                         await self._emit(line, direction)
                 elif (self._request_next_step is not None and self._may_ask_next_step()
                       and (self._last_caller_text() or "").strip()
@@ -3101,8 +3475,10 @@ class NoRepeatGate(FrameProcessor):
                     self._next_step_for = normalize_spoken(self._last_caller_text() or "")
                     logger.info("no-repeat: whole reply repeated what they just answered "
                                 "— asking for the next step instead of handing back")
+                    # Not a handback: no line reached the caller. Call 4a594125
+                    # (2026-10-14) headlined HANDBACK_LOOP over two of these.
                     if self._diag is not None:
-                        self._diag.bump("handbacks")
+                        self._diag.bump("next_step_requests")
                     self._next_step_this_reply = True
                     if "?" in self._held_tail or "？" in self._held_tail:
                         self._reask_ok_topic = (question_topic(self._held_tail),
@@ -3115,6 +3491,8 @@ class NoRepeatGate(FrameProcessor):
                         logger.exception("no-repeat: next-step request failed — handing back")
                         line = self._handbacks[self._handback % len(self._handbacks)]
                         self._handback += 1
+                        if self._diag is not None:
+                            self._diag.bump("handbacks")
                         await self._emit(line, direction)
                 else:
                     # Everything was a repeat. Do NOT say it again — hand the turn
@@ -3146,7 +3524,7 @@ class NoRepeatGate(FrameProcessor):
                     logger.info("no-echo: restatement was the whole reply — asking for "
                                 "the next step (%d/2)", self._next_steps)
                     if self._diag is not None:
-                        self._diag.bump("handbacks")
+                        self._diag.bump("next_step_requests")
                     try:
                         await self._request_next_step(held, kind="restatement",
                                                       attempt=self._next_steps)
@@ -3247,8 +3625,13 @@ class RunGuard(FrameProcessor):
                  quiet_for=None, on_run=None, opening_pending=None,
                  noise_cap_secs: float = 3.0, caller_forming=None,
                  forming_cap_secs: float = 5.5, bot_run_drop_reason=None, voice_live=None,
-                 supersede=None, reply_unheard=None, runs_noted=None, before_run=None):
+                 supersede=None, reply_unheard=None, runs_noted=None, before_run=None,
+                 on_hold=None, opening_coming=None, intro_cue=None, audible_since=None,
+                 is_voicemail=None):
         super().__init__()
+        # The person has put us on hold (TranscriptCollector.on_hold_for): no run
+        # goes to the LLM, whoever started it — see _let_through.
+        self._on_hold = on_hold or (lambda: False)
         # A frame to push ahead of a run that goes through (the LLM switch back
         # to the primary after a failover) — None for nothing.
         self._before_run = before_run or (lambda: None)
@@ -3288,6 +3671,25 @@ class RunGuard(FrameProcessor):
         # reply — a run only goes through if the caller genuinely took over
         # (a question to us, a refusal, or our own cue). Call 4243a436.
         self._opening_pending = opening_pending or (lambda: False)
+        # …but only while something will actually SAY it: this delivery is
+        # playing, or was queued a moment ago and nothing has cut it since.
+        # Otherwise nothing ever spoke: call 4cb132a2 (2026-10-14) had spent
+        # its two re-says and swallowed "no" twice, a11e6709's opening was cut
+        # by a voicemail prompt and four hellos met 18 s of silence, and
+        # 5e979e3e's re-say was killed 22 ms in — 14.6 s, no run at all.
+        self._opening_coming = opening_coming or (lambda: True)
+        self._opening_wait: Optional[asyncio.Task] = None
+        # Has bot audio played at any moment since t (playing now, or started /
+        # stopped after t)? How a turn left to the opening is checked against
+        # what the caller actually HEARD (CALLER_IGNORED, _check_swallowed).
+        self._audible_since = audible_since or (lambda t: True)
+        # The only thing that has spoken is the voicemail recorder
+        # (TranscriptCollector.looks_like_voicemail): its "turns" were pieces
+        # of the recording, and the idle tick hangs up.
+        self._is_voicemail = is_voicemail or (lambda: False)
+        # The note a run carries while the person has not HEARD who is calling
+        # ("" = none) — added at the one exit every run takes (_let_through).
+        self._intro_cue = intro_cue or (lambda: "")
         self._enabled = enabled or (lambda: True)
         self._diag = diag
         self._last_allowed_fp = None
@@ -3383,6 +3785,16 @@ class RunGuard(FrameProcessor):
             return (last, on_drop, for_reply)
         return None
 
+    def _cue_drop_reason(self, cue):
+        """Why the bot's own run must not go now (None = it may). On hold first,
+        at the door AND when a parked cue is released: call d8146538
+        (2026-10-14) parked a next-step cue 0.25 s before the hold began and
+        released it 1 s into it — 11.6 s of re-introduction to a call screener.
+        Dropped here, the cue is refunded (on_drop)."""
+        if self._on_hold():
+            return "the call is on hold"
+        return self._bot_run_drop_reason(cue[2])
+
     def _drop_cue(self, cue, why: str) -> None:
         """Take the cue out of the context (it never ran — the model must not
         see a stale instruction ahead of the caller's next words) and refund it."""
@@ -3412,6 +3824,7 @@ class RunGuard(FrameProcessor):
         return self._held is not None and not self._held.done()
 
     def _drop_held(self, why: str):
+        self._drop_opening_wait(why)
         if self._held is not None and not self._held.done():
             self._held.cancel()
             logger.info("run-guard: held short-answer run superseded — %s", why)
@@ -3420,16 +3833,127 @@ class RunGuard(FrameProcessor):
         self._held = None
         self._held_cue = None
 
+    def _drop_opening_wait(self, why: str):
+        if self._opening_wait is not None and not self._opening_wait.done():
+            self._opening_wait.cancel()
+            logger.info("run-guard: run waiting on the opening superseded — %s", why)
+        self._opening_wait = None
+
+    # How long after a turn left to the opening the caller must hear SOMETHING
+    # of ours for "the opening was the reply" to be true.
+    _SWALLOW_AUDIT_SECS = 5.0
+
+    def _check_swallowed(self, turn_t: float, last: str) -> None:
+        """A caller turn was left to the opening. Check it against what PLAYED:
+        no bot audio from the turn until _SWALLOW_AUDIT_SECS later (and not on
+        hold) means the caller talked into silence — CALLER_IGNORED
+        (swallowed_turns). Before 2026-10-14 every such swallow scored GREEN:
+        5e979e3e, 662d1c80, 4cb132a2, a11e6709 (3.5-18 s of silence)."""
+        async def _audit():
+            try:
+                while time.time() - turn_t < self._SWALLOW_AUDIT_SECS:
+                    if self._audible_since(turn_t) or self._on_hold():
+                        return
+                    await asyncio.sleep(0.25)
+                if self._audible_since(turn_t) or self._on_hold():
+                    return
+                if self._diag is not None:
+                    self._diag.bump("swallowed_turns")
+                logger.warning("run-guard: %r was left to the opening and nothing has "
+                               "played since — the caller was ignored", last[:32])
+            except asyncio.CancelledError:
+                pass
+        if self._audible_since(turn_t):
+            return
+        try:
+            self.create_task(_audit())
+        except Exception:
+            logger.debug("run-guard: no task manager for the swallow audit")
+
+    async def _await_opening(self, frame: Frame, direction: FrameDirection, last: str):
+        """A caller run that arrived while the opening was on its way. Not
+        held() on purpose: a held turn is "a reply on its way" to the turn-gate
+        and the bot's own runs, and the opening is not a model reply. Dropped
+        once the opening has been heard — it was the reply; let through if it
+        stops being on its way first (cut, killed before it started), because
+        then nothing would answer them. Not on the first poll that reads "not
+        coming": the cut that stops a delivery queues its re-say a moment
+        later, and the newer turn's own run supersedes this one anyway."""
+        t0 = time.time()
+        idle = 0.0
+        while self._opening_pending():
+            idle = 0.0 if self._opening_coming() else idle + 0.1
+            # A full second, not 0.3 s: a sentence-boundary gap of 0.25 s+ in
+            # an opening synthesised sentence by sentence (or an event-loop
+            # stall on the 1-vCPU box) read as "not coming" and released a held
+            # pickup "हाँ जी" — its reply then talked past the opening's own
+            # question (final review 2026-10-14, probe; the B5 shape).
+            if idle >= 1.0:
+                break
+            await asyncio.sleep(0.1)
+        self._opening_wait = None
+        if not self._opening_pending():
+            if self._diag is not None:
+                self._diag.bump("turns_swallowed_for_opening")
+            logger.info("run-guard: the opening played over %r (%.1fs) — it was the reply",
+                        last[:32], time.time() - t0)
+            self._check_swallowed(t0, last)
+            return
+        try:
+            msgs = self._context.get_messages()
+        except Exception:
+            msgs = []
+        if not msgs or self._fingerprint(msgs)[0] != "user":
+            return
+        if self._diag is not None:
+            self._diag.bump("opening_unsaid_runs")
+        logger.info("run-guard: the opening stopped unheard after %.1fs and nothing is "
+                    "saying it — %r runs", time.time() - t0, last[:32])
+        if self._caller_forming() or self._voice_live():
+            # What stopped it is usually the caller talking: their turn's own
+            # run takes these words too (replay of 662d1c80: released into the
+            # caller's next piece, two runs, the second dropped as a repeat).
+            # Wait for their VOICE as well, not only for words in the
+            # aggregator: the STT final lags the voice, and a run sent while
+            # they still talk is cut by their own final (review 2026-10-14:
+            # 3-4 runs where one would do, "जी सर।" cut twice).
+            self._held = self.create_task(self._release_when_formed(
+                frame, direction, wait_voice=True, after_opening=last))
+            return
+        await self._let_through(frame, direction)
+
+    def _add_intro_cue(self, cue: str):
+        """Put the note just BEFORE the caller's unanswered words, so the run's
+        last user message stays theirs (replay records, the stub LLM and the
+        turn-gate all read it); an earlier copy that never got a reply heard
+        is taken out first."""
+        try:
+            msgs = [m for m in self._context.get_messages()
+                    if not (isinstance(m, dict) and m.get("content") == cue)]
+            i = len(msgs)
+            while i > 0 and isinstance(msgs[i - 1], dict) and msgs[i - 1].get("role") == "user":
+                i -= 1
+            self._context.set_messages(msgs[:i] + [{"role": "user", "content": cue}] + msgs[i:])
+            if self._diag is not None:
+                self._diag.bump("intro_cues")
+            logger.info("run-guard: the person has not heard who is calling — the reply "
+                        "introduces")
+        except Exception:
+            logger.exception("run-guard: could not add the introduction note")
+
     def _one_door(self) -> bool:
         return True
 
-    async def _release_when_formed(self, frame: Frame, direction: FrameDirection, cue=None):
+    async def _release_when_formed(self, frame: Frame, direction: FrameDirection, cue=None,
+                                   wait_voice: bool = False, after_opening: Optional[str] = None):
         """Held because the caller's turn was forming. Normally their turn's own
         run supersedes this (process_frame → _drop_held). If it never comes — the
         words were taken some other way — run once nothing is forming and the
-        context has been still for 0.3 s; never later than the cap."""
+        context has been still for 0.3 s; never later than the cap.
+        `after_opening`: the run was let go by _await_opening because the
+        opening stopped unheard (the caller's words, for the log)."""
         t0 = time.time()
-        while ((self._caller_forming() or (cue is not None and self._voice_live()))
+        while ((self._caller_forming() or ((cue is not None or wait_voice) and self._voice_live()))
                and time.time() - t0 < self._forming_cap):
             await asyncio.sleep(0.1)
         capped = self._caller_forming()
@@ -3445,11 +3969,22 @@ class RunGuard(FrameProcessor):
         self._held = None
         self._held_cue = None
         if cue is not None:
-            why = self._bot_run_drop_reason(cue[2])
+            why = self._cue_drop_reason(cue)
             if why:
                 self._drop_cue(cue, why + " (at release)")
                 return
             self._cues.pop(cue[0], None)
+        if (after_opening is not None and self._opening_pending()
+                and self._opening_coming()):
+            # The opening was re-said while this waited (the cut that stopped
+            # it queues the re-say a moment later): it is the reply again, so
+            # wait on it as process_frame would, instead of running the model
+            # over it (review 2026-10-14).
+            logger.info("run-guard: the opening is on its way again — %r waits for it",
+                        after_opening[:32])
+            self._opening_wait = self.create_task(
+                self._await_opening(frame, direction, after_opening))
+            return
         if capped and self._diag is not None:
             self._diag.bump("forming_hold_cap_releases")
         logger.info("run-guard: run held for a forming turn released after %.2fs%s",
@@ -3467,6 +4002,27 @@ class RunGuard(FrameProcessor):
         that newer run then reads "context unchanged" and is blocked, instead
         of being let through as a second run over the same context with
         nothing to supersede (review 2026-10-08, finding 5)."""
+        if self._on_hold():
+            # ONE door for the hold too: every run reaches the LLM through here,
+            # so nothing generated plays into a hold. Calls 2026-10-14: a caller
+            # turn still forming when the hold began ran on release and played
+            # 6 s into it (68bdcbcf); a parked next-step cue was released into
+            # it — 11.6 s of re-introduction to a call screener (d8146538).
+            self._drop_on_hold()
+            return
+        if self._is_voicemail():
+            # A run let go while the recording was still playing (it waited
+            # for the "caller's" voice — the recorder's) would answer pieces
+            # of a voicemail into the recorder. 36ac8abe replayed (2026-10-14):
+            # 16 s of reply after "When you have finished recording…".
+            self._last_allowed_fp = None
+            logger.info("run-guard: the line is a voicemail recording — no reply to it")
+            return
+        # Before the fingerprint, so a stale retrigger of this same context
+        # still reads "unchanged" and is blocked.
+        cue = self._intro_cue()
+        if cue:
+            self._add_intro_cue(cue)
         self._pushed_t = time.time()
         msgs = None
         try:
@@ -3487,6 +4043,26 @@ class RunGuard(FrameProcessor):
         if pre is not None:
             await self.push_frame(pre, direction)
         await self.push_frame(frame, direction)
+
+    def _drop_on_hold(self) -> None:
+        """Drop a run while the call is on hold. The caller's words stay in the
+        context — the person's return line runs on top of them — but a steering
+        cue goes: the model must not read a stale instruction later."""
+        try:
+            last = self._last_user_text(self._context.get_messages())
+        except Exception:
+            last = ""
+        if self._diag is not None:
+            self._diag.bump("runs_dropped_on_hold")
+        # process_frame marked this context "allowed" before the run reached the
+        # door; it never ran, so the same context must be able to run later.
+        self._last_allowed_fp = None
+        if last.startswith("[") and last.endswith("]"):
+            on_drop = self._cues.get(last, (None, 0.0))[0]
+            self._drop_cue((last, on_drop), "the call is on hold")
+            return
+        logger.info("run-guard: the call is on hold — not answering %r now; it stays in "
+                    "the context for when the person is back", last[:32])
 
     async def _supersede_unheard(self, msgs=None) -> bool:
         """A newer caller run has arrived. If the run before it went to the LLM
@@ -3671,11 +4247,26 @@ class RunGuard(FrameProcessor):
                 if role == "user" and self._opening_pending():
                     last = self._last_user_text(msgs)
                     if not takes_over_opening(last):
+                        if self._opening_coming():
+                            if self._diag is not None:
+                                self._diag.bump("runs_held_for_opening")
+                            logger.info("run-guard: the opening has not played yet and %r does "
+                                        "not take over — the opening is the reply", last[:32])
+                            # Every earlier run of this moment too — one let go
+                            # by _await_opening and waiting for the caller's
+                            # voice included: else it ran the model over the
+                            # re-said opening (review 2026-10-14).
+                            self._drop_held("a newer turn arrived")
+                            self._opening_wait = self.create_task(
+                                self._await_opening(frame, direction, last))
+                            return
+                        # Owed, but nothing will say it: answer them, and the
+                        # reply introduces (_intro_cue). Calls 4cb132a2, a11e6709,
+                        # 5e979e3e, 662d1c80 (2026-10-14).
                         if self._diag is not None:
-                            self._diag.bump("runs_held_for_opening")
-                        logger.info("run-guard: the opening has not played yet and %r does "
-                                    "not take over — the opening is the reply", last[:32])
-                        return
+                            self._diag.bump("opening_unsaid_runs")
+                        logger.info("run-guard: the opening is owed but nothing is saying "
+                                    "it — %r runs", last[:32])
                 if role != "user":
                     # Nothing new to answer — the last word was OURS.
                     if self._diag is not None:
@@ -3699,7 +4290,7 @@ class RunGuard(FrameProcessor):
                     # never over a caller whose turn is still forming (calls
                     # c05f6c83, 1d28af3a: a cue and the caller's turn each ran
                     # the model for the same moment).
-                    why = self._bot_run_drop_reason(cue[2])
+                    why = self._cue_drop_reason(cue)
                     if why:
                         self._drop_cue(cue, why)
                         return
@@ -3823,6 +4414,10 @@ def next_step_cue(held: str, kind: str = "", attempt: int = 0):
 # a fixed, bot-authored line like the farewells and the handbacks.
 TRANSFER_FAIL_CLOSING = ("Mujhe abhi connect karne mein dikkat aa rahi hai — hamare "
                          "counsellor aapko jald call karenge. Dhanyavaad!")
+# The same line for a non-education agent (app/agent_domain): "counsellor" is
+# an education word, and promising one is what an edtech caller would say.
+TRANSFER_FAIL_CLOSING_GENERAL = ("Mujhe abhi connect karne mein dikkat aa rahi hai — "
+                                 "hamari team aapko jald call karegi. Dhanyavaad!")
 
 
 class SentinelGate(FrameProcessor):
@@ -4539,17 +5134,23 @@ def _ago(days: int) -> str:
     return f"about {round(days / 30)} months ago"
 
 
-def _lead_enquiry_line(context: Dict[str, Any]) -> str:
+def _lead_enquiry_line(context: Dict[str, Any], general: bool = False) -> str:
     """When and where the lead enquired, from admin_core's leadEnquiry block. Parents
     ask "मैंने कब form भरा?" / "कहाँ से number मिला?"; without this the model could only
     repeat a stock line (call 6313b454: three times, then "Not interested"). A date is
     given ONLY when admin_core marked it genuine (dateKnown): a bulk-imported lead's
     stamp is the import day, and stating it would be a false date. Empty when there is
-    no block."""
+    no block.
+
+    general=True (a non-education agent, app/agent_domain): a blank institute
+    name reads "the company", not "the institute" — that word alone tells a
+    thin-script model it calls for a school (AAIBUZZ/IRPL calls c43e9ce7,
+    e6cb5f47, 2026-10-16)."""
     enq = context.get("leadEnquiry")
     if not isinstance(enq, dict) or not enq:
         return ""
-    inst = str(context.get("instituteName") or "").strip() or "the institute"
+    inst = (str(context.get("instituteName") or "").strip()
+            or ("the company" if general else "the institute"))
     source = _ENQUIRY_SOURCES.get(str(enq.get("sourceType") or "").strip().upper(),
                                   "an enquiry form for {inst}").format(inst=inst)
     agent = context.get("agent") or {}
@@ -4776,6 +5377,36 @@ def _opening_barely_heard(opening: str, transcript, reply_started_t: float,
     return best < len(ok) * heard_ratio
 
 
+def opening_intro_secs(opening: str, names) -> float:
+    """Seconds of the opening that must PLAY before the person has heard who
+    is calling: up to the end of the last of `names` (the agent's name, the
+    institute) found in it, at opening_expected_secs' rate. 0.0 when it names
+    neither — a bare greeting, and the prompt already has the first reply
+    introduce. Shreya's "…मैं श्रेया बोल रही हूँ Shiksha Nation से" ends at
+    ~3.3 s of 14 (2.9 s of the real 12.4 s audio)."""
+    low = (opening or "").casefold()
+    end = 0
+    for n in names or ():
+        n = (n or "").strip().casefold()
+        i = low.find(n) if n else -1
+        if i >= 0:
+            end = max(end, i + len(n))
+    return opening_expected_secs(opening[:end]) if end else 0.0
+
+
+def intro_cue_text(name: str, institute: str) -> str:
+    """The note a run carries while the person has not heard who is calling
+    (calls 9fd6489d, a11e6709, c3818b83, 2026-10-14): the context still holds
+    the opening and the prompt says it "has been said", so without it the
+    model never introduces. Names come from the agent context, never fixed."""
+    name, institute = (name or "").strip(), (institute or "").strip()
+    who = (f"you are {name}, calling from {institute}" if name and institute
+           else f"you are {name}" if name else f"you are calling from {institute}")
+    return ("[The person has NOT heard who you are — your opening never reached them, "
+            "whatever your history shows. Begin with ONE short sentence saying "
+            f"{who}, in the language of the call, then reply to what they said.]")
+
+
 _NAME_NOISE_RE = re.compile(r"\([^)]*\)|\[[^\]]*\]|\{[^}]*\}")
 _ORG_NAME_WORDS = frozenset({
     "studio", "academy", "yoga", "classes", "class", "institute", "school", "college",
@@ -4914,6 +5545,12 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
     gender = _voice_gender(_agent_voice(agent) or _default_voice_for(agent))
     direction = str(context.get("direction") or agent.get("direction") or "OUTBOUND").upper()
     now_line = _now_line(context)
+    # A non-education agent gets the same rules with industry-neutral examples
+    # plus grounding_rule; an education (or blank) agent's prompt stays byte-
+    # identical. AAIBUZZ/IRPL calls c43e9ce7, e6cb5f47 (2026-10-16): a thin
+    # generic script, and the bot sold "learning programs for children" and
+    # booked a demo, both taken from the examples below. See app/agent_domain.
+    general = is_general_agent(agent)
 
     if gender == "female":
         gender_line = (
@@ -4992,9 +5629,13 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
         intent_line = (
             "You are PROACTIVELY CALLING this person — YOU placed this call, they did not call you. "
             "Never sound like you are answering their call. If they speak first (a 'hello'), your "
-            "FIRST reply is your full opening — never a bare greeting word back. Open with a clear "
-            "reason for calling, "
-            "introduce yourself and your company EXACTLY as your instructions specify (never invent "
+            "FIRST reply is your full opening — never a bare greeting word back. Open with "
+            # GENERAL: "a clear reason" with no reason in the script is the gap
+            # AAIBUZZ/IRPL calls c43e9ce7, e6cb5f47 (2026-10-16) filled with an
+            # invented product; the reason comes from GROUNDING's sources only.
+            + ("the reason for calling that your instructions give (see GROUNDING — never "
+               "make one up), " if general else "a clear reason for calling, ")
+            + "introduce yourself and your company EXACTLY as your instructions specify (never invent "
             "or alter the company name), lead the conversation confidently, and keep a warm, "
             "positive, forward-moving tone that gives them a reason to engage right now."
         )
@@ -5009,7 +5650,15 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
         "1) NEVER repeat a sentence you have already said. If the caller asks the same thing "
         "again, your previous answer FAILED — do NOT say it again. Acknowledge briefly ('Sorry, "
         "main clearly bata deti hoon —') and answer the LITERAL question they asked, even if it is "
-        "outside your script. You may steer toward your goal (demo/next step) at most ONCE per "
+        "outside your script"
+        # GENERAL: "outside your script" must not read as leave to answer
+        # "what does your company do?" from general knowledge (AAIBUZZ/IRPL
+        # calls c43e9ce7, e6cb5f47, 2026-10-16).
+        + (" — but a fact about your business still comes only from GROUNDING below: if "
+           "your instructions do not give it, say a colleague will share it" if general else "")
+        + ". You may steer toward "
+        + ("your next step" if general else "your goal (demo/next step)")
+        + " at most ONCE per "
         "topic; if they push again, ANSWER the question instead of steering.\n"
         "2) ANSWER direct questions directly FIRST, then invite the next step. Never stonewall or "
         "dodge (never say things like 'their strategy is different' to avoid answering). If you "
@@ -5036,6 +5685,87 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
         "already asked, and never repeat any sentence verbatim; if you must clarify, rephrase "
         "it in under 8 words."
     )
+    # GENERAL agents only (empty for education agents). AAIBUZZ/IRPL calls
+    # c43e9ce7, e6cb5f47 (2026-10-16): the script said "briefly explain why you
+    # are calling" and never said why, or what AAIBUZZ sells; the model made up
+    # an edtech company and booked a 5 PM demo. Its own "never invent prices,
+    # dates or facts" line did not stop it: a whole product is not a "fact" to
+    # a model. So this names exactly what may not be made up, and where it may
+    # come from. Unconditional for GENERAL agents in BOTH prompt shapes (an
+    # authored prompt does not get non_negotiable — see below). A booking page
+    # (agent.bookingEnabled, sent by admin_core) is the platform offering a
+    # meeting, so it lifts the meeting ban.
+    grounding_rule = ""
+    # The LAST line of a GENERAL prompt. In the middle of ~19k characters the
+    # grounding rule did not hold against a point-blank "आप exactly क्या offer
+    # करते हो?": the live probe (2026-10-16) still got "digital marketing
+    # services", "an AI customer-engagement platform" in most runs. The end of
+    # the prompt is what the model weighs most. Empty for education agents.
+    closing_grounding = ""
+    if general:
+        closing_grounding = (
+            "LAST AND MOST IMPORTANT: you know ONLY what your instructions at the top say "
+            "about your company. If they do not say what it sells or does, you do NOT know "
+            "it — when asked, say 'Iski poori jaankari hamari team aapko degi' (or the same "
+            "in the caller's language) and ask if a team member may contact them. Never "
+            "describe a product, service, platform or solution that your instructions do "
+            "not name, not even in general words, and never promise anything your "
+            "instructions do not offer."
+        )
+        _offers_meeting = bool(agent.get("bookingEnabled"))
+        # The enquiry may be the stated reason only when it is a real one: a
+        # known source (_ENQUIRY_SOURCES) or a genuine date. A bulk-imported
+        # lead's block falls back to "an enquiry form for <inst>", which may
+        # not be true, so it stays "use this ONLY if they ask" (_lead_enquiry_line).
+        _enq = context.get("leadEnquiry")
+        _enquiry_is_reason = isinstance(_enq, dict) and bool(_enq) and (
+            _enq.get("dateKnown") is True
+            or str(_enq.get("sourceType") or "").strip().upper() in _ENQUIRY_SOURCES)
+        grounding_rule = (
+            "GROUNDING — NEVER INVENT YOUR BUSINESS (this overrides every other rule and every "
+            "example in these rules, the NON-NEGOTIABLE rules included): who your company is, "
+            "what it sells or does, any product, service, offer, price, fee, discount, date, "
+            "timing, schedule or place, and the reason for this call may come ONLY from your "
+            "instructions above, from THINGS YOU CAN SEND (if these rules list any), and from "
+            "the details about this person given in these rules (what they filled in, when and "
+            "where they enquired). Today's date and time, as these rules give them, are real: "
+            "use them to settle a day. Never guess what industry your company is in, and never "
+            "make up a product, a programme, a feature, a benefit or a customer story: if your "
+            "instructions do not say it, you do not know it. If the caller asks something your "
+            "instructions do not cover, say honestly, in the caller's language, that a "
+            "colleague will share those details with them — never fill the gap with a guess.\n"
+            # Live probe of the AAIBUZZ setup (2026-10-16): with the education examples
+            # gone, "आप exactly क्या offer करते हो?" still got "AI-powered marketing /
+            # business-intelligence solutions" in 5 of 6 runs — read off "AAIBUZZ AI
+            # Agent". A name is not a product description, and the honest answer has
+            # to be spelled out or the model reaches for a plausible one.
+            "YOUR NAMES ARE NOT A DESCRIPTION: the company's name and your own agent name "
+            "(even when they contain words like AI, Tech, Digital, Solutions, Labs) tell you "
+            "NOTHING about what the company sells — never work a product out of a name. When "
+            "the caller asks what your company does or offers and your instructions above do "
+            "not describe it, answer exactly that, honestly and briefly — e.g. 'Iski poori "
+            "jaankari hamari team aapko degi.' / 'Our team will share the full details with "
+            "you.' — and ask whether a team member may contact them. Do not describe any "
+            "product, service, feature or benefit in that case, not even in general words.\n"
+            "THE REASON FOR THIS CALL: give only the reason your instructions give"
+            + (", or, if they give none, that this person enquired, exactly as the enquiry "
+               "details in these rules say (you may say that without being asked)."
+               if _enquiry_is_reason else
+               ", and never claim this person enquired, filled a form or visited unless your "
+               "instructions say so.")
+            + " If there is no reason to give, do not make one up: say your name and the "
+            "company your instructions name, and ask whether it is a good time to talk.\n"
+            "NEVER OFFER WHAT YOUR INSTRUCTIONS DO NOT OFFER: "
+            + ("you may offer to book a meeting with the team at a time the caller chooses; "
+               "never offer or book a demo, trial or visit unless your instructions above or "
+               "THINGS YOU CAN SEND offer one."
+               if _offers_meeting else
+               "never offer, propose or book a demo, meeting, appointment, visit, trial or a "
+               "time slot for a call back unless your instructions above or THINGS YOU CAN "
+               "SEND offer one.")
+            + " If the caller asks you to call them back later, you may note the time they "
+            "give, as your instructions allow."
+        )
 
     prompt = _fill_placeholders(agent.get("systemPrompt") or "", context, sink=sink)
 
@@ -5055,7 +5785,9 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
             "Indian-language word the caller used, keep it romanized. ONE exception: if the "
             "caller has asked you to speak Hindi and your instructions let you switch, write "
             "every Hindi sentence in DEVANAGARI (हिंदी लिपि), keeping English business words in "
-            "English letters (demo, link, WhatsApp) — NEVER write Hindi in Latin letters like "
+            "English letters ("
+            + ("link, WhatsApp, plan" if general else "demo, link, WhatsApp")
+            + ") — NEVER write Hindi in Latin letters like "
             "'main aapko batati hoon'; the voice cannot pronounce romanized Hindi."
         )
     elif is_english:
@@ -5064,6 +5796,14 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
             "Indian-language word the caller used, keep it romanized in Latin letters — never "
             "switch to Devanagari or any Indic script."
         )
+    elif general:
+        # Same rule, without the demo booking as the worked example.
+        script_rule = (
+            "- SCRIPT: Write Hindi words in DEVANAGARI (हिंदी लिपि), and keep common English business "
+            "words in English letters (call, details, service, WhatsApp, offer, plan, confirm, link). "
+            "So write 'क्या अभी दो minute बात करना convenient रहेगा?' — NOT romanized 'kya abhi do "
+            "minute baat karna convenient rahega?'. NEVER write Hindi words in Latin letters."
+        )
     else:
         script_rule = (
             "- SCRIPT: Write Hindi words in DEVANAGARI (हिंदी लिपि), and keep common English business "
@@ -5071,15 +5811,22 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
             "So write 'मैं आपको एक demo book कर देती हूँ' — NOT romanized 'main aapko ek demo book kar "
             "deti hoon'. NEVER write Hindi words in Latin letters."
         )
+    if not is_english:
         # Rumik reads Devanagari-transliterated English as gibberish — live call
         # 8e1e00ad: the model wrote 'लाइव क्लासेस' and the caller heard 'लव असेस'
         # (founder: "it pronounced many words poorly"). Sarvam bulbul handles
         # either script, so this stays Rumik-only to leave legacy agents alone.
         if _agent_tts_model(agent) == "rumik":
             script_rule += (
-                "\n- EVERY English-origin word — product and class names included — must be in "
-                "English letters, never Devanagari transliteration: write 'Live Classes', "
-                "'Assessment', 'Foundation Batch' — NEVER 'लाइव क्लासेस', 'असेसमेंट'. Devanagari is "
+                "\n- EVERY English-origin word — product and "
+                + ("plan" if general else "class")
+                + " names included — must be in "
+                "English letters, never Devanagari transliteration: write "
+                + ("'Premium Plan', 'Service', 'Support Team' — NEVER 'प्रीमियम प्लान', 'सर्विस'."
+                   if general else
+                   "'Live Classes', 'Assessment', 'Foundation Batch' — NEVER 'लाइव क्लासेस', "
+                   "'असेसमेंट'.")
+                + " Devanagari is "
                 "for Hindi words ONLY; if a word is English, spell it in English."
             )
 
@@ -5100,12 +5847,14 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
             script_rule += (
                 "\n- SAY A RECURRING LINE THE SAME WAY EVERY TIME — same words, same "
                 "order, same spelling. Three things drift and must not:"
-                "\n  * the student's NAME is always in DEVANAGARI — रमन, never Raman; "
+                "\n  * the "
+                + ("person's" if general else "student's")
+                + " NAME is always in DEVANAGARI — रमन, never Raman; "
                 "आर्यन, never Aryan. In this conversation the name is a Hindi word, not an "
                 "English one."
-                "\n  * an English word is never in Devanagari — write 'class', never "
-                "'क्लास'."
-                "\n  * सर/मैम goes exactly where the script puts it and nowhere else. "
+                "\n  * an English word is never in Devanagari — write "
+                + ("'plan', never 'प्लान'." if general else "'class', never 'क्लास'.")
+                + "\n  * सर/मैम goes exactly where the script puts it and nowhere else. "
                 "Never add one to a line that does not already open with it."
             )
 
@@ -5131,13 +5880,31 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
         "score किया (never अंक प्राप्त किए). If a word would sound odd from a "
         "shopkeeper or a parent on a phone call, do not use it."
     )
+    if general and not is_english:
+        # The same lesson in a non-education agent's words: the list above is a
+        # counsellor's vocabulary (marks, fees, scholarship, parents) and it
+        # handed AAIBUZZ an education product to talk about (calls c43e9ce7,
+        # e6cb5f47, 2026-10-16). Everyday business words, same textbook traps.
+        plain_hindi_rule = (
+            "SPEAK PHONE HINDI, NOT TEXTBOOK HINDI. Use the words a real person says out "
+            "loud on a phone call. Where the everyday word IS English, use the English "
+            "word — that is how people actually speak; it is not a mistake. Say: details "
+            "(never विवरण), enquiry (never पूछताछ), process (never प्रक्रिया), tracking "
+            "(never निगरानी), problem/difficulty (never कठिनाई), structured (never "
+            "संरचित), suitable / सही रहेगा (never उपयुक्त), guidance (never मार्गदर्शन), "
+            "available (never उपलब्ध), payment (never भुगतान), charges (never शुल्क), "
+            "option (never विकल्प). If a word would sound odd from a shopkeeper or a "
+            "customer on a phone call, do not use it."
+        )
     # The caller HEARS every character — markdown becomes spoken garbage (a live call
     # read out its own bullet list). And a short first clause reaches the ear sooner
     # (TTS synthesizes the first chunk while the rest streams).
     plain_speech_rule = (
         "- Speak plain text only: NEVER output markdown — no *, #, bullets, numbered lists or "
         "headings. No stage directions or parentheticals. Only words meant to be heard.\n"
-        "- Write NUMBERS AS WORDS so they are spoken correctly: say 'a ten-minute demo' (not "
+        "- Write NUMBERS AS WORDS so they are spoken correctly: say 'a ten-minute "
+        + ("call" if general else "demo")
+        + "' (not "
         "'10-minute'), 'two minutes', 'nine thirty', 'twenty five'. Digits like '10' get read "
         "out as 'one zero'. The ONLY exception is a phone number, which you read digit by digit."
     )
@@ -5155,22 +5922,34 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
         "- FIRST SENTENCE RULE: begin every reply with a COMPLETE sentence of at most "
         "FOUR words, ended with a full stop, then continue. It must carry SUBSTANCE — the "
         "direct answer, the key fact, or a real reaction — never a filler noise, a "
-        "greeting, or a restatement of what the caller said. Good: \u2018Haan, shivir mein "
-        "hi hai.\u2019 / \u2018Sunday ko hai.\u2019 / \u2018Bilkul possible hai.\u2019 / \u2018Fair point.\u2019 / "
-        "\u2018No charge at all.\u2019 Bad: \u2018Hmm.\u2019 / \u2018Achha.\u2019 / \u2018Okay.\u2019 / \u2018Theek hai.\u2019 / "
+        "greeting, or a restatement of what the caller said. Good: "
+        # GENERAL: the education examples are FACTS (where, which day, the
+        # price) a model with a thin script copies as its own — "No charge at
+        # all." is a price claim GROUNDING forbids. AAIBUZZ/IRPL calls c43e9ce7,
+        # e6cb5f47 (2026-10-16). Same shape, no facts.
+        + ("\u2018Haan, bilkul.\u2019 / \u2018Good question.\u2019 / \u2018Bilkul possible hai.\u2019 / "
+           "\u2018Fair point.\u2019 / \u2018Sahi baat hai.\u2019 " if general else
+           "\u2018Haan, shivir mein "
+           "hi hai.\u2019 / \u2018Sunday ko hai.\u2019 / \u2018Bilkul possible hai.\u2019 / \u2018Fair point.\u2019 / "
+           "\u2018No charge at all.\u2019 ")
+        + "Bad: \u2018Hmm.\u2019 / \u2018Achha.\u2019 / \u2018Okay.\u2019 / \u2018Theek hai.\u2019 / "
         "\u2018Right.\u2019 — callers heard constant Hmm-ing as robotic, so such noises are "
         "allowed at most one reply in five. The detail, and the one question if any, "
         "come in the sentences after it. When the caller has just ANSWERED you, that "
         "first sentence is your NEXT step — never their answer in other words "
-        "(\u2018It\u2019s all offline right now.\u2019, \u2018So you\u2019re only doing offline classes.\u2019 "
-        "are both wrong) and never a yes/no check of it."
+        + ("(\u2018It\u2019s all manual right now.\u2019, \u2018So you\u2019re only doing it by hand.\u2019 "
+           if general else
+           "(\u2018It\u2019s all offline right now.\u2019, \u2018So you\u2019re only doing offline classes.\u2019 ")
+        + "are both wrong) and never a yes/no check of it."
         if get_settings().fast_opener_enabled else
         "- Keep the FIRST sentence of every reply short (a few words) so it reaches the "
         "caller fast — but make it SUBSTANCE, not a filler sound. Do NOT open replies with "
         "\u2018Hmm\u2019, \u2018Achha\u2019, \u2018Theek hai\u2019, \u2018Okay\u2019, \u2018Right\u2019 or similar acknowledgment noises "
         "more than about one reply in five — callers heard constant Hmm-ing as robotic. "
-        "Usually answer directly: \u2018Haan, accommodation shivir mein hi hai\u2019 beats \u2018Achha. "
-        "Toh accommodation\u2026\u2019."
+        + ("Usually answer directly: \u2018Haan, ye bilkul ho sakta hai\u2019 beats \u2018Achha. "
+           "Toh ye\u2026\u2019." if general else
+           "Usually answer directly: \u2018Haan, accommodation shivir mein hi hai\u2019 beats \u2018Achha. "
+           "Toh accommodation\u2026\u2019.")
     )
     # Founder, 2026-08-12, on a live Shiksha Nation call: "every time the person
     # answers, the AI again says okay. It asked how many marks, the person said
@@ -5189,6 +5968,8 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
         "what they just said; repeating it wastes their time and sounds like a machine "
         "reading a form. Simply USE the answer in your next line."
         + ("" if is_english else
+           " GALAT: ‘ओके, आप अभी Pune में हैं, तो आपको ये कब तक "
+           "चाहिए?’ SAHI: ‘आपको ये कब तक चाहिए?’" if general else
            " GALAT: ‘ओके, सुबोध अभी "
            "आठवीं क्लास में "
            "है, तो लास्ट exam में "
@@ -5197,8 +5978,12 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
            "marks आए थे?’")
         + " TWO EXCEPTIONS, and only these: read a phone number back once digit by digit, "
         "and read a booked day and time back once. Everything else, never. Do not turn "
-        "their answer into a confirmation question either (\u2018No online classes at all "
-        "then?\u2019 after they said it is offline): one answer, one acknowledgment at most, "
+        "their answer into a confirmation question either "
+        + ("(\u2018Nothing online at all then?\u2019 after they said it is all offline)"
+           if general else
+           "(\u2018No online classes at all "
+           "then?\u2019 after they said it is offline)")
+        + ": one answer, one acknowledgment at most, "
         "then move on — if the answer means this is not for them, say so and close."
     )
     # Founder, 2026-09-08, after live-testing the yoga agent: "it's asking questions
@@ -5208,6 +5993,18 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
     # of assumption or reason reads as conversation. One clause only — cushions are
     # exactly the place models balloon a turn.
     warm_question_rule = (
+        # Same three cushions with no industry in them: the live-classes and
+        # members examples read as "this is an education/fitness business" to an
+        # agent whose script never says what it is (AAIBUZZ, 2026-10-16).
+        "- ASK LIKE A PERSON, NOT A FORM. Never fire a bare survey question at the caller "
+        "('How many people work with you?'). Cushion it with ONE short clause first, in one of "
+        "three ways, then ask: a soft everyday assumption ('You'd be handling most of this "
+        "yourself these days, I suppose — is that right?'); the reason you're asking ('Just so "
+        "I only tell you what's relevant — what matters most to you here?'); or their own last "
+        "answer ('Since you said timing is the main concern — what would suit you better?'). "
+        "ONE clause of cushion, ONE question, then stop. Direct is still fine for tiny "
+        "follow-ups ('And on weekends?')."
+        if general and get_settings().warm_questions_enabled else
         "- ASK LIKE A PERSON, NOT A FORM. Never fire a bare survey question at the caller "
         "('Do you take live classes?'). Cushion it with ONE short clause first, in one of "
         "three ways, then ask: a soft everyday assumption ('You'd be running your sessions "
@@ -5234,8 +6031,11 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
     name_sanity_rule = (
         "- NEVER say 'Mr.' or 'Ms.' with nothing (or a non-name) after it, and never invent a "
         "surname. If you do NOT have the person's real name — it is blank, a placeholder, the "
-        "word 'hello', or looks like a company/program/list ('Robotics Programs for Schools', "
-        "'AI and Machine Learning') — do NOT attempt 'Am I speaking with Mr./Ms. ___'. That "
+        "word 'hello', or looks like a company/program/list ("
+        + ("'Mumbai Leads March', 'Website Enquiries List'" if general else
+           "'Robotics Programs for Schools', "
+           "'AI and Machine Learning'")
+        + ") — do NOT attempt 'Am I speaking with Mr./Ms. ___'. That "
         "produces a broken 'Mr. Hello' or a dangling 'Mr.'. Instead ask warmly 'May I know who "
         "I'm speaking with?' or confirm the organisation ('Am I speaking with someone from "
         "<org>?'). Only use 'Mr./Ms. <surname>' when you actually have a real surname."
@@ -5261,7 +6061,28 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
         "Break any long scripted passage into short turns (2-3 sentences), pausing for "
         "the caller between them."
     )
+    # GENERAL agents: the same drive, aimed at the next step the SCRIPT offers.
+    # The education version names a demo three times and gives a booking line
+    # to copy; AAIBUZZ, whose script offers no demo, proposed one five times and
+    # booked it (call e6cb5f47, 2026-10-16).
     goal_drive_rule = (
+        "- SELL WITH INTENT — you are a sharp, warm caller working toward the goal your "
+        "instructions set, NOT a passive form-filler. Tie what you say to something the caller "
+        "actually said (a need, what they use today, their size) and lead with ONE crisp benefit "
+        "your instructions give you, never a feature list.\n"
+        "- DON'T ACCEPT THE FIRST BRUSH-OFF. Common deflections — 'just email me' / 'send a "
+        "proposal' / 'we handle it ourselves' / 'we work directly' / 'not right now' / 'we're "
+        "busy' — are not a no; they're a reflex. Acknowledge briefly, then redirect ONCE to "
+        "value + the next step your instructions offer. Example — if they say 'email me the "
+        "details', reply: 'Happy to — may I ask one quick thing first, so what reaches you "
+        "actually fits?' Make ONE genuine, specific attempt like this. Only if they still "
+        "decline do you take the email or a callback time gracefully and thank them.\n"
+        "- CLOSE CONCRETELY: a vague acknowledgment ('okay', 'thanks', 'theek hai') is NOT a "
+        "confirmation — when your instructions have you book a time, propose two specific "
+        "slots, get ONE explicitly confirmed (exact day + time), and confirm the contact channel "
+        "(read a number back digit by digit). Never announce a meeting or a call as scheduled "
+        "unless the caller named or accepted a specific day and time."
+    ) if general else (
         "- SELL WITH INTENT — you are a sharp, warm salesperson working toward a goal "
         "(usually a short demo or meeting), NOT a passive form-filler. Tie your pitch to "
         "something the caller actually said (a pain, a tool they already use, their size) "
@@ -5327,8 +6148,11 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
     delivery_rule = (
         "- SPEAK, DON'T READ. Even, flat sentences sound like a machine reading a "
         "script. Give each reply ONE moment of emphasis: put '...' just before the "
-        "phrase that matters most ('You set your timings once... and every morning the "
-        "sessions just appear'), and when there is genuine warmth or good news, let ONE "
+        "phrase that matters most ("
+        + ("'The main thing... it is entirely your choice'" if general else
+           "'You set your timings once... and every morning the "
+           "sessions just appear'")
+        + "), and when there is genuine warmth or good news, let ONE "
         "sentence end with '!' — never more than one, never on a question. Vary the "
         "rhythm: a short sentence next to a longer one, not two of the same length. "
         "These marks are for your voice only: never end a reply with '...', never write "
@@ -5344,28 +6168,39 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
     # of defence.
     reply_shape_rule = (
         "- AFTER THE CALLER ANSWERS, YOUR FIRST SENTENCE IS NEVER THEIR ANSWER IN OTHER "
-        "WORDS. This overrides any example in the script above. Wrong, all heard on real "
-        "calls: \u2018Okay, so it\u2019s all offline right now.\u2019 / \u2018So you\u2019re not running any "
-        "online classes.\u2019 / \u2018You\u2019re maintaining an Excel sheet.\u2019 / \u2018Okay, so they do "
-        "UPI.\u2019 / \u2018No online classes at all then?\u2019 Right: go straight to the next "
+        "WORDS. This overrides any example in the script above. "
+        + ("Wrong, the shape heard on real calls: \u2018Okay, so it\u2019s all offline right "
+           "now.\u2019 / \u2018So you\u2019re not doing any of it online.\u2019 / \u2018You\u2019re "
+           "maintaining an Excel sheet.\u2019 / \u2018Okay, so they do UPI.\u2019 / \u2018Nothing "
+           "online at all then?\u2019"
+           if general else
+           "Wrong, all heard on real "
+           "calls: \u2018Okay, so it\u2019s all offline right now.\u2019 / \u2018So you\u2019re not running any "
+           "online classes.\u2019 / \u2018You\u2019re maintaining an Excel sheet.\u2019 / \u2018Okay, so they do "
+           "UPI.\u2019 / \u2018No online classes at all then?\u2019")
+        + " Right: go straight to the next "
         "question or the next useful fact, or close if their answer means this is not for "
         "them. If you need a beat, one word at most (\u2018Great.\u2019), never their words."
     )
     fields_line = _lead_fields_line(context)
-    enquiry_line = _lead_enquiry_line(context)
+    enquiry_line = _lead_enquiry_line(context, general=general)
     end_line = (f"- When the conversation has reached a natural end, say a short goodbye and "
                 f"append {END_MARKER}. If the caller asks you to end the call, says they are "
                 f"not interested, or says they do not need this: ONE short polite line and "
                 f"{END_MARKER} immediately — never a clarifying question, never one more pitch. "
                 f"The same when they say goodbye, 'I'll think about it', or that they have to go: "
-                f"thank them in one line and {END_MARKER} — do not offer a demo, a WhatsApp "
+                f"thank them in one line and {END_MARKER} — do not offer "
+                + ("a meeting" if general else "a demo")
+                + ", a WhatsApp "
                 f"overview or another call at that point.")
     human_line = (
         f"- If the caller asks for a human, is upset, or you cannot help, say you are connecting "
         f"them and append {TRANSFER_MARKER}."
         if (context.get("handoff") or {}).get("enabled")
-        else f"- If the caller asks for a human, say a counsellor will call them right back, "
-             f"then append {END_MARKER}."
+        else f"- If the caller asks for a human, say "
+             + ("a colleague from the team will call them back" if general else
+                "a counsellor will call them right back")
+             + f", then append {END_MARKER}."
     )
     # Offers the admin attached to this agent's send rules. Built here so a rule is
     # self-contained: the admin writes the question once, on the rule, and never has to
@@ -5436,8 +6271,14 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
             "the caller says (including a bare 'hello' mid-call — that means they are "
             "checking the line is alive, so simply continue). Resume from the point in your "
             "instructions that comes AFTER the introduction. Keep speaking the SAME LANGUAGE "
-            "as that opening unless the caller clearly asks for another one."
+            "as that opening unless the caller clearly asks for another one. ONE exception: "
+            "if a bracketed note says the person has NOT heard who you are (the opening "
+            "never reached them), follow that note and introduce yourself once, briefly."
         )
+        # The rule above is written before the call, about audio that may never
+        # play: the callee spoke first and the opening was skipped (9fd6489d),
+        # or it raced a run and both were dropped (c3818b83, 2026-10-14). What
+        # the person actually heard decides — run_bot._intro_cue sends the note.
     elif opening_line:
         already_said_rule = (
             f"ALREADY SPOKEN: this call has opened with \"{opening_line}\" — a GREETING ONLY. "
@@ -5488,6 +6329,7 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
             "caller speaks first at the very START of the call, your FIRST reply IS your "
             "scripted opening — but ONLY at the start; mid-call that rule does not apply.",
             non_negotiable if get_settings().safety_rules_for_authored else "",
+            grounding_rule,
             already_said_rule,
             now_line,
             greeting_rule,
@@ -5520,6 +6362,7 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
             human_line,
             sends_line,
             disposition_line,
+            closing_grounding,
         ]
         return "\n".join(l for l in lines if l)
 
@@ -5527,6 +6370,7 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
     lines = [
         prompt or "You are a friendly, concise phone assistant.",
         non_negotiable,
+        grounding_rule,
         already_said_rule,
         now_line,
         greeting_rule,
@@ -5584,6 +6428,7 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
         f"every single time, and NEVER introduce yourself with any other name, spelling or "
         f"variation. Use the SAME company name you introduce yourself with for the whole call; "
         f"never change, translate or invent a different company name.",
+        closing_grounding,
     ]
     return "\n".join(l for l in lines if l)
 
@@ -5657,10 +6502,29 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             flags["unplayed_pending_t"] = 0.0
         if speaking and not flags["bot_speaking"]:
             _last = max(flags["bot_stopped_t"], flags["user_stopped_t"])
+            try:
+                # Quiet on hold is the point of the hold, not dead air: only
+                # what followed the person's return is ours (call 68bdcbcf,
+                # 2026-10-14; set_user_speaking skips the hold the same way).
+                _last = max(_last, transcript.hold_ended_t)
+            except NameError:
+                pass
             if _last and not flags["user_speaking"]:
                 _gap = max(0.0, time.time() - _last)
-                diag.sample("dead_air", _gap)
                 _why = _silence_cause(_gap)
+                # The same rule as set_user_speaking's "caller_thinking": a
+                # silence after OUR question that the caller let run until the
+                # idle nudge is the caller's, not ours. Call afa21bf4
+                # (2026-10-14) went RED on four "dead air 8.0s — both_quiet",
+                # each the 8 s idle wait ended by "हेलो? क्या आप मुझे सुन पा
+                # रहे हैं?". Only when the idle timer said so (idle_nudge_t):
+                # a hole between two bot lines with nothing in flight — a TTS
+                # stall mid-reply, the owed next line after "जी सर।" — is
+                # still ours and still counted.
+                if _why == "both_quiet" and flags["idle_nudge_t"] >= _last:
+                    _why = "caller_silent"
+                if _why != "caller_silent":
+                    diag.sample("dead_air", _gap)
                 if _why:
                     diag.note_silence(round(_gap, 1), _why)
                     logger.info("dead air %.1fs — bot was %s corr=%s", _gap, _why, corr)
@@ -5717,7 +6581,18 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                 # them, which IS ours. That path is deliberately untouched.
                 if _why == "both_quiet":
                     _why = "caller_thinking"
-                if _why != "caller_thinking":
+                try:
+                    # The person coming back from a hold ("Hello.") ends a
+                    # silence that was the hold's: the point of it, not ours
+                    # (68bdcbcf replayed, 2026-10-14: "dead air 22.8s —
+                    # after_caller_turn" once nothing leaked into the hold).
+                    # Their onset can reach here after their final has
+                    # already ended the hold (the aggregator's late start).
+                    if _why and (transcript.on_hold() or transcript.hold_ended_t >= _last):
+                        _why = "on_hold"
+                except NameError:
+                    pass
+                if _why not in ("caller_thinking", "on_hold"):
                     diag.sample("dead_air", _gap)
                 if _why:
                     diag.note_silence(round(_gap, 1), _why)
@@ -5780,6 +6655,9 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     # LLM_BRIDGE_AFTER_SECS. Not "Hmm" (founder: "too much Hmm-ing") — a plain
     # human "hang on" that a slow model earns, never a thinking sound.
     bridge_line = "Just a second." if eng else "एक सेकंड।"
+    general_agent = is_general_agent(agent)
+    transfer_fail_closing = (TRANSFER_FAIL_CLOSING_GENERAL if general_agent
+                             else TRANSFER_FAIL_CLOSING)
 
     stt_bias = (agent.get("name") or "").strip() or None
     # `providers` (sim/timing.py): the timing simulator runs THIS pipeline —
@@ -5926,7 +6804,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         _opening_for_cache = ""
     _fixed_lines = {
         _opening_for_cache, nudge_text, cap_farewell, transfer_closing,
-        idle_farewell, end_closing, TRANSFER_FAIL_CLOSING, bridge_line,
+        idle_farewell, end_closing, transfer_fail_closing, bridge_line,
     }
     _fixed_lines.update(eng_fillers if eng else settings.filler_phrases)
     _fixed_lines.update(NoRepeatGate._HANDBACK_EN if eng else NoRepeatGate._HANDBACK)
@@ -6038,6 +6916,10 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         flags["last_cut_t"] = time.time()
 
     def _recently_cut() -> bool:
+        # Only a cut of what is on the line NOW (call edbbe7b3, 2026-10-14).
+        if not cut_still_current(flags["last_cut_t"], flags["bot_speaking"],
+                                 flags["bot_started_t"]):
+            return False
         return (flags["last_cut_t"] > 0
                 and time.time() - flags["last_cut_t"] <= settings.backchannel_carry_secs)
 
@@ -6063,6 +6945,14 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     # too, the normal continuation path takes it from there — never a loop.
     _opening_resays = 0        # at most two: a noisy pickup can cut it twice
     _greet_queued_t = 0.0      # stamped by _greet_when_ready when it queues the opening
+    _greet_skipped = False     # the callee spoke first: no scripted opening will play
+    _greet_connect_t = 0.0     # when _greet_when_ready began watching for the callee
+    # Who is calling, as the opening says it, and how much of it must PLAY for
+    # the person to have heard that (opening_intro_secs; 0 = it does not say).
+    _intro_names = [str(agent.get("name") or "").strip(),
+                    str(context.get("instituteName") or "").strip()]
+    _intro_secs = opening_intro_secs(_opening_for_cache, _intro_names)
+    _intro_cue_text = intro_cue_text(*_intro_names)
 
     def _opening_played_secs() -> float:
         """Seconds of the opening's audio played in its current delivery —
@@ -6088,6 +6978,53 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                                               played_secs=_opening_played_secs()))
         except NameError:
             return False
+
+    # A queued delivery that has not made a sound yet is still on its way for
+    # this long (a cached opening starts in ~0.1 s, a synthesized one in under
+    # a second); past it, it is not coming and RunGuard stops waiting for it.
+    _OPENING_START_GRACE_SECS = 1.5
+
+    def _opening_coming() -> bool:
+        """See callstate.opening_coming — only a scripted greet has one."""
+        return (diag.greet_path == "scripted"
+                and opening_coming(flags, _greet_queued_t, time.time(),
+                                   _OPENING_START_GRACE_SECS))
+
+    def _intro_heard() -> bool:
+        return intro_heard(flags, _opening_played_secs(), _intro_secs,
+                           outcome.transcript, _intro_names)
+
+    _intro_cue_chars = 0       # played assistant text when the note was last added
+
+    def _played_chars() -> int:
+        return sum(len(spoken_key(e.get("text") or "")) for e in outcome.transcript
+                   if e.get("role") == "assistant")
+
+    def _intro_cue() -> str:
+        """The note for a run going to the model while the opening that
+        introduces us was never heard ("" = none): the callee spoke first and
+        the opening was skipped (9fd6489d), it raced a run and both were
+        dropped (c3818b83), or it was cut before the name (a11e6709). Once
+        speech after the note has PLAYED, it is not added again — measured on
+        the played transcript, not "audio started after a reply started": in
+        the replay of c3818b83 the noted reply never played, a resumed
+        fragment did, and the next reply went out with no note."""
+        nonlocal _intro_cue_chars
+        # The callee spoke first and the greet has not polled yet (it does
+        # every 0.1 s): its own skip test already holds, so it WILL skip — a
+        # run closing in that gap went out with no note (review 2026-10-14).
+        _skipping = (_greet_connect_t and not _greet_queued_t
+                     and flags["substantive_t"] > _greet_connect_t + 0.05)
+        if not _intro_secs or not (_greet_skipped or _skipping
+                                   or diag.greet_path == "scripted"):
+            return ""
+        if _intro_heard() or _opening_coming():
+            return ""
+        if flags["intro_cue_t"] and _played_chars() - _intro_cue_chars >= 20:
+            return ""                   # more than a bridge line has played since
+        flags["intro_cue_t"] = time.time()
+        _intro_cue_chars = _played_chars()
+        return _intro_cue_text
 
     async def _resay_opening(text, force: bool = False, cut_now: bool = False) -> bool:
         nonlocal _opening_resays
@@ -6130,6 +7067,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         # ears, and none of it reached them (calls 612f5e37, 91d1541e).
         _opening_resays += 1
         diag.bump("opening_resaid")
+        flags["opening_heard_secs"] = max(flags["opening_heard_secs"], _opening_played_secs())
+        flags["opening_delivery_t"] = time.time()
         flags["opening_play_secs"] = 0.0         # a new delivery; heard is measured afresh
         flags["opening_seg_t"] = time.time() if flags["bot_speaking"] else 0.0
         # The interruption of the cut that caused THIS re-say can be stamped a
@@ -6260,6 +7199,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                                      on_transcript=on_transcript,
                                      fillers_armed=lambda: flags["bot_spoke_once"],
                                      bot_stopped_t=lambda: flags["bot_stopped_t"],
+                                     bot_started_t=lambda: flags["bot_started_t"],
                                      duck=duck, on_absorb=_absorb,
                                      backchannel_extra=settings.backchannel_extra,
                                      gate_enabled=lambda: settings.duck_enabled,
@@ -6303,7 +7243,9 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                                      forget_resume=lambda: no_repeat.forget_resumed(),
                                      release_turn=lambda: settings.turn_release_on_absorb,
                                      noise_reask_wait_secs=settings.noise_reask_wait_secs,
-                                     resay_opening=_resay_opening)
+                                     resay_opening=_resay_opening,
+                                     greet_skipped=lambda: _greet_skipped,
+                                     general_agent=general_agent)
     played_transcript = PlayedTranscriptRecorder(outcome)
 
     async def _ask_for_next_step(held: str, kind: str = "", attempt: int = 0):
@@ -6365,6 +7307,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         played_text=lambda: " ".join(
             t.get("text") or "" for t in outcome.transcript[-6:]
             if t.get("role") == "assistant"),
+        child_slots=not general_agent,
         diag=diag)
 
     def _fire_mid_call_send(key: str) -> None:
@@ -6383,6 +7326,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     sentinel = SentinelGate(outcome, on_activity, set_bot_speaking,
                             on_reply_start=_on_reply_start,
                             transfer_closing=transfer_closing, end_closing=end_closing,
+                            transfer_fail_closing=transfer_fail_closing,
                             on_send=_fire_mid_call_send, diag=diag)
 
     run_guard = RunGuard(llm_context,
@@ -6406,7 +7350,14 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                          supersede=lambda: settings.run_supersede,
                          reply_unheard=_reply_unheard,
                          runs_noted=lambda: no_repeat.runs_noted(),
-                         before_run=lambda: _llm_return_frame())
+                         before_run=lambda: _llm_return_frame(),
+                         on_hold=lambda: transcript.on_hold(),
+                         opening_coming=_opening_coming,
+                         intro_cue=_intro_cue,
+                         audible_since=lambda t: (flags["bot_speaking"]
+                                                  or flags["bot_started_t"] > t
+                                                  or flags["bot_stopped_t"] > t),
+                         is_voicemail=lambda: transcript.looks_like_voicemail())
     run_guard._one_door = lambda: settings.cue_one_door
 
     # One EQ per call: it carries IIR state across frames, so it must not be
@@ -6613,16 +7564,11 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         if 0 < _held < HOLD_MAX_SECS:
             # The person put the call on hold: "Hello? Are you there?" into the
             # hold music is wrong, and hanging up on someone who asked us to wait
-            # is worse. Look again later; past HOLD_MAX_SECS the usual nudges and
-            # idle hang-up apply.
+            # is worse. No recheck task here: the watchdog loop owns the hold
+            # limit (pipecat's idle timer never re-arms on hold — the bot never
+            # speaks — and the old self-renewing rechecks stacked up, one per
+            # firing, and fired in a burst at 300 s).
             logger.info("idle: on hold for %.0fs — waiting, not nudging corr=%s", _held, corr)
-
-            async def _hold_recheck():
-                await asyncio.sleep(max(5.0, float(settings.idle_timeout_secs)))
-                if (transcript.on_hold_for() and not flags["bot_speaking"]
-                        and not flags["user_speaking"]):
-                    await _on_idle(None)
-            asyncio.get_running_loop().create_task(_hold_recheck())
             return
         if transcript.looks_like_voicemail():
             # Nothing to nudge and nobody to say goodbye to (call 24089872).
@@ -6647,10 +7593,15 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             flags["nudge_count"] += 1
             diag.bump("nudges")
             logger.info("idle: nudge %d corr=%s", flags["nudge_count"], corr)
+            # The caller owed this turn (no_repeat.owes_line() was False): the
+            # silence the nudge ends is theirs — see set_bot_speaking.
+            flags["idle_nudge_t"] = time.time()
             await task.queue_frames([TTSSpeakFrame(nudge_text)])
         else:
             diag.idle_hangup = True
             logger.info("idle: hangup corr=%s", corr)
+            if not no_repeat.owes_line():
+                flags["idle_nudge_t"] = time.time()
             outcome.end_requested = True
             await task.queue_frames([TTSSpeakFrame(idle_farewell)])
             await _begin_stop()
@@ -6660,9 +7611,11 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         the callee already said something substantive (their turn then drives the
         LLM). Scripted openings are spoken directly — NO manual context append on
         1.4, the assistant aggregator captures spoken text itself."""
+        nonlocal _greet_skipped, _greet_connect_t
         opening = _clean_opening(_fill_placeholders(
             (agent.get("openingLine") or "").strip(), context, full_name=True))
         connect_t = time.time()
+        _greet_connect_t = connect_t
         # SUBSTANTIVE speech only. This used to test transcript_t, i.e. ANY
         # transcript, so one stray word decided whether we opened at all — and
         # on a voicemail the stray words are the operator's own recording
@@ -6673,6 +7626,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         while time.time() - connect_t < settings.greet_delay_secs:
             if flags["substantive_t"] > connect_t + 0.05:
                 logger.info("greet: callee spoke first — LLM replies, skipping our open (corr=%s)", corr)
+                _greet_skipped = True
                 return
             await asyncio.sleep(0.1)
         # Hold while the caller is AUDIBLY mid-utterance, then a short settle,
@@ -6696,6 +7650,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             if flags["substantive_t"] > connect_t + 0.05:
                 diag.greet_path = "callee_spoke_first"
                 logger.info("greet: callee spoke first (extended wait) — skipping our open (corr=%s)", corr)
+                _greet_skipped = True
                 return
             now = time.time()
             voiced = flags["voice_tick_t"]
@@ -6753,6 +7708,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             nonlocal _greet_queued_t
             _greet_queued_t = time.time()
             flags["greet_queued_t"] = _greet_queued_t
+            flags["opening_delivery_t"] = _greet_queued_t
             await task.queue_frames(_frames)
 
             # THE PRE-APPEND ABOVE CLAIMS THE WHOLE OPENING REACHED THE CALLER.
@@ -6823,7 +7779,11 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                     logger.info("greet: opening cut short — caller heard %d of %d chars "
                                 "caller_spoke=%s corr=%s",
                                 len(_played), len(opening), _caller_spoke, corr)
-                    if not _caller_spoke:
+                    # Not when the cut came before who is calling: "do not
+                    # re-introduce yourself" would then contradict _intro_cue,
+                    # which has the next reply introduce (call a11e6709,
+                    # 2026-10-14).
+                    if not _caller_spoke and _intro_heard():
                         # No run_llm: the caller is mid-sentence. Forcing a generation
                         # here would talk straight over them.
                         await task.queue_frames([LLMMessagesAppendFrame(messages=[{
@@ -6900,6 +7860,10 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                                "(no audio %.1fs after it was cut)",
                                corr, cfg.unplayed_confirm_secs)
             _note_vendor_failover()
+            _held = transcript.on_hold_for()
+            # Before deciding: on hold, ORPHAN_ASK / LLM_BRIDGE are never decided,
+            # so apply_decision cannot book them against the call's budget.
+            flags["on_hold"] = _held > 0
             d = watchdog_decide(flags, now, cfg)
             apply_decision(flags, d, now)
 
@@ -6912,6 +7876,21 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                             now - flags["user_stopped_t"] if flags["user_stopped_t"] else -1.0,
                             now - flags["voice_tick_t"] if flags["voice_tick_t"] else -1.0,
                             now - flags["bot_stopped_t"], flags["orphan_asks"])
+            if d.kind == NONE and _held:
+                # HOLD_MAX_SECS is enforced HERE. pipecat's idle timer starts only
+                # on BotStoppedSpeaking, which a silent bot never sends, and every
+                # absorbed piece of a looping recording stamps transcript_t, so the
+                # idle fallback below never fires either: a forgotten hold ran to
+                # the duration cap (review of 53b6e16b04, 2026-10-14). Past the
+                # limit, the usual escalation, paced one idle period apart:
+                # _on_idle nudges max_nudges times, then says goodbye and stops.
+                if hold_escalation_due(flags, now, _held, HOLD_MAX_SECS,
+                                       settings.idle_timeout_secs):
+                    logger.info("idle: on hold for %.0fs — past the %.0fs limit, escalating "
+                                "corr=%s", _held, HOLD_MAX_SECS, corr)
+                    flags["hold_nudge_t"] = now
+                    await _on_idle(None)
+                continue
             if d.kind == NONE:
                 # Idle fallback for the turn pipecat's idle controller cannot see:
                 # its timer starts on BotStoppedSpeaking while the caller is quiet,
@@ -6960,11 +7939,6 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                 await task.queue_frames([TTSSpeakFrame(cap_farewell)])
                 await _begin_stop()
                 continue
-            if d.kind in (LLM_BRIDGE, ORPHAN_ASK) and transcript.on_hold_for():
-                # On hold: nobody is listening for "एक सेकंड।" or "आवाज़ कट गई"
-                # (the replay of 6d81124d said "एक सेकंड।" into the hold).
-                logger.info("watchdog: %s skipped — the call is on hold corr=%s", d.kind, corr)
-                continue
             if d.kind == LLM_BRIDGE:
                 # Call c130e39f: 16s of silence while Vertex took 5.4s to the
                 # first token and ~8s more to finish the reply. The caller said
@@ -7012,29 +7986,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         try:
             _delivered = [m.get("content") or "" for m in llm_context.get_messages()
                           if isinstance(m, dict) and m.get("role") == "user"]
-            # Carrier recordings are kept in the transcript (LIKELY_MACHINE reads
-            # those markers) but are deliberately NOT in the context — so they
-            # are not "answers the model never saw". Without this exclusion the
-            # fix that filters them MANUFACTURES an ANSWER_DELETED fault: call
-            # 14029bd6's panel read "2 caller answers were discarded", quoting
-            # the voicemail system back at us.
-            # Pickup noises said before the bot's first word are dropped ON
-            # PURPOSE — the opening is their answer (machine-greeting scrap) —
-            # so they are not answers the model missed either. Counting them
-            # put "हम दस।" and "कोन दीदी?" on the 23 Sep panel as lost answers.
-            _first_bot = next((i for i, t in enumerate(outcome.transcript)
-                               if t.get("role") == "assistant"), len(outcome.transcript))
-            _heard = [t.get("text") or "" for i, t in enumerate(outcome.transcript)
-                      if i > _first_bot
-                      and t.get("role") == "user"
-                      and not (t.get("text") or "").lstrip().startswith("[")
-                      and not is_carrier_announcement(t.get("text") or "")
-                      # An acknowledgement ("ठीक।", "Okay जी") is talked
-                      # through in voice mode and kept OUT of the model's
-                      # context on purpose — not a lost answer. 8 of the 11
-                      # ANSWER_DELETED samples on 24 Sep were exactly these.
-                      and mid_reply_action(t.get("text") or "") != ABSORB]
-            _lost = diag_mod.split_lost(_heard, _delivered)
+            _lost = diag_mod.split_lost(transcript.answers_heard(), _delivered)
             diag.answers_deleted = _lost.answers
             diag.answers_deleted_samples = _lost.answer_samples
             # Sub-floor scraps are a measured loss but not a lost ANSWER, and
@@ -7080,7 +8032,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             except Exception:
                 logger.exception("replay record failed corr=%s", corr)
             # Did the caller hear the same sentence over and over? (REPLY_LOOP)
-            diag.max_reply_restarts = diag_mod.max_reply_restarts(outcome.transcript)
+            diag.max_reply_restarts = diag_mod.max_reply_restarts(
+                outcome.transcript, skip_like=_opening_for_cache)
             if diag.max_reply_restarts >= 2:
                 logger.warning("diagnostics: bot restarted the same reply %dx in a row "
                                "corr=%s", diag.max_reply_restarts, corr)

@@ -18,7 +18,7 @@ import asyncio
 import logging
 import math
 import time
-from typing import Optional
+from typing import Any, Optional
 from uuid import uuid4
 
 import httpx
@@ -28,7 +28,7 @@ from sqlalchemy.orm import Session
 from ...db import db_session
 from ...models.ai_token_usage import RequestType
 from ...models.file_conversion import FileConversion
-from ..ai_billing import record_tool_billing
+from ..ai_billing import UC, metering_user, record_tool_billing, supported_kwargs
 from .slide_source import MAX_SOURCE_CHARS, SlideSource, _hash, source_kind_label
 
 logger = logging.getLogger(__name__)
@@ -246,7 +246,8 @@ async def _pdf_text(file_id: str) -> Optional[str]:
     return body or None
 
 
-async def ocr_pdf(src: SlideSource, *, institute_id: str, user_id: Optional[str], request_id: Optional[str]) -> int:
+async def ocr_pdf(src: SlideSource, *, institute_id: str, user_id: Optional[str], request_id: Optional[str],
+                  metering: Any = None) -> int:
     """Read a scanned PDF with MathPix OCR (the knowledge base's paid path),
     once per file, charged per page with the `html_document_pdf` tool.
     Returns the pages charged (0 on a cache hit)."""
@@ -269,6 +270,8 @@ async def ocr_pdf(src: SlideSource, *, institute_id: str, user_id: Optional[str]
             tool_key=OCR_TOOL, tool_params={"num_pages": pages}, request_type=RequestType.PDF_QUESTIONS,
             model="mathpix", institute_id=institute_id, user_id=user_id, user_role="ADMIN",
             request_id=request_id, idempotency_key=f"tutor_ocr:{file_id}", provider_cost_usd=ocr_cost_usd(pages),
+            use_case=UC.TUTOR_SETUP, metering=metering if metering is not None else metering_user(user_id, surface="ADMIN_APP"),
+            usage_context={"slide_id": src.slide_id, "file_id": file_id, "feature": "tutor_ocr"},
         )
     _set_text(src, body, "pdf")
     return pages
@@ -378,7 +381,8 @@ def _close_job(file_id: str, status: str) -> None:
         pass
 
 
-async def transcribe_upload(src: SlideSource, *, institute_id: str, user_id: Optional[str], request_id: Optional[str]) -> int:
+async def transcribe_upload(src: SlideSource, *, institute_id: str, user_id: Optional[str], request_id: Optional[str],
+                            metering: Any = None) -> int:
     """Transcribe an uploaded video once (cached by file id) and charge the
     `transcription` tool per audio-minute. Returns the minutes billed (0 on a
     cache hit). A job that cannot finish within this compile's wait budget is
@@ -395,7 +399,8 @@ async def transcribe_upload(src: SlideSource, *, institute_id: str, user_id: Opt
     settings = get_settings()
     if transcription_provider() == "openrouter":
         try:
-            return await _transcribe_via_openrouter(src, institute_id=institute_id, user_id=user_id, request_id=request_id)
+            return await _transcribe_via_openrouter(src, institute_id=institute_id, user_id=user_id, request_id=request_id,
+                                                    **supported_kwargs(_transcribe_via_openrouter, {"metering": metering}))
         except Exception as exc:  # noqa: BLE001
             if not settings.render_server_url or "no clear speech" in str(exc):
                 raise
@@ -451,6 +456,8 @@ async def transcribe_upload(src: SlideSource, *, institute_id: str, user_id: Opt
         tool_key=TRANSCRIPTION_TOOL, tool_params={"audio_minutes": minutes}, request_type=RequestType.TRANSCRIPTION,
         model=TRANSCRIPTION_MODEL, institute_id=institute_id, user_id=user_id, user_role="ADMIN",
         request_id=request_id, idempotency_key=f"tutor_transcribe:{file_id}",
+        use_case=UC.TRANSCRIPTION, metering=metering if metering is not None else metering_user(user_id, surface="ADMIN_APP"),
+        usage_context={"slide_id": src.slide_id, "file_id": file_id, "feature": "tutor_transcribe"},
     )
     _set_text(src, body, "transcript")
     return minutes
@@ -498,7 +505,8 @@ def transcription_available() -> bool:
         return False
 
 
-async def _transcribe_via_openrouter(src: SlideSource, *, institute_id: str, user_id: Optional[str], request_id: Optional[str]) -> int:
+async def _transcribe_via_openrouter(src: SlideSource, *, institute_id: str, user_id: Optional[str], request_id: Optional[str],
+                                    metering: Any = None) -> int:
     """Whisper large-v3-turbo on OpenRouter: minutes, not hours. Charges the
     `transcription` tool per audio-minute and records the provider's cost."""
     from ..openrouter_transcription import transcribe_media
@@ -524,11 +532,19 @@ async def _transcribe_via_openrouter(src: SlideSource, *, institute_id: str, use
         tool_key=TRANSCRIPTION_TOOL, tool_params={"audio_minutes": minutes}, request_type=RequestType.TRANSCRIPTION,
         model=f"openrouter:{model}", institute_id=institute_id, user_id=user_id, user_role="ADMIN",
         request_id=request_id, idempotency_key=f"tutor_transcribe:{file_id}",
+        use_case=UC.TRANSCRIPTION, metering=metering if metering is not None else metering_user(user_id, surface="ADMIN_APP"),
+        usage_context={"slide_id": src.slide_id, "file_id": file_id, "feature": "tutor_transcribe"},
     )
     # The provider's actual spend, for the AI usage / cost pages.
     try:
+        from ..ai_billing import metering_kwargs, supported_kwargs
+        meter = metering_kwargs(UC.TRANSCRIPTION,
+                                metering if metering is not None else metering_user(user_id, surface="ADMIN_APP"),
+                                {"slide_id": src.slide_id, "file_id": file_id, "feature": "tutor_transcribe_cost"},
+                                free_reason="BUNDLED")
         with db_session() as db:
-            TokenUsageService(db).record_usage(
+            tus = TokenUsageService(db)
+            tus.record_usage(
                 api_provider=ApiProvider.OPENAI, prompt_tokens=0, completion_tokens=0, total_tokens=0,
                 request_type=RequestType.TRANSCRIPTION, institute_id=institute_id, user_id=user_id,
                 model=f"openrouter:{model}", request_id=request_id, total_price=float(result.cost_usd or 0.0),
@@ -536,6 +552,7 @@ async def _transcribe_via_openrouter(src: SlideSource, *, institute_id: str, use
                 metadata={"surface": "tutor", "kind": "transcription", "seconds": round(result.duration_seconds, 1),
                           "cost_usd": result.cost_usd, "chunks": result.chunks, "language": result.language,
                           "file_id": file_id, "generation_ids": [g for g in result.generation_ids if g][:20]},
+                **supported_kwargs(tus.record_usage, meter),
             )
             db.commit()
     except Exception:  # noqa: BLE001

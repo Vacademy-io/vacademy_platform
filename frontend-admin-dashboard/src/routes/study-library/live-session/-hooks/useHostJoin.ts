@@ -138,8 +138,11 @@ export function useHostJoin() {
                 { params: { scheduleId } }
             );
             const organizerEmail = response.data?.organizerEmail;
+            const cohostEmail = response.data?.cohostEmail;
             if (openExternal(response.data?.joinUrl)) {
-                if (organizerEmail) {
+                if (cohostEmail) {
+                    toast.info(`Open Meet signed in to ${cohostEmail} to get host controls.`);
+                } else if (organizerEmail) {
                     toast.info(`Open Meet signed in to ${organizerEmail} so the session records.`);
                 }
             } else {

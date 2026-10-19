@@ -474,6 +474,44 @@ public class GoogleMeetManager implements LiveSessionProviderStrategy {
                 .block();
     }
 
+    /**
+     * Makes {@code email} a co-host of the space ({@code POST /v2/{space}/members}, role COHOST) so a
+     * teacher joining from their own Google account gets host controls while the meeting stays on the
+     * organizer's plan. Works for outside accounts (personal Gmail) with the existing
+     * meetings.space.created scope. 409 ALREADY_EXISTS means they already are one. Best-effort: never
+     * throws, so a Google hiccup can't block the join.
+     */
+    public boolean ensureCohost(GoogleAccount account, String spaceName, String email) {
+        if (account == null || spaceName == null || email == null || email.isBlank()
+                || email.equalsIgnoreCase(account.getOrganizerEmail())) {
+            return false;
+        }
+        try {
+            String token = accessTokenService.getAccessToken(account);
+            Integer status = webClientBuilder.build()
+                    .post()
+                    .uri(GoogleMeetEndpoints.MEET_API_BASE_URL + "/" + spaceName + "/members")
+                    .header("Authorization", "Bearer " + token)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue(Map.of("email", email.trim(), "role", "COHOST"))
+                    .exchangeToMono(resp -> resp.releaseBody().thenReturn(resp.statusCode().value()))
+                    .timeout(java.time.Duration.ofSeconds(5)) // the host waits on this before Meet opens
+                    .block();
+            if (status != null && (status == 200 || status == 409)) {
+                return true;
+            }
+            if (status != null && status == 401) {
+                accessTokenService.evict(account.getId());
+            }
+            log.warn("google.meet.cohost.fail accountId={} space={} httpStatus={}",
+                    account.getId(), spaceName, status);
+        } catch (Exception e) {
+            log.warn("google.meet.cohost.fail accountId={} space={} reason={}",
+                    account.getId(), spaceName, e.getMessage());
+        }
+        return false;
+    }
+
     private static String snippet(String body) {
         if (body == null || body.isEmpty()) return "";
         return body.length() > 200 ? body.substring(0, 200) : body;

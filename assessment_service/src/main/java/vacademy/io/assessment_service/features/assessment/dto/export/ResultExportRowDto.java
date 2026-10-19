@@ -30,5 +30,13 @@ public interface ResultExportRowDto {
 
     Long getDuration();
 
+    /** Final marks, or the computed total while evaluation is still pending. */
     Double getScore();
+
+    /**
+     * The marks the rank is computed on: {@code student_attempt.total_marks}, the column the
+     * report PDF, the learner app and the leaderboard rank on, so the sheet shows the same rank
+     * as the learner's own report.
+     */
+    Double getRankMarks();
 }

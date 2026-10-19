@@ -246,6 +246,7 @@ class AdminExportManagerResultCsvTest {
         when(dto.getStudentName()).thenReturn(name);
         when(dto.getUserEmail()).thenReturn(email);
         when(dto.getScore()).thenReturn(score);
+        when(dto.getRankMarks()).thenReturn(score);
         when(dto.getDuration()).thenReturn(duration);
         when(dto.getAttemptDate()).thenReturn(new Date(0L));
         return dto;

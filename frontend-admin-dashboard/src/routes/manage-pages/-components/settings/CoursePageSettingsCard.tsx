@@ -12,7 +12,7 @@ const isObject = (v: unknown): v is Record<string, unknown> =>
     !!v && typeof v === 'object' && !Array.isArray(v);
 
 /** The parts this card switches, as courseDetails keys. */
-const PARTS = ['content', 'series'] as const;
+const PARTS = ['content', 'contentHeading', 'series'] as const;
 type Part = (typeof PARTS)[number];
 
 interface CoursePageSettingsCardProps {

@@ -212,6 +212,8 @@
       "hint": "Choose which parts show on each course's public page. Everything is on by default.",
       "content": "Course content (modules & slides)",
       "contentHint": "The Course content tab (Table of Contents on e-books) with the course's modules and slides.",
+      "contentHeading": "Course content heading",
+      "contentHeadingHint": "The \"Course Content (Modules & Slides)\" line above the course structure. The structure itself stays.",
       "series": "Part of a learning path",
       "seriesHint": "The \"Part of …\" chips listing the other steps of the learning path the course is in, and the \"Next in the series\" card."
     },

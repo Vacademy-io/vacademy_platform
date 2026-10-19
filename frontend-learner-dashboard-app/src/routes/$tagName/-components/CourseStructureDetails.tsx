@@ -109,6 +109,8 @@ interface CourseStructureDetailsProps {
    * matter what is asked for.
    */
   variant?: "outline" | "tiles";
+  /** False: no "Course Content (Modules & Slides)" line above the structure. Default true. */
+  showContentHeading?: boolean;
 }
 
 export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
@@ -118,6 +120,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
   packageSessionId,
   levelId,
   variant = "outline",
+  showContentHeading = true,
 }) => {
   const { t } = useTranslation("coursePlayerA");
   const courseTerm = getTerminology(ContentTerms.Course, SystemTerms.Course);
@@ -1466,36 +1469,44 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
         <div className="space-y-2">
           {courseDepth === 2 && (
             <div className="space-y-2">
-              <h3 className="text-lg font-medium text-catalogue-text-primary mb-4">
-                {t("courseStructureDetails.contentHeading.slidesOnly", { course: courseTerm, slides: slidesTerm })}
-              </h3>
+              {showContentHeading && (
+                <h3 className="text-lg font-medium text-catalogue-text-primary mb-4">
+                  {t("courseStructureDetails.contentHeading.slidesOnly", { course: courseTerm, slides: slidesTerm })}
+                </h3>
+              )}
               {renderSlidesForDepth2()}
             </div>
           )}
 
           {courseDepth === 3 && (
             <div className="space-y-2">
-              <h3 className="text-lg font-medium text-catalogue-text-primary mb-4">
-                {t("courseStructureDetails.contentHeading.chaptersAndSlides", { course: courseTerm, chapters: chaptersTerm, slides: slidesTerm })}
-              </h3>
+              {showContentHeading && (
+                <h3 className="text-lg font-medium text-catalogue-text-primary mb-4">
+                  {t("courseStructureDetails.contentHeading.chaptersAndSlides", { course: courseTerm, chapters: chaptersTerm, slides: slidesTerm })}
+                </h3>
+              )}
               {renderAllChaptersForDepth3()}
             </div>
           )}
 
           {courseDepth === 4 && (
             <div className="space-y-2">
-              <h3 className="text-lg font-medium text-catalogue-text-primary mb-4">
-                {t("courseStructureDetails.contentHeading.modulesChaptersSlides", { course: courseTerm, modules: modulesTerm, chapters: chaptersTerm, slides: slidesTerm })}
-              </h3>
+              {showContentHeading && (
+                <h3 className="text-lg font-medium text-catalogue-text-primary mb-4">
+                  {t("courseStructureDetails.contentHeading.modulesChaptersSlides", { course: courseTerm, modules: modulesTerm, chapters: chaptersTerm, slides: slidesTerm })}
+                </h3>
+              )}
               {renderModulesForDepth4()}
             </div>
           )}
 
           {courseDepth === 5 && (
             <div className="space-y-2">
-              <h3 className="text-lg font-medium text-catalogue-text-primary mb-4">
-                {t("courseStructureDetails.contentHeading.fullStructure", { course: courseTerm })}
-              </h3>
+              {showContentHeading && (
+                <h3 className="text-lg font-medium text-catalogue-text-primary mb-4">
+                  {t("courseStructureDetails.contentHeading.fullStructure", { course: courseTerm })}
+                </h3>
+              )}
               {/* Tiles are a top-level treatment; a course whose subjects are
                   all "default" has no top level to tile, so it keeps the
                   outline rather than showing an empty grid. */}

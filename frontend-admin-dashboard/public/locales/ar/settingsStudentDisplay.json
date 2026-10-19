@@ -139,6 +139,8 @@
         "cardTitle": "صفحة جميع الدورات",
         "cardDescription": "علامات التبويب والتحديد الافتراضي",
         "hideInstructorName": "إخفاء اسم المدرّب (بطاقات الدورات)",
+        "pageSize": "عدد الدورات في كل صفحة في قائمة كل الدورات",
+        "showAllEnrolledOnDashboard": "لوحة التحكم \"My courses\": عرض كل الدورات المسجّل فيها، وليس أول 4 فقط",
         "addCustomTab": "+ إضافة تبويب مخصص",
         "customTabLabelPlaceholder": "مثال: دورات مجانية",
         "customTabTags": "عرض الدورات التي تحمل أيًا من هذه الوسوم",

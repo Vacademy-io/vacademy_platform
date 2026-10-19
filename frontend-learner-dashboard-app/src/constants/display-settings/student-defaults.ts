@@ -242,6 +242,8 @@ export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {
     ],
     defaultTab: "InProgress",
     hideInstructorName: false,
+    pageSize: 10,
+    showAllEnrolledOnDashboard: false,
   },
   notifications: {
     allowSystemAlerts: true,

@@ -139,6 +139,8 @@
         "cardTitle": "सभी कोर्स पेज",
         "cardDescription": "टैब और डिफ़ॉल्ट चयन",
         "hideInstructorName": "प्रशिक्षक का नाम छिपाएं (कोर्स कार्ड)",
+        "pageSize": "All Courses सूची में प्रति पेज कोर्स",
+        "showAllEnrolledOnDashboard": "डैशबोर्ड \"My courses\": सिर्फ पहले 4 नहीं, सभी नामांकित कोर्स दिखाएँ",
         "addCustomTab": "+ कस्टम टैब जोड़ें",
         "customTabLabelPlaceholder": "जैसे फ्री कोर्स",
         "customTabTags": "इनमें से किसी भी टैग वाले कोर्स दिखाएँ",

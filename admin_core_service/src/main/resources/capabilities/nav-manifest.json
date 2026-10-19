@@ -75,10 +75,10 @@
           "label": "Institute Overview",
           "route": "/manage-institute/overview",
           "order": 1,
-          "admin_only": false,
+          "admin_only": true,
           "default_visible": {
             "ADMIN": true,
-            "TEACHER": true
+            "TEACHER": false
           }
         },
         {
@@ -437,10 +437,10 @@
           "label": "Messaging Dashboard",
           "route": "/communication/dashboard",
           "order": 1,
-          "admin_only": false,
+          "admin_only": true,
           "default_visible": {
             "ADMIN": true,
-            "TEACHER": true
+            "TEACHER": false
           }
         },
         {

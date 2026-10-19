@@ -60,8 +60,8 @@ export function CreatePassPricingDialog({ open, onOpenChange, onSaved }: Props) 
                 config: { ...plan.config, planChangeAllowed },
             });
             const recurring = plan.type === PaymentPlans.SUBSCRIPTION || plan.type === PaymentPlans.UPFRONT;
+            // Always a new option: the backend generates its id (and clears placeholder plan ids).
             const saved = await savePaymentOption({
-                id: plan.id,
                 name: plan.name,
                 status: 'ACTIVE',
                 source: 'INSTITUTE',

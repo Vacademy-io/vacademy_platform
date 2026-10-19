@@ -8,6 +8,7 @@ import vacademy.io.admin_core_service.features.common.repository.CustomFieldValu
 import vacademy.io.admin_core_service.features.institute.service.setting.InstituteSettingService;
 import vacademy.io.admin_core_service.features.invoice.dto.InvoiceData;
 import vacademy.io.admin_core_service.features.invoice.dto.InvoiceLineItemData;
+import vacademy.io.admin_core_service.features.invoice.util.CourseTagResolver;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.institute.entity.Institute;
@@ -48,6 +49,7 @@ class EmailEditorInvoiceTemplateTest {
             + "<p>Total {{total}} Balance Due {{balance_due}} Paid {{date_paid}}</p></div></body></html>";
 
     private InvoiceService service;
+    private CourseTagResolver tags;
     private InvoiceData data;
 
     @BeforeEach
@@ -69,6 +71,9 @@ class EmailEditorInvoiceTemplateTest {
         rows.add(new Object[] {"u1", "cf4", "country_x", "Country", "DROPDOWN", "New Zealand", "USER"});
         when(cfv.findCustomFieldsWithKeysByUserIdsAndInstitute(anyString(), anyList(), anyString())).thenReturn(rows);
         ReflectionTestUtils.setField(service, "customFieldValuesRepository", cfv);
+        tags = mock(CourseTagResolver.class);
+        when(tags.tagsFor(any())).thenReturn("Vet Course");
+        ReflectionTestUtils.setField(service, "courseTagResolver", tags);
 
         Institute institute = new Institute();
         institute.setId("inst-1");
@@ -109,20 +114,20 @@ class EmailEditorInvoiceTemplateTest {
         assertTrue(html.contains("Sam & Co"), html);
         assertTrue(html.contains("Veterinarian at Bohle Vet, QLD, New Zealand"), html);
         assertTrue(html.contains("ABN 12 345 678 901"), html);
-        assertTrue(html.contains("Practice Membership - MYCPD<br/><i>Annual Fee for 5 Members</i>"), html);
+        assertTrue(html.contains("Practice Membership - MYCPD<br/><i>Vet Course</i>"), html);
         assertTrue(html.contains("19 Oct 2026"), html);
     }
 
     @Test
-    @DisplayName("a paid invoice owes nothing; the tag block disappears when the plan name adds nothing")
+    @DisplayName("a paid invoice owes nothing; the tag block disappears when the course has no tags")
     void balanceAndTag() throws Exception {
         String html = render(TEMPLATE);
         String total = html.substring(html.indexOf("Total "));
         assertTrue(total.matches("(?s)Total (\\S+)431\\.00 Balance Due \\1" + "0\\.00 Paid 19 Oct 2026.*"), total);
 
-        data.getPaymentPlan().setName("Practice Membership");
+        when(tags.tagsFor(any())).thenReturn("");
         html = render(TEMPLATE);
-        assertFalse(html.contains("<i>"), "tag repeats the description, so the block should go: " + html);
+        assertFalse(html.contains("<i>"), "course has no tags, so the block should go: " + html);
         assertFalse(html.contains("TPL_IF"), html);
     }
 

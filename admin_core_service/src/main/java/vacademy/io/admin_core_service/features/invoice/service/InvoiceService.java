@@ -168,6 +168,9 @@ public class InvoiceService {
     private vacademy.io.admin_core_service.features.enroll_invite.repository.PackageSessionLearnerInvitationToPaymentOptionRepository packageSessionInvitationRepository;
 
     @Autowired
+    private vacademy.io.admin_core_service.features.invoice.util.CourseTagResolver courseTagResolver;
+
+    @Autowired
     private InstituteSettingService instituteSettingService;
 
     @Autowired
@@ -423,7 +426,7 @@ public class InvoiceService {
         PLACEHOLDER_META.put("abn", new PlaceholderMeta("ABN (Tax Registration No.)", "TAX", false, "text"));
         PLACEHOLDER_META.put("invoice_item_description",
                 new PlaceholderMeta("Item Description", "ITEM", false, "text"));
-        PLACEHOLDER_META.put("invoice_item_tag", new PlaceholderMeta("Item Tag (plan name)", "ITEM", false, "text"));
+        PLACEHOLDER_META.put("invoice_item_tag", new PlaceholderMeta("Course Tags", "ITEM", false, "text"));
         PLACEHOLDER_META.put("qty", new PlaceholderMeta("Quantity", "ITEM", false, "text"));
         PLACEHOLDER_META.put("unit_price", new PlaceholderMeta("Unit Price", "ITEM", false, "text"));
         PLACEHOLDER_META.put("amount", new PlaceholderMeta("Item Amount", "ITEM", false, "text"));
@@ -2818,7 +2821,10 @@ public class InvoiceService {
         InvoiceLineItemData primaryItem = primaryLineItem(invoiceData.getLineItems());
         filled = filled.replace("{{invoice_item_description}}",
                 primaryItem != null ? escapeHtml(nz(primaryItem.getDescription())) : "");
-        filled = filled.replace("{{invoice_item_tag}}", escapeHtml(invoiceItemTag(invoiceData, primaryItem)));
+        // The course's own tags ("Vet Course"), not the plan name. Only looked up when the template
+        // asks; blank when the course has none, so a {{#if invoice_item_tag}} block disappears.
+        filled = filled.replace("{{invoice_item_tag}}", template != null && template.contains("{{invoice_item_tag}}")
+                ? escapeHtml(courseTagResolver.tagsFor(invoiceData.getPaymentLog())) : "");
         filled = filled.replace("{{qty}}", primaryItem != null
                 ? String.valueOf(primaryItem.getQuantity() != null ? primaryItem.getQuantity() : 1) : "");
         filled = filled.replace("{{unit_price}}", primaryItem != null && primaryItem.getUnitPrice() != null
@@ -2858,17 +2864,6 @@ public class InvoiceService {
             }
         }
         return lineItems.get(0);
-    }
-
-    /** The payment plan's name, when it adds something the item description does not already say. */
-    static String invoiceItemTag(InvoiceData invoiceData, InvoiceLineItemData primaryItem) {
-        PaymentPlan plan = invoiceData != null ? invoiceData.getPaymentPlan() : null;
-        String name = plan != null ? Objects.toString(plan.getName(), "").trim() : "";
-        String description = primaryItem != null ? Objects.toString(primaryItem.getDescription(), "") : "";
-        if (name.isEmpty() || description.toLowerCase(Locale.ENGLISH).contains(name.toLowerCase(Locale.ENGLISH))) {
-            return "";
-        }
-        return name;
     }
 
     /** Nothing is owed once the invoice carries a payment date; until then, the whole total. */

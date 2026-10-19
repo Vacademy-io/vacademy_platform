@@ -69,6 +69,9 @@ public class PaymentNotificatonService {
     @Autowired
     private InvoiceAdminCopyRecipientResolver invoiceAdminCopyRecipientResolver;
 
+    @Autowired
+    private vacademy.io.admin_core_service.features.invoice.util.CourseTagResolver courseTagResolver;
+
     public boolean sendPaymentConfirmationNotification(
             String instituteId,
             PaymentResponseDTO paymentResponseDTO,
@@ -190,7 +193,7 @@ public class PaymentNotificatonService {
                 institute, userDTO, paymentInitiationRequestDTO, paymentResponseDTO,
                 invoiceNumber, courseName, paymentLog, invoicePdfBytes, orderAmounts);
         Map<String, String> variables = withReceiptAliases(
-                sendUniqueLinkService.buildVariablesMap(template, templateVars), paymentLog);
+                sendUniqueLinkService.buildVariablesMap(template, templateVars), courseTagResolver.tagsFor(paymentLog));
 
         String emailBody = applyVariables(template.getContent(), variables);
         String subject = StringUtils.hasText(template.getSubject())
@@ -498,31 +501,18 @@ public class PaymentNotificatonService {
      * The names an email-editor receipt template uses for values this email already carries, so
      * such a template fills without being rewritten: customer_name, amount_paid (with the currency
      * symbol), payment_received_date, invoice_item_description (the course) and invoice_item_tag
-     * (the payment plan's name, when it says something the course name does not). Keys the
-     * variables map already holds are left alone.
+     * (the course's tags, e.g. "Vet Course"; blank when it has none). Keys the variables map
+     * already holds are left alone.
      */
-    static Map<String, String> withReceiptAliases(Map<String, String> variables, PaymentLog paymentLog) {
+    static Map<String, String> withReceiptAliases(Map<String, String> variables, String courseTags) {
         Map<String, String> out = new HashMap<>(variables != null ? variables : Map.of());
-        String course = out.getOrDefault("course_name", "");
         String amount = out.getOrDefault("amount", "");
         out.putIfAbsent("customer_name", out.getOrDefault("user_full_name", ""));
         out.putIfAbsent("amount_paid", StringUtils.hasText(amount)
                 ? out.getOrDefault("currency_symbol", "") + amount : "");
         out.putIfAbsent("payment_received_date", out.getOrDefault("payment_date", ""));
-        out.putIfAbsent("invoice_item_description", course);
-        String planName = "";
-        try {
-            if (paymentLog != null && paymentLog.getUserPlan() != null
-                    && paymentLog.getUserPlan().getPaymentPlan() != null) {
-                planName = java.util.Objects.toString(paymentLog.getUserPlan().getPaymentPlan().getName(), "").trim();
-            }
-        } catch (RuntimeException e) {
-            // Lazy plan outside a session: the tag is decorative, the email goes without it.
-            planName = "";
-        }
-        out.putIfAbsent("invoice_item_tag",
-                planName.isEmpty() || course.toLowerCase(Locale.ENGLISH).contains(planName.toLowerCase(Locale.ENGLISH))
-                        ? "" : planName);
+        out.putIfAbsent("invoice_item_description", out.getOrDefault("course_name", ""));
+        out.putIfAbsent("invoice_item_tag", courseTags != null ? courseTags : "");
         return out;
     }
 

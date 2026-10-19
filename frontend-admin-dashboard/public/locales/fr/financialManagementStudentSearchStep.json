@@ -17,5 +17,9 @@
     "pagination": {
         "showing": "Affichage de",
         "of": "sur"
+    },
+    "redesign": {
+        "findTitle": "Find the {{learner}}",
+        "findHint": "click a {{learner}} to see their installments"
     }
 }

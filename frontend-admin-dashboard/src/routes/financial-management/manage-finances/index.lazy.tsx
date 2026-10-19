@@ -1,11 +1,14 @@
-import { createLazyFileRoute } from '@tanstack/react-router';
+import { createLazyFileRoute, Link } from '@tanstack/react-router';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Helmet } from 'react-helmet';
 import { useQuery } from '@tanstack/react-query';
+import { HandCoins, Percent, Wallet } from '@phosphor-icons/react';
+import { MyButton } from '@/components/design-system/button';
 import { MyDropdown } from '@/components/design-system/dropdown';
+import { instituteTerms } from '@/components/shared/crm-enhance/institute-terms';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { ManageFinancesFilters } from './-components/ManageFinancesFilters';
 import { ManageFinancesTable } from './-components/ManageFinancesTable';
@@ -22,6 +25,7 @@ export const Route = createLazyFileRoute('/financial-management/manage-finances/
 
 function ManageFinancesLayoutPage() {
     const { t } = useTranslation('financialManagementManageFinancesIndex');
+    const terms = instituteTerms();
     const { setNavHeading } = useNavHeadingStore();
     const { getAllSessions } = useInstituteDetailsStore();
 
@@ -95,18 +99,46 @@ function ManageFinancesLayoutPage() {
                 />
             </Helmet>
 
-            <div className="flex flex-col gap-4 p-6 animate-in fade-in duration-300 w-full max-w-[1400px] mx-auto">
-                {/* Page header with session dropdown */}
-                <div className="flex items-center justify-between">
-                    <h2 className="text-xl font-bold text-gray-800">{t('pageTitle')}</h2>
-                    <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-gray-500">{t('sessionLabel')}</span>
-                        <MyDropdown
-                            currentValue={currentSessionLabel}
-                            dropdownList={sessionDropdownList}
-                            handleChange={handleSessionChange}
-                            placeholder={allSessionsLabel}
-                        />
+            <div className="mx-auto flex w-full max-w-screen-2xl flex-col gap-4 p-6 duration-300 animate-in fade-in">
+                {/* Page header: title + session + quick actions */}
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div className="flex items-start gap-3">
+                        <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-500">
+                            <Wallet size={20} weight="duotone" />
+                        </span>
+                        <div>
+                            <h2 className="text-h3 font-semibold text-neutral-900">
+                                {t('pageTitle')}
+                            </h2>
+                            <p className="mt-0.5 text-body text-neutral-500">
+                                {t('redesign.subtitle', { learner: terms.learner.toLowerCase() })}
+                            </p>
+                        </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex items-center gap-2">
+                            <span className="text-body font-medium text-neutral-500">
+                                {t('sessionLabel')}
+                            </span>
+                            <MyDropdown
+                                currentValue={currentSessionLabel}
+                                dropdownList={sessionDropdownList}
+                                handleChange={handleSessionChange}
+                                placeholder={allSessionsLabel}
+                            />
+                        </div>
+                        <Link to="/financial-management/adjustment-approvals">
+                            <MyButton buttonType="secondary" scale="medium">
+                                <Percent className="mr-1 size-4" />
+                                {t('redesign.adjustments')}
+                            </MyButton>
+                        </Link>
+                        <Link to="/financial-management/pay-installments">
+                            <MyButton buttonType="primary" scale="medium">
+                                <HandCoins className="mr-1 size-4" />
+                                {t('redesign.collectPayment')}
+                            </MyButton>
+                        </Link>
                     </div>
                 </div>
 

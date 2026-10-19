@@ -104,7 +104,11 @@
         "stopHeader": "Stop (no retry)",
         "removeAria": "Remove {{disposition}}",
         "addOutcomePlaceholder": "Add a custom outcome (e.g. Wrong Number)",
-        "addOutcome": "Add outcome"
+        "addOutcome": "Add outcome",
+        "otherwiseHeader": "Otherwise",
+        "otherwiseRetry": "Retry, then assign after max retries",
+        "otherwiseRetryOnly": "Retry until max retries",
+        "customBadge": "custom"
     },
     "assignmentCard": {
         "title": "Counsellor Assignment",
@@ -215,5 +219,19 @@
             "rotateTitle": "Create a new signing secret?",
             "rotateDescription": "Every delivery from now on is signed with the new secret. Until your server uses it, its signature checks will fail and events will be retried. Update your server right after copying the new secret."
         }
+    },
+    "header": {
+        "title": "AI Calling Settings",
+        "description": "AI-first calling: who the AI calls, from which line, how often it retries, and what happens after each outcome.",
+        "unsaved": "Unsaved changes",
+        "aiAgents": "AI Agents",
+        "disabledBanner": "AI calling is off. Switch it on in the AI calling tab to set up retries, outcomes and assignment."
+    },
+    "tabs": {
+        "general": "AI calling",
+        "agents": "Agents & campaigns",
+        "retries": "Retries & shifts",
+        "outcomes": "Outcome → action",
+        "assignment": "Assignment"
     }
 }

@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft } from '@phosphor-icons/react';
+import { ArrowLeft, CheckCircle } from '@phosphor-icons/react';
+import { MyButton } from '@/components/design-system/button';
 import dayjs from 'dayjs';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
@@ -125,153 +126,183 @@ export function PaymentDetailsStep({
     return (
         <div className="space-y-6">
             {/* Header */}
-            <div className="flex items-center gap-4 bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+            <div className="flex items-center gap-4 rounded-xl border border-neutral-100 bg-white p-4 shadow-sm">
                 <button
                     onClick={onBack}
-                    className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-blue-600 transition-colors"
+                    className="flex items-center gap-1.5 text-sm text-neutral-500 transition-colors hover:text-primary-600"
                 >
                     <ArrowLeft size={16} />
                     {t('backToInstallments')}
                 </button>
-                <div className="h-5 w-px bg-gray-200" />
+                <div className="h-5 w-px bg-neutral-200" />
                 <div>
-                    <span className="font-semibold text-gray-800">{student.student_name}</span>
+                    <span className="font-semibold text-neutral-800">{student.student_name}</span>
                     {student.phone && (
-                        <span className="ml-2 text-sm text-gray-400">{student.phone}</span>
+                        <span className="ml-2 text-sm text-neutral-400">{student.phone}</span>
                     )}
                 </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* ── Left: Receipt Preview ── */}
-                <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                    <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/60">
-                        <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wider">
+                <div className="overflow-hidden rounded-xl border border-neutral-100 bg-white shadow-sm lg:col-span-2">
+                    <div className="border-b border-neutral-100 bg-neutral-50/60 px-6 py-4">
+                        <h3 className="text-sm font-bold uppercase tracking-wider text-neutral-700">
                             {t('selectedInstallments', { count: selectedDues.length })}
                         </h3>
                     </div>
-                    <div className="overflow-auto max-h-[400px]">
-                        <table className="w-full text-left border-collapse">
+                    <div className="max-h-96 overflow-auto">
+                        <table className="w-full border-collapse text-left">
                             <thead className="sticky top-0 z-10">
-                                <tr className="border-b border-gray-200 bg-gray-50/95">
-                                    <th className="py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
+                                <tr className="border-b border-neutral-200 bg-neutral-50/95">
+                                    <th className="px-4 py-2.5 text-caption font-semibold uppercase tracking-wider text-neutral-500">
                                         {t('table.feeType')}
                                     </th>
-                                    <th className="py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
+                                    <th className="px-4 py-2.5 text-caption font-semibold uppercase tracking-wider text-neutral-500">
                                         {t('table.cpoPlan')}
                                     </th>
-                                    <th className="py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider text-right">
+                                    <th className="px-4 py-2.5 text-right text-caption font-semibold uppercase tracking-wider text-neutral-500">
                                         {t('table.expected')}
                                     </th>
                                     {showAdjustmentColumn && (
-                                        <th className="py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider text-right">
+                                        <th className="px-4 py-2.5 text-right text-caption font-semibold uppercase tracking-wider text-neutral-500">
                                             {t('table.adjustment')}
                                         </th>
                                     )}
-                                    <th className="py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider text-right">
+                                    <th className="px-4 py-2.5 text-right text-caption font-semibold uppercase tracking-wider text-neutral-500">
                                         {t('table.paid')}
                                     </th>
-                                    <th className="py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider text-right">
+                                    <th className="px-4 py-2.5 text-right text-caption font-semibold uppercase tracking-wider text-neutral-500">
                                         {t('table.outstanding')}
                                     </th>
-                                    <th className="py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
+                                    <th className="px-4 py-2.5 text-caption font-semibold uppercase tracking-wider text-neutral-500">
                                         {t('table.dueDate')}
                                     </th>
-                                    <th className="py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
+                                    <th className="px-4 py-2.5 text-caption font-semibold uppercase tracking-wider text-neutral-500">
                                         {t('table.status')}
                                     </th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-gray-100 text-sm font-medium">
+                            <tbody className="divide-y divide-neutral-100 text-sm font-medium">
                                 {selectedDues.map((inst) => {
                                     const approvedAdj = inst.adjustment_status === 'APPROVED';
                                     const isConcession = approvedAdj && inst.adjustment_type === 'CONCESSION';
                                     const isPenalty = approvedAdj && inst.adjustment_type === 'PENALTY';
                                     return (
-                                    <tr key={inst.id} className="hover:bg-gray-50/40">
-                                        <td className="py-2.5 px-4 text-gray-800 font-semibold">
-                                            {inst.fee_type_name}
-                                        </td>
-                                        <td className="py-2.5 px-4 text-gray-600">
-                                            {inst.cpo_name || '\u2014'}
-                                        </td>
-                                        <td className="py-2.5 px-4 text-gray-700 text-right">
-                                            {formatCurrency(inst.amount_expected)}
-                                        </td>
-                                        {showAdjustmentColumn && (
-                                            <td className="py-2.5 px-4 text-right">
-                                                {isConcession ? (
-                                                    <span className={cn('text-xs font-semibold text-emerald-600')}>
-                                                        - {formatCurrency(inst.adjustment_amount || 0)} <span className="font-normal">({t('adjustmentType.concession')})</span>
-                                                    </span>
-                                                ) : isPenalty ? (
-                                                    <span className={cn('text-xs font-semibold text-red-600')}>
-                                                        + {formatCurrency(inst.adjustment_amount || 0)} <span className="font-normal">({t('adjustmentType.penalty')})</span>
+                                        <tr key={inst.id} className="hover:bg-neutral-50/40">
+                                            <td className="px-4 py-2.5 font-semibold text-neutral-800">
+                                                {inst.fee_type_name}
+                                            </td>
+                                            <td className="px-4 py-2.5 text-neutral-600">
+                                                {inst.cpo_name || '\u2014'}
+                                            </td>
+                                            <td className="px-4 py-2.5 text-right text-neutral-700">
+                                                {formatCurrency(inst.amount_expected)}
+                                            </td>
+                                            {showAdjustmentColumn && (
+                                                <td className="px-4 py-2.5 text-right">
+                                                    {isConcession ? (
+                                                        <span
+                                                            className={cn(
+                                                                'text-xs font-semibold text-success-600'
+                                                            )}
+                                                        >
+                                                            -{' '}
+                                                            {formatCurrency(
+                                                                inst.adjustment_amount || 0
+                                                            )}{' '}
+                                                            <span className="font-normal">
+                                                                ({t('adjustmentType.concession')})
+                                                            </span>
+                                                        </span>
+                                                    ) : isPenalty ? (
+                                                        <span
+                                                            className={cn(
+                                                                'text-xs font-semibold text-danger-600'
+                                                            )}
+                                                        >
+                                                            +{' '}
+                                                            {formatCurrency(
+                                                                inst.adjustment_amount || 0
+                                                            )}{' '}
+                                                            <span className="font-normal">
+                                                                ({t('adjustmentType.penalty')})
+                                                            </span>
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-neutral-400">
+                                                            {'\u2014'}
+                                                        </span>
+                                                    )}
+                                                </td>
+                                            )}
+                                            <td className="px-4 py-2.5 text-right font-semibold text-success-700">
+                                                {formatCurrency(inst.amount_paid)}
+                                            </td>
+                                            <td className="px-4 py-2.5 text-right font-semibold text-danger-600">
+                                                {formatCurrency(inst.amount_due)}
+                                            </td>
+                                            <td className="px-4 py-2.5 text-neutral-600">
+                                                {inst.due_date
+                                                    ? dayjs(inst.due_date).format('D MMM YYYY')
+                                                    : '\u2014'}
+                                            </td>
+                                            <td className="px-4 py-2.5">
+                                                {inst.is_overdue ? (
+                                                    <span className="inline-flex items-center gap-1 rounded-full bg-danger-50 px-2 py-0.5 text-caption font-semibold uppercase text-danger-700">
+                                                        <span className="size-1.5 rounded-full bg-danger-500" />
+                                                        {t('status.overdue')}
                                                     </span>
                                                 ) : (
-                                                    <span className="text-gray-400">{'\u2014'}</span>
+                                                    <span className="inline-flex items-center gap-1 rounded-full bg-warning-50 px-2 py-0.5 text-caption font-semibold uppercase text-warning-700">
+                                                        <span className="size-1.5 rounded-full bg-warning-500" />
+                                                        {inst.status === 'PARTIAL_PAID'
+                                                            ? t('status.partial')
+                                                            : t('status.pending')}
+                                                    </span>
                                                 )}
                                             </td>
-                                        )}
-                                        <td className="py-2.5 px-4 text-emerald-700 font-semibold text-right">
-                                            {formatCurrency(inst.amount_paid)}
-                                        </td>
-                                        <td className="py-2.5 px-4 text-red-600 font-semibold text-right">
-                                            {formatCurrency(inst.amount_due)}
-                                        </td>
-                                        <td className="py-2.5 px-4 text-gray-600">
-                                            {inst.due_date
-                                                ? dayjs(inst.due_date).format('D MMM YYYY')
-                                                : '\u2014'}
-                                        </td>
-                                        <td className="py-2.5 px-4">
-                                            {inst.is_overdue ? (
-                                                <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase bg-red-50 text-red-700">
-                                                    <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
-                                                    {t('status.overdue')}
-                                                </span>
-                                            ) : (
-                                                <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase bg-amber-50 text-amber-700">
-                                                    <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-                                                    {inst.status === 'PARTIAL_PAID' ? t('status.partial') : t('status.pending')}
-                                                </span>
-                                            )}
-                                        </td>
-                                    </tr>
+                                        </tr>
                                     );
                                 })}
                             </tbody>
                             <tfoot>
                                 {showAdjustmentColumn && totalConcession > 0 && (
-                                    <tr className="bg-gray-50/40">
-                                        <td colSpan={3} className="py-1.5 px-4 text-xs font-semibold text-gray-500 text-right uppercase tracking-wide">
+                                    <tr className="bg-neutral-50/40">
+                                        <td
+                                            colSpan={3}
+                                            className="px-4 py-1.5 text-right text-xs font-semibold uppercase tracking-wide text-neutral-500"
+                                        >
                                             {t('totals.totalConcession')}
                                         </td>
-                                        <td className="py-1.5 px-4 text-sm font-semibold text-emerald-600 text-right">
+                                        <td className="px-4 py-1.5 text-right text-sm font-semibold text-success-600">
                                             - {formatCurrency(totalConcession)}
                                         </td>
                                         <td colSpan={4} />
                                     </tr>
                                 )}
                                 {showAdjustmentColumn && totalPenalty > 0 && (
-                                    <tr className="bg-gray-50/40">
-                                        <td colSpan={3} className="py-1.5 px-4 text-xs font-semibold text-gray-500 text-right uppercase tracking-wide">
+                                    <tr className="bg-neutral-50/40">
+                                        <td
+                                            colSpan={3}
+                                            className="px-4 py-1.5 text-right text-xs font-semibold uppercase tracking-wide text-neutral-500"
+                                        >
                                             {t('totals.totalPenalty')}
                                         </td>
-                                        <td className="py-1.5 px-4 text-sm font-semibold text-red-600 text-right">
+                                        <td className="px-4 py-1.5 text-right text-sm font-semibold text-danger-600">
                                             + {formatCurrency(totalPenalty)}
                                         </td>
                                         <td colSpan={4} />
                                     </tr>
                                 )}
-                                <tr className="border-t-2 border-gray-200 bg-gray-50/60">
+                                <tr className="border-t-2 border-neutral-200 bg-neutral-50/60">
                                     <td
                                         colSpan={showAdjustmentColumn ? 5 : 4}
-                                        className="py-3 px-4 text-sm font-bold text-gray-700 text-right"
+                                        className="px-4 py-3 text-right text-sm font-bold text-neutral-700"
                                     >
                                         {t('totals.totalOutstanding')}
                                     </td>
-                                    <td className="py-3 px-4 text-base font-extrabold text-red-600 text-right">
+                                    <td className="px-4 py-3 text-right text-base font-extrabold text-danger-600">
                                         {formatCurrency(totalDue)}
                                     </td>
                                     <td colSpan={2} />
@@ -282,8 +313,8 @@ export function PaymentDetailsStep({
                 </div>
 
                 {/* ── Right: Payment Form ── */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-5 h-fit">
-                    <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wider">
+                <div className="h-fit space-y-5 rounded-xl border border-neutral-100 bg-white p-6 shadow-sm">
+                    <h3 className="text-sm font-bold uppercase tracking-wider text-neutral-700">
                         {t('paymentDetails')}
                     </h3>
 
@@ -301,11 +332,11 @@ export function PaymentDetailsStep({
 
                     {/* Amount */}
                     <div className="space-y-2">
-                        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                        <label className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
                             {t('amount')}
                         </label>
                         <div className="relative">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-medium">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-medium text-neutral-400">
                                 {'\u20B9'}
                             </span>
                             <Input
@@ -316,16 +347,15 @@ export function PaymentDetailsStep({
                             />
                         </div>
                         {parsedAmount > totalDue && (
-                            <p className="text-xs text-amber-600">
-                                {t('amountExceedsDue')}
-                            </p>
+                            <p className="text-xs text-warning-600">{t('amountExceedsDue')}</p>
                         )}
                     </div>
 
                     {/* Remarks */}
                     <div className="space-y-2">
-                        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                            {t('remarksLabel')} <span className="text-gray-400 normal-case">({t('optional')})</span>
+                        <label className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                            {t('remarksLabel')}{' '}
+                            <span className="normal-case text-neutral-400">({t('optional')})</span>
                         </label>
                         <Input
                             value={remarks}
@@ -336,13 +366,17 @@ export function PaymentDetailsStep({
                     </div>
 
                     {/* Submit */}
-                    <button
+                    <MyButton
+                        type="button"
+                        buttonType="primary"
+                        scale="large"
+                        className="w-full"
                         onClick={handleSubmit}
-                        disabled={parsedAmount <= 0 || mutation.isPending || !!detailsError}
-                        className="w-full px-5 py-3 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        disable={parsedAmount <= 0 || mutation.isPending || !!detailsError}
                     >
+                        <CheckCircle size={18} weight="bold" className="mr-1.5" />
                         {mutation.isPending ? t('processing') : `${t('submitPayment')} \u2014 ${formatCurrency(parsedAmount || 0)}`}
-                    </button>
+                    </MyButton>
                 </div>
             </div>
 

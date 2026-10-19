@@ -51,6 +51,8 @@ DEDUCTION_CHECK = os.getenv("COPY_CHECK_DEDUCTION_CHECK", "on").strip().lower() 
 # per page (handwriting read, maths close-ups) and per cut (the image check).
 TOKENS_PER_PAGE_ALLOWANCE = 20_000
 TOKENS_PER_QUESTION_CHECK = 4_000
+# Beside an answer an internal-choice group left out of the total.
+NOT_COUNTED_NOTE = "Extra answer - not counted in the total."
 
 # Which reader gives maths lines a second look: "glm" (math_reread.py,
 # the default), "mathpix" (the old crop OCR that overwrote the row) or "off".
@@ -913,6 +915,20 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> str:
                 v["feedback"] = language_feedback.with_language_feedback(v.get("feedback"), errors)
                 v["annotations"] = (list(v.get("annotations") or [])
                                     + language_feedback.annotations(errors, v.get("question_id")))
+        # Internal choice ("any 4 of 5"): an answer a choice group left out keeps
+        # its own mark on the copy, so say beside it that it is not in the total.
+        # Dashboard copies only; a partner's checked copy is drawn as before.
+        for v in verdicts:
+            if (is_api_actor(billing["billing_actor"]) or v.get("counted", True)
+                    or str(v.get("status") or "").upper() == "FAILED"):
+                continue
+            score = next((a for a in v.get("annotations") or [] if a.get("style") == "score"), None)
+            if score and score.get("target"):
+                v["annotations"] = list(v["annotations"]) + [{
+                    "style": "margin_note", "q": score.get("q"), "target": score["target"],
+                    "page_id": score.get("page_id"), "placement": "below_line", "position": "below_line_left",
+                    "text": NOT_COUNTED_NOTE, "anchor_text": score.get("anchor_text"),
+                }]
         # The marks Java stores must be the marks on the checked copy (gate G9):
         # re-send every question enforcement changed or a choice group dropped,
         # before `complete` makes Java total the rows.

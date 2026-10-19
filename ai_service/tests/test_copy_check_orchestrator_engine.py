@@ -485,9 +485,35 @@ def test_language_check_is_off_unless_asked(env, monkeypatch):
     assert all("Language" not in p["feedback"] for p in _posts(env, "question"))
 
 
+def test_answer_left_out_by_a_choice_group_says_so_on_the_copy(env):
+    _run(_payload(choice_groups=[{"question_ids": ["q1", "q2", "q3"], "attempt": 2, "policy": "best"}],
+                  paper_max=10))
+    notes = {v["question_id"]: [a["text"] for a in v["annotations"] if a.get("style") == "margin_note"]
+             for v in env["rendered"]}
+    assert orchestrator.NOT_COUNTED_NOTE in notes["q1"]
+    assert all(orchestrator.NOT_COUNTED_NOTE not in notes[q] for q in ("q2", "q3"))
+    q1 = next(v for v in env["rendered"] if v["question_id"] == "q1")
+    note = next(a for a in q1["annotations"] if a.get("text") == orchestrator.NOT_COUNTED_NOTE)
+    score = next(a for a in q1["annotations"] if a.get("style") == "score")
+    assert note["target"] == score["target"]
+    # The dashboard overlay (question callbacks) is unchanged by it.
+    assert all(orchestrator.NOT_COUNTED_NOTE not in str(p.get("annotations")) for p in _posts(env, "question"))
+
+
+def test_no_choice_groups_no_extra_note(env):
+    _run(_payload())
+    assert all(orchestrator.NOT_COUNTED_NOTE not in str(v["annotations"]) for v in env["rendered"])
+
+
 def test_instructions_reach_grading_on_dashboard_runs_only(env):
     _run(_payload(exam_context={"instructions": "Format 1."}))
     assert env["grader_kwargs"]["grading_instructions"] is True
     _run(_payload(exam_context={"instructions": "Format 1."}, billing_actor="apikey:key-1",
                   page_count=1, rate_snapshot=SNAPSHOT))
     assert env["grader_kwargs"]["grading_instructions"] is False
+
+
+def test_partner_copy_is_drawn_as_before_under_internal_choice(env):
+    _run(_payload(choice_groups=[{"question_ids": ["q1", "q2", "q3"], "attempt": 2, "policy": "best"}],
+                  paper_max=10, billing_actor="apikey:key-1", page_count=1, rate_snapshot=SNAPSHOT))
+    assert all(orchestrator.NOT_COUNTED_NOTE not in str(v["annotations"]) for v in env["rendered"])

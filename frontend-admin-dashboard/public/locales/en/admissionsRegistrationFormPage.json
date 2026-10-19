@@ -63,5 +63,9 @@
     },
     "payment": {
         "defaultFeeName": "Application / Registration Fee"
+    },
+    "header": {
+        "backToList": "Back to applications",
+        "stepBadge": "Step {{current}} of {{total}}"
     }
 }

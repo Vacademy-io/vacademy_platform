@@ -16,11 +16,18 @@ import { MyDropdown } from '@/components/common/students/enroll-manually/dropdow
 import { MyButton } from '@/components/design-system/button';
 import { EmptyBatchImage } from '@/assets/svgs';
 import { ContentTerms, RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
-import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
-import { Plus } from '@phosphor-icons/react';
+import {
+    getTerminology,
+    getTerminologyPlural,
+} from '@/components/common/layout-container/sidebar/utils';
+import { DownloadSimple, Plus, Stack } from '@phosphor-icons/react';
+import dayjs from 'dayjs';
+import { ScreenHeader } from '@/components/shared/crm-enhance/screen-header';
+import { buildCsv, downloadCsv } from '@/routes/manage-custom-teams/-utils/list-export';
 import {
     applyBatchFilters,
     DEFAULT_BATCH_FILTERS,
+    getBatchDisplayStatus,
     hasActiveBatchFilters,
 } from '@/routes/manage-institute/batches/-utils/batch-filters';
 
@@ -132,6 +139,42 @@ export const ManageBatches = () => {
     const learnerTerm = getTerminology(RoleTerms.Learner, SystemTerms.Learner);
     const batchTerm = getTerminology(ContentTerms.Batch, SystemTerms.Batch);
 
+    // Derived from the list already loaded for this session — no extra request.
+    const sessionBatchCount = sessionCourses.reduce((sum, c) => sum + c.batches.length, 0);
+    const visibleBatchCount = visibleCourses.reduce((sum, c) => sum + c.batches.length, 0);
+    const visibleLearnerCount = visibleCourses.reduce(
+        (sum, c) => sum + c.batches.reduce((n, b) => n + (b.count_students ?? 0), 0),
+        0
+    );
+
+    /** CSV of the batches on screen (current session + filters), built in the browser. */
+    const exportBatches = () => {
+        const rows = visibleCourses.flatMap((course) =>
+            course.batches.map((batch) => [
+                course.package_dto.package_name,
+                batch.batch_name,
+                currentSession?.name ?? '',
+                t(`toolbar.status.${getBatchDisplayStatus(batch)}`),
+                batch.count_students ?? 0,
+                batch.invite_code ?? '',
+                batch.start_date ? dayjs(batch.start_date).format('YYYY-MM-DD') : '',
+            ])
+        );
+        const headers = [
+            getTerminology(ContentTerms.Course, SystemTerms.Course),
+            batchTerm,
+            getTerminology(ContentTerms.Session, SystemTerms.Session),
+            t('csv.status'),
+            getTerminologyPlural(RoleTerms.Learner, SystemTerms.Learner),
+            t('csv.inviteCode'),
+            t('csv.startDate'),
+        ];
+        downloadCsv(
+            buildCsv(headers, rows),
+            `${batchTerm}-${currentSession?.name ?? 'all'}.csv`.replace(/\s+/g, '-')
+        );
+    };
+
     if (isLoading) return <DashboardLoader />;
 
     if (isError)
@@ -145,43 +188,54 @@ export const ManageBatches = () => {
 
     return (
         <div className="flex flex-col gap-5 p-2 text-neutral-700 sm:gap-6">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex flex-col gap-1">
-                    <h1 className="text-h2 font-semibold text-neutral-800">
-                        {t('heading', { learner: learnerTerm })}
-                    </h1>
-                    <p className="text-body text-neutral-500">
-                        {t('subheading', {
-                            learner: learnerTerm.toLocaleLowerCase(),
-                            session: getTerminology(
-                                ContentTerms.Session,
-                                SystemTerms.Session
-                            ).toLocaleLowerCase(),
-                        })}
-                    </p>
-                </div>
-                <div className="flex items-center gap-3">
-                    {sessionList.length > 0 && currentSession !== undefined && (
-                        <MyDropdown
-                            currentValue={currentSession}
-                            dropdownList={sessionList}
-                            placeholder={t('selectSessionPlaceholder', {
-                                session: getTerminology(ContentTerms.Session, SystemTerms.Session),
-                            })}
-                            handleChange={handleSessionChange}
-                        />
-                    )}
-                    <MyButton
-                        scale="large"
-                        buttonType="primary"
-                        className="gap-2"
-                        onClick={() => openCreateBatch()}
-                    >
-                        <Plus size={18} />
-                        {t('createBatch', { term: batchTerm })}
-                    </MyButton>
-                </div>
-            </div>
+            <ScreenHeader
+                icon={Stack}
+                title={t('heading', { learner: learnerTerm })}
+                subtitle={t('subheading', {
+                    learner: learnerTerm.toLocaleLowerCase(),
+                    session: getTerminology(
+                        ContentTerms.Session,
+                        SystemTerms.Session
+                    ).toLocaleLowerCase(),
+                })}
+                actions={
+                    <>
+                        {sessionList.length > 0 && currentSession !== undefined && (
+                            <MyDropdown
+                                currentValue={currentSession}
+                                dropdownList={sessionList}
+                                placeholder={t('selectSessionPlaceholder', {
+                                    session: getTerminology(
+                                        ContentTerms.Session,
+                                        SystemTerms.Session
+                                    ),
+                                })}
+                                handleChange={handleSessionChange}
+                            />
+                        )}
+                        {hasCourses && (
+                            <MyButton
+                                scale="large"
+                                buttonType="secondary"
+                                className="gap-2"
+                                onClick={exportBatches}
+                            >
+                                <DownloadSimple size={18} />
+                                {t('export')}
+                            </MyButton>
+                        )}
+                        <MyButton
+                            scale="large"
+                            buttonType="primary"
+                            className="gap-2"
+                            onClick={() => openCreateBatch()}
+                        >
+                            <Plus size={18} />
+                            {t('createBatch', { term: batchTerm })}
+                        </MyButton>
+                    </>
+                }
+            />
 
             {hasCourses ? (
                 <>
@@ -196,6 +250,23 @@ export const ManageBatches = () => {
                         view={view}
                         onViewChange={setView}
                     />
+                    <p className="-mt-2 text-neutral-500">
+                        <span className="text-caption">
+                            {t('summary', {
+                                shown: visibleBatchCount.toLocaleString('en-IN'),
+                                total: sessionBatchCount.toLocaleString('en-IN'),
+                                batches: getTerminologyPlural(
+                                    ContentTerms.Batch,
+                                    SystemTerms.Batch
+                                ).toLocaleLowerCase(),
+                                learners: visibleLearnerCount.toLocaleString('en-IN'),
+                                learnerTerm: getTerminologyPlural(
+                                    RoleTerms.Learner,
+                                    SystemTerms.Learner
+                                ).toLocaleLowerCase(),
+                            })}
+                        </span>
+                    </p>
                     {visibleCourses.length > 0 ? (
                         <div className="flex flex-col gap-8">
                             {visibleCourses.map((course) => {

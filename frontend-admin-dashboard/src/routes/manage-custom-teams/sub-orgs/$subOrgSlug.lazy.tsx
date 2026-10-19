@@ -4,11 +4,21 @@ import { Helmet } from 'react-helmet';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, ArrowsClockwise, PencilSimple } from '@phosphor-icons/react';
+import { ArrowLeft, ArrowsClockwise, Buildings, PencilSimple } from '@phosphor-icons/react';
+import {
+    ScreenHeader,
+    StatusPill,
+    type PillTone,
+} from '@/components/shared/crm-enhance/screen-header';
 import { toast } from 'sonner';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { MyButton } from '@/components/design-system/button';
-import { getSubOrgs, resyncSubOrgInvites } from '../-services/custom-team-services';
+import {
+    getSubOrgs,
+    resyncSubOrgInvites,
+    type SubOrgListPage,
+} from '../-services/custom-team-services';
+import { humanizeStatus } from '../-utils/status-display';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { SubOrgAnalyticsPanel } from '@/routes/manage-suborg-teams/-components/sub-org-analytics-panel';
 import { SubOrgStatCards } from '@/routes/manage-suborg-teams/-components/sub-org-stat-cards';
@@ -118,6 +128,16 @@ function InstituteAdminSubOrgPage() {
         }
     }, [isLoading, subOrgs.length, selectedSubOrg, navigate]);
 
+    // Plan status for the header badge: read from the Sub-Orgs list cache when the
+    // admin came from that list. Never fetched here — no extra request on this page.
+    const cachedList = queryClient.getQueryData<SubOrgListPage>([
+        'sub-orgs-with-details',
+        instituteId,
+    ]);
+    const planStatus = selectedSubOrg
+        ? cachedList?.content?.find((o) => o.suborg_id === selectedSubOrg.id)?.plan_status
+        : null;
+
     const resyncMutation = useMutation({
         mutationFn: (subOrgId: string) => resyncSubOrgInvites(subOrgId),
         onSuccess: (data) => {
@@ -167,59 +187,67 @@ function InstituteAdminSubOrgPage() {
             </Helmet>
             <div className="p-5">
                 <SubOrgModuleGate>
-                {/* Same header shape as the Manage <SubOrgs> list this page drills down
-                    from: title and subtitle on the left, the headline figures on the
-                    right. The two mutating actions move to their own right-aligned row
-                    below — the header's right slot now belongs to the cards. */}
-                <div className="mb-5 flex flex-col gap-3">
-                    <Link
-                        to="/manage-custom-teams"
-                        className="inline-flex w-fit items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-                    >
-                        <ArrowLeft className="h-3 w-3" />
-                        {t('backToList', { termPlural: termPlural.toLowerCase() })}
-                    </Link>
-                    <div className="flex flex-wrap items-start justify-between gap-4">
-                        <div className="max-w-md">
-                            <h1 className="text-3xl font-bold text-neutral-900">
-                                {selectedSubOrg?.name || term}
-                            </h1>
-                            <p className="mt-1 text-sm text-neutral-500">
-                                {canEditConfig
+                    {/* Same header shape as the Manage <SubOrgs> list this page drills down
+                        from: back link, icon + name (+ plan status when the list is already in
+                        the cache) and the mutating actions on the right; the headline figures
+                        get their own row below. */}
+                    <div className="mb-5 flex flex-col gap-4">
+                        <ScreenHeader
+                            back={
+                                <Link
+                                    to="/manage-custom-teams"
+                                    className="inline-flex w-fit items-center gap-1 text-xs text-neutral-500 hover:text-primary-500"
+                                >
+                                    <ArrowLeft className="size-3" />
+                                    {t('backToList', { termPlural: termPlural.toLowerCase() })}
+                                </Link>
+                            }
+                            icon={Buildings}
+                            title={selectedSubOrg?.name || term}
+                            badge={
+                                planStatus ? (
+                                    <StatusPill tone={planTone(planStatus)}>
+                                        {humanizeStatus(planStatus)}
+                                    </StatusPill>
+                                ) : null
+                            }
+                            subtitle={
+                                canEditConfig
                                     ? t('subtitle.manage', { term: term.toLowerCase() })
-                                    : t('subtitle.view', { term: term.toLowerCase() })}
-                            </p>
-                        </div>
+                                    : t('subtitle.view', { term: term.toLowerCase() })
+                            }
+                            actions={
+                                selectedSubOrg && canEditConfig ? (
+                                    <>
+                                        <MyButton
+                                            type="button"
+                                            buttonType="secondary"
+                                            scale="small"
+                                            disable={resyncMutation.isPending}
+                                            onClick={() => resyncMutation.mutate(selectedSubOrg.id)}
+                                        >
+                                            <ArrowsClockwise
+                                                className={`size-4 ${resyncMutation.isPending ? 'animate-spin' : ''}`}
+                                            />
+                                            {resyncMutation.isPending
+                                                ? t('resync.inProgress')
+                                                : t('resync.action')}
+                                        </MyButton>
+                                        <MyButton
+                                            type="button"
+                                            buttonType="primary"
+                                            scale="small"
+                                            onClick={() => setEditOpen(true)}
+                                        >
+                                            <PencilSimple className="size-4" />
+                                            {t('editTerm', { term: term.toLowerCase() })}
+                                        </MyButton>
+                                    </>
+                                ) : null
+                            }
+                        />
                         {selectedSubOrg && <SubOrgStatCards subOrgId={selectedSubOrg.id} full />}
                     </div>
-                    {selectedSubOrg && canEditConfig && (
-                        <div className="flex flex-wrap items-center justify-end gap-2">
-                            <MyButton
-                                type="button"
-                                buttonType="secondary"
-                                scale="small"
-                                onClick={() => setEditOpen(true)}
-                            >
-                                <PencilSimple className="size-4" />
-                                {t('editTerm', { term: term.toLowerCase() })}
-                            </MyButton>
-                            <MyButton
-                                type="button"
-                                buttonType="secondary"
-                                scale="small"
-                                disable={resyncMutation.isPending}
-                                onClick={() => resyncMutation.mutate(selectedSubOrg.id)}
-                            >
-                                <ArrowsClockwise
-                                    className={`size-4 ${resyncMutation.isPending ? 'animate-spin' : ''}`}
-                                />
-                                {resyncMutation.isPending
-                                    ? t('resync.inProgress')
-                                    : t('resync.action')}
-                            </MyButton>
-                        </div>
-                    )}
-                </div>
 
                 {isLoading ? (
                     <DashboardLoader />
@@ -258,6 +286,15 @@ function InstituteAdminSubOrgPage() {
             )}
         </LayoutContainer>
     );
+}
+
+/** Pill colour for a plan status — negatives first ("INACTIVE" contains "ACTIVE"). */
+function planTone(status: string): PillTone {
+    const v = status.toUpperCase();
+    if (/FAIL|EXPIR|CANCEL|TERMINAT|DENIED|REJECT|INACTIVE|DISABLED|ERROR/.test(v)) return 'danger';
+    if (/COMPLETED|ACTIVE|VERIFIED|SUCCESS|APPROVED|PAID|ENABLED/.test(v)) return 'success';
+    if (/PENDING|PROCESS|REVIEW|WAIT|PARTIAL|AWAIT/.test(v)) return 'warning';
+    return 'neutral';
 }
 
 /** Re-export so callers in this folder (SubOrgList) can build the same slug. */

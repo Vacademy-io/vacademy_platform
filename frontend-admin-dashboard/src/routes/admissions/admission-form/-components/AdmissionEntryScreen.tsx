@@ -7,7 +7,13 @@ import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { BASE_URL } from '@/constants/urls';
 import { FilterChips } from '@/components/design-system/chips';
 import { MyButton } from '@/components/design-system/button';
-import { X } from '@phosphor-icons/react';
+import { GraduationCap, MagnifyingGlass, Plus, X } from '@phosphor-icons/react';
+import {
+    PillTabs,
+    ScreenHeader,
+    StatusPill,
+    type PillTone,
+} from '@/components/shared/crm-enhance/screen-header';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { EnquirySearchModal } from '../../-components/EnquirySearchModal';
@@ -129,6 +135,27 @@ const getStatusLabel = (t: TFunction, status: string | undefined): string => {
             return t('statusLabels.admission');
         default:
             return status || '-';
+    }
+};
+
+/** Pill colour per pipeline status (unknown statuses stay neutral). */
+const getStatusTone = (status: string | undefined): PillTone => {
+    switch (status) {
+        case 'NEW':
+        case 'ADMISSION':
+            return 'success';
+        case 'CONTACTED':
+            return 'info';
+        case 'FOLLOW_UP':
+        case 'ENQUIRY':
+            return 'warning';
+        case 'QUALIFIED':
+        case 'APPLICATION':
+            return 'primary';
+        case 'NOT_ELIGIBLE':
+            return 'danger';
+        default:
+            return 'neutral';
     }
 };
 
@@ -461,6 +488,32 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
         }
     }, [selectedSessionId]);
 
+    // Quick views set the Status filter and run the same search the Apply button runs.
+    // The search reads state, so it fires on the next render via this tick.
+    const [quickSearchTick, setQuickSearchTick] = useState(0);
+    useEffect(() => {
+        if (quickSearchTick > 0) handleSearch();
+        // Only the tick should re-run the search; handleSearch is recreated every render.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [quickSearchTick]);
+    const statusIds = statusFilters
+        .map((f) => f.id)
+        .sort()
+        .join(',');
+    const quickView =
+        statusIds === 'ADMISSION'
+            ? 'ADMISSION'
+            : statusIds === 'APPLICATION'
+              ? 'APPLICATION'
+              : statusIds === ''
+                ? 'ALL'
+                : '';
+    const selectQuickView = (key: string) => {
+        const option = overallStatusOptions.find((o) => o.id === key);
+        setStatusFilters(option ? [option] : []);
+        setQuickSearchTick((n) => n + 1);
+    };
+
     const getDisplayClass = (item: any) => {
         const psId = item.destination_package_session_id;
         if (!psId) return item.applying_for_class || '-';
@@ -501,45 +554,61 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
     return (
         <div className="flex h-full flex-col p-6 animate-in fade-in duration-300">
             {/* Header with Academic Year + Admission Form button */}
-            <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-200">
-                <h1 className="text-2xl font-bold text-gray-800">{t('header.title')}</h1>
-                <div className="flex items-center gap-3">
-                    {sessions.length > 0 && (
-                        <select
-                            value={selectedSessionId}
-                            onChange={(e) => {
-                                setSelectedSessionId(e.target.value);
-                                setSearchResults(null);
-                            }}
-                            className="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium focus:border-orange-500 focus:ring-1 focus:ring-orange-500 outline-none min-w-44"
+            <ScreenHeader
+                className="mb-5"
+                icon={GraduationCap}
+                title={t('header.title')}
+                subtitle={t('header.subtitle')}
+                actions={
+                    <>
+                        {sessions.length > 0 && (
+                            <select
+                                value={selectedSessionId}
+                                onChange={(e) => {
+                                    setSelectedSessionId(e.target.value);
+                                    setSearchResults(null);
+                                }}
+                                aria-label={t('header.sessionLabel')}
+                                className="h-10 min-w-44 rounded-md border border-neutral-300 bg-white px-3 text-sm font-medium outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
+                            >
+                                {sessions.map((s) => (
+                                    <option key={s.id} value={s.id}>
+                                        {s.session_name}
+                                    </option>
+                                ))}
+                            </select>
+                        )}
+                        <MyButton
+                            buttonType="secondary"
+                            disabled={!selectedSessionId}
+                            onClick={() => setIsBulkImportOpen(true)}
                         >
-                            {sessions.map((s) => (
-                                <option key={s.id} value={s.id}>{s.session_name}</option>
-                            ))}
-                        </select>
-                    )}
-                    <button
-                        onClick={() => setShowAdmissionTypeModal(true)}
-                        className="flex items-center gap-2 px-4 py-2 bg-primary-500 text-white text-sm font-medium rounded-md hover:bg-primary-600 transition-colors shadow-sm"
-                    >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path>
-                        </svg>
-                        {t('header.admissionForm')}
-                    </button>
-                    <MyButton
-                        buttonType="secondary"
-                        disabled={!selectedSessionId}
-                        onClick={() => setIsBulkImportOpen(true)}
-                        className="px-4 py-2"
-                    >
-                        {t('header.bulkImport')}
-                    </MyButton>
-                </div>
-            </div>
+                            {t('header.bulkImport')}
+                        </MyButton>
+                        <MyButton
+                            buttonType="primary"
+                            onClick={() => setShowAdmissionTypeModal(true)}
+                        >
+                            <Plus className="mr-1 size-4" />
+                            {t('header.admissionForm')}
+                        </MyButton>
+                    </>
+                }
+            />
+
+            <PillTabs
+                className="mb-4"
+                tabs={[
+                    { key: 'ADMISSION', label: t('quickViews.admitted') },
+                    { key: 'APPLICATION', label: t('quickViews.applications') },
+                    { key: 'ALL', label: t('quickViews.all') },
+                ]}
+                value={quickView}
+                onChange={selectQuickView}
+            />
 
             {/* Filter Chips */}
-            <div className="flex flex-wrap items-center gap-2 mb-4">
+            <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-neutral-200 bg-white p-3 shadow-sm">
                 <FilterChips
                     label={t('filters.status')}
                     filterList={overallStatusOptions}
@@ -606,13 +675,15 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
                 )}
                 {hasActiveFilters && (
                     <>
-                        <button
+                        <MyButton
+                            buttonType="primary"
+                            scale="small"
                             onClick={handleSearch}
                             disabled={isSearching}
-                            className="h-8 px-3 text-xs font-medium text-white bg-gray-900 rounded-md hover:bg-black transition-colors disabled:opacity-60"
+                            className="h-8 px-3 text-xs"
                         >
                             {isSearching ? t('filters.applying') : t('filters.applyFilter')}
-                        </button>
+                        </MyButton>
                         <MyButton buttonType="secondary" scale="small" onClick={clearAllFilters} className="h-8 px-2 text-xs">
                             <X className="mr-1 h-3 w-3" />
                             {t('filters.clearAll')}
@@ -622,21 +693,23 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
             </div>
 
             {/* Search Panel */}
-            <div className="bg-white p-5 rounded-lg border border-gray-200 shadow-sm mb-6">
-                <div className="flex items-center gap-2 mb-4">
-                    <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-                    </svg>
-                    <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">{t('search.criteriaHeading')}</h2>
+            <div className="mb-6 rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
+                <div className="mb-4 flex items-center gap-2">
+                    <MagnifyingGlass className="size-5 text-neutral-500" />
+                    <h2 className="text-sm font-semibold uppercase tracking-wider text-neutral-700">
+                        {t('search.criteriaHeading')}
+                    </h2>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-end">
                     <div className="flex flex-col gap-1.5 flex-1">
-                        <label className="text-xs font-medium text-gray-600">{t('search.searchByLabel')}</label>
+                        <label className="text-xs font-medium text-neutral-600">
+                            {t('search.searchByLabel')}
+                        </label>
                         <select
                             value={searchBy}
                             onChange={(e) => setSearchBy(e.target.value)}
-                            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-orange-500 focus:ring-1 focus:ring-orange-500 outline-none"
+                            className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
                         >
                             <option value="Student Name">{t('searchByOptions.studentName')}</option>
                             <option value="Application No">{t('searchByOptions.applicationNo')}</option>
@@ -645,41 +718,50 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
                     </div>
 
                     <div className="flex flex-col gap-1.5 flex-1">
-                        <label className="text-xs font-medium text-gray-600">{t('search.enterDetailsLabel')}</label>
+                        <label className="text-xs font-medium text-neutral-600">
+                            {t('search.enterDetailsLabel')}
+                        </label>
                         <input
                             type="text"
                             value={searchValue}
                             onChange={(e) => setSearchValue(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                             placeholder={t('search.enterDetailsPlaceholder', { field: getSearchByLabel(t, searchBy) })}
-                            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-orange-500 focus:ring-1 focus:ring-orange-500 outline-none"
+                            className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
                         />
                     </div>
 
                     <div className="flex-1">
-                        <button
+                        <MyButton
+                            buttonType="primary"
                             onClick={handleSearch}
                             disabled={isSearching}
-                            className="w-full px-4 py-2 bg-gray-800 text-white text-sm font-medium rounded-md hover:bg-gray-900 transition-colors disabled:opacity-60"
+                            className="w-full"
                         >
+                            <MagnifyingGlass className="mr-1 size-4" />
                             {isSearching ? t('search.searching') : t('search.searchButton')}
-                        </button>
+                        </MyButton>
                     </div>
                 </div>
             </div>
 
             {/* Results Section */}
             {searchResults !== null && (
-                <div className="bg-white rounded-lg border border-orange-200 shadow-sm overflow-hidden flex-1 flex flex-col">
+                <div className="flex flex-1 flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
                     {searchResults.length > 0 && (
-                        <div className="px-6 py-3 border-b border-orange-100 bg-orange-50/60">
-                            <p className="text-sm text-gray-700">{t('results.totalResponses')} <span className="font-semibold text-orange-700">{totalResponses}</span></p>
+                        <div className="border-b border-neutral-100 bg-neutral-50 px-6 py-3">
+                            <p className="text-sm text-neutral-700">
+                                {t('results.totalResponses')}{' '}
+                                <span className="font-semibold text-primary-600">
+                                    {totalResponses}
+                                </span>
+                            </p>
                         </div>
                     )}
                     <div className="overflow-x-auto flex-1">
                         <table className="w-full text-start border-collapse min-w-[1200px]"> {/* design-lint-ignore: table min-width for horizontal-scroll layout, no scale token close enough */}
                             <thead>
-                                <tr className="bg-orange-50 text-gray-700 text-xs uppercase tracking-wider border-b border-orange-200">
+                                <tr className="border-b border-neutral-200 bg-neutral-50 text-xs uppercase tracking-wider text-neutral-500">
                                     <th className="px-4 py-3 font-semibold">{t('table.sNo')}</th>
                                     <th className="px-4 py-3 font-semibold">{t('table.class')}</th>
                                     <th className="px-4 py-3 font-semibold">{t('table.studentName')}</th>
@@ -694,57 +776,77 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
                                     <th className="px-4 py-3 font-semibold text-end">{t('table.actions')}</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-gray-100 text-sm">
+                            <tbody className="divide-y divide-neutral-100 text-sm">
                                 {searchResults.length > 0 ? (
                                     searchResults.map((result, idx) => (
-                                        <tr key={result.admission_id || idx}
-                                            className={`transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-orange-50/30'} hover:bg-orange-50/60`}>
-                                            <td className="px-4 py-3.5 text-gray-600">{idx + 1}</td>
-                                            <td className="px-4 py-3.5 font-medium text-orange-700">{getDisplayClass(result)}</td>
-                                            <td className="px-4 py-3.5 font-medium text-gray-900">{result.student_name || '-'}</td>
-                                            <td className="px-4 py-3.5 text-gray-700">{getGenderLabel(t, result.gender)}</td>
-                                            <td className="px-4 py-3.5 text-orange-600">{formatDate(result.date_of_birth)}</td>
-                                            <td className="px-4 py-3.5 text-gray-700">{result.parent_name || '-'}</td>
-                                            <td className="px-4 py-3.5 text-gray-600 max-w-44 truncate" title={result.parent_email || ''}>
+                                        <tr
+                                            key={result.admission_id || idx}
+                                            className="transition-colors hover:bg-neutral-50"
+                                        >
+                                            <td className="px-4 py-3.5 text-neutral-500">
+                                                {idx + 1}
+                                            </td>
+                                            <td className="px-4 py-3.5 font-medium text-neutral-800">
+                                                {getDisplayClass(result)}
+                                            </td>
+                                            <td className="px-4 py-3.5 font-medium text-neutral-900">
+                                                {result.student_name || '-'}
+                                            </td>
+                                            <td className="px-4 py-3.5 text-neutral-700">
+                                                {getGenderLabel(t, result.gender)}
+                                            </td>
+                                            <td className="px-4 py-3.5 text-neutral-600">
+                                                {formatDate(result.date_of_birth)}
+                                            </td>
+                                            <td className="px-4 py-3.5 text-neutral-700">
+                                                {result.parent_name || '-'}
+                                            </td>
+                                            <td
+                                                className="max-w-44 truncate px-4 py-3.5 text-neutral-600"
+                                                title={result.parent_email || ''}
+                                            >
                                                 {result.parent_email || '-'}
                                             </td>
-                                            <td className="px-4 py-3.5 text-gray-700">{result.parent_mobile || '-'}</td>
-                                            <td className="px-4 py-3.5 text-gray-600 font-mono text-xs">{result.tracking_id || '-'}</td>
-                                            <td className="px-4 py-3.5">
-                                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                                                    result.status === 'NEW' ? 'bg-green-100 text-green-800' :
-                                                    result.status === 'CONTACTED' ? 'bg-blue-100 text-blue-800' :
-                                                    result.status === 'FOLLOW_UP' ? 'bg-yellow-100 text-yellow-800' :
-                                                    result.status === 'QUALIFIED' ? 'bg-purple-100 text-purple-800' :
-                                                    result.status === 'NOT_ELIGIBLE' ? 'bg-red-100 text-red-800' :
-                                                    result.status === 'ENQUIRY' ? 'bg-orange-100 text-orange-800' :
-                                                    'bg-gray-100 text-gray-700'
-                                                }`}>
-                                                    {getStatusLabel(t, result.status)}
-                                                </span>
+                                            <td className="px-4 py-3.5 text-neutral-700">
+                                                {result.parent_mobile || '-'}
                                             </td>
-                                            <td className="px-4 py-3.5 text-gray-600">{getSourceLabel(t, result.source)}</td>
+                                            <td className="px-4 py-3.5 font-mono text-xs text-neutral-600">
+                                                {result.tracking_id || '-'}
+                                            </td>
+                                            <td className="px-4 py-3.5">
+                                                <StatusPill tone={getStatusTone(result.status)}>
+                                                    {getStatusLabel(t, result.status)}
+                                                </StatusPill>
+                                            </td>
+                                            <td className="px-4 py-3.5 text-neutral-600">
+                                                {getSourceLabel(t, result.source)}
+                                            </td>
                                             <td className="px-4 py-3.5 text-right">
                                                 {result.status !== 'ADMISSION' ? (
-                                                    <button
+                                                    <MyButton
+                                                        buttonType="secondary"
+                                                        scale="small"
                                                         onClick={() => handleSelectResult(result)}
-                                                        className="inline-flex items-center justify-center px-3 py-1.5 border border-orange-500 text-orange-600 hover:bg-orange-500 hover:text-white rounded text-xs font-medium transition-colors whitespace-nowrap"
+                                                        className="whitespace-nowrap"
                                                     >
                                                         {t('results.createAdmission')}
-                                                    </button>
+                                                    </MyButton>
                                                 ) : (
-                                                    <span className="text-xs text-gray-400">{t('results.alreadyAdmitted')}</span>
+                                                    <span className="text-xs text-neutral-400">
+                                                        {t('results.alreadyAdmitted')}
+                                                    </span>
                                                 )}
                                             </td>
                                         </tr>
                                     ))
                                 ) : (
                                     <tr>
-                                        <td colSpan={12} className="px-6 py-12 text-center text-gray-500">
+                                        <td
+                                            colSpan={12}
+                                            className="px-6 py-12 text-center text-neutral-500"
+                                        >
                                             <div className="flex flex-col items-center justify-center gap-2">
-                                                <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                                                </svg>
+                                                <MagnifyingGlass className="size-8 text-neutral-400" />
                                                 <p>{t('results.noRecordsFound')}</p>
                                             </div>
                                         </td>
@@ -758,14 +860,14 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
 
             {/* Empty State */}
             {searchResults === null && (
-                <div className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-orange-200 rounded-lg bg-orange-50/30 p-12 text-center">
-                    <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center shadow-sm border border-orange-100 mb-4 text-orange-400">
-                        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"></path>
-                        </svg>
+                <div className="flex flex-1 flex-col items-center justify-center rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-12 text-center">
+                    <div className="mb-4 flex size-16 items-center justify-center rounded-full border border-neutral-200 bg-white text-primary-400 shadow-sm">
+                        <GraduationCap className="size-8" />
                     </div>
-                    <h3 className="text-lg font-medium text-gray-800 mb-1">{t('emptyState.title')}</h3>
-                    <p className="text-sm text-gray-500 max-w-md">
+                    <h3 className="mb-1 text-lg font-medium text-neutral-800">
+                        {t('emptyState.title')}
+                    </h3>
+                    <p className="max-w-md text-sm text-neutral-500">
                         {t('emptyState.description')}
                     </p>
                 </div>
@@ -785,10 +887,15 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
                         <div className="space-y-3">
                             <button
                                 onClick={handleNewAdmission}
-                                className="flex w-full items-center gap-4 rounded-lg border border-neutral-200 p-4 text-left transition-all hover:border-orange-400 hover:bg-orange-50"
+                                className="flex w-full items-center gap-4 rounded-lg border border-neutral-200 p-4 text-left transition-all hover:border-primary-400 hover:bg-primary-50"
                             >
-                                <div className="flex size-12 shrink-0 items-center justify-center rounded-full bg-orange-100">
-                                    <svg className="size-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <div className="flex size-12 shrink-0 items-center justify-center rounded-full bg-primary-50">
+                                    <svg
+                                        className="size-6 text-primary-600"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                    >
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
                                     </svg>
                                 </div>
@@ -800,10 +907,15 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
 
                             <button
                                 onClick={handleFromEnquiryOption}
-                                className="flex w-full items-center gap-4 rounded-lg border border-neutral-200 p-4 text-left transition-all hover:border-orange-400 hover:bg-orange-50"
+                                className="flex w-full items-center gap-4 rounded-lg border border-neutral-200 p-4 text-left transition-all hover:border-primary-400 hover:bg-primary-50"
                             >
-                                <div className="flex size-12 shrink-0 items-center justify-center rounded-full bg-blue-100">
-                                    <svg className="size-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <div className="flex size-12 shrink-0 items-center justify-center rounded-full bg-info-50">
+                                    <svg
+                                        className="size-6 text-info-600"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                    >
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                                     </svg>
                                 </div>
@@ -815,10 +927,15 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
 
                             <button
                                 onClick={handleFromApplicationOption}
-                                className="flex w-full items-center gap-4 rounded-lg border border-neutral-200 p-4 text-left transition-all hover:border-orange-400 hover:bg-orange-50"
+                                className="flex w-full items-center gap-4 rounded-lg border border-neutral-200 p-4 text-left transition-all hover:border-primary-400 hover:bg-primary-50"
                             >
-                                <div className="flex size-12 shrink-0 items-center justify-center rounded-full bg-green-100">
-                                    <svg className="size-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <div className="flex size-12 shrink-0 items-center justify-center rounded-full bg-success-50">
+                                    <svg
+                                        className="size-6 text-success-600"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                    >
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
                                     </svg>
                                 </div>

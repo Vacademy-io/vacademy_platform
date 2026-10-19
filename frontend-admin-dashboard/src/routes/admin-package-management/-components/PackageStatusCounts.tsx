@@ -11,9 +11,10 @@ const STATUSES: Array<[string, QuickView['tone']]> = [
 
 /**
  * Manage Packages: package count per status. Each count is the page's own
- * summary request for that status (same key, cached 5 minutes).
+ * summary request for that status (same key, cached 5 minutes). The card for
+ * the status the table is filtered to is outlined.
  */
-export function PackageStatusCounts() {
+export function PackageStatusCounts({ activeStatuses }: { activeStatuses?: string[] }) {
     const { t } = useTranslation('crmPages');
     const results = useQueries({
         queries: STATUSES.map(([s]) => ({
@@ -30,6 +31,7 @@ export function PackageStatusCounts() {
                 label: t(`packages.${s}`),
                 count: results[i]?.data?.total_batches,
                 tone,
+                active: activeStatuses?.length === 1 && activeStatuses[0] === s,
             }))}
         />
     );

@@ -10,7 +10,9 @@
         "studentCount_other": "{{count}} {{term}}s",
         "inviteCodeLabel": "Code d'invitation :",
         "enrollButton": "Inscrire {{term}}",
-        "viewBatchButton": "Voir le lot"
+        "viewBatchButton": "Voir le lot",
+        "startsOn": "Starts {{date}}",
+        "startedOn": "Started {{date}}"
     },
     "deleteDialog": {
         "heading": "Supprimer le lot",
@@ -21,5 +23,8 @@
     "section": {
         "noBatches": "Aucun lot trouvé pour ce forfait.",
         "noBatchesInSession": "Aucun lot trouvé pour ce forfait dans la session sélectionnée."
+    },
+    "course": {
+        "addBatch": "Add {{term}}"
     }
 }

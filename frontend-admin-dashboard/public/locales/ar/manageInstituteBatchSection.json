@@ -13,7 +13,9 @@
         "studentCount_other": "{{count}} {{term}}",
         "inviteCodeLabel": "رمز الدعوة:",
         "enrollButton": "تسجيل {{term}}",
-        "viewBatchButton": "عرض الدفعة"
+        "viewBatchButton": "عرض الدفعة",
+        "startsOn": "Starts {{date}}",
+        "startedOn": "Started {{date}}"
     },
     "deleteDialog": {
         "heading": "حذف الدفعة",
@@ -24,5 +26,8 @@
     "section": {
         "noBatches": "لم يتم العثور على دفعات لهذه الباقة.",
         "noBatchesInSession": "لم يتم العثور على دفعات لهذه الباقة في الجلسة المحددة."
+    },
+    "course": {
+        "addBatch": "Add {{term}}"
     }
 }

@@ -74,7 +74,7 @@ function InstituteOverviewPage() {
         | undefined;
     const inv = inventory.data;
     const orgs = subOrgs.data?.content ?? [];
-    const used = inv ? inv.total_capacity - inv.total_available : 0;
+    const used = inv ? (inv.total_capacity ?? 0) - (inv.total_available ?? 0) : 0;
     const planCounts = orgs.reduce<Record<string, number>>((m, o) => {
         const k = o.plan_status || 'NONE';
         m[k] = (m[k] ?? 0) + 1;
@@ -110,16 +110,6 @@ function InstituteOverviewPage() {
             href: '/manage-custom-teams',
         });
     }
-    if (inv && inv.unlimited_sessions > 0) {
-        insights.push({
-            key: 'unlimited',
-            tone: 'info',
-            title: ti('institute.insights.unlimited.title', { total: inv.unlimited_sessions }),
-            text: ti('institute.insights.unlimited.text'),
-            href: '/manage-inventory',
-        });
-    }
-
     const links: Array<[string, Icon, string]> = [
         ['batches', Stack, '/manage-institute/batches'],
         ['sessions', CalendarBlank, '/manage-institute/sessions'],
@@ -185,12 +175,13 @@ function InstituteOverviewPage() {
                                         inv && inv.total_capacity > 0
                                             ? formatPercent(used, inv.total_capacity, 0)
                                             : '—',
-                                    detail: inv
-                                        ? ti('institute.stats.seatsDetail', {
-                                              used: formatNumber(used),
-                                              total: formatNumber(inv.total_capacity),
-                                          })
-                                        : undefined,
+                                    detail:
+                                        inv && typeof inv.total_capacity === 'number'
+                                            ? ti('institute.stats.seatsDetail', {
+                                                  used: formatNumber(used),
+                                                  total: formatNumber(inv.total_capacity),
+                                              })
+                                            : undefined,
                                     href: '/manage-inventory',
                                     loading: inventory.isLoading,
                                 },

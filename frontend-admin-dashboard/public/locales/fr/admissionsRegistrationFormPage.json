@@ -63,5 +63,9 @@
     },
     "payment": {
         "defaultFeeName": "Frais de candidature / d'inscription"
+    },
+    "header": {
+        "backToList": "Back to applications",
+        "stepBadge": "Step {{current}} of {{total}}"
     }
 }

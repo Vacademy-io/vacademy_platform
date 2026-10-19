@@ -10,5 +10,6 @@
     "toast": {
         "added": " {{session}} सफलतापूर्वक जोड़ा गया",
         "addFailed": "{{session}} जोड़ने में विफल"
-    }
+    },
+    "subtitle": "हर {{session}} में वे {{course}} लेवल दिखते हैं जो उसमें चलते हैं। हर {{course}} × {{level}} × {{session}} एक {{batch}} है।"
 }

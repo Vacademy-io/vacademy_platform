@@ -63,5 +63,9 @@
     },
     "payment": {
         "defaultFeeName": "आवेदन / पंजीकरण शुल्क"
+    },
+    "header": {
+        "backToList": "आवेदनों पर वापस जाएँ",
+        "stepBadge": "चरण {{current}} / {{total}}"
     }
 }

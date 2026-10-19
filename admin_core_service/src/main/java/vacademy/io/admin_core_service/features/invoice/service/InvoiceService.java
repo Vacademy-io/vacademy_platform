@@ -3522,7 +3522,9 @@ public class InvoiceService {
             case "JPY":
                 return "¥";
             case "AUD":
-                return "$"; // Australian Dollar uses $ symbol
+                // "A$", like C$ / NZ$ / S$ below: a bare "$" reads as US dollars, and the payment
+                // confirmation email (PaymentNotificatonService) already prints A$.
+                return "A$";
             case "CAD":
                 return "C$";
             case "SGD":
@@ -3932,6 +3934,23 @@ public class InvoiceService {
             return;
         }
         generateInvoice(userPlan, paymentLog, instituteId);
+    }
+
+    /**
+     * {@link #generateInvoiceWithResult} for a payment that has ALREADY COMMITTED, reloaded in a
+     * fresh transaction — the result-returning twin of {@link #generateInvoiceForCommittedPayment}
+     * for callers that still need the PDF afterwards (the synchronous-gateway path attaches it to
+     * the payment-confirmation email). Returns null when the log or its plan is gone.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public InvoiceGenerationResult generateInvoiceWithResultForCommittedPayment(String paymentLogId,
+            String instituteId, boolean sendEmail) {
+        PaymentLog paymentLog = paymentLogRepository.findById(paymentLogId).orElse(null);
+        if (paymentLog == null || paymentLog.getUserPlan() == null || !StringUtils.hasText(instituteId)) {
+            log.warn("Skipping post-commit invoice for payment log {}: log, plan or institute missing", paymentLogId);
+            return null;
+        }
+        return generateInvoiceWithResult(paymentLog.getUserPlan(), paymentLog, instituteId, sendEmail);
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)

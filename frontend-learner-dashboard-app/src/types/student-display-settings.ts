@@ -349,6 +349,10 @@ export interface StudentAllCoursesSettings {
   defaultTab: StudentAllCoursesTabId;
   /** Hide the instructor/teacher name block on each course card in the All Courses list. Default false (shown). */
   hideInstructorName?: boolean;
+  /** Courses per page on the All Courses list. Default 10. */
+  pageSize?: number;
+  /** Dashboard "My courses": list every enrolled course instead of the first 4. Default false. */
+  showAllEnrolledOnDashboard?: boolean;
 }
 
 // UI

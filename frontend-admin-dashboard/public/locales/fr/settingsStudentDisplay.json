@@ -139,6 +139,8 @@
         "cardTitle": "Page Tous les cours",
         "cardDescription": "Onglets et sélection par défaut",
         "hideInstructorName": "Masquer le nom du formateur (cartes de cours)",
+        "pageSize": "Cours par page dans la liste Tous les cours",
+        "showAllEnrolledOnDashboard": "Tableau de bord « My courses » : afficher tous les cours inscrits, pas seulement les 4 premiers",
         "addCustomTab": "+ Ajouter un onglet personnalisé",
         "customTabLabelPlaceholder": "ex. Cours gratuits",
         "customTabTags": "Afficher les cours ayant l'un de ces tags",

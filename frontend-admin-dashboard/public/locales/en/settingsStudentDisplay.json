@@ -140,6 +140,8 @@
         "cardTitle": "All Courses Page",
         "cardDescription": "Tabs and default selection",
         "hideInstructorName": "Hide Instructor Name (Course Cards)",
+        "pageSize": "Courses per page on the All Courses list",
+        "showAllEnrolledOnDashboard": "Dashboard \"My courses\": show every enrolled course, not just the first 4",
         "addCustomTab": "+ Add custom tab",
         "customTabLabelPlaceholder": "e.g. Free Courses",
         "customTabTags": "Show courses with any of these tags",

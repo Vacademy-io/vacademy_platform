@@ -30,6 +30,7 @@ import { formatMinutesHuman } from "@/utils/courseTime";
 import { getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import LocalStorageUtils from "@/utils/localstorage";
+import { getStudentDisplaySettings } from "@/services/student-display-settings";
 import emptyLearning from "@/assets/cleaner-play/empty-learning.webp";
 
 /**
@@ -246,6 +247,9 @@ export const EnrolledCoursesWidget: React.FC<{ className?: string }> = ({
   const [courses, setCourses] = useState<EnrolledCourse[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [failed, setFailed] = useState(false);
+  // Student Display Settings → allCourses.showAllEnrolledOnDashboard: every
+  // enrolled course instead of the first MAX_WIDGETS. Off by default.
+  const [showAll, setShowAll] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -255,8 +259,13 @@ export const EnrolledCoursesWidget: React.FC<{ className?: string }> = ({
       try {
         const instituteId = await getInstituteId();
         if (!instituteId) throw new Error("no institute");
-        const rows = await fetchEnrolledCourses(instituteId, controller.signal);
-        if (alive) setCourses(rows);
+        const settings = await getStudentDisplaySettings(false).catch(() => null);
+        const all = settings?.allCourses?.showAllEnrolledOnDashboard === true;
+        const rows = await fetchEnrolledCourses(instituteId, controller.signal, { all });
+        if (alive) {
+          setShowAll(all);
+          setCourses(rows);
+        }
       } catch {
         // Widget-level failure is silent: the dashboard keeps rendering and
         // these cards take themselves off the page rather than showing an
@@ -273,7 +282,7 @@ export const EnrolledCoursesWidget: React.FC<{ className?: string }> = ({
     };
   }, []);
 
-  const visible = courses.slice(0, MAX_WIDGETS);
+  const visible = showAll ? courses : courses.slice(0, MAX_WIDGETS);
   const thumbnails = useCourseThumbnails(visible);
 
   const coursesLabel = getTerminologyPlural(
@@ -549,7 +558,7 @@ export const EnrolledCoursesWidget: React.FC<{ className?: string }> = ({
   return (
     <div className={cn(COLUMN_RHYTHM, className)}>
       {visible.map(renderCourseWidget)}
-      {courses.length > MAX_WIDGETS && (
+      {courses.length > visible.length && (
         // Bare link, not a card: adding a box here would re-introduce exactly
         // the container the widgets were pulled out of.
         <div className="flex justify-end">

@@ -324,6 +324,10 @@ function mergeWithDefaults(
       hideInstructorName:
         incoming?.allCourses?.hideInstructorName ??
         d.allCourses.hideInstructorName,
+      pageSize: incoming?.allCourses?.pageSize ?? d.allCourses.pageSize,
+      showAllEnrolledOnDashboard:
+        incoming?.allCourses?.showAllEnrolledOnDashboard ??
+        d.allCourses.showAllEnrolledOnDashboard,
     },
     notifications: {
       allowSystemAlerts:

@@ -89,7 +89,10 @@
         "cardDescription": "वैश्विक कोर्स इंटरैक्शन",
         "moveOnlyOnCorrect": "केवल सही उत्तर पर ही आगे बढ़ें",
         "celebrateOnComplete": "क्विज़ पूरा होने पर उत्सव मनाएं",
-        "showReportAndAnswers": "रिपोर्ट और सही उत्तर दिखाएं"
+        "showReportAndAnswers": "रिपोर्ट और सही उत्तर दिखाएं",
+        "assignmentHeading": "असाइनमेंट",
+        "hideAttemptsAllowed": "असाइनमेंट पर \"अनुमत प्रयास\" छिपाएं",
+        "hideRepeatedTitle": "असाइनमेंट का शीर्षक छिपाएं जब वह स्लाइड का नाम दोहराए"
     },
     "permissions": {
         "cardTitle": "अनुमतियां",

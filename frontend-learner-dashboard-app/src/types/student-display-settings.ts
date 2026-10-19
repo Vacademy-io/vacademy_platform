@@ -423,8 +423,17 @@ export interface StudentCourseSettingsQuiz {
   showReportAndCorrectAnswers: boolean;
 }
 
+/** Assignment slide. Both off by default (today's slide). */
+export interface StudentCourseSettingsAssignment {
+  /** Hide the "Attempts Allowed: …" line. */
+  hideAttemptsAllowed: boolean;
+  /** Hide the card title when it only repeats the slide name shown above it. */
+  hideRepeatedTitle: boolean;
+}
+
 export interface StudentCourseSettings {
   quiz: StudentCourseSettingsQuiz;
+  assignment: StudentCourseSettingsAssignment;
 }
 
 export interface ConcentrationSettings {

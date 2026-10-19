@@ -53,6 +53,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useServerTime, getServerTime } from "@/hooks/use-server-time";
+import { getStudentDisplaySettings } from "@/services/student-display-settings";
 import { format, parseISO } from "date-fns";
 
 /** Returns an SVG icon string based on file extension / MIME type */
@@ -823,6 +824,26 @@ const AssignmentSlide = ({
     Record<string, string>
   >({});
   const [pdfPreview, setPdfPreview] = useState<PreviewRequest | null>(null);
+  // Student Display Settings → Course settings → Assignment (both off by default).
+  const [assignmentDisplay, setAssignmentDisplay] = useState({
+    hideAttemptsAllowed: false,
+    hideRepeatedTitle: false,
+  });
+  useEffect(() => {
+    let alive = true;
+    getStudentDisplaySettings(false)
+      .then((s) => {
+        if (!alive) return;
+        setAssignmentDisplay({
+          hideAttemptsAllowed: s?.courseSettings?.assignment?.hideAttemptsAllowed === true,
+          hideRepeatedTitle: s?.courseSettings?.assignment?.hideRepeatedTitle === true,
+        });
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
   // Real time the learner has had this slide open (mount → submit) so the
   // reported "Time Spent" reflects actual engagement, not a fake 1 minute.
   const activityStartRef = useRef<number>(Date.now());
@@ -1359,13 +1380,31 @@ const AssignmentSlide = ({
     );
   };
 
+  // The card title is the assignment's own title text, else the slide name —
+  // which the slide header above already shows. hideRepeatedTitle drops it
+  // only in that repeat case; a title with text of its own always shows.
+  const cardTitleHtml = assignmentData.text_data?.content || activeItem?.title || "";
+  const plainOf = (html: string) =>
+    html
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .toLowerCase();
+  const titleRepeatsSlideName =
+    !plainOf(assignmentData.text_data?.content || "") ||
+    plainOf(cardTitleHtml) === plainOf(activeItem?.title || "");
+  const showCardTitle = !(assignmentDisplay.hideRepeatedTitle && titleRepeatsSlideName);
+
   return (
     <div className="w-full max-w-none mx-auto px-2 sm:px-4">
       <Card className="mb-4 sm:mb-6 bg-white shadow-sm">
         <CardHeader className="space-y-2">
-          <CardTitle className="text-lg sm:text-xl font-medium text-gray-900">
-            <HtmlWithKatex html={assignmentData.text_data?.content || activeItem?.title || ""} />
-          </CardTitle>
+          {showCardTitle && (
+            <CardTitle className="text-lg sm:text-xl font-medium text-gray-900">
+              <HtmlWithKatex html={cardTitleHtml} />
+            </CardTitle>
+          )}
           <CardDescription className="text-sm sm:text-base text-gray-600">
             <div className="mt-2 flex flex-col gap-2">
               {(assignmentData.live_date || assignmentData.end_date) && (
@@ -1388,10 +1427,12 @@ const AssignmentSlide = ({
                     {formatDateTime(assignmentData.end_date)}
                   </span>
                 )}
-                <span>
-                  <strong className="font-medium">{t("assignmentSlide.attemptsAllowedLabel")}</strong>{" "}
-                  {assignmentData.re_attempt_count || t("assignmentSlide.unlimited")}
-                </span>
+                {!assignmentDisplay.hideAttemptsAllowed && (
+                  <span>
+                    <strong className="font-medium">{t("assignmentSlide.attemptsAllowedLabel")}</strong>{" "}
+                    {assignmentData.re_attempt_count || t("assignmentSlide.unlimited")}
+                  </span>
+                )}
               </div>
             </div>
           </CardDescription>

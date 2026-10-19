@@ -355,6 +355,14 @@ function mergeWithDefaults(
           incoming?.courseSettings?.quiz?.celebrateOnQuizComplete ??
           d.courseSettings.quiz.celebrateOnQuizComplete,
       },
+      assignment: {
+        hideAttemptsAllowed:
+          incoming?.courseSettings?.assignment?.hideAttemptsAllowed ??
+          d.courseSettings.assignment.hideAttemptsAllowed,
+        hideRepeatedTitle:
+          incoming?.courseSettings?.assignment?.hideRepeatedTitle ??
+          d.courseSettings.assignment.hideRepeatedTitle,
+      },
     },
     concentration: {
       enabled:

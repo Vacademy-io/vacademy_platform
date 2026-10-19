@@ -89,7 +89,10 @@
         "cardDescription": "التفاعلات العامة للدورة",
         "moveOnlyOnCorrect": "الانتقال فقط عند الإجابة الصحيحة",
         "celebrateOnComplete": "الاحتفال عند إكمال الاختبار",
-        "showReportAndAnswers": "إظهار التقرير والإجابات الصحيحة"
+        "showReportAndAnswers": "إظهار التقرير والإجابات الصحيحة",
+        "assignmentHeading": "الواجب",
+        "hideAttemptsAllowed": "إخفاء \"المحاولات المسموح بها\" في الواجبات",
+        "hideRepeatedTitle": "إخفاء عنوان الواجب عندما يكرر اسم الشريحة"
     },
     "permissions": {
         "cardTitle": "الأذونات",

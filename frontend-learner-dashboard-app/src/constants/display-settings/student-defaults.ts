@@ -229,6 +229,10 @@ export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {
       // Matches the admin default and the quiz viewer's `?? true` fallback.
       showReportAndCorrectAnswers: true,
     },
+    assignment: {
+      hideAttemptsAllowed: false,
+      hideRepeatedTitle: false,
+    },
   },
   allCourses: {
     tabs: [

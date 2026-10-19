@@ -89,7 +89,10 @@
         "cardDescription": "Global course interactions",
         "moveOnlyOnCorrect": "Move only on correct answer",
         "celebrateOnComplete": "Celebrate on quiz complete",
-        "showReportAndAnswers": "Show report & correct answers"
+        "showReportAndAnswers": "Show report & correct answers",
+        "assignmentHeading": "Assignment",
+        "hideAttemptsAllowed": "Hide \"Attempts Allowed\" on assignments",
+        "hideRepeatedTitle": "Hide the assignment title when it repeats the slide name"
     },
     "permissions": {
         "cardTitle": "Permissions",

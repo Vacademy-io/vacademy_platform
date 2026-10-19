@@ -2,10 +2,12 @@
     "headers": {
         "lead": "लीड",
         "contact": "संपर्क",
+        "createdAt": "कब बनाया",
         "wasDue": "कब देय था",
         "completedAt": "कब पूरा हुआ",
         "completedBy": "किसने किया",
         "outcome": "परिणाम",
+        "interestLevel": "रुचि का स्तर",
         "studentResponse": "छात्र की प्रतिक्रिया",
         "followUpMode": "माध्यम",
         "nextAction": "अगली कार्रवाई"

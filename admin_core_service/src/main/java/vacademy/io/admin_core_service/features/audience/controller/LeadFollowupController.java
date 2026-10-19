@@ -101,11 +101,13 @@ public class LeadFollowupController {
             entityType = "LEAD_FOLLOWUP",
             action = "UPDATE",
             entityIdExpr = "#id",
-            descriptionExpr = "'rescheduled a follow-up for lead ' + @crmAuditNarrator.followupLeadFor(#id)")
+            captureBefore = "@crmAuditNarrator.followupSnapshot(#id)",
+            descriptionExpr = "(#request?.scheduleTime != null ? 'rescheduled' : 'edited') "
+                    + "+ ' a follow-up for lead ' + @crmAuditNarrator.followupLeadFor(#id)")
     public ResponseEntity<LeadFollowupDto> update(@PathVariable String id,
                                                    @RequestBody UpdateLeadFollowupRequest request,
                                                    @RequestAttribute("user") CustomUserDetails user) {
-        return ResponseEntity.ok(leadFollowupService.update(id, request));
+        return ResponseEntity.ok(leadFollowupService.update(id, request, user));
     }
 
     @PutMapping("/{id}/close")

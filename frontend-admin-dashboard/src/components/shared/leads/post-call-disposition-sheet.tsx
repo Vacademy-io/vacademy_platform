@@ -385,13 +385,17 @@ function PostCallDispositionSheet({
         <Sheet
             open={open}
             onOpenChange={(o) => {
-                // Escape / overlay click — dismiss without side effects.
+                // X / Skip — dismiss without side effects.
                 if (!o) requestClose();
             }}
         >
             <SheetContent
                 side="right"
                 className="flex w-full flex-col gap-0 overflow-y-auto p-0 sm:max-w-md"
+                // A stray click outside (or Escape) used to close the sheet and
+                // drop the typed note. Only X / Skip close it.
+                onInteractOutside={(e) => e.preventDefault()}
+                onEscapeKeyDown={(e) => e.preventDefault()}
             >
                 <SheetHeader className="space-y-0 border-b border-neutral-100 px-6 py-4 text-left">
                     <div className="flex items-center gap-3">

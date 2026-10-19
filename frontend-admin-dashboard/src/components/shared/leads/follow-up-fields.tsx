@@ -1,6 +1,7 @@
 /**
- * The three optional dropdowns a counsellor fills when logging a follow-up:
- * what the student said, how the follow-up happened, and what happens next.
+ * The optional dropdowns a counsellor fills when logging a follow-up: how
+ * interested the lead sounded, what the student said, how the follow-up
+ * happened, and what happens next.
  *
  * Off for every institute until one turns it on in Settings → Lead settings →
  * Follow-up fields and supplies its own option lists, so nothing changes for
@@ -20,14 +21,16 @@ import { SearchableSelect } from '@/components/design-system/searchable-select';
 import { useLeadSettings } from '@/hooks/use-lead-settings';
 import { cn } from '@/lib/utils';
 
-/** What the counsellor recorded. Empty strings mean "not answered" — all three are optional. */
+/** What the counsellor recorded. Empty strings mean "not answered" — all are optional. */
 export interface FollowUpFieldValues {
+    interestLevel: string;
     studentResponse: string;
     followUpMode: string;
     nextAction: string;
 }
 
 export const EMPTY_FOLLOW_UP_FIELDS: FollowUpFieldValues = {
+    interestLevel: '',
     studentResponse: '',
     followUpMode: '',
     nextAction: '',
@@ -36,6 +39,7 @@ export const EMPTY_FOLLOW_UP_FIELDS: FollowUpFieldValues = {
 /** snake_case payload keys for CREATE_LEAD_FOLLOWUP. Omits anything left blank. */
 export function followUpFieldsPayload(values: FollowUpFieldValues): Record<string, string> {
     const payload: Record<string, string> = {};
+    if (values.interestLevel) payload.interest_level = values.interestLevel;
     if (values.studentResponse) payload.student_response = values.studentResponse;
     if (values.followUpMode) payload.follow_up_mode = values.followUpMode;
     if (values.nextAction) payload.next_action = values.nextAction;
@@ -43,7 +47,7 @@ export function followUpFieldsPayload(values: FollowUpFieldValues): Record<strin
 }
 
 /**
- * Local state for the three fields plus the institute's option lists.
+ * Local state for the fields plus the institute's option lists.
  *
  * `visible` is false when the institute has the block switched off, so a call
  * site can skip rendering without reaching into settings itself.
@@ -53,6 +57,7 @@ export function useFollowUpFields() {
     const [values, setValues] = useState<FollowUpFieldValues>(EMPTY_FOLLOW_UP_FIELDS);
     const reset = () => setValues(EMPTY_FOLLOW_UP_FIELDS);
     const hasAnyList =
+        followUpFields.interestLevels.length > 0 ||
         followUpFields.studentResponses.length > 0 ||
         followUpFields.followUpModes.length > 0 ||
         followUpFields.nextActions.length > 0;
@@ -62,7 +67,8 @@ export function useFollowUpFields() {
     const missingRequired =
         visible &&
         followUpFields.fieldsRequired &&
-        ((followUpFields.studentResponses.length > 0 && !values.studentResponse) ||
+        ((followUpFields.interestLevels.length > 0 && !values.interestLevel) ||
+            (followUpFields.studentResponses.length > 0 && !values.studentResponse) ||
             (followUpFields.followUpModes.length > 0 && !values.followUpMode) ||
             (followUpFields.nextActions.length > 0 && !values.nextAction));
     return {
@@ -143,6 +149,11 @@ export function FollowUpFields({
     if (!followUpFields.enabled) return null;
 
     const fields: { key: keyof FollowUpFieldValues; label: string; options: string[] }[] = [
+        {
+            key: 'interestLevel',
+            label: 'Interest level',
+            options: followUpFields.interestLevels,
+        },
         {
             key: 'studentResponse',
             label: 'Student response',

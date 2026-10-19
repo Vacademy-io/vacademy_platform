@@ -149,6 +149,12 @@ export interface FollowUpFieldsConfig {
     followUpModes: string[];
     nextActions: string[];
     /**
+     * How warm the lead sounded on this follow-up ("Very Hot" … "Very Cold").
+     * Stored on the follow-up itself, separate from the lead's tier, so the
+     * history shows how interest moved call by call.
+     */
+    interestLevels: string[];
+    /**
      * Refuse to save a follow-up with an empty note.
      *
      * Independent of {@link enabled}: an institute can insist on a written note
@@ -260,6 +266,7 @@ export const LEAD_SETTINGS_DEFAULTS: LeadSettingsConfig = {
         studentResponses: [],
         followUpModes: [],
         nextActions: [],
+        interestLevels: [],
         notesRequired: false,
         fieldsRequired: false,
     },
@@ -348,6 +355,7 @@ export function normaliseFollowUpFields(
         studentResponses: list(saved?.studentResponses),
         followUpModes: list(saved?.followUpModes),
         nextActions: list(saved?.nextActions),
+        interestLevels: list(saved?.interestLevels),
         notesRequired: saved?.notesRequired === true,
         fieldsRequired: saved?.fieldsRequired === true,
     };

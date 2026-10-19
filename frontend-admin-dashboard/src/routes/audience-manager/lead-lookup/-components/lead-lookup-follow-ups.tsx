@@ -64,7 +64,9 @@ function FollowUpItem({ followUp }: { followUp: LeadLookupFollowUp }) {
     const status = FOLLOW_UP_STATUS[followUp.status ?? ''] ?? FOLLOW_UP_STATUS.PENDING!;
     const comments = followUp.comments ? toPlainText(followUp.comments) : '';
     const details: [string, string | undefined][] = [
+        ['Created', followUp.created_at ? formatDateTime(followUp.created_at) : undefined],
         ['Counsellor', followUp.counsellor_name],
+        ['Interest level', followUp.interest_level],
         ['Action label', followUp.action_label],
         ['Mode', followUp.mode],
         ['Student response', followUp.student_response],

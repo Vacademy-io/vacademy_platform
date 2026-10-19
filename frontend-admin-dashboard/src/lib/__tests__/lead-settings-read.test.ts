@@ -78,6 +78,7 @@ describe('follow-up fields config', () => {
             studentResponses: [],
             followUpModes: [],
             nextActions: [],
+            interestLevels: [],
             notesRequired: false,
             fieldsRequired: false,
         });

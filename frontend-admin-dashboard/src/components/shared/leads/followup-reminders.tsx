@@ -60,6 +60,7 @@ export interface PendingFollowup {
     status: string;
     is_closed: boolean;
     content: string | null;
+    created_at?: string | null;
     lead_name: string | null;
     lead_mobile: string | null;
     lead_user_id: string | null;
@@ -307,7 +308,10 @@ export function FollowUpReminderDialog() {
                                 )}
                                 {f.schedule_time && (
                                     <p className="text-xs text-neutral-400">
-                                        Scheduled {format(new Date(f.schedule_time), 'd MMM, h:mm a')}
+                                        Scheduled{' '}
+                                        {format(new Date(f.schedule_time), 'd MMM, h:mm a')}{' '}
+                                        {f.created_at &&
+                                            `· Created ${format(new Date(f.created_at), 'd MMM, h:mm a')}`}
                                     </p>
                                 )}
                                 <div className="flex flex-wrap items-center gap-1.5">

@@ -48,6 +48,10 @@ interface AddLeadNoteDialogProps {
      *  the Follow Up tab is disabled with an inline hint. */
     audienceResponseId?: string;
     onSuccess?: () => void;
+    /** Called only after a follow-up (not a note) is saved — the Follow-ups
+     *  page closes the previous follow-up here, so dismissing the dialog
+     *  leaves it pending instead of completed with nothing booked. */
+    onFollowUpScheduled?: () => void;
     /** Pre-select an action tab when the dialog opens (e.g. CALL_LOG when
      *  invoked from a row in the Call History panel). */
     initialActionType?: string;
@@ -66,6 +70,7 @@ export const AddLeadNoteDialog = ({
     userName,
     audienceResponseId,
     onSuccess,
+    onFollowUpScheduled,
     initialActionType,
     initialCallActivity,
     hideCallRecordingControls = false,
@@ -178,6 +183,7 @@ export const AddLeadNoteDialog = ({
             queryClient.invalidateQueries({ queryKey: ['latest-notes-batch'] });
             queryClient.invalidateQueries({ queryKey: ['cross-stage-timeline', userId] });
             queryClient.invalidateQueries({ queryKey: ['lead-all-events', userId] });
+            onFollowUpScheduled?.();
             onSuccess?.();
             onOpenChange(false);
         },
@@ -204,6 +210,10 @@ export const AddLeadNoteDialog = ({
                 // Inline style: cap height to the viewport so tall content (e.g. Call Log)
                 // scrolls inside the dialog instead of overflowing the screen.
                 style={{ maxHeight: '90vh' }}
+                // A stray click outside (or Escape) used to close the dialog and
+                // wipe what the counsellor had typed. Only X / Cancel close it.
+                onInteractOutside={(e) => e.preventDefault()}
+                onEscapeKeyDown={(e) => e.preventDefault()}
             >
                 <DialogHeader className="border-b border-neutral-100 px-6 py-4">
                     <div className="flex items-center gap-3">

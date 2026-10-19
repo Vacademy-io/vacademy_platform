@@ -2,8 +2,8 @@
  * LeadFollowUpFieldsSettings — the "Follow-up fields" card on Settings → Lead
  * settings → Configuration.
  *
- * Turns on three extra dropdowns wherever a counsellor logs a follow-up:
- * Student response, Follow-up mode and Next follow-up action. Each one is the
+ * Turns on extra dropdowns wherever a counsellor logs a follow-up: Interest
+ * level, Student response, Follow-up mode and Next follow-up action. Each one is the
  * institute's own list of answers, so the wording matches whatever script its
  * counsellors actually run. A list left empty hides that one dropdown — an
  * institute can enable just the field it cares about.
@@ -41,9 +41,14 @@ const QUERY_KEY = ['lead-followup-fields-settings'];
 /** Max options per list — past this the dropdown stops being faster than typing. */
 const MAX_OPTIONS = 60;
 
-type ListKey = 'studentResponses' | 'followUpModes' | 'nextActions';
+type ListKey = 'interestLevels' | 'studentResponses' | 'followUpModes' | 'nextActions';
 
 const LISTS: { key: ListKey; title: string; hint: string }[] = [
+    {
+        key: 'interestLevels',
+        title: 'Interest level',
+        hint: 'How interested the lead sounded on this follow-up, e.g. Very Hot to Very Cold.',
+    },
     {
         key: 'studentResponses',
         title: 'Student response',
@@ -284,6 +289,7 @@ export default function LeadFollowUpFieldsSettings() {
     };
 
     const noOptions =
+        draft.interestLevels.length === 0 &&
         draft.studentResponses.length === 0 &&
         draft.followUpModes.length === 0 &&
         draft.nextActions.length === 0;

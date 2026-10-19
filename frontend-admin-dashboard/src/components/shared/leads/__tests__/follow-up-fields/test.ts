@@ -14,6 +14,7 @@ describe('followUpFieldsPayload', () => {
     it('omits only the blank ones', () => {
         expect(
             followUpFieldsPayload({
+                interestLevel: '',
                 studentResponse: 'Call Back',
                 followUpMode: '',
                 nextAction: 'Send Course Details',
@@ -24,11 +25,13 @@ describe('followUpFieldsPayload', () => {
     it('uses the snake_case keys the create endpoint expects', () => {
         expect(
             followUpFieldsPayload({
+                interestLevel: 'Warm',
                 studentResponse: 'Interested',
                 followUpMode: 'Call',
                 nextAction: 'Meeting Fixed',
             })
         ).toEqual({
+            interest_level: 'Warm',
             student_response: 'Interested',
             follow_up_mode: 'Call',
             next_action: 'Meeting Fixed',

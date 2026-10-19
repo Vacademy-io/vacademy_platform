@@ -17,4 +17,5 @@ public class CreateLeadFollowupRequest {
     private String studentResponse;
     private String followUpMode;
     private String nextAction;
+    private String interestLevel;
 }

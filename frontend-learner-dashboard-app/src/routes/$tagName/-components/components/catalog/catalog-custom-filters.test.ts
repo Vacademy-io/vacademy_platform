@@ -5,6 +5,7 @@ import {
   customValidation,
   resolveCustomFilters,
   selectedCustomOptions,
+  withTagOptions,
 } from "./catalog-custom-filters";
 import { resolveCatalogDiscovery } from "./catalog-config";
 import { buildFacetGroups, applyFacetGroups, buildAppliedChips, countFacetOptions, customOptions, EMPTY_CRITERIA } from "./catalog-filters";
@@ -184,5 +185,44 @@ describe("i18n: option level names stay raw", () => {
     expect(localizeDeep(props, dict)).toEqual({
       customFilters: [{ id: "format", label: "प्रारूप", options: [{ id: "ebook", label: "ई-पुस्तकें", levels: ["eBook"] }] }],
     });
+  });
+});
+
+describe("source 'tags' groups", () => {
+  const rows = [
+    { comma_separeted_tags: "hindi,ebook,for parents" },
+    { comma_separeted_tags: "english,for parents,for Students" },
+    { comma_separeted_tags: "for everyone,for-teachers" },
+    { comma_separeted_tags: "for women's health" },
+  ];
+  const raw = [
+    { id: "for", label: "For", source: "tags", prefix: "for", exclude: ["everyone"],
+      options: [{ id: "womens-health", label: "Women's health", tags: ["for-womens-health"] }] },
+  ];
+
+  it("keeps the group before the courses load, then lists the prefixed tags after the authored options", () => {
+    const [group] = resolveCustomFilters(raw, null);
+    expect(group.fromTags).toEqual({ prefix: "for", exclude: ["everyone"] });
+    const [filled] = withTagOptions([group], rows);
+    expect(filled.options.map((o) => [o.id, o.label])).toEqual([
+      ["womens-health", "Women's health"],
+      ["parents", "Parents"],
+      ["students", "Students"],
+      ["teachers", "Teachers"],
+    ]);
+    expect(cardMatchesCustomOption({ rows: [{ comma_separeted_tags: "For-Parents" }] }, filled.options[1])).toBe(true);
+    expect(cardMatchesCustomOption({ rows: [rows[3]] }, filled.options[0])).toBe(true);
+  });
+
+  it("drops a tags group no course fills, and leaves other groups alone", () => {
+    const groups = resolveCustomFilters([...raw.map((g) => ({ ...g, options: [] })), { id: "x", label: "X", options: [{ id: "a", label: "A", tags: ["a"] }] }], null);
+    expect(withTagOptions(groups, [{ comma_separeted_tags: "hindi" }]).map((g) => g.id)).toEqual(["x"]);
+    const plain = resolveCustomFilters([{ id: "x", label: "X", options: [{ id: "a", label: "A", tags: ["a"] }] }], null);
+    expect(withTagOptions(plain, rows)).toBe(plain);
+  });
+
+  it("an authored option tag matches however the course spells it", () => {
+    const [group] = resolveCustomFilters([{ id: "for", label: "For", options: [{ id: "parents", label: "Parents", tags: ["for-parents"] }] }], null);
+    expect(cardMatchesCustomOption({ rows: [{ comma_separeted_tags: "for parents" }] }, group.options[0])).toBe(true);
   });
 });

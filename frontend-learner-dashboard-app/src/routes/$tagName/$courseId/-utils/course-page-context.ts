@@ -16,6 +16,8 @@ import { LEVEL_KEY_PREFIX, levelKeys } from "../../-utils/level-key";
 import {
   courseFormatKeys,
   resolveCourseFormats,
+  tagKey,
+  withTagFormats,
 } from "../../-utils/course-format";
 
 interface ComponentLike {
@@ -159,7 +161,11 @@ export const coursePageContext = (input: {
   const tags = (input.tags || []).map(lower).filter((t) => t && !t.startsWith(LEVEL_KEY_PREFIX));
   // Level keys too: a course levelled like a stream or category belongs to it.
   const tagSet = new Set([...tags, ...levelKeys(input.levelName)]);
-  const gs = isObject(input.globalSettings) ? input.globalSettings : null;
+  // courseFormatsFromTags: an unclaimed tag of this course is a format too (stream tags never are).
+  const streamTags = new Set(input.streams.flatMap((s) => s.tags.map(tagKey)));
+  const gs = withTagFormats(isObject(input.globalSettings) ? input.globalSettings : null, [{ tags: input.tags ?? [] }], (key) =>
+    streamTags.has(key),
+  );
 
   const formats = resolveCourseFormats(gs);
   const formatKeys = courseFormatKeys({ tags, level_name: input.levelName ?? null }, formats);

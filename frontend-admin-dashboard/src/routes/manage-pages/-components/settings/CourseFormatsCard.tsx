@@ -4,6 +4,7 @@ import { ArrowDown, ArrowUp, Plus, Trash } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import {
     FORMAT_TAG_PREFIX,
     MAX_COURSE_FORMATS,
@@ -32,6 +33,10 @@ export interface CourseFormatsCardProps {
      * courseFormatOrder) in one edit; keys left out are not touched.
      */
     onChange: (next: CourseFormatsEdit) => void;
+    /** globalSettings.courseFormatsFromTags: { enabled, skipPrefixes, skip }. */
+    fromTags?: unknown;
+    /** Writes globalSettings.courseFormatsFromTags. */
+    onFromTagsChange?: (next: Record<string, unknown>) => void;
     /** globalSettings.i18n: a rename copies the old name's translations to the new name. */
     i18n?: unknown;
     /**
@@ -46,6 +51,39 @@ const strings = (v: unknown): string[] =>
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
     !!v && typeof v === 'object' && !Array.isArray(v);
+
+const splitList = (text: string): string[] =>
+    [...new Set(text.split(',').map((s) => s.trim()).filter(Boolean))];
+
+/** A comma-separated list, saved when the field loses focus (so typing ", " is not eaten). */
+const CommaListField: FC<{
+    id: string;
+    label: string;
+    value: string[];
+    placeholder: string;
+    disabled: boolean;
+    onCommit: (next: string[]) => void;
+}> = ({ id, label, value, placeholder, disabled, onCommit }) => {
+    const [text, setText] = useState<string | null>(null);
+    return (
+        <div>
+            <Label htmlFor={id} className="text-caption">
+                {label}
+            </Label>
+            <Input
+                id={id}
+                value={text ?? value.join(', ')}
+                placeholder={placeholder}
+                disabled={disabled}
+                onChange={(e) => setText(e.target.value)}
+                onBlur={() => {
+                    if (text !== null) onCommit(splitList(text));
+                    setText(null);
+                }}
+            />
+        </div>
+    );
+};
 
 /** True when some language has at least one translation. */
 const hasTranslations = (i18n: unknown): boolean =>
@@ -64,9 +102,14 @@ export const CourseFormatsCard: FC<CourseFormatsCardProps> = ({
     formats,
     order,
     onChange,
+    fromTags,
+    onFromTagsChange,
     i18n,
     readOnlyNames = false,
 }) => {
+    const tagSetting = isObject(fromTags) ? fromTags : {};
+    const setTagSetting = (patch: Record<string, unknown>) =>
+        onFromTagsChange?.({ ...tagSetting, ...patch });
     const { t } = useTranslation('managePagesPropertyPanel');
     const ids = orderedFormatIds(formats, order);
     // The name a field had when it was focused; its translations are copied
@@ -211,6 +254,43 @@ export const CourseFormatsCard: FC<CourseFormatsCardProps> = ({
                         name: added.label,
                     })}
                 </p>
+            )}
+
+            {onFromTagsChange && (
+                <div className="space-y-2 rounded-md border border-neutral-200 bg-white p-3">
+                    <div className="flex items-center justify-between gap-3">
+                        <Label htmlFor="course-formats-from-tags" className="text-caption font-semibold">
+                            {t('global.courseFormats.fromTags.enable')}
+                        </Label>
+                        <Switch
+                            id="course-formats-from-tags"
+                            checked={tagSetting.enabled === true}
+                            disabled={readOnlyNames}
+                            onCheckedChange={(c) => setTagSetting({ enabled: c })}
+                        />
+                    </div>
+                    <p className="text-caption text-neutral-500">{t('global.courseFormats.fromTags.hint')}</p>
+                    {tagSetting.enabled === true && (
+                        <>
+                            <CommaListField
+                                id="course-formats-skip-prefixes"
+                                label={t('global.courseFormats.fromTags.skipPrefixes')}
+                                value={strings(tagSetting.skipPrefixes)}
+                                placeholder="for"
+                                disabled={readOnlyNames}
+                                onCommit={(next) => setTagSetting({ skipPrefixes: next })}
+                            />
+                            <CommaListField
+                                id="course-formats-skip"
+                                label={t('global.courseFormats.fromTags.skip')}
+                                value={strings(tagSetting.skip)}
+                                placeholder="bestseller, new"
+                                disabled={readOnlyNames}
+                                onCommit={(next) => setTagSetting({ skip: next })}
+                            />
+                        </>
+                    )}
+                </div>
             )}
 
             <div className="space-y-2 rounded-md border border-dashed border-neutral-300 p-3">

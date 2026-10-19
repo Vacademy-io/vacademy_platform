@@ -6,6 +6,8 @@ import {
   courseFormatOf,
   resolveCourseFormats,
   rowTags,
+  tagKey,
+  withTagFormats,
 } from "./course-format";
 
 const GS = {
@@ -85,5 +87,61 @@ describe("a course's format", () => {
       f,
     );
     expect(Object.fromEntries(counts)).toEqual({ ebook: 2, elearning: 0, live: 1, animation: 0, article: 0, merch: 0 });
+  });
+});
+
+describe("tagKey matching", () => {
+  it("folds case, spaces, hyphens, slashes and apostrophes", () => {
+    expect(tagKey(" Article - Essay ")).toBe("article-essay");
+    expect(tagKey("for parents")).toBe(tagKey("for-parents"));
+    expect(tagKey("Short film / Animation")).toBe("short-film-animation");
+    expect(tagKey("for women's health")).toBe("for-womens-health");
+    expect(tagKey("हिंदी")).toBe("हिंदी");
+  });
+
+  it("a format-<key> tag still matches a key with an underscore, and its spaced spelling too", () => {
+    const formats = resolveCourseFormats({ courseFormats: { audio_book: { label: "Audio Book" } } });
+    expect(courseFormatKeys({ comma_separeted_tags: "format-audio_book" }, formats)).toEqual(["audio_book"]);
+    expect(courseFormatKeys({ comma_separeted_tags: "Format Audio Book" }, formats)).toEqual(["audio_book"]);
+  });
+
+  it("a format alias matches however the course tag is spaced", () => {
+    const formats = resolveCourseFormats({ courseFormats: { article: { label: "Articles", tags: ["article-essay"] } } });
+    expect(courseFormatKeys({ comma_separeted_tags: "Article - Essay" }, formats)).toEqual(["article"]);
+  });
+});
+
+describe("withTagFormats", () => {
+  const rows = [
+    { comma_separeted_tags: "hindi,ebook,for parents" },
+    { comma_separeted_tags: "english,Podcast,for everyone,shastra" },
+    { comma_separeted_tags: "Podcast,Short film / Animation" },
+  ];
+  const base = {
+    courseFormats: { ebook: { label: "E-books", tags: ["ebook"] } },
+    courseFormatsFromTags: { enabled: true, skipPrefixes: ["for"] },
+  };
+
+  it("adds every unclaimed tag as a format, labelled as written", () => {
+    const gs = withTagFormats(base, rows, (k) => k === "shastra");
+    const formats = resolveCourseFormats(gs);
+    expect(formats?.list.map((f) => [f.key, f.label])).toEqual([
+      ["ebook", "E-books"],
+      ["podcast", "Podcast"],
+      ["short-film-animation", "Short film / Animation"],
+    ]);
+    expect(courseFormatKeys(rows[2], formats)).toEqual(["podcast", "short-film-animation"]);
+  });
+
+  it("is off unless enabled, and returns the same object when nothing is new", () => {
+    const off = { ...base, courseFormatsFromTags: { enabled: false } };
+    expect(withTagFormats(off, rows)).toBe(off);
+    expect(withTagFormats(base, [rows[0]])).toBe(base);
+    expect(withTagFormats(null, rows)).toBeNull();
+  });
+
+  it("skips listed tags and the site's language tags", () => {
+    const gs = withTagFormats({ ...base, courseFormatsFromTags: { enabled: true, skip: ["podcast", "for everyone", "for parents"] } }, rows, (k) => k === "shastra");
+    expect(Object.keys((gs as { courseFormats: object }).courseFormats)).toEqual(["ebook", "short-film-animation"]);
   });
 });

@@ -545,6 +545,10 @@
         {
           "kind": "courseTags",
           "detail": "authored options match course tags (e.g. for-parents) or level names"
+        },
+        {
+          "kind": "courseTags",
+          "detail": "source 'tags' also lists every course tag starting with its prefix (\"for parents\" → Parents)"
         }
       ],
       "bound": [],
@@ -554,7 +558,8 @@
       ],
       "pitfalls": [
         "Each group id is also its ?<id>= URL parameter; option ids are slugs.",
-        "Zero-count options stay listed, greyed, unless showEmpty is false."
+        "An option no course has is not listed; one that is 0 only under other filters stays, greyed, unless showEmpty is false.",
+        "A source 'tags' group needs a prefix; with none it is an authored group."
       ],
       "minimal": {
         "customFilters": [
@@ -575,6 +580,15 @@
                   "for-parents"
                 ]
               }
+            ]
+          },
+          {
+            "id": "audience",
+            "label": "Audience",
+            "source": "tags",
+            "prefix": "for",
+            "exclude": [
+              "everyone"
             ]
           }
         ]

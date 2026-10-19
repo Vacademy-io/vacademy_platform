@@ -208,6 +208,12 @@
       "contentWidthNotSaved": "Non enregistré : saisissez un nombre entier de {{min}} à {{max}}."
     },
     "courseFormats": {
+      "fromTags": {
+        "enable": "Ajouter les nouvelles étiquettes de cours comme formats",
+        "hint": "Activé : chaque étiquette de cours qui n'est ni une langue, ni un flux ou une catégorie, ni exclue ci-dessous devient un format — elle apparaît dans le filtre Format et sur les cartes sans modification ici. Les formats ci-dessus gardent leur nom.",
+        "skipPrefixes": "Jamais des formats : étiquettes commençant par",
+        "skip": "Jamais des formats : ces étiquettes"
+      },
       "heading": "Formats de cours",
       "hint": "Les formats comme E-books ou Sessions en direct s’affichent sur les cartes de cours et dans le filtre Format. Un cours reçoit un format grâce à son tag format-<id>.",
       "namesInTranslations": "Les noms des formats se traduisent dans Languages → Translations. Passez l’éditeur à la langue de base pour renommer ou ajouter un format.",
@@ -589,6 +595,12 @@
       },
       "filterTitle": "Filtre : {{name}}",
       "formatsNote": "Les options sont les formats de cours des paramètres du site.",
+      "fromTags": "Lister aussi les étiquettes de cours",
+      "tagPrefix": "Étiquettes commençant par",
+      "tagPrefixHint": "Chaque étiquette de cours commençant par ce mot devient une option, après les options ci-dessous : « for parents » s'affiche Parents. Une nouvelle étiquette apparaît ici sans modification.",
+      "tagPrefixMissing": "Saisissez le mot par lequel commencent les étiquettes (par exemple : for).",
+      "tagExclude": "Ne jamais lister ces étiquettes",
+      "tagExcludeHint": "Séparées par des virgules, l'étiquette entière ou la partie après le mot (par exemple : everyone).",
       "optionN": "Option {{n}}",
       "tags": "Étiquettes de cours",
       "tagsHint": "Séparées par des virgules. Un cours portant l'une d'elles correspond.",

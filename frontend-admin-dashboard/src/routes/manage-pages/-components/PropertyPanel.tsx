@@ -1807,6 +1807,8 @@ const GlobalSettingsEditor = ({
                             Array.isArray(gs.courseFormatOrder) ? gs.courseFormatOrder : undefined
                         }
                         onChange={(next) => updateGlobalSettings(next)}
+                        fromTags={gs.courseFormatsFromTags}
+                        onFromTagsChange={(next) => updateField('courseFormatsFromTags', next)}
                         i18n={gs.i18n}
                         readOnlyNames={!!editingLocale}
                     />

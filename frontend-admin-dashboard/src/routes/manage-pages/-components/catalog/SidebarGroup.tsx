@@ -247,6 +247,8 @@ const ExtraFilterFields = ({
     const label = textOf(filter.label);
     const id = textOf(filter.id).trim();
     const fromFormats = filter.source === 'courseFormats';
+    // source 'tags': the site also lists every course tag starting with the prefix ("for parents" → Parents).
+    const fromTags = filter.source === 'tags';
 
     return (
         <ItemBox
@@ -281,6 +283,33 @@ const ExtraFilterFields = ({
                 </p>
             ) : (
                 <>
+                    <ToggleField
+                        label={t('catalogDesign.sidebar.fromTags')}
+                        checked={fromTags}
+                        onChange={(v) => update({ source: v ? 'tags' : 'options' })}
+                    />
+                    {fromTags && (
+                        <>
+                            <TextField
+                                label={t('catalogDesign.sidebar.tagPrefix')}
+                                hint={t('catalogDesign.sidebar.tagPrefixHint')}
+                                placeholder="for"
+                                value={textOf(filter.prefix)}
+                                onChange={(v) => update({ prefix: v })}
+                            />
+                            {!textOf(filter.prefix).trim() && (
+                                <p className="text-caption text-warning-600">
+                                    {t('catalogDesign.sidebar.tagPrefixMissing')}
+                                </p>
+                            )}
+                            <TagListField
+                                label={t('catalogDesign.sidebar.tagExclude')}
+                                hint={t('catalogDesign.sidebar.tagExcludeHint')}
+                                tags={stringsOf(filter.exclude)}
+                                onCommit={(exclude) => update({ exclude })}
+                            />
+                        </>
+                    )}
                     {options.map((option, index) => {
                         const name = t('catalogDesign.sidebar.optionN', { n: index + 1 });
                         return (

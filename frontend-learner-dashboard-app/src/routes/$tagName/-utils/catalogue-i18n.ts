@@ -76,6 +76,8 @@ const NON_TEXT_KEYS = new Set(
         // Course level names a customFilters option matches by ('eBook', 'Short Film'):
         // looked up raw, in every language.
         'levels',
+        // A source 'tags' filter group's tag prefix ('for') and skipped tags: matched raw.
+        'prefix', 'exclude',
         // The same in every language: a title shown in its own script
         // (spotlight titleNative), the sidebar's group order (legacy ids such
         // as 'priceRange') and a CTA rule's course-format keys.

@@ -286,18 +286,22 @@ describe("editorial filter sidebar", () => {
     expect(shownCourses(host).length).toBe(5);
   });
 
-  it("format: options from courseFormats, counts, zero-count row greyed and disabled; filters the grid", async () => {
+  it("format: options from courseFormats, counts, no-course option hidden, zero-under-filters greyed; filters the grid", async () => {
     const host = await mount({ ...BASE, ...SIDEBAR });
     const format = group(host, "format");
+    // No course is an audio book: the option is not listed at all.
     expect([...format.querySelectorAll("label")].map((l) => l.textContent)).toEqual([
       "Interactive, self-paced E-learning2",
       "E-books2",
       "Short film / Animation1",
-      "Audio Book0",
     ]);
-    const audio = rowOf(format, "Audio Book");
-    expect(audio.querySelector("input")!.disabled).toBe(true);
-    expect(audio.querySelector(".text-palette-muted2")).toBeTruthy();
+    // Zero only under another filter: still listed, greyed and disabled.
+    await click(rowOf(group(host, "price"), "Free").querySelector("input")!);
+    const zero = [...group(host, "format").querySelectorAll("label")].find((l) => /\D0$/.test(l.textContent ?? ""));
+    expect(zero).toBeTruthy();
+    expect(zero!.querySelector("input")!.disabled).toBe(true);
+    expect(zero!.querySelector(".text-palette-muted2")).toBeTruthy();
+    await click(rowOf(group(host, "price"), "Free").querySelector("input")!);
     await click(rowOf(group(host, "format"), "E-books").querySelector("input")!);
     expect(shownCourses(host)).toEqual(["Course 1", "Course 5"]);
     // Applied chip + Clear all clear it again.

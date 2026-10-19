@@ -361,7 +361,8 @@ describe("all Courses-grid features together (Knowledge Streams)", () => {
     expect(groups.slice(0, 5)).toEqual(["price", "language", "format", "category", "for"]);
     const format = host.querySelector('[data-filter-group="format"]')!;
     expect(format.textContent).toContain("Interactive, self-paced E-learning");
-    expect(format.textContent).toContain("Audio Book");
+    // A format no course has (Audio Book) is not offered.
+    expect(format.textContent).not.toContain("Audio Book");
     expect(host.querySelector("[data-promo-phone]")).toBeTruthy();
     expect(before(tabs[0], host.querySelector('[data-filter-group="price"]'))).toBe(true);
 

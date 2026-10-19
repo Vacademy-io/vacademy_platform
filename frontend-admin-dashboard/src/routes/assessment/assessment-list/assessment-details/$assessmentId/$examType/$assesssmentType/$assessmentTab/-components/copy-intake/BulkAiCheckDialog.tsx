@@ -25,6 +25,7 @@ import {
     toCopyCheckConfig,
     useCopyCheckSettings,
 } from '@/components/common/ai-copy-check/CopyCheckSettingsFields';
+import { CopyCheckCriteriaPanel } from '@/components/common/ai-copy-check/CopyCheckCriteriaPanel';
 
 interface PendingFile {
     key: string;
@@ -347,6 +348,12 @@ export const BulkAiCheckDialog = ({
                 <CopyCheckSettingsFields
                     value={copyCheckSettings}
                     onChange={setCopyCheckSettings}
+                    disabled={start.isPending}
+                />
+
+                <CopyCheckCriteriaPanel
+                    assessmentId={assessmentId}
+                    subject={copyCheckSettings.subject}
                     disabled={start.isPending}
                 />
 

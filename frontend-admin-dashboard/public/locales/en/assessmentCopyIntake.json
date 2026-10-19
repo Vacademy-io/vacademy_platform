@@ -176,5 +176,40 @@
         "instructionsDefaultHint": "Used for every assessment that has no instructions of its own",
         "language": "Highlight spelling and grammar errors",
         "languageHint": "Each error is underlined with its correction and listed in the answer's feedback. No marks are deducted for it. For answers written in English."
+    },
+    "criteria": {
+        "title": "Evaluation criteria",
+        "loading": "Loading the criteria…",
+        "loadFailed": "The criteria could not be loaded.",
+        "noQuestions": "This test has no questions yet.",
+        "summary": "{{set}} of {{total}} questions have criteria · the rest are written by AI on the first check",
+        "review": "Review criteria",
+        "addOpen": "Add evaluation criteria",
+        "dialogTitle": "Evaluation criteria for AI checking",
+        "dialogIntro": "The AI marks each answer by these criteria. Changes are used for every copy checked from now on; copies already checked keep their marks until you re-check them.",
+        "countSet_one": "{{count}} set",
+        "countSet_other": "{{count}} set",
+        "countFromQuestion_one": "{{count}} from the question bank",
+        "countFromQuestion_other": "{{count}} from the question bank",
+        "countAi_one": "{{count}} written by AI",
+        "countAi_other": "{{count}} written by AI",
+        "useQuestionCriteria_one": "Use the question's criteria for {{count}} question",
+        "useQuestionCriteria_other": "Use the questions' criteria for {{count}} questions",
+        "marks_one": "{{marks}} mark",
+        "marks_other": "{{marks}} marks",
+        "status": {
+            "SET": "Set",
+            "FROM_QUESTION": "Not used yet",
+            "AI": "AI will write"
+        },
+        "noText": "Question text not available",
+        "aiWillWrite": "No criteria yet: the AI writes them on the first check",
+        "add": "Add",
+        "edit": "Edit",
+        "saved_one": "Criteria saved",
+        "saved_other": "Criteria saved for {{count}} questions",
+        "saveFailed": "The criteria could not be saved",
+        "retry": "Try again",
+        "done": "Done"
     }
 }

@@ -32,6 +32,7 @@ import {
     toCopyCheckConfig,
     useCopyCheckSettings,
 } from '@/components/common/ai-copy-check/CopyCheckSettingsFields';
+import { CopyCheckCriteriaPanel } from '@/components/common/ai-copy-check/CopyCheckCriteriaPanel';
 
 export const SUBMITTED_CHECK_PREVIEW_KEY = 'COPY_INTAKE_SUBMITTED_PREVIEW';
 
@@ -261,6 +262,12 @@ export const CheckSubmittedCopiesDialog = ({
                 <CopyCheckSettingsFields
                     value={copyCheckSettings}
                     onChange={setCopyCheckSettings}
+                    disabled={start.isPending}
+                />
+
+                <CopyCheckCriteriaPanel
+                    assessmentId={assessmentId}
+                    subject={copyCheckSettings.subject}
                     disabled={start.isPending}
                 />
 

@@ -9,7 +9,7 @@ import org.hibernate.annotations.UuidGenerator;
 
 import java.util.Date;
 
-/** One upload of filled OMR sheets for one set (V57). Counts are taken from the items. */
+/** One upload of filled OMR sheets for one set (V58). Counts are taken from the items. */
 @Entity
 @Table(name = "omr_scan_batch")
 @Data

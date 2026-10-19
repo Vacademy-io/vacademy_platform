@@ -82,7 +82,7 @@ public class Assessment {
     private String proctoringConfig;
 
     /**
-     * OMR sheet settings as JSON (V57); see
+     * OMR sheet settings as JSON (V58); see
      * {@link vacademy.io.assessment_service.features.assessment.omr.dto.OmrConfig}.
      * Only meaningful while {@link #omrMode} is on. Read and written only through
      * OmrSetService.

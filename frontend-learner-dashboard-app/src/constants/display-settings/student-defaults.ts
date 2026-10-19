@@ -205,6 +205,7 @@ export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {
     showInstructors: false,
     // New defaults
     showCourseConfiguration: true,
+    hideTags: false,
     showCourseContentPrefixes: true,
     courseOverview: { visible: true, showSlidesData: true },
     slidesView: {

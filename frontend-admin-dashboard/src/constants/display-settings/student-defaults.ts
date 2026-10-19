@@ -171,6 +171,7 @@ export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {
         // Full teacher roster is opt-in; the first author always shows.
         showInstructors: false,
         showCourseConfiguration: true,
+        hideTags: false,
         showCourseContentPrefixes: true,
         courseOverview: { visible: true, showSlidesData: true },
         slidesView: {

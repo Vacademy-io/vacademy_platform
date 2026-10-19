@@ -117,6 +117,7 @@
         "hideAuthorName": "إخفاء اسم المؤلف (صفحة تفاصيل الدورة)",
         "showTeachers": "إظهار المعلمين (صفحة تفاصيل الدورة)",
         "showCourseConfiguration": "إظهار إعدادات الدورة",
+        "hideTags": "إخفاء وسوم الدورة (ENGLISH, E-LEARNING…) فوق العنوان",
         "showCourseContentPrefixes": "إظهار بادئات محتوى الدورة",
         "courseOverviewVisible": "نظرة عامة على الدورة مرئية",
         "showSlidesData": "إظهار بيانات الشرائح",

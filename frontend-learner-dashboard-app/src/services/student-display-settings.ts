@@ -254,6 +254,7 @@ function mergeWithDefaults(
       showCourseConfiguration:
         incoming?.courseDetails?.showCourseConfiguration ??
         d.courseDetails.showCourseConfiguration,
+      hideTags: incoming?.courseDetails?.hideTags ?? d.courseDetails.hideTags,
       showCourseContentPrefixes:
         incoming?.courseDetails?.showCourseContentPrefixes ??
         d.courseDetails.showCourseContentPrefixes,

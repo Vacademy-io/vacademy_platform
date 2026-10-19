@@ -20,12 +20,15 @@ interface CourseHeaderProps {
    *  learner still knows where they are, and drops everything that only
    *  matters to a shopper — tags, description and the banner/preview media. */
   minimal?: boolean;
+  /** Student Display Settings → courseDetails.hideTags: no tag chips above the title. */
+  hideTags?: boolean;
 }
 
 export const CourseHeader = ({
   courseData,
   showConfetti = false,
   minimal = false,
+  hideTags = false,
 }: CourseHeaderProps) => {
   const { t } = useTranslation("courseDetailsA");
   const course = getTerminology(ContentTerms.Course, SystemTerms.Course);
@@ -95,7 +98,7 @@ export const CourseHeader = ({
             {/* Text Content */}
             <div className="animate-fade-in-up space-y-3 sm:space-y-4">
               {/* Tags */}
-              {!minimal && courseData.tags.length > 0 && (
+              {!minimal && !hideTags && courseData.tags.length > 0 && (
                 <div className="flex flex-wrap gap-2">
                   {courseData.tags.map((tag, index) => (
                     <Badge

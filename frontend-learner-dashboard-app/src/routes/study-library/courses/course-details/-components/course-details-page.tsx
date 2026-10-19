@@ -408,6 +408,7 @@ export const CourseDetailsPage = () => {
 
   const {
     showCourseConfiguration,
+    hideTags,
     overviewVisible,
     hideAuthorName,
     showInstructors,
@@ -526,6 +527,7 @@ export const CourseDetailsPage = () => {
           courseData={form.getValues("courseData")}
           showConfetti={showConfetti}
           minimal={contentOnly}
+          hideTags={hideTags}
         />
 
         {/* Main Content Container */}

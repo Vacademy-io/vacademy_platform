@@ -1205,6 +1205,18 @@ export default function StudentDisplaySettings(): JSX.Element {
                     </div>
                     <div className="flex items-center gap-2">
                         <Switch
+                            checked={settings.courseDetails.hideTags ?? false}
+                            onCheckedChange={(v) =>
+                                update('courseDetails', {
+                                    ...settings.courseDetails,
+                                    hideTags: v,
+                                })
+                            }
+                        />
+                        <Label className="text-xs">{t('courseDetails.hideTags')}</Label>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <Switch
                             checked={settings.courseDetails.showCourseContentPrefixes}
                             onCheckedChange={(v) =>
                                 update('courseDetails', {

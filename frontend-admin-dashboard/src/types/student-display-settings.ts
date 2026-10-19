@@ -240,6 +240,8 @@ export interface StudentCourseDetailsSettings {
     showInstructors?: boolean;
     // New toggles
     showCourseConfiguration: boolean;
+    /** Hide the course's tag chips (ENGLISH, E-LEARNING…) above its title. Default false (shown). */
+    hideTags?: boolean;
     showCourseContentPrefixes: boolean;
     courseOverview: { visible: boolean; showSlidesData: boolean };
     slidesView: {

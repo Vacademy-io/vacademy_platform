@@ -117,6 +117,7 @@
         "hideAuthorName": "लेखक का नाम छिपाएं (कोर्स विवरण पेज)",
         "showTeachers": "शिक्षक दिखाएं (कोर्स विवरण पेज)",
         "showCourseConfiguration": "कोर्स कॉन्फ़िगरेशन दिखाएं",
+        "hideTags": "शीर्षक के ऊपर कोर्स टैग (ENGLISH, E-LEARNING…) छिपाएं",
         "showCourseContentPrefixes": "कोर्स कंटेंट प्रीफ़िक्स दिखाएं",
         "courseOverviewVisible": "कोर्स ओवरव्यू दृश्यमान",
         "showSlidesData": "स्लाइड्स डेटा दिखाएं",

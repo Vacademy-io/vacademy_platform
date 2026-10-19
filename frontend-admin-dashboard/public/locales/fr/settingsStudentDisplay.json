@@ -117,6 +117,7 @@
         "hideAuthorName": "Masquer le nom de l'auteur (page des détails du cours)",
         "showTeachers": "Afficher les enseignants (page des détails du cours)",
         "showCourseConfiguration": "Afficher la configuration du cours",
+        "hideTags": "Masquer les étiquettes du cours (ENGLISH, E-LEARNING…) au-dessus du titre",
         "showCourseContentPrefixes": "Afficher les préfixes du contenu du cours",
         "courseOverviewVisible": "Aperçu du cours visible",
         "showSlidesData": "Afficher les données des diapositives",

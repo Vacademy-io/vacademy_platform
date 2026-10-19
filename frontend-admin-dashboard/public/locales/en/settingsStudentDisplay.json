@@ -118,6 +118,7 @@
         "showTeachers": "Show All Teachers (Course Details Page)",
         "showTeachersHint": "The first author is always shown with their photo, subtitle and bio. Turn this on to list every teacher assigned to the batch. Email addresses are never shown to learners.",
         "showCourseConfiguration": "Show Course Configuration",
+        "hideTags": "Hide the course tags (ENGLISH, E-LEARNING…) above the title",
         "showCourseContentPrefixes": "Show Course Content Prefixes",
         "courseOverviewVisible": "Course Overview Visible",
         "showSlidesData": "Show Slides Data",

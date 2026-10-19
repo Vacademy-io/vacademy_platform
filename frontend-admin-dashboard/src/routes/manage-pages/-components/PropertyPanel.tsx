@@ -65,6 +65,7 @@ import { useBlogManagerStore } from '../-stores/blog-manager-store';
 import { LinkPicker } from './LinkPicker';
 import { CampaignPicker, websiteFormFields } from './CampaignPicker';
 import { FolderBrowserEditor } from './folders/FolderBrowserEditor';
+import { AccessPassGridEditor } from './access-pass/AccessPassGridEditor';
 import { CatalogDiscoveryEditor } from './catalog/CatalogDiscoveryEditor';
 import { CatalogDesignGroups } from './catalog/CatalogDesignGroups';
 import { RowActions } from './catalog/design-fields';
@@ -2188,6 +2189,8 @@ const ComponentEditor = ({ component, pageId, updateComponent, siteConfig }: any
             return <ProductPageOfferEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'folderBrowser':
             return <FolderBrowserEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
+        case 'accessPassGrid':
+            return <AccessPassGridEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'learningPath':
             return <LearningPathEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'leadForm':

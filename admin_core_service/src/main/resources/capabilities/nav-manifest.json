@@ -1838,6 +1838,18 @@
         "TEACHER": true
       },
       "sub_tabs": []
+    },
+    {
+      "id": "access-passes",
+      "label": "Access Passes",
+      "category": "LMS",
+      "route": "/access-passes",
+      "order": 42,
+      "default_visible": {
+        "ADMIN": false,
+        "TEACHER": false
+      },
+      "sub_tabs": []
     }
   ]
 }

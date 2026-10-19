@@ -832,8 +832,27 @@ public class UserPlanService {
                         packageSessionIds, userPlan.getUserId(), userPlan);
             }
 
-            // Decrement inventory (available slots) for each enrolled package session
-            for (String psId : packageSessionIds) {
+            // Decrement inventory (available slots) for each package session THIS payment
+            // activated. The invite's full mapping list is wrong here: gap validation can
+            // drop sessions at checkout, and a bundle invite may map sessions the learner
+            // never bought, so decrementing all of them over-counted seats.
+            List<String> activatedPackageSessionIds;
+            try {
+                Set<String> activeOnPlan = new HashSet<>(studentSessionInstituteGroupMappingRepository
+                        .findActivePackageSessionIdsByUserPlanId(userPlan.getId()));
+                activatedPackageSessionIds = packageSessionIds.stream()
+                        .filter(activeOnPlan::contains)
+                        .toList();
+            } catch (Exception e) {
+                logger.warn("Could not resolve activated sessions for plan {}; skipping inventory decrement: {}",
+                        userPlan.getId(), e.getMessage());
+                activatedPackageSessionIds = List.of();
+            }
+            if (activatedPackageSessionIds.size() != packageSessionIds.size()) {
+                logger.info("Plan {} activated {} of the invite's {} package sessions; decrementing only those",
+                        userPlan.getId(), activatedPackageSessionIds.size(), packageSessionIds.size());
+            }
+            for (String psId : activatedPackageSessionIds) {
                 try {
                     packageSessionService.decrementAvailability(psId, 1);
                 } catch (Exception e) {

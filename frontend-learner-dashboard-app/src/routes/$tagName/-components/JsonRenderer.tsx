@@ -70,6 +70,7 @@ import { HtmlPageSection } from './components/HtmlPageSection';
 import { HtmlBlockSection } from "./components/HtmlBlockSection";
 import { ProductPageOfferComponent } from "./components/ProductPageOfferComponent";
 import { FolderBrowserComponent } from "./components/FolderBrowserComponent";
+import { AccessPassGridComponent } from "./components/AccessPassGridComponent";
 import { DetailBlocksComponent } from "./components/DetailBlocksComponent";
 import { BlogComponent } from "./components/BlogComponent";
 import { LeadFormComponent } from "./components/LeadFormComponent";
@@ -496,6 +497,20 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
         // product page inside the open folder shows its courses inline.
         return (
           <FolderBrowserComponent
+            key={id}
+            {...props}
+            instituteId={instituteId}
+            tagName={tagName}
+            isPreviewMode={isPreviewMode}
+            globalSettings={globalSettings}
+          />
+        );
+
+      case "accessPassGrid":
+        // Published Access Passes (one purchase -> several courses), read live.
+        // Buying goes through the pass invite on the enroll-by-invite page.
+        return (
+          <AccessPassGridComponent
             key={id}
             {...props}
             instituteId={instituteId}

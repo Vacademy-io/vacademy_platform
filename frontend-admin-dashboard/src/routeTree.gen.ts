@@ -25,6 +25,7 @@ import { Route as PlanningIndexRouteImport } from "./routes/planning/index"
 import { Route as PaymentDashboardIndexRouteImport } from "./routes/payment-dashboard/index"
 import { Route as MembershipStatsIndexRouteImport } from "./routes/membership-stats/index"
 import { Route as MembershipExpiryIndexRouteImport } from "./routes/membership-expiry/index"
+import { Route as AccessPassesIndexRouteImport } from "./routes/access-passes/index"
 import { Route as ManageSuborgTeamsIndexRouteImport } from "./routes/manage-suborg-teams/index"
 import { Route as ManageStudentsIndexRouteImport } from "./routes/manage-students/index"
 import { Route as ManagePaymentsIndexRouteImport } from "./routes/manage-payments/index"
@@ -352,6 +353,13 @@ const MembershipExpiryIndexRoute = MembershipExpiryIndexRouteImport.update({
   getParentRoute: () => rootRouteImport,
 } as any).lazy(() =>
   import("./routes/membership-expiry/index.lazy").then((d) => d.Route),
+)
+const AccessPassesIndexRoute = AccessPassesIndexRouteImport.update({
+  id: "/access-passes/",
+  path: "/access-passes/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/access-passes/index.lazy").then((d) => d.Route),
 )
 const ManageSuborgTeamsIndexRoute = ManageSuborgTeamsIndexRouteImport.update({
   id: "/manage-suborg-teams/",
@@ -2119,6 +2127,7 @@ export interface FileRoutesByFullPath {
   "/manage-students/": typeof ManageStudentsIndexRoute
   "/manage-suborg-teams/": typeof ManageSuborgTeamsIndexRoute
   "/membership-expiry/": typeof MembershipExpiryIndexRoute
+  "/access-passes/": typeof AccessPassesIndexRoute
   "/membership-stats/": typeof MembershipStatsIndexRoute
   "/payment-dashboard/": typeof PaymentDashboardIndexRoute
   "/planning/": typeof PlanningIndexRoute
@@ -2356,6 +2365,7 @@ export interface FileRoutesByTo {
   "/manage-students": typeof ManageStudentsIndexRoute
   "/manage-suborg-teams": typeof ManageSuborgTeamsIndexRoute
   "/membership-expiry": typeof MembershipExpiryIndexRoute
+  "/access-passes": typeof AccessPassesIndexRoute
   "/membership-stats": typeof MembershipStatsIndexRoute
   "/payment-dashboard": typeof PaymentDashboardIndexRoute
   "/planning": typeof PlanningIndexRoute
@@ -2595,6 +2605,7 @@ export interface FileRoutesById {
   "/manage-students/": typeof ManageStudentsIndexRoute
   "/manage-suborg-teams/": typeof ManageSuborgTeamsIndexRoute
   "/membership-expiry/": typeof MembershipExpiryIndexRoute
+  "/access-passes/": typeof AccessPassesIndexRoute
   "/membership-stats/": typeof MembershipStatsIndexRoute
   "/payment-dashboard/": typeof PaymentDashboardIndexRoute
   "/planning/": typeof PlanningIndexRoute
@@ -2835,6 +2846,7 @@ export interface FileRouteTypes {
     | "/manage-students/"
     | "/manage-suborg-teams/"
     | "/membership-expiry/"
+    | "/access-passes/"
     | "/membership-stats/"
     | "/payment-dashboard/"
     | "/planning/"
@@ -3072,6 +3084,7 @@ export interface FileRouteTypes {
     | "/manage-students"
     | "/manage-suborg-teams"
     | "/membership-expiry"
+    | "/access-passes"
     | "/membership-stats"
     | "/payment-dashboard"
     | "/planning"
@@ -3310,6 +3323,7 @@ export interface FileRouteTypes {
     | "/manage-students/"
     | "/manage-suborg-teams/"
     | "/membership-expiry/"
+    | "/access-passes/"
     | "/membership-stats/"
     | "/payment-dashboard/"
     | "/planning/"
@@ -3548,6 +3562,7 @@ export interface RootRouteChildren {
   ManageStudentsIndexRoute: typeof ManageStudentsIndexRoute
   ManageSuborgTeamsIndexRoute: typeof ManageSuborgTeamsIndexRoute
   MembershipExpiryIndexRoute: typeof MembershipExpiryIndexRoute
+  AccessPassesIndexRoute: typeof AccessPassesIndexRoute
   MembershipStatsIndexRoute: typeof MembershipStatsIndexRoute
   PaymentDashboardIndexRoute: typeof PaymentDashboardIndexRoute
   PlanningIndexRoute: typeof PlanningIndexRoute
@@ -3865,6 +3880,13 @@ declare module "@tanstack/react-router" {
       path: "/membership-expiry"
       fullPath: "/membership-expiry/"
       preLoaderRoute: typeof MembershipExpiryIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/access-passes/": {
+      id: "/access-passes/"
+      path: "/access-passes"
+      fullPath: "/access-passes/"
+      preLoaderRoute: typeof AccessPassesIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/manage-suborg-teams/": {
@@ -5454,6 +5476,7 @@ const rootRouteChildren: RootRouteChildren = {
   ManageStudentsIndexRoute: ManageStudentsIndexRoute,
   ManageSuborgTeamsIndexRoute: ManageSuborgTeamsIndexRoute,
   MembershipExpiryIndexRoute: MembershipExpiryIndexRoute,
+  AccessPassesIndexRoute: AccessPassesIndexRoute,
   MembershipStatsIndexRoute: MembershipStatsIndexRoute,
   PaymentDashboardIndexRoute: PaymentDashboardIndexRoute,
   PlanningIndexRoute: PlanningIndexRoute,

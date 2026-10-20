@@ -805,9 +805,9 @@ class AiChatAgentService:
                 )
 
                 self._record_token_usage(response, institute_id, user_id)
-                greeting_content = response.get(
-                    "content", "Hi! How can I help you today?"
-                )
+                greeting_content = split_suggestions(
+                    response.get("content") or "Hi! How can I help you today?"
+                )[0]
 
             except Exception as e:
                 logger.error(f"Error generating greeting: {e}")
@@ -1083,13 +1083,14 @@ class AiChatAgentService:
                     except (asyncio.CancelledError, GeneratorExit):
                         # The learner pressed Stop (the app closed the stream).
                         # Keep what was already written instead of losing it.
-                        if full_content.strip():
+                        partial = split_suggestions(full_content)[0]
+                        if partial.strip():
                             try:
                                 with self._get_db() as db:
                                     ChatMessageRepository(db).create_message(
                                         session_id=session_id,
                                         message_type="assistant",
-                                        content=full_content,
+                                        content=partial,
                                         metadata={"stopped": True},
                                     )
                             except Exception:  # noqa: BLE001
@@ -1161,6 +1162,7 @@ class AiChatAgentService:
                         f"Final response for session {session_id}, "
                         f"content length: {len(final_content) if final_content else 0}"
                     )
+                    final_content, suggestions = split_suggestions(final_content)
                     if final_content:
                         logger.info(
                             f"Creating assistant message for session {session_id}"
@@ -1170,6 +1172,7 @@ class AiChatAgentService:
                                 session_id=session_id,
                                 message_type="assistant",
                                 content=final_content,
+                                metadata={"suggestions": suggestions} if suggestions else None,
                             )
                             msg_data = _msg_event(msg)
                         logger.info(
@@ -1184,12 +1187,13 @@ class AiChatAgentService:
 
                 # Text streamed alongside tool calls ("Let me look that up")
                 # was shown to the learner and then dropped; keep it.
-                if full_content.strip():
+                pre_text = split_suggestions(full_content)[0]
+                if pre_text.strip():
                     with self._get_db() as db:
                         pre_msg = ChatMessageRepository(db).create_message(
                             session_id=session_id,
                             message_type="assistant",
-                            content=full_content,
+                            content=pre_text,
                         )
                         pre_data = _msg_event(pre_msg)
                     yield {"event": "message", "data": pre_data}
@@ -1770,6 +1774,9 @@ Replies render as Markdown (with LaTeX: $...$ inline, $$...$$ display) in a narr
 - When a tool result says it was shown to the student as cards (courses, classes, tests, results, links), the cards ARE the list: reply in 1-3 sentences that answer the question (which to open first, what stands out). Never restate those items as a table or bullet list.
 - Match length to the question: a fact gets 1-2 sentences, a concept 2-4 short paragraphs, a problem step-by-step guidance.
 - Be encouraging, patient and conversational; ask guiding questions; use analogies and examples.
+- End EVERY reply with one extra line, exactly in this form and nothing after it:
+  %%suggest: <question 1> | <question 2> | <question 3>
+  2-3 short follow-ups (under 60 characters each) the STUDENT might want to ask you next, written as the student would say them, in the student's language, specific to this conversation (e.g. "Give me a harder example" / "Quiz me on this"). The app shows them as buttons and hides this line.
 
 LANGUAGE:
 Reply in the language the student writes in. If they write Hindi in Latin letters (Hinglish), reply in Hinglish in Latin letters; if they write in Devanagari, reply in Devanagari. When their message doesn't show a language (a number, "ok", a single English term), use {app_language}, the language of their app.
@@ -1817,6 +1824,36 @@ WHAT THE STUDENT IS LOOKING AT (context_type / context_data) AND THEIR PERFORMAN
 {context_str}
 """
         return prompt.strip()
+
+
+_SUGGEST_MARK = "%%suggest:"
+
+
+def split_suggestions(text: str) -> tuple:
+    """
+    (reply without the trailer, [follow-up suggestions]).
+
+    The model ends a reply with one line `%%suggest: q1 | q2 | q3` — 2-3
+    questions the learner might ask next. The line is stripped from what is
+    stored and shown; the app renders the questions as tappable chips. A reply
+    without the line simply has no suggestions.
+    """
+    if not text:
+        return text, []
+    # Only the LAST marker counts, so a stray "%%" in an answer never cuts it.
+    idx = text.lower().rfind(_SUGGEST_MARK)
+    if idx == -1:
+        return text, []
+    clean = text[:idx].rstrip()
+    tail = text[idx:]
+    suggestions = []
+    for part in tail[len(_SUGGEST_MARK):].split("|"):
+        q = " ".join(part.replace("*", "").split()).strip(" -\"'")
+        if 3 <= len(q) <= 90 and q not in suggestions:
+            suggestions.append(q)
+        if len(suggestions) >= 3:
+            break
+    return clean, suggestions
 
 
 def template_greeting(assistant_name: str, context: Dict[str, Any], ui_language: Optional[str]) -> str:

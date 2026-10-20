@@ -134,6 +134,7 @@ export interface QuickActionsProps {
    * When false/undefined, renders the larger initial-state chips.
    */
   compact?: boolean;
+  className?: string;
 }
 
 export const QuickActions: React.FC<QuickActionsProps> = ({
@@ -141,6 +142,7 @@ export const QuickActions: React.FC<QuickActionsProps> = ({
   onAction,
   disabled = false,
   compact = false,
+  className,
 }) => {
   const { t } = useTranslation("chatFeatureB");
   // The chatbot speaks the app's language, also over a public site in another.
@@ -153,19 +155,25 @@ export const QuickActions: React.FC<QuickActionsProps> = ({
       className={cn(
         "w-full flex flex-wrap",
         compact ? "gap-1" : "gap-1.5",
+        className,
       )}
     >
       {quickActions.map((action, index) => (
         <button
           key={index}
+          type="button"
           onClick={() => onAction(action.prompt, action.intent)}
           disabled={disabled}
-          className={cn(
+          // text-caption is kept OUT of cn(): tailwind-merge does not know the
+          // custom font-size tokens and drops one of text-caption /
+          // text-muted-foreground as a "conflict", so the chips rendered at
+          // the inherited 16px.
+          className={`${cn(
             "inline-flex items-center font-medium rounded-full transition-colors disabled:opacity-50",
             compact
-              ? "h-5 px-2 text-caption text-muted-foreground bg-muted/50 hover:bg-primary/10 hover:text-primary border border-transparent hover:border-primary/20"
-              : "h-6 px-2.5 text-caption text-muted-foreground bg-muted/50 hover:bg-primary/10 hover:text-primary border border-transparent hover:border-primary/20",
-          )}
+              ? "h-5 px-2 text-muted-foreground bg-muted/50 hover:bg-primary/10 hover:text-primary border border-transparent hover:border-primary/20"
+              : "h-6 px-2.5 text-muted-foreground bg-muted/50 hover:bg-primary/10 hover:text-primary border border-transparent hover:border-primary/20",
+          )} text-caption`}
         >
           <action.icon
             className={cn(

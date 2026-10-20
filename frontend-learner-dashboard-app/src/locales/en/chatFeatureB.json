@@ -16,7 +16,8 @@
         "attachedImageAlt": "attached",
         "copy": "Copy",
         "popupView": "Open as popup",
-        "dockView": "Dock to the side"
+        "dockView": "Dock to the side",
+        "copied": "Copied"
     },
     "voiceModeLabels": {
         "interview": "Mock Interview",
@@ -57,18 +58,20 @@
         "attachImageTitle": "Attach image",
         "inputPlaceholder": "Ask a question... ($ for math)"
     },
-    "widget": {
-        "assistantSubtitle": "{{instituteName}} AI Assistant",
-        "error": "An error occurred, please start new",
-        "inputPlaceholder": "Type your message...",
-        "chatButtonAlt": "Chat",
-        "context": {
-            "title": "Context Used:",
-            "route": "Route:",
-            "courseId": "{{course}} ID:",
-            "slideId": "{{slide}} ID:",
-            "moduleId": "{{module}} ID:"
-        }
+    "messageList": {
+        "ariaLabel": "Conversation",
+        "thinking": "Thinking...",
+        "emptyTitle": "Hi, I'm {{assistantName}}",
+        "emptySubtitle": "Ask me anything, or start with a suggestion below."
+    },
+    "composer": {
+        "send": "Send message",
+        "removeImage": "Remove image",
+        "uploading": "Uploading image..."
+    },
+    "cards": {
+        "opensInNewTab": "(opens in a new tab)",
+        "progressLabel": "{{title}}: {{percent}}% complete"
     },
     "micButton": {
         "transcribing": "Transcribing...",
@@ -213,13 +216,6 @@
         "start": "Start call",
         "topicHelperEditable": "From what you're studying — edit if you'd rather talk about something else"
     },
-    "latexToolbar": {
-        "groupArithmetic": "Arithmetic",
-        "groupRelations": "Relations",
-        "groupCalculus": "Calculus",
-        "groupGreek": "Greek",
-        "groupOther": "Other"
-    },
     "useChatbot": {
         "initErrorNetwork": "Hi! I'm {{assistantName}}, your AI assistant. I'm having trouble connecting to the server. Please check your network connection.",
         "initErrorNotFound": "Hi! I'm {{assistantName}}, your AI assistant. The AI service endpoint was not found. Please check the configuration.",
@@ -227,6 +223,7 @@
         "initErrorGeneric": "Hi! I'm {{assistantName}}, your AI assistant. I'm having trouble connecting right now (Error: {{errorMessage}}). How can I help you?",
         "initErrorFallback": "Hi! I'm {{assistantName}}, your AI assistant. I'm having trouble connecting right now. How can I help you?",
         "processingFailed": "I'm sorry, I encountered an error while processing your request. Please try again.",
-        "quizSubmitFailed": "I'm sorry, I couldn't submit your quiz. Please try again."
+        "quizSubmitFailed": "I'm sorry, I couldn't submit your quiz. Please try again.",
+        "sendingTooFast": "You're sending messages very quickly — please wait a few seconds and try again."
     }
 }

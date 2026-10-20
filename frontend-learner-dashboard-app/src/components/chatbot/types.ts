@@ -1,4 +1,11 @@
-export type MessageRole = "user" | "assistant" | "tool_call" | "tool_result" | "quiz" | "quiz_feedback";
+export type MessageRole =
+  | "user"
+  | "assistant"
+  | "tool_call"
+  | "tool_result"
+  | "quiz"
+  | "quiz_feedback"
+  | "card";
 
 export interface ChatbotContext {
   route: string;
@@ -76,8 +83,57 @@ export interface ChatMessage {
     tool_call_id?: string;
     quiz_data?: QuizData;
     feedback?: QuizFeedbackData;
+    /** Present on role "card": structured data rendered by cards/ChatCard. */
+    card?: ChatCardData;
   };
 }
+
+/**
+ * Rich cards the assistant can send (SSE message type "card"). The message's
+ * `content` is a markdown fallback, rendered when the kind is unknown or the
+ * data is malformed, so the backend can add kinds before the UI knows them.
+ */
+export type CardIcon =
+  | "course"
+  | "slide"
+  | "video"
+  | "pdf"
+  | "quiz"
+  | "question"
+  | "live"
+  | "assessment"
+  | "link";
+
+export interface CardLinkItem {
+  title: string;
+  subtitle?: string;
+  /** "/path?query" = in-app route; "https://..." = new tab; anything else = plain text. */
+  href?: string;
+  icon?: CardIcon;
+  badge?: string;
+}
+
+export interface LinkListCardData {
+  kind: "link_list";
+  title?: string;
+  items: CardLinkItem[];
+}
+
+export interface ProgressCardItem {
+  title: string;
+  /** 0-100; clamped by the renderer. */
+  percent: number;
+  subtitle?: string;
+  href?: string;
+}
+
+export interface ProgressCardData {
+  kind: "progress";
+  title?: string;
+  items: ProgressCardItem[];
+}
+
+export type ChatCardData = LinkListCardData | ProgressCardData;
 
 export interface ChatResponse {
   message: string;

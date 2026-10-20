@@ -16,7 +16,8 @@
         "attachedImageAlt": "pièce jointe",
         "copy": "Copier",
         "popupView": "Ouvrir en fenêtre",
-        "dockView": "Ancrer sur le côté"
+        "dockView": "Ancrer sur le côté",
+        "copied": "Copié"
     },
     "voiceModeLabels": {
         "interview": "Entretien simulé",
@@ -57,18 +58,20 @@
         "attachImageTitle": "Joindre une image",
         "inputPlaceholder": "Posez une question... ($ pour les maths)"
     },
-    "widget": {
-        "assistantSubtitle": "Assistant IA de {{instituteName}}",
-        "error": "Une erreur s'est produite, veuillez recommencer",
-        "inputPlaceholder": "Écrivez votre message...",
-        "chatButtonAlt": "Discussion",
-        "context": {
-            "title": "Contexte utilisé :",
-            "route": "Route :",
-            "courseId": "ID {{course}} :",
-            "slideId": "ID {{slide}} :",
-            "moduleId": "ID {{module}} :"
-        }
+    "messageList": {
+        "ariaLabel": "Conversation",
+        "thinking": "Réflexion...",
+        "emptyTitle": "Bonjour, je suis {{assistantName}}",
+        "emptySubtitle": "Posez-moi une question ou commencez par une suggestion ci-dessous."
+    },
+    "composer": {
+        "send": "Envoyer le message",
+        "removeImage": "Retirer l'image",
+        "uploading": "Envoi de l'image..."
+    },
+    "cards": {
+        "opensInNewTab": "(s'ouvre dans un nouvel onglet)",
+        "progressLabel": "{{title}} : {{percent}} % terminé"
     },
     "micButton": {
         "transcribing": "Transcription en cours...",
@@ -213,13 +216,6 @@
         "start": "Démarrer l'appel",
         "topicHelperEditable": "Tiré de ce que vous étudiez — modifiez-le si vous préférez un autre sujet"
     },
-    "latexToolbar": {
-        "groupArithmetic": "Arithmétique",
-        "groupRelations": "Relations",
-        "groupCalculus": "Calcul",
-        "groupGreek": "Grec",
-        "groupOther": "Autre"
-    },
     "useChatbot": {
         "initErrorNetwork": "Bonjour ! Je suis {{assistantName}}, votre assistant IA. J'ai du mal à me connecter au serveur. Veuillez vérifier votre connexion réseau.",
         "initErrorNotFound": "Bonjour ! Je suis {{assistantName}}, votre assistant IA. Le point de terminaison du service IA est introuvable. Veuillez vérifier la configuration.",
@@ -227,6 +223,7 @@
         "initErrorGeneric": "Bonjour ! Je suis {{assistantName}}, votre assistant IA. J'ai du mal à me connecter en ce moment (Erreur : {{errorMessage}}). Comment puis-je vous aider ?",
         "initErrorFallback": "Bonjour ! Je suis {{assistantName}}, votre assistant IA. J'ai du mal à me connecter en ce moment. Comment puis-je vous aider ?",
         "processingFailed": "Désolé, une erreur s'est produite lors du traitement de votre demande. Veuillez réessayer.",
-        "quizSubmitFailed": "Désolé, je n'ai pas pu soumettre votre quiz. Veuillez réessayer."
+        "quizSubmitFailed": "Désolé, je n'ai pas pu soumettre votre quiz. Veuillez réessayer.",
+        "sendingTooFast": "Vous envoyez des messages très rapidement — veuillez patienter quelques secondes puis réessayer."
     }
 }

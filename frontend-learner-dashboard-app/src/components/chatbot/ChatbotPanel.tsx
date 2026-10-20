@@ -2,64 +2,35 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   X,
-  PaperPlaneTilt,
   Plus,
   Trash,
   ArrowsOut,
   ArrowsIn,
-  Copy,
-  Check,
   Gear,
   DotsSixVertical,
-  WifiSlash,
-  ImageSquare,
-  Sigma,
-  SpinnerGap,
-  Microphone,
 } from "@phosphor-icons/react";
 import { Capacitor } from "@capacitor/core";
-import { Link, useLocation } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import {
-  CardContent,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-// Select import removed — intent selector no longer shown
 import { useChatbotContext } from "./useChatbotContext";
 import { cn } from "@/lib/utils";
-import ReactMarkdown from "react-markdown";
-import remarkBreaks from "remark-breaks";
-import remarkGfm from "remark-gfm";
-import remarkMath from "remark-math";
-import rehypeKatex from "rehype-katex";
-import "katex/dist/katex.min.css";
-import "@/styles/katex-dark.css";
 import { useChatbotAvatarUrl } from "@/services/chatbot-settings";
 import {
   shouldShowAiSettingsShortcut,
   useAiSettingsShortcutEnabled,
 } from "@/services/ai-settings-shortcut";
-import { QuizComponent } from "./QuizComponent";
-import { QuizFeedbackComponent } from "./QuizFeedbackComponent";
 import { useChatbotPanelStore } from "@/stores/chatbot/useChatbotPanelStore";
-import { ToolIndicator } from "./ToolIndicator";
-import { QuickActions } from "./QuickActions";
-import { MicButton } from "./MicButton";
+import { ChatMessageList } from "./ChatMessageList";
+import { ChatComposer, ImageDropOverlay } from "./ChatComposer";
+import { useChatAttachments, useImageDrop } from "./useChatAttachments";
 import { VoiceModeSelector } from "./VoiceModeSelector";
 import { VoiceModePanel } from "./VoiceModePanel";
 
 /** The subset of session modes the call screen handles. */
 type VoiceCallMode = "voice_interview" | "voice_doubt" | "voice_oral_test";
-import { UploadFileInS3 } from "@/services/upload_file";
-import { getPublicUrl } from "@/services/upload_file";
-import { getUserId } from "@/constants/getUserId";
-import { MessageIntent } from "@/services/chatbot-api";
 
 interface ChatbotPanelProps {
   onOpenChange?: (isOpen: boolean) => void;
@@ -77,37 +48,18 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
   // reveal it just for itself from /ai-settings.
   const shortcutEnabledLocally = useAiSettingsShortcutEnabled();
   const { t } = useTranslation("chatFeatureB");
-  const location = useLocation();
   const {
     isOpen,
     setIsOpen,
-    messages,
-    isLoading,
-    aiStatus,
-    inputValue,
-    setInputValue,
-    sendMessage,
-    submitQuiz,
     startNewChat,
     closeSession,
     shouldShowChatbot,
-    messagesEndRef,
     chatbotSettings,
     instituteName,
-    hasError,
-    isCreditsExhausted,
-    isSessionClosed,
-    isInitializing,
     sessionId,
-    activeToolCall,
-    streamingContent,
-    isStreaming,
-    isOffline,
-    reconnectStream,
     voiceMode,
     voiceTopic,
     suggestedVoiceTopic,
-    startVoiceCall,
     showVoiceSelector,
     setShowVoiceSelector,
     enterVoiceMode,
@@ -134,7 +86,6 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const [resizeDirection, setResizeDirection] = useState<string | null>(null);
-  const [copiedMessageId, setCopiedMessageId] = useState<number | null>(null);
   const [hasInitializedPosition, setHasInitializedPosition] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   
@@ -142,53 +93,8 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
   const dragStartRef = useRef({ x: 0, y: 0, panelX: 0, panelY: 0 });
   const resizeStartRef = useRef({ x: 0, y: 0, width: 0, height: 0, panelX: 0, panelY: 0 });
   
-  const [pendingAttachments, setPendingAttachments] = useState<Array<{type: string; url: string; name?: string; previewUrl?: string}>>([]);
-  const [isUploadingImage, setIsUploadingImage] = useState(false);
-  const [showLatexHelper, setShowLatexHelper] = useState(false);
-  const [isDragOver, setIsDragOver] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Drag and drop image handler
-  const handleImageFile = async (file: File) => {
-    if (!file.type.startsWith('image/')) return;
-    const previewUrl = URL.createObjectURL(file);
-    const tempIdx = pendingAttachments.length;
-    setPendingAttachments(prev => [...prev, { type: 'image', url: '', name: file.name, previewUrl }]);
-    setIsUploadingImage(true);
-    try {
-      const userId = await getUserId();
-      const fileId = await UploadFileInS3(file, () => {}, userId || '', 'CHATBOT_IMAGES', 'LEARNER');
-      if (fileId) {
-        const publicUrl = await getPublicUrl(fileId);
-        setPendingAttachments(prev => prev.map((att, i) =>
-          i === tempIdx ? { ...att, url: publicUrl } : att
-        ));
-      }
-    } catch (err) {
-      console.error('Failed to upload image:', err);
-      setPendingAttachments(prev => prev.filter((_, i) => i !== tempIdx));
-      URL.revokeObjectURL(previewUrl);
-    } finally {
-      setIsUploadingImage(false);
-    }
-  };
-
-  const handleFileDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragOver(false);
-    const file = e.dataTransfer.files?.[0];
-    if (file) handleImageFile(file);
-  };
-
-  const handleFileDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragOver(true);
-  };
-
-  const handleFileDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragOver(false);
-  };
+  const attachments = useChatAttachments();
+  const { isDragOver, dropHandlers } = useImageDrop(attachments.addFile);
 
   // Detect mobile viewport
   useEffect(() => {
@@ -353,25 +259,6 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
     return null;
   }
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      // Don't send explicit intent — let backend auto-classify from message text
-      sendMessage(inputValue, undefined, pendingAttachments.length > 0 ? pendingAttachments : undefined);
-      setPendingAttachments([]);
-    }
-  };
-
-  const handleCopyMessage = (content: string, messageId: number) => {
-    setCopiedMessageId(messageId);
-    navigator.clipboard.writeText(content).catch((err) => {
-      console.error("Could not copy text: ", err);
-    });
-    setTimeout(() => {
-      setCopiedMessageId(null);
-    }, 2000);
-  };
-
   const toggleFullScreen = () => {
     setIsFullScreen(!isFullScreen);
   };
@@ -422,19 +309,9 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                 isFullScreen && !isNativePlatform && "rounded-none",
                 isDragOver && "ring-2 ring-inset ring-primary/50"
               )}
-              onDrop={handleFileDrop}
-              onDragOver={handleFileDragOver}
-              onDragLeave={handleFileDragLeave}
+              {...dropHandlers}
             >
-              {/* Drag overlay for image drop */}
-              {isDragOver && (
-                <div className="absolute inset-0 z-50 flex items-center justify-center bg-primary/5 backdrop-blur-[2px] pointer-events-none">
-                  <div className="flex flex-col items-center gap-2 text-primary">
-                    <ImageSquare className="h-10 w-10" />
-                    <span className="text-sm font-medium">{t("common.dropImageHere")}</span>
-                  </div>
-                </div>
-              )}
+              {isDragOver && <ImageDropOverlay />}
 
               {/* Resize Handles (hidden in fullscreen) */}
               {!isFullScreen && (
@@ -498,6 +375,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                     className="h-7 w-7 text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground"
                     onClick={(e) => { e.stopPropagation(); startNewChat(); }}
                     title={t("common.startNewChat")}
+                    aria-label={t("common.startNewChat")}
                   >
                     <Plus className="h-4 w-4" />
                   </Button>
@@ -507,6 +385,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                     className="h-7 w-7 text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground"
                     onClick={(e) => { e.stopPropagation(); closeSession(); }}
                     title={t("common.closeSession")}
+                    aria-label={t("common.closeSession")}
                   >
                     <Trash className="h-4 w-4" />
                   </Button>
@@ -517,6 +396,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                         size="icon"
                         className="h-7 w-7 text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground"
                         title={t("common.aiGear")}
+                        aria-label={t("common.aiGear")}
                       >
                         <Gear className="h-4 w-4" />
                       </Button>
@@ -528,6 +408,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                     className="h-7 w-7 text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground"
                     onClick={(e) => { e.stopPropagation(); toggleFullScreen(); }}
                     title={isFullScreen ? t("panel.exitFullscreen") : t("panel.fullscreen")}
+                    aria-label={isFullScreen ? t("panel.exitFullscreen") : t("panel.fullscreen")}
                   >
                     {isFullScreen ? (
                       <ArrowsIn className="h-4 w-4" />
@@ -541,533 +422,16 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                     className="h-7 w-7 text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground"
                     onClick={(e) => { e.stopPropagation(); setIsOpen(false); }}
                     title={t("common.closePanel")}
+                    aria-label={t("common.closePanel")}
                   >
                     <X className="h-4 w-4" />
                   </Button>
                 </div>
               </CardHeader>
 
-              {/* Messages Area */}
-              <CardContent className="flex-1 min-h-0 p-0 overflow-hidden">
-                <ScrollArea className="h-full p-4 [&>[data-radix-scroll-area-viewport]>div]:!block [&>[data-radix-scroll-area-viewport]>div]:!min-w-0">
-                  <div className="flex flex-col space-y-4">
-                    {isOffline && (
-                      <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 text-xs rounded-md">
-                        <WifiSlash className="size-3.5 shrink-0" />
-                        <span>{t("panel.offlineNotice")}</span>
-                      </div>
-                    )}
+              <ChatMessageList />
 
-                    {isInitializing && messages.length === 0 && (
-                      <div className="w-full bg-muted/50 border border-muted-foreground/20 rounded-lg px-4 py-2 text-center text-sm text-muted-foreground">
-                        {t("panel.initializing")}
-                      </div>
-                    )}
-
-                    {messages.map((msg) => {
-                      if (msg.role === "quiz" && msg.metadata?.quiz_data) {
-                        return (
-                          <div key={msg.id} className="w-full max-w-pct-95 me-auto">
-                           {/* Add avatar for quiz messages too */}
-                            <div className="flex gap-2">
-                                <Avatar className="h-7 w-7 mt-1 shrink-0">
-                                  {avatarUrl ? (
-                                    <AvatarImage
-                                      src={avatarUrl}
-                                      alt={chatbotSettings.assistant_name}
-                                      className="object-cover"
-                                    />
-                                  ) : null}
-                                  <AvatarFallback className="text-primary font-bold text-xs">
-                                    {chatbotSettings.assistant_name.substring(0, 2).toUpperCase()}
-                                  </AvatarFallback>
-                                </Avatar>
-                                <div className="flex-1 min-w-0">
-                                   {msg.content && (
-                                     <div className="bg-muted text-foreground rounded-lg px-3 py-2 text-sm mb-2 w-fit">
-                                       <ReactMarkdown
-                                         remarkPlugins={[remarkGfm, remarkMath]}
-                                         rehypePlugins={[rehypeKatex]}
-                                       >
-                                         {msg.content}
-                                       </ReactMarkdown>
-                                     </div>
-                                   )}
-                                   <QuizComponent
-                                      quizData={msg.metadata.quiz_data}
-                                      onSubmit={submitQuiz}
-                                      disabled={isSessionClosed}
-                                   />
-                                </div>
-                            </div>
-                          </div>
-                        );
-                      }
-
-                      if (msg.role === "quiz_feedback" && msg.metadata?.feedback) {
-                        return (
-                          <div key={msg.id} className="w-full max-w-pct-95 me-auto">
-                             <div className="flex gap-2">
-                                <Avatar className="h-7 w-7 mt-1 shrink-0">
-                                  {avatarUrl ? (
-                                    <AvatarImage
-                                      src={avatarUrl}
-                                      alt={chatbotSettings.assistant_name}
-                                      className="object-cover"
-                                    />
-                                  ) : null}
-                                  <AvatarFallback className="text-primary font-bold text-xs">
-                                    {chatbotSettings.assistant_name.substring(0, 2).toUpperCase()}
-                                  </AvatarFallback>
-                                </Avatar>
-                                <div className="flex-1 min-w-0">
-                                   <QuizFeedbackComponent
-                                      feedback={msg.metadata.feedback}
-                                      content={msg.content}
-                                   />
-                                </div>
-                             </div>
-                          </div>
-                        );
-                      }
-
-                      return (
-                      <div
-                        key={msg.id}
-                        className={cn(
-                          "flex w-full max-w-pct-90",
-                          msg.role === "user"
-                            ? "ms-auto justify-end"
-                            : "me-auto justify-start"
-                        )}
-                      >
-                        {msg.role === "assistant" && (
-                          <Avatar className="h-7 w-7 me-2 mt-1 shrink-0">
-                            {avatarUrl ? (
-                              <AvatarImage
-                                src={avatarUrl}
-                                alt={chatbotSettings.assistant_name}
-                                className="object-cover"
-                              />
-                            ) : null}
-                            <AvatarFallback className="text-primary font-bold text-xs">
-                              {chatbotSettings.assistant_name
-                                .substring(0, 2)
-                                .toUpperCase()}
-                            </AvatarFallback>
-                          </Avatar>
-                        )}
-                        <div className="flex items-end gap-2">
-                          <div
-                            className={cn(
-                              "rounded-2xl px-4 py-2.5 text-sm shadow-sm break-words",
-                              msg.role === "user"
-                                ? "bg-primary text-primary-foreground rounded-ee-sm ms-2"
-                                : "bg-muted/80 backdrop-blur-sm text-foreground rounded-es-sm me-2"
-                            )}
-                          >
-                            {msg.role === "user" ? (
-                              <div>
-                                {msg.attachments?.filter((a: any) => a.type === 'image').map((att: any, i: number) => (
-                                  <img key={i} src={att.url} alt={t("common.attachedImageAlt")} className="max-w-48 max-h-36 rounded-lg mb-1.5 border" />
-                                ))}
-                                <p className="whitespace-pre-wrap">
-                                  {msg.content}
-                                  {msg.status === "pending" && (
-                                    <span className="text-xs text-primary-foreground/60 ms-1" title={t("panel.queuedTooltip")}>&#x23F3;</span>
-                                  )}
-                                </p>
-                              </div>
-                            ) : (
-                              <div className="group relative min-w-0 max-w-full break-words [&_ol]:ps-5 [&_ul]:ps-5 [&_li]:my-0.5 [&_pre]:overflow-x-auto">
-                                <button
-                                  className="absolute -top-0.5 -end-0.5 p-1 rounded-md bg-muted/80 z-10 shrink-0 hover:bg-muted opacity-0 group-hover:opacity-100 transition-opacity"
-                                  onClick={() =>
-                                    handleCopyMessage(msg.content, msg.id)
-                                  }
-                                  title={t("panel.copyMessage")}
-                                >
-                                  {copiedMessageId === msg.id ? (
-                                    <Check className="size-4 text-green-600" />
-                                  ) : (
-                                    <Copy className="size-4" />
-                                  )}
-                                </button>
-
-                                <ReactMarkdown
-                                  components={{
-                                    h1: ({ ...props }) => (
-                                      <h1
-                                        className="text-base font-bold mt-3 mb-1.5"
-                                        {...props}
-                                      />
-                                    ),
-                                    h2: ({ ...props }) => (
-                                      <h2
-                                        className="text-sm font-bold mt-2.5 mb-1"
-                                        {...props}
-                                      />
-                                    ),
-                                    h3: ({ ...props }) => (
-                                      <h3
-                                        className="text-sm font-semibold mt-2 mb-1"
-                                        {...props}
-                                      />
-                                    ),
-                                    p: ({ ...props }) => (
-                                      <p
-                                        className="text-sm leading-6 mb-3"
-                                        {...props}
-                                      />
-                                    ),
-                                    a: ({ ...props }) => (
-                                      <a
-                                        className="text-primary underline hover:text-primary/80"
-                                        {...props}
-                                      />
-                                    ),
-                                    ul: ({ ...props }) => (
-                                      <ul
-                                        className="list-disc list-inside mb-3 space-y-1 text-sm"
-                                        {...props}
-                                      />
-                                    ),
-                                    ol: ({ ...props }) => (
-                                      <ol
-                                        className="list-decimal list-inside mb-3 space-y-1 text-sm"
-                                        {...props}
-                                      />
-                                    ),
-                                    li: ({ ...props }) => (
-                                      <li className="ms-2" {...props} />
-                                    ),
-                                    code: ({ children, className, ...rest }: React.HTMLAttributes<HTMLElement>) => {
-                                      const isInline = !className?.includes('language-');
-                                      return isInline ? (
-                                        <code
-                                          className="bg-muted px-1.5 py-0.5 rounded text-xs font-mono"
-                                          {...rest}
-                                        >{children}</code>
-                                      ) : (
-                                        <code
-                                          className="block max-w-full bg-muted p-2 rounded-lg text-xs font-mono mb-3 overflow-x-auto whitespace-pre"
-                                          {...rest}
-                                        >{children}</code>
-                                      );
-                                    },
-                                    blockquote: ({ ...props }) => (
-                                      <blockquote
-                                        className="border-s-4 border-primary ps-3 py-1 my-3 italic text-muted-foreground text-sm"
-                                        {...props}
-                                      />
-                                    ),
-                                  }}
-                                  rehypePlugins={[rehypeKatex]}
-                                  remarkPlugins={[remarkGfm, remarkMath, remarkBreaks]}
-                                >
-                                  {msg.content}
-                                </ReactMarkdown>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                      );
-                    })}
-
-                    {/* Streaming response */}
-                    {isStreaming && streamingContent && (
-                      <div className="flex items-start gap-2.5 me-auto max-w-pct-90">
-                        <Avatar className="size-7 shrink-0 border border-primary/20">
-                          {avatarUrl ? (
-                            <AvatarImage
-                              src={avatarUrl}
-                              alt={chatbotSettings.assistant_name}
-                              className="object-cover"
-                            />
-                          ) : null}
-                          <AvatarFallback className="text-primary font-bold text-xs">
-                            {chatbotSettings.assistant_name.substring(0, 2).toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="rounded-2xl px-4 py-2.5 text-sm shadow-sm break-words bg-muted/80 backdrop-blur-sm text-foreground rounded-es-sm me-2">
-                          <ReactMarkdown
-                            remarkPlugins={[remarkBreaks, remarkGfm, remarkMath]}
-                            rehypePlugins={[rehypeKatex]}
-                          >
-                            {streamingContent}
-                          </ReactMarkdown>
-                          <span className="inline-block w-1.5 h-4 bg-foreground/60 animate-pulse ms-0.5" />
-                        </div>
-                      </div>
-                    )}
-
-                    <AnimatePresence>
-                      {activeToolCall && <ToolIndicator toolName={activeToolCall} />}
-                    </AnimatePresence>
-
-                    {!isStreaming && (isLoading || aiStatus === "thinking" || aiStatus === "generating_quiz") && (
-                      <div className="me-auto flex max-w-pct-80 items-end space-x-2">
-                        <Avatar className="h-7 w-7 me-2 shrink-0">
-                          {avatarUrl ? (
-                            <AvatarImage
-                              src={avatarUrl}
-                              alt={chatbotSettings.assistant_name}
-                              className="object-cover"
-                            />
-                          ) : null}
-                          <AvatarFallback className="text-primary font-bold text-xs">
-                            {chatbotSettings.assistant_name
-                              .substring(0, 2)
-                              .toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="rounded-lg bg-muted px-4 py-3 text-sm text-foreground">
-                          <div className="flex space-x-2 items-center h-4">
-                            {aiStatus === "generating_quiz" ? (
-                              <span className="text-xs text-muted-foreground animate-pulse">{t("panel.generatingQuiz")}</span>
-                            ) : (
-                              <>
-                                <div className="h-2 w-2 rounded-full bg-primary animate-bounce" />
-                                <div
-                                  className="h-2 w-2 rounded-full bg-primary animate-bounce"
-                                  style={{ animationDelay: "0.15s" }}
-                                />
-                                <div
-                                  className="h-2 w-2 rounded-full bg-primary animate-bounce"
-                                  style={{ animationDelay: "0.3s" }}
-                                />
-                              </>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {isCreditsExhausted && (
-                      <div className="w-full bg-amber-50 border border-amber-300 rounded-lg px-4 py-3 text-center text-sm text-amber-800">
-                        {t("common.creditsExhausted")}
-                      </div>
-                    )}
-
-                    {hasError && !isCreditsExhausted && (
-                      <div className="w-full bg-destructive/10 border border-destructive/20 rounded-lg px-4 py-2 text-center space-y-1.5">
-                        <p className="text-sm text-destructive">{t("panel.errorTitle")}</p>
-                        <div className="flex gap-3 justify-center">
-                          <button
-                            onClick={reconnectStream}
-                            className="text-xs text-primary underline hover:text-primary/80"
-                          >
-                            {t("common.retry")}
-                          </button>
-                          <button onClick={startNewChat} className="text-xs text-muted-foreground underline hover:text-muted-foreground/80">
-                            {t("common.newChat")}
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    {isSessionClosed && (
-                      <div className="w-full bg-muted/50 border border-muted-foreground/20 rounded-lg px-4 py-2 text-center text-sm text-muted-foreground">
-                        {t("panel.sessionEnded")}
-                      </div>
-                    )}
-
-                    <div ref={messagesEndRef} />
-                  </div>
-                </ScrollArea>
-              </CardContent>
-
-              {/* Input Area */}
-              <CardFooter className="border-t p-2 shrink-0 max-h-pct-45 overflow-y-auto flex-col gap-0">
-                {/* Quick Action Chips - show when input is empty */}
-                {!inputValue.trim() && (
-                  <div className={cn("w-full flex flex-wrap gap-1.5 pb-1", messages.length > 0 && "gap-1")}>
-                    <QuickActions
-                      pathname={location.pathname}
-                      onAction={(prompt: string, intent?: MessageIntent) => {
-                        if (prompt.endsWith(" ")) {
-                          setInputValue(prompt);
-                        } else {
-                          sendMessage(prompt, intent);
-                        }
-                      }}
-                      disabled={isLoading || !sessionId}
-                      compact={messages.length > 0}
-                    />
-                    {/* Voice mode chip */}
-                    {chatbotSettings.enabled_modes?.some(m => m.startsWith('voice_')) && (
-                      <button
-                        onClick={startVoiceCall}
-                        disabled={isLoading || !sessionId}
-                        title={t("common.startVoiceConversation")}
-                        className="inline-flex items-center h-7 px-3 text-xs font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-full border border-amber-200 transition-colors disabled:opacity-50"
-                      >
-                        <Microphone className="h-3 w-3 me-1.5" />
-                        {t("common.voiceChatLabel")}
-                      </button>
-                    )}
-                  </div>
-                )}
-
-                {/* Attachment preview */}
-                {pendingAttachments.length > 0 && (
-                  <div className="flex gap-2 w-full px-1 py-1.5">
-                    {pendingAttachments.map((att, i) => (
-                      <div key={i} className="relative size-12 rounded border overflow-hidden">
-                        <img src={att.previewUrl || att.url} alt={att.name || t("common.attachmentAlt")} className="size-full object-cover" />
-                        {!att.url && (
-                          <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                            <SpinnerGap className="h-4 w-4 text-white animate-spin" />
-                          </div>
-                        )}
-                        <button
-                          className="absolute -top-0.5 -end-0.5 size-4 rounded-full bg-destructive text-destructive-foreground text-caption flex items-center justify-center"
-                          onClick={() => {
-                            if (att.previewUrl) URL.revokeObjectURL(att.previewUrl);
-                            setPendingAttachments(prev => prev.filter((_, idx) => idx !== i));
-                          }}
-                        >
-                          &times;
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Hidden file input — uploads to S3 */}
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) handleImageFile(file);
-                    e.target.value = '';
-                  }}
-                />
-
-                {/* LaTeX quick-insert helper */}
-                {showLatexHelper && (
-                  <div className="w-full flex flex-wrap gap-1 px-1 py-1 bg-muted/30 rounded-lg border border-border/50">
-                    {[
-                      { label: '√', insert: '\\sqrt{}' },
-                      { label: 'x²', insert: '^{2}' },
-                      { label: 'xₙ', insert: '_{n}' },
-                      { label: '∫', insert: '\\int_{a}^{b}' },
-                      { label: 'Σ', insert: '\\sum_{i=1}^{n}' },
-                      { label: 'π', insert: '\\pi' },
-                      { label: 'α', insert: '\\alpha' },
-                      { label: 'β', insert: '\\beta' },
-                      { label: 'θ', insert: '\\theta' },
-                      { label: '∞', insert: '\\infty' },
-                      { label: '≠', insert: '\\neq' },
-                      { label: '≤', insert: '\\leq' },
-                      { label: '≥', insert: '\\geq' },
-                      { label: '÷', insert: '\\frac{}{}' },
-                      { label: 'lim', insert: '\\lim_{x \\to }' },
-                      { label: 'dx', insert: '\\frac{d}{dx}' },
-                      { label: '∂', insert: '\\partial' },
-                      { label: '±', insert: '\\pm' },
-                    ].map((item) => (
-                      <button
-                        key={item.label}
-                        className="h-7 min-w-8 px-1.5 text-xs font-mono rounded bg-background hover:bg-primary/10 hover:text-primary border border-border/50 transition-colors"
-                        onClick={() => {
-                          // Wrap in $ delimiters if not already in a math context
-                          const hasOpenDelimiter = inputValue.lastIndexOf('$') > inputValue.lastIndexOf(' ');
-                          const toInsert = hasOpenDelimiter ? item.insert : `$${item.insert}$`;
-                          setInputValue(prev => prev + toInsert);
-                        }}
-                        title={item.insert}
-                      >
-                        {item.label}
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                {/* LaTeX preview — show rendered formula when user types $ */}
-                {inputValue.includes('$') && (
-                  <div className="w-full px-2 py-1 bg-muted/20 rounded border border-dashed border-border/50 text-xs overflow-x-auto space-y-0.5">
-                    <span className="text-muted-foreground text-caption block">{t("common.preview")}</span>
-                    <ReactMarkdown
-                      remarkPlugins={[remarkMath]}
-                      rehypePlugins={[rehypeKatex]}
-                    >
-                      {inputValue}
-                    </ReactMarkdown>
-                  </div>
-                )}
-
-                {/* Input Row */}
-                <div className="w-full flex items-end gap-1.5">
-                  <textarea
-                    placeholder={t("panel.inputPlaceholder")}
-                    value={inputValue}
-                    onChange={(e) => setInputValue(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    disabled={!sessionId || isLoading}
-                    rows={1}
-                    className="text-sm min-h-9 max-h-32 flex-1 px-3 py-2 bg-transparent border rounded-md border-input focus:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none disabled:opacity-50"
-                    style={{ height: 'auto', overflow: 'hidden' }}
-                    onInput={(e) => {
-                      const target = e.target as HTMLTextAreaElement;
-                      target.style.height = 'auto';
-                      target.style.height = Math.min(target.scrollHeight, 120) + 'px';
-                    }}
-                  />
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className={cn(
-                      "h-8 w-8 shrink-0 rounded-lg",
-                      showLatexHelper && "bg-primary/10 text-primary"
-                    )}
-                    onClick={() => setShowLatexHelper(prev => !prev)}
-                    title={t("common.mathSymbols")}
-                  >
-                    <Sigma className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 shrink-0 rounded-lg"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={!sessionId || isLoading || isUploadingImage}
-                    title={t("panel.attachImageTitle")}
-                  >
-                    {isUploadingImage ? (
-                      <SpinnerGap className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <ImageSquare className="h-4 w-4" />
-                    )}
-                  </Button>
-                  <MicButton
-                    sessionId={sessionId || ""}
-                    disabled={!sessionId || isLoading}
-                    onTranscript={(text) => {
-                      setInputValue(text);
-                      // Don't auto-send — let user review and hit Enter
-                    }}
-                  />
-                  <Button
-                    onClick={() => {
-                      const readyAttachments = pendingAttachments.filter(a => a.url);
-                      sendMessage(inputValue, undefined, readyAttachments.length > 0 ? readyAttachments : undefined);
-                      // Clean up preview URLs
-                      pendingAttachments.forEach(a => { if (a.previewUrl) URL.revokeObjectURL(a.previewUrl); });
-                      setPendingAttachments([]);
-                    }}
-                    disabled={(!inputValue.trim() && pendingAttachments.filter(a => a.url).length === 0) || isLoading || isUploadingImage}
-                    size="icon"
-                    className="h-9 w-9 shrink-0"
-                  >
-                    <PaperPlaneTilt className="h-4 w-4" />
-                  </Button>
-                </div>
-              </CardFooter>
+              <ChatComposer attachments={attachments} />
             </motion.div>
           </>
         )}

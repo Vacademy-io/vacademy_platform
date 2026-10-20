@@ -16,7 +16,8 @@
         "attachedImageAlt": "مرفق",
         "copy": "نسخ",
         "popupView": "فتح كنافذة منبثقة",
-        "dockView": "تثبيت في الجانب"
+        "dockView": "تثبيت في الجانب",
+        "copied": "تم النسخ"
     },
     "voiceModeLabels": {
         "interview": "مقابلة تجريبية",
@@ -57,18 +58,20 @@
         "attachImageTitle": "إرفاق صورة",
         "inputPlaceholder": "اطرح سؤالاً... ($ للرموز الرياضية)"
     },
-    "widget": {
-        "assistantSubtitle": "مساعد {{instituteName}} للذكاء الاصطناعي",
-        "error": "حدث خطأ، يرجى بدء محادثة جديدة",
-        "inputPlaceholder": "اكتب رسالتك...",
-        "chatButtonAlt": "محادثة",
-        "context": {
-            "title": "السياق المستخدم:",
-            "route": "المسار:",
-            "courseId": "معرف {{course}}:",
-            "slideId": "معرف {{slide}}:",
-            "moduleId": "معرف {{module}}:"
-        }
+    "messageList": {
+        "ariaLabel": "المحادثة",
+        "thinking": "جارٍ التفكير...",
+        "emptyTitle": "مرحبًا، أنا {{assistantName}}",
+        "emptySubtitle": "اسألني أي شيء، أو ابدأ باقتراح من الأسفل."
+    },
+    "composer": {
+        "send": "إرسال الرسالة",
+        "removeImage": "إزالة الصورة",
+        "uploading": "جارٍ رفع الصورة..."
+    },
+    "cards": {
+        "opensInNewTab": "(يُفتح في علامة تبويب جديدة)",
+        "progressLabel": "{{title}}: {{percent}}% مكتمل"
     },
     "micButton": {
         "transcribing": "جارٍ تحويل الصوت إلى نص...",
@@ -213,13 +216,6 @@
         "start": "بدء المكالمة",
         "topicHelperEditable": "مأخوذ ممّا تدرسه الآن — عدّله إن أردت موضوعًا آخر"
     },
-    "latexToolbar": {
-        "groupArithmetic": "الحساب",
-        "groupRelations": "العلاقات",
-        "groupCalculus": "التفاضل والتكامل",
-        "groupGreek": "اليونانية",
-        "groupOther": "أخرى"
-    },
     "useChatbot": {
         "initErrorNetwork": "مرحباً! أنا {{assistantName}}، مساعدك الذكي. أواجه مشكلة في الاتصال بالخادم. يرجى التحقق من اتصالك بالإنترنت.",
         "initErrorNotFound": "مرحباً! أنا {{assistantName}}، مساعدك الذكي. لم يتم العثور على نقطة نهاية خدمة الذكاء الاصطناعي. يرجى التحقق من الإعدادات.",
@@ -227,6 +223,7 @@
         "initErrorGeneric": "مرحباً! أنا {{assistantName}}، مساعدك الذكي. أواجه مشكلة في الاتصال حالياً (خطأ: {{errorMessage}}). كيف يمكنني مساعدتك؟",
         "initErrorFallback": "مرحباً! أنا {{assistantName}}، مساعدك الذكي. أواجه مشكلة في الاتصال حالياً. كيف يمكنني مساعدتك؟",
         "processingFailed": "عذراً، واجهت خطأ أثناء معالجة طلبك. يرجى المحاولة مرة أخرى.",
-        "quizSubmitFailed": "عذراً، لم أتمكن من إرسال اختبارك. يرجى المحاولة مرة أخرى."
+        "quizSubmitFailed": "عذراً، لم أتمكن من إرسال اختبارك. يرجى المحاولة مرة أخرى.",
+        "sendingTooFast": "أنت ترسل الرسائل بسرعة كبيرة — يرجى الانتظار بضع ثوانٍ ثم المحاولة مرة أخرى."
     }
 }

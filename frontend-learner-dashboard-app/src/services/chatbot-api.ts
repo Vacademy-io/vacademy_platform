@@ -1,6 +1,8 @@
 import { getUserId } from "@/constants/getUserId";
 import { Preferences } from "@capacitor/preferences";
-import axios from "axios";
+import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
+import { getTokenFromStorage, isTokenExpired } from "@/lib/auth/sessionUtility";
+import { TokenKey } from "@/constants/auth/tokens";
 import { getUserBasicDetails } from "./getBasicUserDetails";
 import { QuizSubmission } from "@/components/chatbot/types";
 import { AI_SERVICE_URL } from "@/constants/urls";
@@ -16,6 +18,7 @@ export type MessageType =
   | "tool_result"
   | "quiz"
   | "quiz_feedback"
+  | "card"
   | "token";
 export type AIStatus = "idle" | "thinking" | "generating_quiz";
 export type SessionStatus = "ACTIVE" | "CLOSED";
@@ -46,6 +49,9 @@ export interface ContextMeta {
 
   // General context
   courses_path?: string;
+
+  // Voice call: what the interview / oral test / doubt call is about
+  voice_topic?: string;
 }
 
 export interface InitSessionRequest {
@@ -73,8 +79,25 @@ export interface MessageEvent {
     tool_call_id?: string;
     quiz_data?: object;
     feedback?: object;
+    card?: object;
   };
   created_at: string;
+}
+
+/** Callbacks for {@link ChatbotAPIService.openStream}. */
+export interface ChatStreamHandlers {
+  onOpen?: () => void;
+  /** One server-sent event: its `event:` name and raw `data:` payload. */
+  onEvent: (event: string, data: string) => void;
+  /**
+   * The stream ended or could not be opened. `status` is set when the server
+   * answered with an HTTP error (401/403/404/5xx) instead of a stream.
+   */
+  onDisconnect: (info: { status?: number; error?: unknown }) => void;
+}
+
+export interface ChatStream {
+  close: () => void;
 }
 
 export interface StatusEvent {
@@ -168,9 +191,7 @@ class ChatbotAPIService {
       session_mode: sessionMode || "text",
     };
 
-    console.log("Initializing session with:", request);
-
-    const response = await axios.post<InitSessionResponse>(
+    const response = await authenticatedAxiosInstance.post<InitSessionResponse>(
       `${this.baseUrl}/chat-agent/session/init`,
       request,
       {
@@ -181,22 +202,96 @@ class ChatbotAPIService {
       },
     );
 
-    console.log("Session initialized:", response.data);
     return response.data;
   }
 
-  createEventSource(sessionId: string): EventSource {
+  /**
+   * Headers for the stream request. The token is refreshed through the shared
+   * HTTP client (a cheap /whoami call) rather than here: that client is the one
+   * place that rotates refresh tokens, and two refreshes racing would log the
+   * learner out.
+   */
+  private async streamHeaders(): Promise<Record<string, string>> {
+    let token = await getTokenFromStorage(TokenKey.accessToken);
+    if (isTokenExpired(token)) {
+      try {
+        await authenticatedAxiosInstance.get(`${this.baseUrl}/chat-agent/whoami`);
+      } catch {
+        // Offline or refresh failed — open the stream without a token; the
+        // server serves it until auth is enforced, then answers 401.
+      }
+      token = await getTokenFromStorage(TokenKey.accessToken);
+    }
+    const headers: Record<string, string> = { Accept: "text/event-stream" };
+    if (token && !isTokenExpired(token)) headers.Authorization = `Bearer ${token}`;
+    const instituteId = await this.getInstituteId();
+    if (instituteId) headers.clientId = instituteId;
+    return headers;
+  }
+
+  /**
+   * Open the session's server-sent-event stream with fetch. EventSource cannot
+   * send an Authorization header, so the stream is read and parsed here.
+   */
+  openStream(sessionId: string, handlers: ChatStreamHandlers): ChatStream {
+    const controller = new AbortController();
+    let closed = false;
     const url = `${this.baseUrl}/chat-agent/session/${sessionId}/stream`;
-    console.log("Creating EventSource for URL:", url);
 
-    const eventSource = new EventSource(url);
-
-    // Log connection state
-    eventSource.onopen = () => {
-      console.log("EventSource connection opened");
+    const dispatch = (block: string) => {
+      let event = "message";
+      const data: string[] = [];
+      for (const line of block.split(/\r?\n/)) {
+        if (!line || line.startsWith(":")) continue;
+        const colon = line.indexOf(":");
+        const field = colon === -1 ? line : line.slice(0, colon);
+        const value = colon === -1 ? "" : line.slice(colon + 1).replace(/^ /, "");
+        if (field === "event") event = value;
+        else if (field === "data") data.push(value);
+      }
+      if (data.length && !closed) handlers.onEvent(event, data.join("\n"));
     };
 
-    return eventSource;
+    void (async () => {
+      try {
+        const response = await fetch(url, {
+          headers: await this.streamHeaders(),
+          signal: controller.signal,
+          cache: "no-store",
+        });
+        if (!response.ok || !response.body) {
+          if (!closed) handlers.onDisconnect({ status: response.status });
+          return;
+        }
+        if (closed) return;
+        handlers.onOpen?.();
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          let boundary = buffer.search(/\r?\n\r?\n/);
+          while (boundary !== -1) {
+            const block = buffer.slice(0, boundary);
+            buffer = buffer.slice(boundary).replace(/^\r?\n\r?\n/, "");
+            dispatch(block);
+            boundary = buffer.search(/\r?\n\r?\n/);
+          }
+        }
+        if (!closed) handlers.onDisconnect({});
+      } catch (error) {
+        if (!closed) handlers.onDisconnect({ error });
+      }
+    })();
+
+    return {
+      close: () => {
+        closed = true;
+        controller.abort();
+      },
+    };
   }
 
   async sendMessage(
@@ -214,7 +309,7 @@ class ChatbotAPIService {
       ...(attachments?.length && { attachments }),
     };
 
-    const response = await axios.post<SendMessageResponse>(
+    const response = await authenticatedAxiosInstance.post<SendMessageResponse>(
       `${this.baseUrl}/chat-agent/session/${sessionId}/message`,
       request,
     );
@@ -223,7 +318,7 @@ class ChatbotAPIService {
   }
 
   async closeSession(sessionId: string): Promise<CloseSessionResponse> {
-    const response = await axios.post<CloseSessionResponse>(
+    const response = await authenticatedAxiosInstance.post<CloseSessionResponse>(
       `${this.baseUrl}/chat-agent/session/${sessionId}/close`,
     );
 
@@ -238,7 +333,7 @@ class ChatbotAPIService {
     const formData = new FormData();
     formData.append("file", audioBlob, "audio.webm");
     formData.append("language", language);
-    const response = await axios.post(
+    const response = await authenticatedAxiosInstance.post(
       `${this.baseUrl}/chat-agent/session/${sessionId}/audio-message`,
       formData,
       { headers: { "Content-Type": "multipart/form-data" }, timeout: 30000 }
@@ -261,7 +356,7 @@ class ChatbotAPIService {
       context_meta: contextMeta,
     };
 
-    const response = await axios.put<UpdateContextResponse>(
+    const response = await authenticatedAxiosInstance.put<UpdateContextResponse>(
       `${this.baseUrl}/chat-agent/session/${sessionId}/context`,
       request,
       {

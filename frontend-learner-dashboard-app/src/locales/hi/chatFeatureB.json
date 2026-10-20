@@ -16,7 +16,8 @@
         "attachedImageAlt": "संलग्न",
         "copy": "कॉपी करें",
         "popupView": "पॉपअप में खोलें",
-        "dockView": "साइड में डॉक करें"
+        "dockView": "साइड में डॉक करें",
+        "copied": "कॉपी हो गया"
     },
     "voiceModeLabels": {
         "interview": "मॉक इंटरव्यू",
@@ -57,18 +58,20 @@
         "attachImageTitle": "छवि संलग्न करें",
         "inputPlaceholder": "एक सवाल पूछें... (गणित के लिए $)"
     },
-    "widget": {
-        "assistantSubtitle": "{{instituteName}} का AI सहायक",
-        "error": "एक त्रुटि हुई, कृपया नई चैट शुरू करें",
-        "inputPlaceholder": "अपना संदेश लिखें...",
-        "chatButtonAlt": "चैट",
-        "context": {
-            "title": "उपयोग किया गया संदर्भ:",
-            "route": "रूट:",
-            "courseId": "{{course}} आईडी:",
-            "slideId": "{{slide}} आईडी:",
-            "moduleId": "{{module}} आईडी:"
-        }
+    "messageList": {
+        "ariaLabel": "बातचीत",
+        "thinking": "सोच रहा हूँ...",
+        "emptyTitle": "नमस्ते, मैं {{assistantName}} हूँ",
+        "emptySubtitle": "मुझसे कुछ भी पूछें, या नीचे दिए किसी सुझाव से शुरू करें।"
+    },
+    "composer": {
+        "send": "संदेश भेजें",
+        "removeImage": "चित्र हटाएँ",
+        "uploading": "चित्र अपलोड हो रहा है..."
+    },
+    "cards": {
+        "opensInNewTab": "(नए टैब में खुलता है)",
+        "progressLabel": "{{title}}: {{percent}}% पूरा"
     },
     "micButton": {
         "transcribing": "ट्रांसक्राइब किया जा रहा है...",
@@ -213,13 +216,6 @@
         "start": "कॉल शुरू करें",
         "topicHelperEditable": "आप जो पढ़ रहे हैं उसी से लिया गया — कुछ और चाहिए तो बदल लें"
     },
-    "latexToolbar": {
-        "groupArithmetic": "अंकगणित",
-        "groupRelations": "संबंध",
-        "groupCalculus": "कैलकुलस",
-        "groupGreek": "ग्रीक",
-        "groupOther": "अन्य"
-    },
     "useChatbot": {
         "initErrorNetwork": "नमस्ते! मैं {{assistantName}} हूँ, आपका AI सहायक। मुझे सर्वर से कनेक्ट होने में समस्या आ रही है। कृपया अपना नेटवर्क कनेक्शन जाँचें।",
         "initErrorNotFound": "नमस्ते! मैं {{assistantName}} हूँ, आपका AI सहायक। AI सेवा एंडपॉइंट नहीं मिला। कृपया सेटिंग जाँचें।",
@@ -227,6 +223,7 @@
         "initErrorGeneric": "नमस्ते! मैं {{assistantName}} हूँ, आपका AI सहायक। अभी कनेक्ट करने में समस्या आ रही है (त्रुटि: {{errorMessage}})। मैं आपकी कैसे मदद कर सकता हूँ?",
         "initErrorFallback": "नमस्ते! मैं {{assistantName}} हूँ, आपका AI सहायक। अभी कनेक्ट करने में समस्या आ रही है। मैं आपकी कैसे मदद कर सकता हूँ?",
         "processingFailed": "क्षमा करें, आपका अनुरोध संसाधित करते समय एक त्रुटि हुई। कृपया पुनः प्रयास करें।",
-        "quizSubmitFailed": "क्षमा करें, मैं आपकी क्विज़ सबमिट नहीं कर सका। कृपया पुनः प्रयास करें।"
+        "quizSubmitFailed": "क्षमा करें, मैं आपकी क्विज़ सबमिट नहीं कर सका। कृपया पुनः प्रयास करें।",
+        "sendingTooFast": "आप बहुत जल्दी-जल्दी संदेश भेज रहे हैं — कृपया कुछ सेकंड रुककर फिर से कोशिश करें।"
     }
 }

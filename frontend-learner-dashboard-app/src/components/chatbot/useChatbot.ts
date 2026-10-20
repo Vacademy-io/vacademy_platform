@@ -12,6 +12,7 @@ import {
   AIStatus,
   MessageIntent,
   SessionMode,
+  type ChatStream,
 } from "@/services/chatbot-api";
 import { enqueueMessage, peekQueue, dequeueMessage, QueuedMessage } from "@/services/offline-queue";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
@@ -77,7 +78,7 @@ export const useChatbot = () => {
 
   // Ref to scroll to bottom
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const eventSourceRef = useRef<EventSource | null>(null);
+  const eventSourceRef = useRef<ChatStream | null>(null);
 
   // Subscribe to stores for reactive context
   const activeSlide = useContentStore((state) => state.activeItem);
@@ -93,14 +94,6 @@ export const useChatbot = () => {
   const modulesWithChaptersData = useModulesWithChaptersStore(
     (state) => state.modulesWithChaptersData,
   );
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages, isOpen]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -482,13 +475,23 @@ export const useChatbot = () => {
         eventSourceRef.current.close();
         eventSourceRef.current = null;
       }
-    // Setup SSE connection
-    const eventSource = chatbotAPI.createEventSource(sid);
-    eventSourceRef.current = eventSource;
 
-    eventSource.addEventListener("message", (event) => {
-      try {
-        const messageData: MessageEvent = JSON.parse(event.data);
+      const showCreditsExhausted = () => {
+        setIsCreditsExhausted(true);
+        setIsWaitingForResponse(false);
+        setIsLoading(false);
+        setAiStatus("idle");
+        const creditsMessage: ChatMessage = {
+          id: Date.now(),
+          role: "assistant",
+          content: t("common.creditsExhausted"),
+          timestamp: Date.now(),
+        };
+        setMessages((prev) => [...prev, creditsMessage]);
+      };
+
+      const handleMessage = (raw: string) => {
+        const messageData: MessageEvent = JSON.parse(raw);
 
         const usageLimit = parseAiUsageLimitBody(messageData);
         if (usageLimit) {
@@ -497,27 +500,13 @@ export const useChatbot = () => {
         }
 
         // Check for credits exhausted error in message data
-        if (
-          (messageData as any).type === "ERROR" &&
-          (messageData as any).code === 402
-        ) {
-          setIsCreditsExhausted(true);
-          setIsWaitingForResponse(false);
-          setIsLoading(false);
-          setAiStatus("idle");
-
-          const creditsMessage: ChatMessage = {
-            id: Date.now(),
-            role: "assistant",
-            content:
-              t("common.creditsExhausted"),
-            timestamp: Date.now(),
-          };
-          setMessages((prev) => [...prev, creditsMessage]);
+        const maybeError = messageData as unknown as { type?: string; code?: number };
+        if (maybeError.type === "ERROR" && maybeError.code === 402) {
+          showCreditsExhausted();
           return;
         }
 
-         // Handle tool_call: show indicator; tool_result: clear it
+        // Handle tool_call: show indicator; tool_result: clear it
         if (messageData.type === "tool_call") {
           setActiveToolCall(messageData.metadata?.tool_name || null);
           return;
@@ -551,33 +540,16 @@ export const useChatbot = () => {
         };
 
         setMessages((prev) => {
-          // Check if message already exists
+          // The server replays the transcript on every (re)connect.
           const exists = prev.some((msg) => msg.id === newMessage.id);
           if (exists) return prev;
           return [...prev, newMessage];
         });
-      } catch (error) {
-        console.error("Error parsing message event:", error);
-      }
-    });
+      };
 
-    eventSource.addEventListener("token", (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        setIsStreaming(true);
-        setStreamingContent((prev) => prev + (data.content || ""));
-        scrollToBottom();
-      } catch (e) {
-        console.error("Error parsing token event:", e);
-      }
-    });
-
-    eventSource.addEventListener("status", (event) => {
-      try {
-        const statusData = JSON.parse(event.data);
+      const handleStatus = (raw: string) => {
+        const statusData = JSON.parse(raw);
         setAiStatus(statusData.ai_status);
-
-        // Check if session is closed
         if (statusData.session_status === "CLOSED") {
           setIsSessionClosed(true);
           if (eventSourceRef.current) {
@@ -585,78 +557,57 @@ export const useChatbot = () => {
             eventSourceRef.current = null;
           }
         }
-      } catch (error) {
-        console.error("Error parsing status event:", error);
-      }
-    });
+      };
 
-    eventSource.addEventListener("error", (event) => {
-      // Check if this is a structured error event with data (e.g. credits exhausted)
-      try {
-        const errorEvent = event as MessageEvent;
-        if (errorEvent.data) {
-          const errorData = JSON.parse(errorEvent.data);
-          const usageLimit = parseAiUsageLimitBody(errorData);
-          if (usageLimit) {
-            showUsageLimit(usageLimit);
-            return;
-          }
-          if (errorData.type === "ERROR" && errorData.code === 402) {
-            console.error("Credits exhausted (402):", errorData.message);
-            setIsCreditsExhausted(true);
-            setIsWaitingForResponse(false);
-            setIsLoading(false);
-            setAiStatus("idle");
-
-            const creditsMessage: ChatMessage = {
-              id: Date.now(),
-              role: "assistant",
-              content:
-                t("common.creditsExhausted"),
-              timestamp: Date.now(),
-            };
-            setMessages((prev) => [...prev, creditsMessage]);
-            return;
-          }
+      // A structured `error` event (credits exhausted, usage limit, a failed turn).
+      const handleErrorEvent = (raw: string) => {
+        const errorData = JSON.parse(raw);
+        const usageLimit = parseAiUsageLimitBody(errorData);
+        if (usageLimit) {
+          showUsageLimit(usageLimit);
+          return;
         }
-      } catch {
-        // Not a JSON error event, handle as regular SSE error below
-      }
+        if (errorData.type === "ERROR" && errorData.code === 402) {
+          showCreditsExhausted();
+        }
+      };
 
-      console.error("SSE Error event:", event);
-      console.error("EventSource readyState:", eventSource.readyState);
-      console.error("EventSource url:", eventSource.url);
-
-      // ReadyState: 0 = CONNECTING, 1 = OPEN, 2 = CLOSED
-      if (eventSource.readyState === EventSource.CLOSED) {
-        console.error("EventSource connection closed");
-        // The browser never retries a CLOSED EventSource (a 503 during a
-        // restart, a dropped connection). Reconnect ourselves: the server
-        // replays the session and processes any unanswered message.
-        eventSource.close();
-        if (eventSourceRef.current === eventSource) eventSourceRef.current = null;
-        scheduleStreamReconnect(sid);
-      }
-    });
-
-    eventSource.onerror = (error) => {
-      console.error("EventSource failed:", error);
-      console.error("EventSource readyState:", eventSource.readyState);
-
-      // Set error state to prevent re-initialization
-      if (eventSource.readyState === EventSource.CLOSED) {
-        // The browser never retries a CLOSED EventSource (a 503 during a
-        // restart, a dropped connection). Reconnect ourselves: the server
-        // replays the session and processes any unanswered message.
-        eventSource.close();
-        if (eventSourceRef.current === eventSource) eventSourceRef.current = null;
-        scheduleStreamReconnect(sid);
-      }
-    };
-
-      eventSource.addEventListener("open", () => {
-        reconnectAttemptsRef.current = 0;
+      const stream = chatbotAPI.openStream(sid, {
+        onOpen: () => {
+          reconnectAttemptsRef.current = 0;
+        },
+        onEvent: (event, data) => {
+          try {
+            if (event === "message") handleMessage(data);
+            else if (event === "token") {
+              const parsed = JSON.parse(data);
+              setIsStreaming(true);
+              setStreamingContent((prev) => prev + (parsed.content || ""));
+            } else if (event === "status") handleStatus(data);
+            else if (event === "error") handleErrorEvent(data);
+          } catch (error) {
+            console.error(`[chatbot] could not handle '${event}' event:`, error);
+          }
+        },
+        onDisconnect: ({ status }) => {
+          if (eventSourceRef.current === stream) eventSourceRef.current = null;
+          // 403: the session is not this learner's; 404: it no longer exists.
+          // Retrying cannot help — stop and let Retry / New chat start over.
+          if (status === 403 || status === 404) {
+            console.error(`[chatbot] stream refused (${status}); not retrying`);
+            setHasError(true);
+            setIsLoading(false);
+            setIsWaitingForResponse(false);
+            setAiStatus("idle");
+            return;
+          }
+          // Dropped connection, 5xx during a deploy, or the server's 30-minute
+          // idle close: reconnect. The server replays the transcript and
+          // answers any question that was left unanswered.
+          scheduleStreamReconnect(sid);
+        },
       });
+      eventSourceRef.current = stream;
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [t, scheduleStreamReconnect, showUsageLimit],
@@ -857,7 +808,9 @@ export const useChatbot = () => {
   ]);
 
   const sendMessage = async (content: string, intent?: MessageIntent, attachments?: Array<{type: string; url: string; mime_type?: string; name?: string}>) => {
-    if (!content.trim() || !sessionId) return;
+    // A photo of a question with no typed text is a real message.
+    const hasAttachments = !!attachments && attachments.length > 0;
+    if ((!content.trim() && !hasAttachments) || !sessionId) return;
 
     if (isCreditsExhausted) {
       const creditsMessage: ChatMessage = {
@@ -872,7 +825,7 @@ export const useChatbot = () => {
 
     // Queue message if offline
     if (!navigator.onLine) {
-      const queued = enqueueMessage({ sessionId, message: content, intent });
+      enqueueMessage({ sessionId, message: content, intent });
       setMessages((prev) => [
         ...prev,
         {
@@ -921,6 +874,18 @@ export const useChatbot = () => {
           timestamp: Date.now(),
         };
         setMessages((prev) => [...prev, creditsMsg]);
+        setAiStatus("idle");
+      } else if (axios.isAxiosError(error) && error.response?.status === 429) {
+        // Per-learner send rate limit: not an error state, just slow down.
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: Date.now(),
+            role: "assistant",
+            content: t("useChatbot.sendingTooFast"),
+            timestamp: Date.now(),
+          },
+        ]);
         setAiStatus("idle");
       } else {
         setHasError(true);
@@ -1053,7 +1018,11 @@ export const useChatbot = () => {
   const enterVoiceMode = useCallback(async (mode: SessionMode, language: string = chatbotSettings.voice_settings?.default_language || "en-IN", topic?: string) => {
     // Close current text session if exists
     if (sessionId) {
-      try { await chatbotAPI.closeSession(sessionId); } catch {}
+      try {
+        await chatbotAPI.closeSession(sessionId);
+      } catch {
+        // best-effort: the voice session starts regardless
+      }
     }
     closeStream();
     // The call screen mounts on `voiceMode && sessionId`. Clear the id BEFORE

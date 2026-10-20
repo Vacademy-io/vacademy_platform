@@ -106,16 +106,21 @@ export const VoiceModePanel: React.FC<VoiceModePanelProps> = ({
   const finishSpeaking = useCallback(() => {
     if (isEndingRef.current) return;
     interruptedRef.current = false;
-    recorder.stopRecording();
+    // The recorder's last chunk is still on its way: send the end of turn only
+    // after it, or it lands in the server's buffer as the start of the NEXT
+    // turn and that clip has no header ("Something went wrong" on turn two).
+    const flushed = recorder.stopRecording();
     if (!recorder.hadSpeech()) {
       // Nothing was said (a stray tap, a quiet room): don't send a silent
       // clip to speech-to-text — tell the server to forget it and go quiet.
-      ws.sendAudioDiscard();
       setVoiceState("idle");
+      void flushed.then(() => ws.sendAudioDiscard());
       return;
     }
-    ws.sendAudioEnd(recorderMimeRef.current);
     setVoiceState("processing");
+    void flushed.then(() => {
+      if (!isEndingRef.current) ws.sendAudioEnd(recorderMimeRef.current);
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const finishSpeakingRef = useRef(finishSpeaking);
@@ -123,9 +128,9 @@ export const VoiceModePanel: React.FC<VoiceModePanelProps> = ({
   /** The mic was open long enough and nobody spoke — hand control back quietly. */
   const handleNoSpeech = useCallback(() => {
     if (isEndingRef.current) return;
-    recorder.stopRecording();
-    ws.sendAudioDiscard();
     setVoiceState("idle");
+    // Discard only after the last chunk is in, so nothing is left to prefix the next turn.
+    void recorder.stopRecording().then(() => ws.sendAudioDiscard());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const handleNoSpeechRef = useRef(handleNoSpeech);

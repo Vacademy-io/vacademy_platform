@@ -132,6 +132,41 @@ def split_wav(wav: bytes, max_seconds: float = STT_CHUNK_SECONDS) -> List[bytes]
     return out or [wav]
 
 
+_WEBM_MAGIC = b"\x1aE\xdf\xa3"  # EBML header
+_OGG_MAGIC = b"OggS"
+
+
+def trim_to_container_start(audio: bytes, mime: Optional[str]) -> Tuple[bytes, int]:
+    """
+    Drop bytes in front of the container header. Returns (audio, bytes_dropped).
+
+    The voice call streams MediaRecorder chunks and then says "audio_end". The
+    recorder's LAST chunk is emitted asynchronously after stop(), so older app
+    builds sent it after audio_end — the server then prefixed it to the NEXT
+    turn, whose clip no longer started with a header: "EBML header parsing
+    failed" in ffmpeg and a 400 from Sarvam on every second turn (prod,
+    2026-10-20). Cutting to the real header recovers that turn.
+    """
+    base = base_mime(mime)
+    if len(audio) < 8:
+        return audio, 0
+    if base in ("audio/webm", "video/webm"):
+        magic, back = _WEBM_MAGIC, 0
+    elif base == "audio/ogg":
+        magic, back = _OGG_MAGIC, 0
+    elif base in ("audio/mp4", "audio/x-m4a", "video/mp4"):
+        magic, back = b"ftyp", 4  # the box size sits 4 bytes before its type
+    else:
+        return audio, 0
+    if audio[back:back + len(magic)] == magic:
+        return audio, 0
+    idx = audio.find(magic, back)
+    if idx < back:
+        return audio, 0
+    start = idx - back
+    return audio[start:], start
+
+
 async def transcode_to_wav(audio: bytes, mime: Optional[str]) -> Tuple[bytes, str, str]:
     """
     Normalise to 16 kHz mono 16-bit WAV. Returns (bytes, mime, note) where
@@ -192,4 +227,5 @@ __all__ = [
     "wav_duration_seconds",
     "split_wav",
     "transcode_to_wav",
+    "trim_to_container_start",
 ]

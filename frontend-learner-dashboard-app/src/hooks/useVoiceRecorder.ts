@@ -22,7 +22,12 @@ interface UseVoiceRecorderOptions {
 interface UseVoiceRecorderReturn {
   /** Resolves true once the mic is live; false if permission/device failed (see `error`). */
   startRecording: () => Promise<boolean>;
-  stopRecording: () => void;
+  /**
+   * Stops the mic. Resolves once the recorder's LAST chunk has been emitted
+   * through onAudioChunk — wait for it before telling the server the turn is
+   * over, or that chunk arrives after "audio_end" and corrupts the next turn.
+   */
+  stopRecording: () => Promise<void>;
   isRecording: boolean;
   audioBlob: Blob | null;
   audioLevel: number;
@@ -72,6 +77,8 @@ export function useVoiceRecorder(
   const streamRef = useRef<MediaStream | null>(null);
   const animFrameRef = useRef<number | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  // Every streamed chunk is encoded and sent through this chain, in order.
+  const encodeChainRef = useRef<Promise<void>>(Promise.resolve());
   const silenceStartRef = useRef<number | null>(null);
   const isRecordingRef = useRef(false);
 
@@ -150,7 +157,7 @@ export function useVoiceRecorder(
     animFrameRef.current = requestAnimationFrame(monitorAudioLevel);
   }, [silenceTimeout, maxWaitForSpeechMs]);
 
-  const stopRecording = useCallback(() => {
+  const stopRecording = useCallback((): Promise<void> => {
     isRecordingRef.current = false;
     setIsRecording(false);
     silenceStartRef.current = null;
@@ -160,8 +167,23 @@ export function useVoiceRecorder(
       animFrameRef.current = null;
     }
 
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      mediaRecorderRef.current.stop();
+    // MediaRecorder emits its final chunk asynchronously after stop(), then
+    // fires "stop". Wait for that, then for the chunk to be encoded and sent.
+    let flushed: Promise<void> = Promise.resolve();
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state !== 'inactive') {
+      flushed = new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, 1500); // never hang a turn on a stuck recorder
+        recorder.addEventListener(
+          'stop',
+          () => {
+            clearTimeout(timer);
+            resolve();
+          },
+          { once: true },
+        );
+      });
+      recorder.stop();
     }
 
     if (streamRef.current) {
@@ -175,6 +197,7 @@ export function useVoiceRecorder(
     }
     analyserRef.current = null;
     setAudioLevel(0);
+    return flushed.then(() => encodeChainRef.current);
   }, []);
 
   // Re-bind monitorAudioLevel's reference to stopRecording
@@ -241,12 +264,12 @@ export function useVoiceRecorder(
       // in the order MediaRecorder produced them. Independent FileReaders could
       // complete out of order, and a webm stream with a swapped chunk is a
       // corrupt file to the server-side decoder.
-      let encodeChain: Promise<void> = Promise.resolve();
+      encodeChainRef.current = Promise.resolve();
       mediaRecorder.ondataavailable = (event: BlobEvent) => {
         if (event.data.size > 0) {
           if (isStreamingMode) {
             const blob = event.data;
-            encodeChain = encodeChain.then(async () => {
+            encodeChainRef.current = encodeChainRef.current.then(async () => {
               const buffer = await blob.arrayBuffer();
               const bytes = new Uint8Array(buffer);
               let binary = '';

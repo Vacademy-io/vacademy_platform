@@ -19,6 +19,31 @@ from ..models.ai_token_usage import ApiProvider, RequestType
 
 logger = logging.getLogger(__name__)
 
+# Lookups a voice call may make about the learner. Interview and oral-test
+# calls stay on their topic, so they get none.
+VOICE_LEARNER_TOOL_NAMES = (
+    "get_my_courses", "get_my_live_classes", "get_my_tests", "get_my_results", "get_my_performance",
+)
+TOOL_FREE_VOICE_MODES = ("voice_interview", "voice_oral_test")
+VOICE_TOOL_ROUNDS = 3
+
+
+def _voice_tools() -> List[Dict[str, Any]]:
+    from .tool_manager_service import TOOL_DEFINITIONS
+
+    return [t for t in TOOL_DEFINITIONS if t["function"]["name"] in VOICE_LEARNER_TOOL_NAMES]
+
+
+VOICE_LEARNER_TOOLS = _voice_tools()
+
+VOICE_TOOLS_RULE = (
+    "\n\nYou can look up this student's own courses (and where they left off), live classes, "
+    "tests, released results and performance with your tools. When they ask about any of "
+    "these, CALL THE TOOL — never say you don't have access. Then SAY the answer briefly in "
+    "plain speech (no lists, no links, no markdown), e.g. 'You have Physics today at 7:30 PM'; "
+    "they can see the details in the app. Never guess times, marks or ranks."
+)
+
 
 class VoiceSessionService:
     """
@@ -217,9 +242,12 @@ class VoiceSessionService:
         )
 
         # 2-4. Session mode, resolved context and the mode-specific prompt
-        _session_mode, system_prompt, temperature, _user_name = await self._prepare_turn(
+        session_mode, system_prompt, temperature, _user_name = await self._prepare_turn(
             session_id, user_id, institute_id
         )
+        tools = VOICE_LEARNER_TOOLS if session_mode not in TOOL_FREE_VOICE_MODES else None
+        if tools:
+            system_prompt += VOICE_TOOLS_RULE
 
         # 5. Conversation history (last 10 messages)
         history = self.message_repo.get_conversation_history(session_id, limit=10)
@@ -228,17 +256,34 @@ class VoiceSessionService:
             role = "user" if msg.message_type == "user" else "assistant"
             messages.append({"role": role, "content": msg.content})
 
-        # 6. Call LLM
-        llm_response = await self.llm_client.chat_completion(
-            messages=messages,
-            temperature=temperature,
-            max_tokens=300,  # short responses for voice
-            institute_id=institute_id,
-            user_id=user_id,
-            model=model,  # platform "voice call model" when set; else the chatbot model
-        )
+        # 6. Call LLM — with the learner lookup tools in doubt calls, so "do I
+        # have a class today?" is answered from the schedule instead of "I
+        # don't have access to your timetable" (seen on prod 2026-10-20).
+        llm_response: Dict[str, Any] = {}
+        for round_no in range(1, VOICE_TOOL_ROUNDS + 1):
+            llm_response = await self.llm_client.chat_completion(
+                messages=messages,
+                tools=tools if round_no < VOICE_TOOL_ROUNDS else None,
+                temperature=temperature,
+                max_tokens=300,  # short responses for voice
+                institute_id=institute_id,
+                user_id=user_id,
+                model=model,  # platform "voice call model" when set; else the chatbot model
+            )
+            tool_calls = llm_response.get("tool_calls") or []
+            if not tools or not tool_calls:
+                break
+            for call in tool_calls:
+                result = await self._run_voice_tool(call, user_id, institute_id)
+                messages.append({"role": "assistant", "content": None, "tool_calls": [call]})
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": call.get("id"),
+                    "name": (call.get("function") or {}).get("name"),
+                    "content": result,
+                })
 
-        ai_text = llm_response.get("content", "")
+        ai_text = llm_response.get("content") or ""
 
         # 7. Save assistant message
         metadata = {
@@ -262,6 +307,23 @@ class VoiceSessionService:
             "message_id": assistant_message.id,
             "metadata": metadata,
         }
+
+    async def _run_voice_tool(self, call: Dict[str, Any], user_id: str, institute_id: str) -> str:
+        """Run one learner lookup for a voice turn; the text is all a call can use."""
+        from .chat_cards import split_tool_output
+        from .tool_manager_service import ToolManagerService
+
+        fn = call.get("function") or {}
+        name = fn.get("name") or ""
+        if name not in VOICE_LEARNER_TOOL_NAMES:
+            return f"Unknown tool: {name}"
+        try:
+            args = json.loads(fn.get("arguments") or "{}")
+        except (TypeError, ValueError):
+            args = {}
+        manager = ToolManagerService(self.db, institute_id=institute_id, user_id=user_id)
+        text_out, _card = split_tool_output(await manager.execute_tool(name, args))
+        return text_out
 
     def _build_voice_system_prompt(
         self,

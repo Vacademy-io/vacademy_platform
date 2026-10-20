@@ -677,8 +677,65 @@ if "billing.packs.reconcile.enabled" not in SETTING_SPECS:
         default=lambda: False,
     )
 
+# Site Assistant (public website chatbot, app/site_assistant): the platform
+# kill switch and the per-visitor / per-network daily caps. Per-site settings
+# (on/off, daily answers per site) live in each site's catalogue JSON.
+SETTING_SPECS["site_assistant.enabled"] = SettingSpec(
+    key="site_assistant.enabled",
+    group="site_assistant",
+    label="Site Assistant: on (platform kill switch)",
+    description=(
+        "On (default) = the website assistant answers on every site that has it turned on. Off = every site's "
+        "assistant refuses new chats and messages (admin preview too), without any model call. Takes up to 30 s."
+    ),
+    type="bool",
+    default=lambda: True,
+)
+SETTING_SPECS["site_assistant.visitor_daily_answers"] = SettingSpec(
+    key="site_assistant.visitor_daily_answers",
+    group="site_assistant",
+    label="Site Assistant: answers per visitor per day",
+    description="A visitor (browser) gets at most this many model answers a day; then the contact card is shown.",
+    type="number",
+    default=lambda: 40,
+    min_value=0, max_value=1000,
+)
+SETTING_SPECS["site_assistant.ip_daily_answers"] = SettingSpec(
+    key="site_assistant.ip_daily_answers",
+    group="site_assistant",
+    label="Site Assistant: answers per network (IP) per day",
+    description="All visitors behind one IP address (IPv6: one /64) share this daily ceiling.",
+    type="number",
+    default=lambda: 80,
+    min_value=0, max_value=10000,
+)
+SETTING_SPECS["site_assistant.llm.prefer_non_reasoning"] = SettingSpec(
+    key="site_assistant.llm.prefer_non_reasoning",
+    group="site_assistant",
+    label="Site Assistant: answer with a non-reasoning model first",
+    description=(
+        "On (default) = when the Site Assistant's model chain starts with a model that cannot turn reasoning off "
+        "(GLM), the first model of the chain that can answers instead and GLM becomes the fallback, so the first "
+        "word appears quickly. Off = the chain runs exactly as set under Model defaults."
+    ),
+    type="bool",
+    default=lambda: True,
+)
+SETTING_SPECS["site_assistant.llm.disable_reasoning"] = SettingSpec(
+    key="site_assistant.llm.disable_reasoning",
+    group="site_assistant",
+    label="Site Assistant: suppress reasoning tokens",
+    description=(
+        "Ask the provider not to spend hidden reasoning tokens on website-assistant answers (latency: first token "
+        "should arrive in under 2 s). Models that cannot turn reasoning off still run at low effort."
+    ),
+    type="bool",
+    default=lambda: True,
+)
+
 GROUP_LABELS = {
     "chatbot": "Student chatbot",
+    "site_assistant": "Website assistant",
     "voice": "Voice call",
     "tutor": "Live AI Tutor",
     "images": "Image generation",

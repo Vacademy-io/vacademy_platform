@@ -78,6 +78,13 @@ COVERED_BY: Dict[str, str] = {
     "video_support_visual": "lesson_video",
 }
 
+# Catalog rows seeded by a LATER migration than V586 (this test only parses V586):
+# use_case -> (migration, tool keys that row owns).
+SEEDED_LATER: Dict[str, Tuple[str, Tuple[str, ...]]] = {
+    "site_assistant": ("V598__Site_assistant.sql", ("site_assistant_answer",)),
+}
+SEEDED_LATER_TOOL_KEYS = {k for _m, keys in SEEDED_LATER.values() for k in keys}
+
 # Model use cases that are not a billable feature of their own.
 NOT_BILLED: Dict[str, str] = {
     "platform_default": "base model tier; the caller's own request_type / use case is what bills",
@@ -290,7 +297,7 @@ def test_every_billed_model_use_case_has_a_catalog_row(catalog):
     missing = []
     for u in muc.USE_CASES:
         key = u.use_case
-        if key in catalog or key in by_model_key or key in NOT_BILLED:
+        if key in catalog or key in by_model_key or key in NOT_BILLED or key in SEEDED_LATER:
             continue
         target = COVERED_BY.get(key)
         if target is None:
@@ -327,7 +334,7 @@ def test_every_request_type_maps_to_a_real_use_case(catalog):
 
 
 def test_every_tool_key_maps_to_a_real_use_case(catalog):
-    keys = set(_code_tool_keys()) | set(PROD_TOOL_KEYS)
+    keys = (set(_code_tool_keys()) | set(PROD_TOOL_KEYS)) - SEEDED_LATER_TOOL_KEYS
     unmapped = sorted(k for k in keys if _resolve(catalog, tool_key=k) == "unknown")
     assert not unmapped, f"ai_tool_pricing tool keys with no catalog row: {unmapped}"
 

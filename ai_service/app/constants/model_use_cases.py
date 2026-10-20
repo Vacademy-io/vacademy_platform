@@ -99,6 +99,12 @@ USE_CASES: Tuple[UseCase, ...] = (
         seeded_in_release_2=True,
     ),
     UseCase(
+        "site_assistant", "Website assistant (public site chatbot)", GROUP_LEARNER, "ai_service", KIND_CHAT,
+        "Answers anonymous visitors on institute websites (hosted sites and the embed snippet) with catalogue, "
+        "page, FAQ and live-class tools. Use a fast model with reasoning off; 1 credit per answer.",
+        (_AI + "site_assistant/engine.py:llm_stream",),
+    ),
+    UseCase(
         "knowledge_base_qa", "Knowledge base Q&A + paper blueprint", GROUP_LEARNER, "ai_service", KIND_CHAT,
         "Grounded answers from an institute's knowledge base, and the KB question-paper blueprint.",
         (_AI + "services/kb/retrieval.py:37", _AI + "services/kb/paper.py:50"),

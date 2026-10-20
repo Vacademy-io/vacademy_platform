@@ -653,41 +653,50 @@ async def get_my_tests(db: Session, user_id: str, institute_id: str) -> ToolOutp
     )
 
 
+def _f(d: Dict[str, Any], snake: str) -> Any:
+    """A field from assessment_service JSON in either spelling: the history item
+    DTOs are camelCase (other callers depend on that), the list DTOs snake_case."""
+    if snake in d:
+        return d[snake]
+    head, *rest = snake.split("_")
+    return d.get(head + "".join(w.title() for w in rest))
+
+
 def _result_lines(results: List[Dict[str, Any]], now: datetime):
     lines: List[str] = []
     items: List[Dict[str, Any]] = []
     for r in results:
-        name = " ".join(str(r.get("assessment_name") or "Test").split())
-        marks, total = _num(r.get("marks")), _num(r.get("total_marks"))
-        pct = _num(r.get("percentage"))
+        name = " ".join(str(_f(r, 'assessment_name') or "Test").split())
+        marks, total = _num(_f(r, 'marks')), _num(_f(r, 'total_marks'))
+        pct = _num(_f(r, 'percentage'))
         if pct is None and marks is not None and total:
             pct = 100 * marks / total
-        when = when_label(_parse_when(r.get("attempt_date")), now)
+        when = when_label(_parse_when(_f(r, 'attempt_date')), now)
         sub: List[str] = []
         if marks is not None:
             sub.append(f"{_fmt(marks)}/{_fmt(total)}" if total else f"{_fmt(marks)} marks")
-        if r.get("rank"):
-            sub.append(f"rank {r['rank']}")
+        if _f(r, 'rank'):
+            sub.append(f"rank {_f(r, 'rank')}")
         if when:
             sub.append(when)
         detail = [f"{_fmt(marks)}/{_fmt(total)} ({_fmt(pct)}%)" if marks is not None else "score not available"]
-        if r.get("rank"):
-            detail.append(f"rank {r['rank']}")
-        if r.get("percentile") is not None:
-            detail.append(f"percentile {_fmt(_num(r.get('percentile')))}")
-        if r.get("class_average_marks") is not None:
-            detail.append(f"class average {_fmt(_num(r.get('class_average_marks')))}")
-        if r.get("accuracy") is not None:
-            detail.append(f"accuracy {_fmt(_num(r.get('accuracy')))}%")
+        if _f(r, 'rank'):
+            detail.append(f"rank {_f(r, 'rank')}")
+        if _f(r, 'percentile') is not None:
+            detail.append(f"percentile {_fmt(_num(_f(r, 'percentile')))}")
+        if _f(r, 'class_average_marks') is not None:
+            detail.append(f"class average {_fmt(_num(_f(r, 'class_average_marks')))}")
+        if _f(r, 'accuracy') is not None:
+            detail.append(f"accuracy {_fmt(_num(_f(r, 'accuracy')))}%")
         sections = []
-        for sec in r.get("sections") or []:
+        for sec in _f(r, 'sections') or []:
             sections.append(
-                f"{sec.get('section_name') or 'Section'} {_fmt(_num(sec.get('student_marks')))}/"
-                f"{_fmt(_num(sec.get('section_total_marks')))}"
-                + (f" (class avg {_fmt(_num(sec.get('section_average_marks')))})"
-                   if sec.get("section_average_marks") is not None else "")
+                f"{_f(sec, 'section_name') or 'Section'} {_fmt(_num(_f(sec, 'student_marks')))}/"
+                f"{_fmt(_num(_f(sec, 'section_total_marks')))}"
+                + (f" (class avg {_fmt(_num(_f(sec, 'section_average_marks')))})"
+                   if _f(sec, 'section_average_marks') is not None else "")
             )
-        line = f"- {name} ({when}): " + ", ".join(detail)
+        line = f"- {name}" + (f" ({when})" if when else "") + ": " + ", ".join(detail)
         if sections:
             line += "; sections: " + "; ".join(sections)
         lines.append(line)
@@ -696,8 +705,8 @@ def _result_lines(results: List[Dict[str, Any]], now: datetime):
             "percent": pct or 0,
             "subtitle": " · ".join(sub),
             "href": REPORT_ROUTE + "?" + urlencode({
-                "assessmentId": r.get("assessment_id") or "",
-                "attemptId": r.get("attempt_id") or "",
+                "assessmentId": _f(r, 'assessment_id') or "",
+                "attemptId": _f(r, 'attempt_id') or "",
             }),
         })
     return lines, items
@@ -852,9 +861,9 @@ async def get_my_performance(db: Session, user_id: str, institute_id: str) -> st
     if released:
         lines, _ = _result_lines(released, now)
         sections.append("RECENT RELEASED TEST RESULTS:\n" + "\n".join(lines))
-        ids = [r.get("assessment_id") for r in released if r.get("assessment_id")]
+        ids = [_f(r, "assessment_id") for r in released if _f(r, "assessment_id")]
         rows = db.execute(_INSIGHTS_SQL, {"user_id": user_id, "ids": ids}).all() if ids else []
-        names = {r.get("assessment_id"): r.get("assessment_name") for r in released}
+        names = {_f(r, "assessment_id"): _f(r, "assessment_name") for r in released}
         insight_lines: List[str] = []
         for source_id, raw, _created in rows:
             try:

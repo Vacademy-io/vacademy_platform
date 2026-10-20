@@ -32,6 +32,19 @@ export interface Subscription {
   vendor_id?: string | null;
   can_renew_manually?: boolean;
   /**
+   * Length of one paid period in days, so the renewal screen can name what is being bought
+   * ("AUD for 12 months", "back for another month") instead of assuming a year. Server-side
+   * it comes from the same resolver the renewal uses to extend end_date, so the period shown
+   * is the period charged. Absent on older backends — fall back to a period-less wording.
+   */
+  plan_validity_days?: number | null;
+  /**
+   * Institute's utility-email address, for the "questions about your renewal" line. Absent
+   * when the institute has none configured — the line is then dropped, never defaulted to
+   * another institute's address.
+   */
+  support_email?: string | null;
+  /**
    * This plan row was never a membership — an abandoned or failed first checkout. The server
    * refuses to renew it (a renewal extends existing access, and there is none), so offer
    * "complete your enrollment" instead and route back through the invite checkout, where a

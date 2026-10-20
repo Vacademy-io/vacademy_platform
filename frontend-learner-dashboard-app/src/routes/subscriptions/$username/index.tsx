@@ -63,6 +63,35 @@ const formatPrice = (amount?: number | null, currency?: string | null): string =
 };
 
 /**
+ * A plan's period, as a unit + count the copy can inflect ("12 months", "another year").
+ *
+ * Months and years are snapped from day counts rather than divided exactly, because real
+ * plans are stored as 30 / 90 / 180 / 360 / 365 days and a literal days/30 reads as
+ * "12.17 months". Anything that is not close to a whole month stays in days, so an odd
+ * plan (a 10-day pass) is described honestly instead of rounded into a wrong month.
+ * Returns null when validity is unknown — the caller then omits the period wording
+ * entirely rather than guessing a year.
+ */
+type PlanPeriod = { unit: "month" | "year" | "day"; count: number };
+
+const planPeriodOf = (days?: number | null): PlanPeriod | null => {
+  if (days == null || days <= 0) return null;
+  const years = days / 365;
+  if (days >= 330 && Math.abs(years - Math.round(years)) * 365 <= 20) {
+    return { unit: "year", count: Math.max(1, Math.round(years)) };
+  }
+  const months = days / 30;
+  if (days >= 28 && Math.abs(months - Math.round(months)) * 30 <= 5) {
+    return { unit: "month", count: Math.max(1, Math.round(months)) };
+  }
+  return { unit: "day", count: days };
+};
+
+/** A year is sold as "12 months" on the price line, but read back as "a year" in prose. */
+const periodInMonths = (period: PlanPeriod): PlanPeriod =>
+  period.unit === "year" ? { unit: "month", count: period.count * 12 } : period;
+
+/**
  * Public per-learner subscription management page, linked from WhatsApp
  * ("tomorrow we auto-deduct — click here to stop"). Same trusted-login flow as
  * the unique live-class link: /subscriptions/<username> logs the learner in
@@ -227,6 +256,26 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
   // UPI vs card for the re-registered mandate; only read when autopayChoice is on.
   const [mandateMethodChoice, setMandateMethodChoice] = useState<Record<string, MandateMethod>>({});
   const razorpayRef = useRef<RazorpayCheckoutFormRef>(null);
+  /**
+   * First name for the renewal greeting. Read from the session the trusted-login flow
+   * already stored, so no extra request — and left empty when unavailable, which drops the
+   * greeting line rather than rendering "Hi ,".
+   */
+  const [firstName, setFirstName] = useState<string>("");
+  useEffect(() => {
+    let cancelled = false;
+    Preferences.get({ key: "StudentDetails" })
+      .then(({ value }) => {
+        if (cancelled || isNullOrEmptyOrUndefined(value)) return;
+        const parsed = JSON.parse(value as string) as { full_name?: string };
+        const first = (parsed?.full_name ?? "").trim().split(/\s+/)[0] ?? "";
+        setFirstName(first);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   /**
    * Whether this renewal should arm autopay: the learner's explicit choice if they made
    * one, otherwise the institute's default. `??` not `||` — an explicit false must survive.
@@ -582,21 +631,69 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
               </div>
             )}
 
-            {sub.can_renew_manually && sub.plan_price != null && (
-              <div className="space-y-3 rounded-lg border border-primary-100 bg-primary-50 p-3">
-                <div className="text-sm text-gray-700">
-                  {sub.status === "EXPIRED" || sub.status === "PAYMENT_FAILED" ? (
-                    <span>
-                      {t("subscriptions.manage.restartMembership", { liveClasses })}
-                    </span>
-                  ) : (
-                    <span>
-                      {t("subscriptions.manage.renewPrompt", {
-                        period: accessUntil ?? t("subscriptions.manage.currentPeriodFallback"),
-                        liveClasses,
-                      })}
-                    </span>
+            {sub.can_renew_manually && sub.plan_price != null && (() => {
+              // Period drives every bit of copy below: the price caption ("AUD for 12
+              // months") and the invitation ("back for another year"). Null when the
+              // backend has no validity for the plan — each line then falls back to
+              // wording that names no period at all, rather than implying a year.
+              const period = planPeriodOf(sub.plan_validity_days);
+              const priceLabel = formatPrice(sub.plan_price, sub.currency);
+              const hasEnded = sub.status === "EXPIRED" || sub.status === "PAYMENT_FAILED";
+              const billed = period ? periodInMonths(period) : null;
+              return (
+              <div className="space-y-4 rounded-xl border border-primary-100 bg-primary-50 p-4">
+                <div className="space-y-1">
+                  <h3 className="text-base font-semibold text-gray-800">
+                    {t("subscriptions.manage.renew.title")}
+                  </h3>
+                  {firstName && (
+                    <p className="text-sm text-gray-700">
+                      {t("subscriptions.manage.renew.greeting", { name: firstName })}
+                    </p>
                   )}
+                  {/* No period in this sentence: the plan length is already stated exactly
+                      on the price line, and "back for another year" read oddly on monthly
+                      plans and wrong on anything irregular. */}
+                  <p className="text-sm text-gray-600">
+                    {t("subscriptions.manage.renew.intro")}
+                  </p>
+                </div>
+
+                <div className="space-y-3 rounded-lg border-t-4 border-primary-500 bg-white p-4 shadow-sm">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <span className="text-sm font-medium text-gray-700">
+                      {sub.plan_name ?? t("subscriptions.manage.planFallback")}
+                    </span>
+                    <span className="text-right">
+                      <span className="block text-2xl font-semibold text-gray-900">
+                        {priceLabel}
+                      </span>
+                      {billed && (
+                        <span className="block text-xs text-gray-500">
+                          {t("subscriptions.manage.renew.priceCaption", {
+                            currency: (sub.currency ?? "").toUpperCase(),
+                            period: t(`subscriptions.manage.renew.duration_${billed.unit}`, {
+                              count: billed.count,
+                            }),
+                          })}
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                  <p className="rounded-md bg-neutral-50 px-3 py-2 text-sm text-gray-600">
+                    {accessUntil
+                      ? t(
+                          hasEnded
+                            ? "subscriptions.manage.renew.endedOn"
+                            : "subscriptions.manage.renew.endsOn",
+                          { date: accessUntil },
+                        )
+                      : t(
+                          hasEnded
+                            ? "subscriptions.manage.renew.endedNoDate"
+                            : "subscriptions.manage.renew.endsNoDate",
+                        )}
+                  </p>
                 </div>
                 {sub.autopay_available && sub.instant_renewal && autopayWanted(sub) && (
                   /* No checkbox on a stored-token gateway, so say plainly that this card
@@ -636,25 +733,48 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
                     disabled={renewingPlanId === sub.user_plan_id}
                   />
                 )}
-                <div className="flex justify-end">
+                <div className="space-y-2">
                   <MyButton
                     type="button"
-                    scale="small"
+                    scale="large"
                     buttonType="primary"
                     layoutVariant="default"
+                    className="w-full"
                     onClick={() => startRenewal(sub)}
                     disable={renewingPlanId === sub.user_plan_id}
                   >
                     <CreditCard className="me-1.5 size-4" />
                     {renewingPlanId === sub.user_plan_id
                       ? t("subscriptions.manage.startingPayment")
-                      : t("subscriptions.manage.payToContinue", {
-                          amount: formatPrice(sub.plan_price, sub.currency),
-                        })}
+                      : t("subscriptions.manage.renew.cta", { amount: priceLabel })}
                   </MyButton>
+                  <p className="text-center text-xs text-gray-500">
+                    {t("subscriptions.manage.renew.secureNote")}
+                  </p>
                 </div>
+
+                {/* Institute's own utility email. Omitted entirely when unconfigured —
+                    showing a different institute's support address would be worse. */}
+                {sub.support_email && (
+                  <p className="text-center text-xs text-gray-500">
+                    <Trans
+                      i18nKey="subscriptions.manage.renew.support"
+                      ns="miscRoutesB"
+                      values={{ email: sub.support_email }}
+                      components={{
+                        mail: (
+                          <a
+                            className="text-primary-500 underline"
+                            href={`mailto:${sub.support_email}`}
+                          />
+                        ),
+                      }}
+                    />
+                  </p>
+                )}
               </div>
-            )}
+              );
+            })()}
 
             {/* A downgrade already booked for the end of the cycle. */}
             {sub.scheduled_plan_change && (

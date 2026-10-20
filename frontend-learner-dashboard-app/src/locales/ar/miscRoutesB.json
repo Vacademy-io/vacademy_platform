@@ -572,7 +572,24 @@
         "description": "لا توجد بطاقة محفوظة لهذا الاشتراك. أدخل بطاقة للدفع الآن — سنحفظها بشكل آمن ليصبح التجديد لاحقًا بلمسة واحدة.",
         "loadingForm": "جارٍ تحميل نموذج البطاقة الآمن..."
       },
-      "autopayDefaultNotice": "سيتم خصم التجديدات القادمة تلقائيًا من هذه البطاقة. يمكنك إيقاف الدفع التلقائي في أي وقت من هذه الصفحة."
+      "autopayDefaultNotice": "سيتم خصم التجديدات القادمة تلقائيًا من هذه البطاقة. يمكنك إيقاف الدفع التلقائي في أي وقت من هذه الصفحة.",
+      "renew": {
+        "title": "Renew your membership",
+        "greeting": "Hi {{name}},",
+        "intro": "Thank you for learning with us. We'd love to have you back.",
+        "duration_month_one": "1 month",
+        "duration_month_other": "{{count}} months",
+        "duration_day_one": "1 day",
+        "duration_day_other": "{{count}} days",
+        "priceCaption": "{{currency}} for {{period}}",
+        "endsOn": "Your membership ends on {{date}}.",
+        "endedOn": "Your membership ended on {{date}}.",
+        "endsNoDate": "Your membership is ending.",
+        "endedNoDate": "Your membership has ended.",
+        "cta": "Pay {{amount}} and renew now",
+        "secureNote": "Secure card payment. We'll email your receipt straight away.",
+        "support": "Questions about your renewal? Email <mail>{{email}}</mail> and we'll sort it out."
+      }
     },
     "paymentReturn": {
       "confirmingTitle": "جارٍ تأكيد عملية الدفع…",

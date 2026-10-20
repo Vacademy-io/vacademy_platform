@@ -572,7 +572,24 @@
         "description": "Aucune carte n'est enregistrée pour cet abonnement. Saisissez-en une pour payer maintenant — nous l'enregistrerons en toute sécurité afin que les renouvellements suivants se fassent en un seul geste.",
         "loadingForm": "Chargement du formulaire de carte sécurisé..."
       },
-      "autopayDefaultNotice": "Les renouvellements suivants seront prélevés automatiquement sur cette carte. Vous pouvez désactiver le paiement automatique à tout moment depuis cette page."
+      "autopayDefaultNotice": "Les renouvellements suivants seront prélevés automatiquement sur cette carte. Vous pouvez désactiver le paiement automatique à tout moment depuis cette page.",
+      "renew": {
+        "title": "Renew your membership",
+        "greeting": "Hi {{name}},",
+        "intro": "Thank you for learning with us. We'd love to have you back.",
+        "duration_month_one": "1 month",
+        "duration_month_other": "{{count}} months",
+        "duration_day_one": "1 day",
+        "duration_day_other": "{{count}} days",
+        "priceCaption": "{{currency}} for {{period}}",
+        "endsOn": "Your membership ends on {{date}}.",
+        "endedOn": "Your membership ended on {{date}}.",
+        "endsNoDate": "Your membership is ending.",
+        "endedNoDate": "Your membership has ended.",
+        "cta": "Pay {{amount}} and renew now",
+        "secureNote": "Secure card payment. We'll email your receipt straight away.",
+        "support": "Questions about your renewal? Email <mail>{{email}}</mail> and we'll sort it out."
+      }
     },
     "paymentReturn": {
       "confirmingTitle": "Confirmation de votre paiement…",

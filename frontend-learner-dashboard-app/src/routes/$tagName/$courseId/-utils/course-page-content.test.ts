@@ -4,6 +4,7 @@ import {
   embedUrlOf,
   parseCoursePageJson,
   previewVideoOf,
+  seriesWindow,
   shortStepLabels,
 } from "./course-page-content";
 import { findAppBanner, findPathLibraryId } from "./course-page-context";
@@ -104,5 +105,28 @@ describe("site lookups", () => {
     expect(findAppBanner(pages)?.props.heading).toBe("Get the app");
     expect(findAppBanner([pages[0]!])).toBeNull();
     expect(findAppBanner(pages, { courseDetails: { appBanner: false } })).toBeNull();
+  });
+});
+
+describe("seriesWindow", () => {
+  const path = (n: number, at: number) => Array.from({ length: n }, (_, i) => ({ id: i + 1, current: i === at }));
+  const numbers = (steps: ReturnType<typeof path>, limit: unknown) => seriesWindow(steps, limit).map((s) => s.number);
+
+  it("shows every step without a usable limit", () => {
+    expect(numbers(path(6, 2), undefined)).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(numbers(path(6, 2), 0)).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(numbers(path(6, 2), "3")).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(numbers(path(3, 0), 3)).toEqual([1, 2, 3]);
+  });
+
+  it("keeps a window of `limit` steps around the current course, with path numbers", () => {
+    expect(numbers(path(6, 0), 3)).toEqual([1, 2, 3]);
+    expect(numbers(path(6, 3), 3)).toEqual([3, 4, 5]);
+    expect(numbers(path(6, 5), 3)).toEqual([4, 5, 6]);
+    expect(seriesWindow(path(6, 3), 3).filter((s) => s.step.current).map((s) => s.number)).toEqual([4]);
+  });
+
+  it("starts at the first step when the course is not one", () => {
+    expect(numbers(path(6, -1), 3)).toEqual([1, 2, 3]);
   });
 });

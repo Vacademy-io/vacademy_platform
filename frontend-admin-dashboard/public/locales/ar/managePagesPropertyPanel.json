@@ -215,7 +215,10 @@
       "contentHeading": "عنوان محتوى الدورة",
       "contentHeadingHint": "سطر \"Course Content (Modules & Slides)\" فوق هيكل الدورة. يبقى الهيكل نفسه ظاهرًا.",
       "series": "جزء من مسار تعلّم",
-      "seriesHint": "شرائح \"Part of …\" التي تعرض باقي خطوات مسار التعلّم الذي تنتمي إليه الدورة، وبطاقة \"Next in the series\"."
+      "seriesHint": "شرائح \"Part of …\" التي تعرض باقي خطوات مسار التعلّم الذي تنتمي إليه الدورة، وبطاقة \"Next in the series\".",
+      "seriesLimit": "أقصى عدد لشرائح \"Part of\"",
+      "seriesLimitAll": "الكل",
+      "seriesLimitHint": "يعرض هذا العدد من الخطوات حول الدورة الحالية، كلٌّ برقمه في المسار. اتركه فارغًا لعرض كل الخطوات."
     },
     "courseFormats": {
       "fromTags": {

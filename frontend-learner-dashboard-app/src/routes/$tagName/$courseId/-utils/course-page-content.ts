@@ -156,3 +156,20 @@ export const shortStepLabels = (titles: string[]): string[] => {
     return rest ? rest.charAt(0).toUpperCase() + rest.slice(1) : t.trim();
   });
 };
+
+/**
+ * courseDetails.seriesLimit: the "Part of …" chips show at most `limit` steps,
+ * a window around the current course (the first ones when the course is not a
+ * step). Each keeps its number in the whole path. No limit (missing, not a
+ * whole number, < 1) shows every step.
+ */
+export const seriesWindow = <T extends { current: boolean }>(
+  steps: T[],
+  limit: unknown,
+): { step: T; number: number }[] => {
+  const numbered = steps.map((step, i) => ({ step, number: i + 1 }));
+  if (typeof limit !== "number" || !Number.isInteger(limit) || limit < 1 || steps.length <= limit) return numbered;
+  const at = steps.findIndex((s) => s.current);
+  const start = at < 0 ? 0 : Math.min(Math.max(at - Math.floor((limit - 1) / 2), 0), steps.length - limit);
+  return numbered.slice(start, start + limit);
+};

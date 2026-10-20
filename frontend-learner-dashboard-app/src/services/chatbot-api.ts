@@ -85,6 +85,8 @@ export interface MessageEvent {
     quiz_data?: object;
     feedback?: object;
     card?: object;
+    suggestions?: string[];
+    stopped?: boolean;
   };
   created_at: string;
 }
@@ -127,6 +129,34 @@ export interface CloseSessionResponse {
   session_id: string;
   status: "CLOSED";
   message_count: number;
+}
+
+/** One of the learner's past text chats (GET /chat-agent/sessions). */
+export interface ChatSessionSummary {
+  session_id: string;
+  title: string | null;
+  context_type: ContextType | string | null;
+  status: SessionStatus | string;
+  /** ISO timestamp in UTC (may lack the trailing "Z"). */
+  last_active: string | null;
+  question_count: number;
+}
+
+export interface ListSessionsResponse {
+  sessions: ChatSessionSummary[];
+}
+
+export interface ResumeSessionResponse {
+  session_id: string;
+  status: "ACTIVE";
+}
+
+/** "none" clears an earlier rating. */
+export type FeedbackRating = "up" | "down" | "none";
+
+export interface MessageFeedbackResponse {
+  message_id: number;
+  rating: FeedbackRating;
 }
 
 export interface UpdateContextRequest {
@@ -172,6 +202,12 @@ class ChatbotAPIService {
     const id = await getUserId();
     this.userId = id || "";
     return this.userId;
+  }
+
+  /** The learner and institute the chat belongs to (scopes local storage). */
+  async getScope(): Promise<{ userId: string; instituteId: string }> {
+    const [userId, instituteId] = await Promise.all([this.getUserId(), this.getInstituteId()]);
+    return { userId, instituteId };
   }
 
   async initSession(
@@ -327,6 +363,42 @@ class ChatbotAPIService {
       `${this.baseUrl}/chat-agent/session/${sessionId}/close`,
     );
 
+    return response.data;
+  }
+
+  /** The learner's own text chats that have at least one question, newest first. */
+  async listSessions(limit = 20): Promise<ChatSessionSummary[]> {
+    const response = await authenticatedAxiosInstance.get<ListSessionsResponse>(
+      `${this.baseUrl}/chat-agent/sessions`,
+      { params: { limit } },
+    );
+    return response.data?.sessions ?? [];
+  }
+
+  /** Re-open one of the learner's chats (403 if not theirs, 404 if gone). */
+  async resumeSession(sessionId: string): Promise<ResumeSessionResponse> {
+    const response = await authenticatedAxiosInstance.post<ResumeSessionResponse>(
+      `${this.baseUrl}/chat-agent/session/${sessionId}/resume`,
+    );
+    return response.data;
+  }
+
+  /** Stop the reply being generated: the pending question is marked answered server-side. */
+  async stopTurn(sessionId: string): Promise<void> {
+    await authenticatedAxiosInstance.post(`${this.baseUrl}/chat-agent/session/${sessionId}/stop`);
+  }
+
+  /** Thumbs up / down on an assistant reply; "none" clears it. */
+  async sendFeedback(
+    sessionId: string,
+    messageId: number,
+    rating: FeedbackRating,
+    comment?: string,
+  ): Promise<MessageFeedbackResponse> {
+    const response = await authenticatedAxiosInstance.post<MessageFeedbackResponse>(
+      `${this.baseUrl}/chat-agent/session/${sessionId}/messages/${messageId}/feedback`,
+      { rating, ...(comment ? { comment } : {}) },
+    );
     return response.data;
   }
 

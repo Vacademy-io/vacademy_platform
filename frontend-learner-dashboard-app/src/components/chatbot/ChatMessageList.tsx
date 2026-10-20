@@ -11,7 +11,11 @@ import { QuizFeedbackComponent } from "./QuizFeedbackComponent";
 import { ToolIndicator } from "./ToolIndicator";
 import { ChatSuggestions } from "./ChatSuggestions";
 import { ChatCard } from "./cards/ChatCard";
-import type { ChatMessage } from "./types";
+import { visibleStreamText } from "./stream-text";
+import { getMessageRating, type ChatMessage, type QuizFeedbackData } from "./types";
+
+/** At most this many follow-up chips under the last reply. */
+const MAX_FOLLOW_UPS = 3;
 
 /** Follow new content only while the learner is this close to the bottom. */
 const NEAR_BOTTOM_PX = 120;
@@ -36,8 +40,8 @@ const AssistantBlock: React.FC<{ children: React.ReactNode }> = ({ children }) =
   </div>
 );
 
-const MessageRow: React.FC<{ msg: ChatMessage }> = ({ msg }) => {
-  const { submitQuiz, isSessionClosed } = useChatbotContext();
+const MessageRow: React.FC<{ msg: ChatMessage; isGreeting?: boolean }> = ({ msg, isGreeting = false }) => {
+  const { submitQuiz, isSessionClosed, setFeedback } = useChatbotContext();
 
   if (msg.role === "quiz" && msg.metadata?.quiz_data) {
     return (
@@ -55,7 +59,7 @@ const MessageRow: React.FC<{ msg: ChatMessage }> = ({ msg }) => {
   if (msg.role === "quiz_feedback" && msg.metadata?.feedback) {
     return (
       <AssistantBlock>
-        <QuizFeedbackComponent feedback={msg.metadata.feedback} content={msg.content} />
+        <QuizFeedbackComponent feedback={msg.metadata.feedback as QuizFeedbackData} content={msg.content} />
       </AssistantBlock>
     );
   }
@@ -70,7 +74,38 @@ const MessageRow: React.FC<{ msg: ChatMessage }> = ({ msg }) => {
 
   // Assistant replies, plus any role this UI does not know yet (as markdown).
   if (!msg.content) return null;
-  return <MessageBubble role="assistant" content={msg.content} showAvatar={msg.role === "assistant"} />;
+  // Saved replies can be rated; not the greeting, nor notices made in this tab.
+  const canRate = msg.role === "assistant" && !!msg.fromServer && !isGreeting;
+  return (
+    <MessageBubble
+      role="assistant"
+      content={msg.content}
+      showAvatar={msg.role === "assistant"}
+      stopped={!!msg.metadata?.stopped}
+      rating={getMessageRating(msg)}
+      onRate={canRate ? (rating) => void setFeedback(msg.id, rating) : undefined}
+    />
+  );
+};
+
+/** Follow-up questions the last reply suggested; tapping one asks it. */
+const FollowUpChips: React.FC<{ suggestions: string[] }> = ({ suggestions }) => {
+  const { t } = useTranslation("chatFeatureB");
+  const { sendMessage } = useChatbotContext();
+  return (
+    <div className="flex flex-wrap gap-1.5 ps-7" role="group" aria-label={t("messageList.followUpsLabel")}>
+      {suggestions.map((text) => (
+        <button
+          key={text}
+          type="button"
+          onClick={() => sendMessage(text)}
+          className="max-w-full rounded-full border border-primary/20 bg-primary/5 px-2.5 py-1 text-start text-caption font-medium text-primary transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          {text}
+        </button>
+      ))}
+    </div>
+  );
 };
 
 const ThinkingIndicator: React.FC<{ generatingQuiz: boolean }> = ({ generatingQuiz }) => {
@@ -175,6 +210,20 @@ export const ChatMessageList: React.FC<{ className?: string }> = ({ className })
   const lastMessage = messages[messages.length - 1];
   const showThinking =
     !isStreaming && (isLoading || aiStatus === "thinking" || aiStatus === "generating_quiz");
+  const visibleStreaming = isStreaming ? visibleStreamText(streamingContent) : "";
+  // The greeting (a server reply before any question) is not rated.
+  const greetingId =
+    messages[0]?.role === "assistant" && messages[0].fromServer ? messages[0].id : undefined;
+  const followUps =
+    lastMessage?.role === "assistant" &&
+    !showThinking &&
+    !isStreaming &&
+    !isSessionClosed &&
+    Array.isArray(lastMessage.metadata?.suggestions)
+      ? lastMessage.metadata.suggestions
+          .filter((q): q is string => typeof q === "string" && q.trim().length > 0)
+          .slice(0, MAX_FOLLOW_UPS)
+      : [];
 
   useEffect(() => {
     if (lastMessage && lastMessage.id !== lastSeenIdRef.current) {
@@ -231,11 +280,13 @@ export const ChatMessageList: React.FC<{ className?: string }> = ({ className })
           {isEmpty && <EmptyState />}
 
           {messages.map((msg) => (
-            <MessageRow key={msg.id} msg={msg} />
+            <MessageRow key={msg.id} msg={msg} isGreeting={msg.id === greetingId} />
           ))}
 
-          {isStreaming && streamingContent && (
-            <MessageBubble role="assistant" content={streamingContent} streaming />
+          {followUps.length > 0 && <FollowUpChips suggestions={followUps} />}
+
+          {visibleStreaming && (
+            <MessageBubble role="assistant" content={visibleStreaming} streaming />
           )}
 
           <AnimatePresence>{activeToolCall && <ToolIndicator toolName={activeToolCall} />}</AnimatePresence>

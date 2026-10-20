@@ -23,6 +23,7 @@ import {
 import { useChatbotPanelStore } from "@/stores/chatbot/useChatbotPanelStore";
 import { ChatMessageList } from "./ChatMessageList";
 import { ChatComposer, ImageDropOverlay } from "./ChatComposer";
+import { ChatHistoryPanel, ChatHistoryToggle } from "./ChatHistoryPanel";
 import { useChatAttachments, useImageDrop } from "./useChatAttachments";
 import { VoiceModeSelector } from "./VoiceModeSelector";
 import { VoiceModePanel } from "./VoiceModePanel";
@@ -71,6 +72,8 @@ export const ChatbotSidePanel: React.FC = () => {
   } = useChatbotPanelStore();
 
   const [isResizing, setIsResizing] = useState(false);
+  // Past chats shown in place of the conversation.
+  const [showHistory, setShowHistory] = useState(false);
   const resizeRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const attachments = useChatAttachments();
@@ -115,6 +118,11 @@ export const ChatbotSidePanel: React.FC = () => {
   useEffect(() => {
     setStorePanelOpen(isOpen);
   }, [isOpen, setStorePanelOpen]);
+
+  // Reopening the panel always shows the conversation.
+  useEffect(() => {
+    if (!isOpen) setShowHistory(false);
+  }, [isOpen]);
 
   // Escape leaves the popup the way a backdrop click does: back to docked,
   // conversation kept. The voice picker / call screen handle their own Escape.
@@ -189,11 +197,20 @@ export const ChatbotSidePanel: React.FC = () => {
 
         {/* Header Actions */}
         <div className="flex items-center shrink-0 ms-2">
+          <ChatHistoryToggle
+            active={showHistory}
+            onToggle={() => setShowHistory((prev) => !prev)}
+            className="h-7 w-7 rounded-full text-primary-foreground/80 hover:bg-primary-foreground/15 hover:text-primary-foreground"
+            iconClassName="h-3.5 w-3.5"
+          />
           <Button
             variant="ghost"
             size="icon"
             className="h-7 w-7 rounded-full text-primary-foreground/80 hover:bg-primary-foreground/15 hover:text-primary-foreground"
-            onClick={startNewChat}
+            onClick={() => {
+              setShowHistory(false);
+              startNewChat();
+            }}
             title={t("common.startNewChat")}
             aria-label={t("common.startNewChat")}
           >
@@ -217,7 +234,10 @@ export const ChatbotSidePanel: React.FC = () => {
             variant="ghost"
             size="icon"
             className="h-7 w-7 rounded-full text-primary-foreground/80 hover:bg-primary-foreground/15 hover:text-primary-foreground"
-            onClick={closeSession}
+            onClick={() => {
+              setShowHistory(false);
+              closeSession();
+            }}
             title={t("common.closeSession")}
             aria-label={t("common.closeSession")}
           >
@@ -249,11 +269,17 @@ export const ChatbotSidePanel: React.FC = () => {
         </div>
       </CardHeader>
 
-      <ChatMessageList className="bg-gradient-to-b from-muted/20 to-background" />
+      {showHistory ? (
+        <ChatHistoryPanel onDone={() => setShowHistory(false)} />
+      ) : (
+        <>
+          <ChatMessageList className="bg-gradient-to-b from-muted/20 to-background" />
 
-      {isDragOver && <ImageDropOverlay />}
+          {isDragOver && <ImageDropOverlay />}
 
-      <ChatComposer attachments={attachments} />
+          <ChatComposer attachments={attachments} />
+        </>
+      )}
 
       {showVoiceSelector && (
         <VoiceModeSelector

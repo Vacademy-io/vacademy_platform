@@ -62,12 +62,17 @@
         "ariaLabel": "Conversation",
         "thinking": "Réflexion...",
         "emptyTitle": "Bonjour, je suis {{assistantName}}",
-        "emptySubtitle": "Posez-moi une question ou commencez par une suggestion ci-dessous."
+        "emptySubtitle": "Posez-moi une question ou commencez par une suggestion ci-dessous.",
+        "stopped": "Arrêtée",
+        "rateUp": "Bonne réponse",
+        "rateDown": "Mauvaise réponse",
+        "followUpsLabel": "Questions de suivi suggérées"
     },
     "composer": {
         "send": "Envoyer le message",
         "removeImage": "Retirer l'image",
-        "uploading": "Envoi de l'image..."
+        "uploading": "Envoi de l'image...",
+        "stop": "Arrêter la génération"
     },
     "cards": {
         "opensInNewTab": "(s'ouvre dans un nouvel onglet)",
@@ -234,5 +239,26 @@
         "processingFailed": "Désolé, une erreur s'est produite lors du traitement de votre demande. Veuillez réessayer.",
         "quizSubmitFailed": "Désolé, je n'ai pas pu soumettre votre quiz. Veuillez réessayer.",
         "sendingTooFast": "Vous envoyez des messages très rapidement — veuillez patienter quelques secondes puis réessayer."
+    },
+    "history": {
+        "open": "Historique des discussions",
+        "title": "Discussions précédentes",
+        "back": "Retour à la discussion",
+        "loading": "Chargement de vos discussions...",
+        "loadError": "Impossible de charger vos discussions précédentes.",
+        "openError": "Impossible d'ouvrir cette discussion. Elle n'est peut-être plus disponible.",
+        "empty": "Aucune discussion précédente pour l'instant",
+        "emptyHint": "Les discussions où vous posez une question apparaissent ici.",
+        "listLabel": "Discussions précédentes",
+        "current": "Actuelle",
+        "untitled": "Discussion sans titre",
+        "justNow": "À l'instant",
+        "minutesAgo": "il y a {{n}} min",
+        "hoursAgo": "il y a {{n}} h",
+        "yesterday": "Hier",
+        "daysAgo": "il y a {{n}} j",
+        "questions_one": "{{count}} question",
+        "questions_many": "{{count}} questions",
+        "questions_other": "{{count}} questions"
     }
 }

@@ -572,6 +572,24 @@ class AiChatAgentService:
             session.last_active = datetime.utcnow()
             return session.status
 
+    def stop_turn(self, session_id: str) -> bool:
+        """
+        The learner pressed Stop: mark the newest unanswered question answered,
+        so no stream (this one reconnecting, or another tab) picks it up again.
+        The cancelled stream keeps what it had written (see the agent loop).
+        """
+        with self._get_db() as db:
+            latest = ChatMessageRepository(db).get_latest_message(session_id)
+            if not latest or latest.message_type != "user":
+                return False
+            meta = dict(latest.meta_data or {})
+            if meta.get("answered_at"):
+                return False
+            meta["answered_at"] = datetime.utcnow().isoformat() + "Z"
+            meta["stopped_by_learner"] = True
+            latest.meta_data = meta
+            return True
+
     def set_feedback(self, session_id: str, message_id: int, rating: str, comment: Optional[str]) -> bool:
         """Thumbs up/down on one of the tutor's replies, kept on the message."""
         with self._get_db() as db:

@@ -1,6 +1,12 @@
 import React, { createContext } from "react";
 import { ChatMessage, QuizSubmission } from "./types";
-import { AIStatus, MessageIntent, SessionMode } from "@/services/chatbot-api";
+import {
+  AIStatus,
+  ChatSessionSummary,
+  FeedbackRating,
+  MessageIntent,
+  SessionMode,
+} from "@/services/chatbot-api";
 import { ChatbotSettingsData } from "@/services/chatbot-settings";
 import { QueuedMessage } from "@/services/offline-queue";
 
@@ -41,6 +47,16 @@ export interface ChatbotContextType {
   startVoiceCall: () => void;
   /** Re-open the session's SSE stream (server resumes and answers any pending message). */
   reconnectStream: () => void;
+  /** The learner's past chats, filled by loadSessions(). */
+  sessions: ChatSessionSummary[];
+  /** Fetch the past chats (rejects on failure; `sessions` keeps the last list). */
+  loadSessions: () => Promise<ChatSessionSummary[]>;
+  /** Switch to a past chat; false (current chat kept) if it cannot be opened. */
+  openSession: (sessionId: string) => Promise<boolean>;
+  /** Stop the reply being written; the partial text stays, marked stopped. */
+  stopGeneration: () => void;
+  /** Rate an assistant reply; "none" clears the rating. */
+  setFeedback: (messageId: number, rating: FeedbackRating) => Promise<void>;
   showVoiceSelector: boolean;
   setShowVoiceSelector: (show: boolean) => void;
   enterVoiceMode: (mode: SessionMode, language?: string, topic?: string) => Promise<void>;

@@ -105,6 +105,20 @@ async def resume_session(
 
 
 @router.post(
+    "/session/{session_id}/stop",
+    summary="Stop the reply being generated",
+    description="Marks the pending question answered so it is not picked up again after the app closes the stream.",
+)
+async def stop_turn(
+    session_id: str,
+    service: AiChatAgentService = Depends(get_chat_agent_service),
+    caller: ChatCaller = Depends(get_chat_caller),
+):
+    _owned_session(service, session_id, caller)
+    return {"session_id": session_id, "stopped": service.stop_turn(session_id)}
+
+
+@router.post(
     "/session/{session_id}/messages/{message_id}/feedback",
     summary="Thumbs up / down on a tutor reply",
 )

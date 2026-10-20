@@ -25,6 +25,7 @@ import {
 import { useChatbotPanelStore } from "@/stores/chatbot/useChatbotPanelStore";
 import { ChatMessageList } from "./ChatMessageList";
 import { ChatComposer, ImageDropOverlay } from "./ChatComposer";
+import { ChatHistoryPanel, ChatHistoryToggle } from "./ChatHistoryPanel";
 import { useChatAttachments, useImageDrop } from "./useChatAttachments";
 import { VoiceModeSelector } from "./VoiceModeSelector";
 import { VoiceModePanel } from "./VoiceModePanel";
@@ -88,6 +89,8 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
   const [resizeDirection, setResizeDirection] = useState<string | null>(null);
   const [hasInitializedPosition, setHasInitializedPosition] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  // Past chats shown in place of the conversation.
+  const [showHistory, setShowHistory] = useState(false);
   
   const panelRef = useRef<HTMLDivElement>(null);
   const dragStartRef = useRef({ x: 0, y: 0, panelX: 0, panelY: 0 });
@@ -252,6 +255,8 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
 
   useEffect(() => {
     onOpenChange?.(isOpen);
+    // Reopening the panel always shows the conversation.
+    if (!isOpen) setShowHistory(false);
   }, [isOpen, onOpenChange]);
 
   // Early return if chatbot should not be shown or if docked mode is active
@@ -369,11 +374,17 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
 
                 {/* Header Actions */}
                 <div className="flex items-center space-x-0.5 shrink-0 ms-2">
+                  <ChatHistoryToggle
+                    active={showHistory}
+                    onToggle={() => setShowHistory((prev) => !prev)}
+                    className="h-7 w-7 text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground"
+                    iconClassName="h-4 w-4"
+                  />
                   <Button
                     variant="ghost"
                     size="icon"
                     className="h-7 w-7 text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground"
-                    onClick={(e) => { e.stopPropagation(); startNewChat(); }}
+                    onClick={(e) => { e.stopPropagation(); setShowHistory(false); startNewChat(); }}
                     title={t("common.startNewChat")}
                     aria-label={t("common.startNewChat")}
                   >
@@ -383,7 +394,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                     variant="ghost"
                     size="icon"
                     className="h-7 w-7 text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground"
-                    onClick={(e) => { e.stopPropagation(); closeSession(); }}
+                    onClick={(e) => { e.stopPropagation(); setShowHistory(false); closeSession(); }}
                     title={t("common.closeSession")}
                     aria-label={t("common.closeSession")}
                   >
@@ -429,9 +440,15 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                 </div>
               </CardHeader>
 
-              <ChatMessageList />
+              {showHistory ? (
+                <ChatHistoryPanel onDone={() => setShowHistory(false)} />
+              ) : (
+                <>
+                  <ChatMessageList />
 
-              <ChatComposer attachments={attachments} />
+                  <ChatComposer attachments={attachments} />
+                </>
+              )}
             </motion.div>
           </>
         )}

@@ -13,6 +13,8 @@ import {
   MessageIntent,
   SessionMode,
   type ChatStream,
+  type ChatSessionSummary,
+  type FeedbackRating,
 } from "@/services/chatbot-api";
 import { enqueueMessage, peekQueue, dequeueMessage, QueuedMessage } from "@/services/offline-queue";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
@@ -32,6 +34,48 @@ import {
 import { isChatbotVisibleOnRoute, setChatbotPages } from "@/config/chatbot-routes";
 import { parseAiUsageLimitBody, type AiUsageLimitBody } from "@/lib/ai-usage-limit";
 import { aiUsageLimitMessage, claimAiUsageLimit } from "@/lib/ai-usage-limit-notify";
+import { visibleStreamText } from "./stream-text";
+
+// ── The learner's current chat, remembered across reloads ───────────────
+// Scoped to learner + institute; reopened on the next visit within a day.
+const LAST_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+/** Pause between Stop and re-opening the stream, so the server saves the partial reply first. */
+const STOP_REATTACH_DELAY_MS = 300;
+
+const lastSessionKey = async (): Promise<string | null> => {
+  try {
+    const { userId, instituteId } = await chatbotAPI.getScope();
+    return userId ? `chatbot:last-session:${userId}:${instituteId}` : null;
+  } catch {
+    return null;
+  }
+};
+
+const readLastSession = async (): Promise<string | null> => {
+  const key = await lastSessionKey();
+  if (!key) return null;
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { sessionId?: unknown; at?: unknown };
+    if (typeof parsed.sessionId !== "string" || typeof parsed.at !== "number") return null;
+    return Date.now() - parsed.at < LAST_SESSION_TTL_MS ? parsed.sessionId : null;
+  } catch {
+    return null;
+  }
+};
+
+/** Remember `sessionId` as the current chat; `null` forgets it. */
+const writeLastSession = async (sessionId: string | null): Promise<void> => {
+  const key = await lastSessionKey();
+  if (!key) return;
+  try {
+    if (sessionId) localStorage.setItem(key, JSON.stringify({ sessionId, at: Date.now() }));
+    else localStorage.removeItem(key);
+  } catch {
+    // Storage blocked (private mode, quota): the chat just starts fresh next time.
+  }
+};
 
 export const useChatbot = () => {
   const { t } = useTranslation("chatFeatureB");
@@ -75,10 +119,22 @@ export const useChatbot = () => {
   const [voiceLanguage, setVoiceLanguage] = useState(
     chatbotSettings.voice_settings?.default_language || "en-IN"
   );
+  /** The learner's past chats, for the history list (see loadSessions). */
+  const [sessions, setSessions] = useState<ChatSessionSummary[]>([]);
 
   // Ref to scroll to bottom
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const eventSourceRef = useRef<ChatStream | null>(null);
+  // Latest values for callbacks that must not re-bind on every token.
+  const streamingContentRef = useRef("");
+  streamingContentRef.current = streamingContent;
+  const messagesRef = useRef<ChatMessage[]>(messages);
+  messagesRef.current = messages;
+  const sessionIdRef = useRef<string | null>(sessionId);
+  sessionIdRef.current = sessionId;
+  const stopReattachTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Per-message counter so a failed rating only reverts if no newer click happened. */
+  const feedbackSeqRef = useRef(new Map<number, number>());
 
   // Subscribe to stores for reactive context
   const activeSlide = useContentStore((state) => state.activeItem);
@@ -441,6 +497,13 @@ export const useChatbot = () => {
   const reconnectAttemptsRef = useRef(0);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const attachStreamRef = useRef<(sid: string) => void>(() => {});
+  /**
+   * Set when an existing chat is opened into an empty view: the server's
+   * transcript replay (everything before its first status event) then also
+   * fills in the learner's own messages, which live turns show optimistically.
+   * Stays set across a reconnect until a replay has completed.
+   */
+  const hydratePendingRef = useRef(false);
 
   /** Show an AI usage limit inline (one bubble; a repeat of the same text is not re-added). */
   const showUsageLimit = useCallback((body: AiUsageLimitBody) => {
@@ -456,6 +519,11 @@ export const useChatbot = () => {
   }, []);
 
   const closeStream = useCallback(() => {
+    hydratePendingRef.current = false;
+    if (stopReattachTimerRef.current) {
+      clearTimeout(stopReattachTimerRef.current);
+      stopReattachTimerRef.current = null;
+    }
     if (reconnectTimerRef.current) {
       clearTimeout(reconnectTimerRef.current);
       reconnectTimerRef.current = null;
@@ -535,7 +603,21 @@ export const useChatbot = () => {
         }
 
         // Skip user messages from SSE since we already show them optimistically
+        // — except while replaying an opened chat's transcript.
         if (messageData.type === "user") {
+          if (!hydratePendingRef.current) return;
+          const meta = messageData.metadata as { attachments?: ChatMessage["attachments"] } | undefined;
+          const replayed: ChatMessage = {
+            id: messageData.id,
+            role: "user",
+            content: messageData.content,
+            timestamp: new Date(messageData.created_at).getTime(),
+            attachments: Array.isArray(meta?.attachments) ? meta.attachments : undefined,
+            fromServer: true,
+          };
+          setMessages((prev) =>
+            prev.some((msg) => msg.id === replayed.id) ? prev : [...prev, replayed],
+          );
           return;
         }
 
@@ -555,17 +637,31 @@ export const useChatbot = () => {
           content: messageData.content,
           timestamp: new Date(messageData.created_at).getTime(),
           metadata: messageData.metadata as ChatMessage["metadata"],
+          fromServer: true,
         };
 
         setMessages((prev) => {
           // The server replays the transcript on every (re)connect.
           const exists = prev.some((msg) => msg.id === newMessage.id);
           if (exists) return prev;
+          // After Stop, the first new assistant message is the server's copy
+          // of that reply: it takes the local partial bubble's place.
+          const localIndex =
+            newMessage.role === "assistant" ? prev.findIndex((msg) => msg.isLocal) : -1;
+          if (localIndex !== -1) {
+            return [
+              ...prev.slice(0, localIndex),
+              newMessage,
+              ...prev.slice(localIndex + 1).filter((msg) => !msg.isLocal),
+            ];
+          }
           return [...prev, newMessage];
         });
       };
 
       const handleStatus = (raw: string) => {
+        // The server sends its first status right after the transcript replay.
+        hydratePendingRef.current = false;
         const statusData = JSON.parse(raw);
         setAiStatus(statusData.ai_status);
         if (statusData.session_status === "CLOSED") {
@@ -655,6 +751,27 @@ export const useChatbot = () => {
     console.log("Starting session initialization...");
 
     try {
+      // Reopen the learner's current chat from an earlier visit, if any. A
+      // refused or vanished session (403/404) is forgotten and a new one made.
+      const storedSessionId = await readLastSession();
+      if (storedSessionId) {
+        try {
+          await chatbotAPI.resumeSession(storedSessionId);
+          setMessages([]);
+          setIsWaitingForResponse(false);
+          setAiStatus("idle");
+          setSessionId(storedSessionId);
+          void writeLastSession(storedSessionId);
+          // The server replays the transcript on attach.
+          hydratePendingRef.current = true;
+          attachStream(storedSessionId);
+          return;
+        } catch (error) {
+          console.warn("[chatbot] could not reopen the last chat; starting a new one", error);
+          await writeLastSession(null);
+        }
+      }
+
       const contextType = getContextType();
       const context = getContext();
 
@@ -682,6 +799,7 @@ export const useChatbot = () => {
 
       setSessionId(response.session_id);
       setAiStatus(response.status);
+      void writeLastSession(response.session_id);
 
       // Add small delay before establishing SSE connection
       // to ensure backend is ready
@@ -869,6 +987,7 @@ export const useChatbot = () => {
 
     setMessages((prev) => [...prev, newMessage]);
     setInputValue("");
+    void writeLastSession(sessionId);
     // If intent is practice, show generating_quiz status, else thinking
     setIsLoading(true);
     setAiStatus(intent === "practice" ? "generating_quiz" : "thinking");
@@ -957,6 +1076,8 @@ export const useChatbot = () => {
   };
 
   const startNewChat = useCallback(async () => {
+    // Forget the remembered chat first, so the re-init below starts fresh.
+    await writeLastSession(null);
     // Close existing session
     if (sessionId) {
       try {
@@ -1097,6 +1218,8 @@ export const useChatbot = () => {
   }, []);
 
   const closeSession = useCallback(async () => {
+    // Forget the remembered chat first, so the re-init below starts fresh.
+    await writeLastSession(null);
     // Close existing session
     if (sessionId) {
       try {
@@ -1123,6 +1246,120 @@ export const useChatbot = () => {
     setStreamingContent("");
     setIsStreaming(false);
   }, [sessionId]);
+
+  /** Fetch the learner's past chats into `sessions` (and return them). */
+  const loadSessions = useCallback(async (): Promise<ChatSessionSummary[]> => {
+    const list = await chatbotAPI.listSessions(20);
+    setSessions(list);
+    return list;
+  }, []);
+
+  /**
+   * Switch to one of the learner's chats. The current chat is left untouched
+   * if the server refuses (403) or no longer has it (404): resolves false.
+   */
+  const openSession = useCallback(
+    async (id: string): Promise<boolean> => {
+      if (id === sessionId && !isSessionClosed && !hasError) return true;
+      try {
+        await chatbotAPI.resumeSession(id);
+      } catch (error) {
+        console.error("[chatbot] could not open chat:", error);
+        return false;
+      }
+      closeStream();
+      reconnectAttemptsRef.current = 0;
+      setMessages([]);
+      setStreamingContent("");
+      setIsStreaming(false);
+      setActiveToolCall(null);
+      setIsLoading(false);
+      setAiStatus("idle");
+      setIsWaitingForResponse(false);
+      setHasError(false);
+      setIsUsageLimited(false);
+      setIsSessionClosed(false);
+      // A new id also re-syncs the page context (the context effect above).
+      setSessionId(id);
+      void writeLastSession(id);
+      // The server replays the transcript on attach, repopulating messages.
+      hydratePendingRef.current = true;
+      attachStream(id);
+      return true;
+    },
+    [sessionId, isSessionClosed, hasError, closeStream, attachStream],
+  );
+
+  /**
+   * Stop the reply being written. Closing the stream makes the server save
+   * the partial reply (metadata.stopped); it is shown locally until that
+   * copy arrives on the re-opened stream.
+   */
+  const stopGeneration = useCallback(() => {
+    const sid = sessionId;
+    const busy =
+      isLoading || isStreaming || aiStatus === "thinking" || aiStatus === "generating_quiz";
+    if (!sid || !busy) return;
+    closeStream();
+    const partial = visibleStreamText(streamingContentRef.current);
+    if (partial) {
+      const now = Date.now();
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: -now,
+          role: "assistant",
+          content: partial,
+          timestamp: now,
+          isLocal: true,
+          metadata: { stopped: true },
+        },
+      ]);
+    }
+    setStreamingContent("");
+    setIsStreaming(false);
+    setActiveToolCall(null);
+    setIsLoading(false);
+    setIsWaitingForResponse(false);
+    setAiStatus("idle");
+    reconnectAttemptsRef.current = 0;
+    // Tell the server first, so the stopped question is never picked up again
+    // by the stream we re-open (or another tab); then re-open so the saved
+    // partial copy and later replies still arrive.
+    const reattach = () => {
+      stopReattachTimerRef.current = setTimeout(() => {
+        stopReattachTimerRef.current = null;
+        if (sessionIdRef.current === sid) attachStreamRef.current(sid);
+      }, STOP_REATTACH_DELAY_MS);
+    };
+    chatbotAPI.stopTurn(sid).then(reattach, reattach);
+  }, [sessionId, isLoading, isStreaming, aiStatus, closeStream]);
+
+  /** Thumbs up / down on an assistant reply ("none" clears). Optimistic; reverts on failure. */
+  const setFeedback = useCallback(
+    async (messageId: number, rating: FeedbackRating) => {
+      const sid = sessionId;
+      const target = messagesRef.current.find((m) => m.id === messageId);
+      if (!sid || !target?.fromServer) return;
+      const previous = target.metadata?.feedback;
+      const seq = (feedbackSeqRef.current.get(messageId) ?? 0) + 1;
+      feedbackSeqRef.current.set(messageId, seq);
+      const applyFeedback = (feedback: NonNullable<ChatMessage["metadata"]>["feedback"]) =>
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === messageId ? { ...m, metadata: { ...m.metadata, feedback } } : m,
+          ),
+        );
+      applyFeedback({ rating });
+      try {
+        await chatbotAPI.sendFeedback(sid, messageId, rating);
+      } catch (error) {
+        console.error("[chatbot] could not save feedback:", error);
+        if (feedbackSeqRef.current.get(messageId) === seq) applyFeedback(previous);
+      }
+    },
+    [sessionId],
+  );
 
   return {
     isOpen,
@@ -1156,6 +1393,11 @@ export const useChatbot = () => {
     isOffline,
     pendingMessages,
     reconnectStream,
+    sessions,
+    loadSessions,
+    openSession,
+    stopGeneration,
+    setFeedback,
     voiceMode,
     voiceTopic,
     suggestedVoiceTopic,

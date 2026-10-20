@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Copy, Check } from "@phosphor-icons/react";
+import { Copy, Check, ThumbsDown, ThumbsUp } from "@phosphor-icons/react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
@@ -11,6 +11,7 @@ import "@/styles/katex-dark.css";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { useChatbotAvatarUrl } from "@/services/chatbot-settings";
+import type { FeedbackRating } from "@/services/chatbot-api";
 import { useChatbotContext } from "./useChatbotContext";
 import { ChatLink } from "./cards/ChatLink";
 import type { Attachment, ChatMessage } from "./types";
@@ -114,6 +115,14 @@ export const AssistantAvatar: React.FC<{ className?: string }> = ({ className })
   );
 };
 
+/**
+ * A reply's small action button. Always visible on touch-sized screens; on
+ * desktop it shows on hover and whenever it (or anything in the message) has
+ * keyboard focus.
+ */
+const ACTION_BUTTON =
+  "shrink-0 p-1 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-opacity md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 md:focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+
 const CopyButton: React.FC<{ content: string }> = ({ content }) => {
   const { t } = useTranslation("chatFeatureB");
   const [copied, setCopied] = useState(false);
@@ -137,12 +146,43 @@ const CopyButton: React.FC<{ content: string }> = ({ content }) => {
       }}
       aria-label={label}
       title={label}
-      // Always visible on touch-sized screens; on desktop it shows on hover
-      // and whenever it (or anything in the message) has keyboard focus.
-      className="shrink-0 self-end p-1 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-opacity md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 md:focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className={ACTION_BUTTON}
     >
       {copied ? <Check className="size-3.5 text-success-600" /> : <Copy className="size-3.5" />}
     </button>
+  );
+};
+
+/** Thumbs up / down. Clicking the active one clears the rating. */
+const RateButtons: React.FC<{
+  rating: "up" | "down" | null;
+  onRate: (rating: FeedbackRating) => void;
+}> = ({ rating, onRate }) => {
+  const { t } = useTranslation("chatFeatureB");
+  const options = [
+    { value: "up" as const, Icon: ThumbsUp, label: t("messageList.rateUp") },
+    { value: "down" as const, Icon: ThumbsDown, label: t("messageList.rateDown") },
+  ];
+  return (
+    <>
+      {options.map(({ value, Icon, label }) => {
+        const active = rating === value;
+        return (
+          <button
+            key={value}
+            type="button"
+            onClick={() => onRate(active ? "none" : value)}
+            aria-label={label}
+            aria-pressed={active}
+            title={label}
+            // A given rating stays visible on desktop too.
+            className={cn(ACTION_BUTTON, active && "text-primary md:opacity-100")}
+          >
+            <Icon className="size-3.5" weight={active ? "fill" : "regular"} aria-hidden="true" />
+          </button>
+        );
+      })}
+    </>
   );
 };
 
@@ -155,6 +195,11 @@ export interface MessageBubbleProps {
   streaming?: boolean;
   /** Assistant avatar beside the bubble (off for unknown roles). */
   showAvatar?: boolean;
+  /** The learner stopped this reply mid-stream: a small note under it. */
+  stopped?: boolean;
+  /** Current thumbs rating; with onRate, shows the thumbs buttons. */
+  rating?: "up" | "down" | null;
+  onRate?: (rating: FeedbackRating) => void;
 }
 
 /** One chat bubble: the learner's text/images, or an assistant markdown reply. */
@@ -165,6 +210,9 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   status,
   streaming = false,
   showAvatar = true,
+  stopped = false,
+  rating = null,
+  onRate,
 }) => {
   const { t } = useTranslation("chatFeatureB");
 
@@ -204,14 +252,22 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   return (
     <div className="flex w-full me-auto max-w-full justify-start gap-1.5">
       {showAvatar && <AssistantAvatar className="mt-0.5" />}
-      <div className="group flex min-w-0 max-w-full items-end gap-1">
+      <div className="group flex min-w-0 max-w-full flex-col items-start gap-0.5">
         <div className="min-w-0 max-w-full overflow-hidden rounded-xl rounded-es-sm bg-card px-3 py-2 text-sm leading-relaxed text-card-foreground shadow-sm ring-1 ring-border/30 [overflow-wrap:anywhere]">
           <ChatMarkdown>{content}</ChatMarkdown>
           {streaming && (
             <span aria-hidden="true" className="inline-block w-1.5 h-4 bg-foreground/60 animate-pulse ms-0.5 align-middle" />
           )}
         </div>
-        {!streaming && content && <CopyButton content={content} />}
+        {!streaming && content && (
+          <div className="flex items-center gap-0.5">
+            {stopped && (
+              <span className="px-1 text-caption text-muted-foreground">{t("messageList.stopped")}</span>
+            )}
+            <CopyButton content={content} />
+            {onRate && <RateButtons rating={rating} onRate={onRate} />}
+          </div>
+        )}
       </div>
     </div>
   );

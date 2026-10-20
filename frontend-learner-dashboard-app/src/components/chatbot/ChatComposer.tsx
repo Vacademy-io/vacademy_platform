@@ -1,5 +1,5 @@
 import React, { useLayoutEffect, useRef, useState } from "react";
-import { ImageSquare, PaperPlaneTilt, Sigma, SpinnerGap, X } from "@phosphor-icons/react";
+import { ImageSquare, PaperPlaneTilt, Sigma, SpinnerGap, Stop, X } from "@phosphor-icons/react";
 import { useTranslation } from "react-i18next";
 import ReactMarkdown from "react-markdown";
 import remarkMath from "remark-math";
@@ -51,8 +51,16 @@ interface ChatComposerProps {
  */
 export const ChatComposer: React.FC<ChatComposerProps> = ({ attachments, className }) => {
   const { t } = useTranslation("chatFeatureB");
-  const { messages, inputValue, setInputValue, sendMessage, isLoading, sessionId } =
-    useChatbotContext();
+  const {
+    messages,
+    inputValue,
+    setInputValue,
+    sendMessage,
+    isLoading,
+    isStreaming,
+    stopGeneration,
+    sessionId,
+  } = useChatbotContext();
   const [showLatexHelper, setShowLatexHelper] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -61,6 +69,8 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({ attachments, classNa
   const hasText = inputValue.trim().length > 0;
   // Image-only messages are allowed; nothing goes while an upload is running.
   const canSend = !!sessionId && !isLoading && !isUploading && (hasText || ready.length > 0);
+  // While the AI works, Send becomes Stop; the box stays typeable.
+  const isBusy = !!sessionId && (isLoading || isStreaming);
 
   // Grow with the text, including text set from outside (mic, suggestions),
   // and shrink back once the message is sent.
@@ -174,7 +184,7 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({ attachments, classNa
               handleSend();
             }
           }}
-          disabled={!sessionId || isLoading}
+          disabled={!sessionId}
           rows={1}
           className="flex-1 min-h-8 max-h-32 overflow-hidden px-3 py-1.5 text-sm bg-transparent border-0 shadow-none focus:outline-none focus-visible:ring-0 placeholder:text-muted-foreground/50 resize-none disabled:opacity-50"
         />
@@ -208,22 +218,35 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({ attachments, classNa
           // The transcript only fills the box; the learner reviews and sends.
           onTranscript={(text) => setInputValue(text)}
         />
-        <Button
-          type="button"
-          onClick={handleSend}
-          disabled={!canSend}
-          size="icon"
-          aria-label={t("composer.send")}
-          title={t("composer.send")}
-          className={cn(
-            "h-8 w-8 shrink-0 rounded-lg transition-all",
-            hasText || ready.length > 0
-              ? "bg-primary text-primary-foreground shadow-sm"
-              : "bg-muted text-muted-foreground",
-          )}
-        >
-          <PaperPlaneTilt className="h-4 w-4" aria-hidden="true" />
-        </Button>
+        {isBusy ? (
+          <Button
+            type="button"
+            onClick={stopGeneration}
+            size="icon"
+            aria-label={t("composer.stop")}
+            title={t("composer.stop")}
+            className="h-8 w-8 shrink-0 rounded-lg bg-foreground text-background shadow-sm transition-all hover:bg-foreground/80"
+          >
+            <Stop className="h-4 w-4" weight="fill" aria-hidden="true" />
+          </Button>
+        ) : (
+          <Button
+            type="button"
+            onClick={handleSend}
+            disabled={!canSend}
+            size="icon"
+            aria-label={t("composer.send")}
+            title={t("composer.send")}
+            className={cn(
+              "h-8 w-8 shrink-0 rounded-lg transition-all",
+              hasText || ready.length > 0
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "bg-muted text-muted-foreground",
+            )}
+          >
+            <PaperPlaneTilt className="h-4 w-4" aria-hidden="true" />
+          </Button>
+        )}
       </div>
     </div>
   );

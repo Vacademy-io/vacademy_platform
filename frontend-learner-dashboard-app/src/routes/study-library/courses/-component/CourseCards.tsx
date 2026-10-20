@@ -287,15 +287,10 @@ const CourseCard: React.FC<CourseCardProps> = ({
             </div>
 
             <div className="flex flex-col flex-grow p-4 lg:p-5 gap-stack">
-                {/* Header */}
-                <div className="flex justify-between items-start gap-3">
-                    <h3
-                        className="text-lg font-bold leading-tight group-hover:text-primary transition-colors duration-200 line-clamp-2"
-                        title={package_name}
-                    >
-                        {package_name}
-                    </h3>
-
+                {/* Header: the level badge on its own line above the title, so a
+                    long level name never squeezes the course name into a narrow
+                    column and cuts it off. */}
+                <div className="flex flex-col items-start gap-2">
                     <Badge
                         variant={getLevelBadgeVariant()}
                         className={cn(
@@ -312,6 +307,13 @@ const CourseCard: React.FC<CourseCardProps> = ({
                         <LevelIcon size={12} className="text-current hidden [.ui-vibrant_&]:block" />
                         {!isDefaultLevel && toTitleCase(level_name)}
                     </Badge>
+
+                    <h3
+                        className="text-lg font-bold leading-tight group-hover:text-primary transition-colors duration-200 line-clamp-3 break-words"
+                        title={package_name}
+                    >
+                        {package_name}
+                    </h3>
                 </div>
 
                 {/* Description */}

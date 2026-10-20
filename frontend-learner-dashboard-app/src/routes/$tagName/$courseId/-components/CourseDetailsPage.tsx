@@ -112,6 +112,7 @@ import {
 import { CourseLanguagePicker, CourseVersionPicker } from "./CourseLanguagePicker";
 import { CourseCartActions, CourseCartPending } from "./CourseCartActions";
 import { EbookDetailsView } from "./EbookDetailsView";
+import { HostedSiteAssistant } from "@/components/site-assistant/HostedSiteAssistant";
 import { headerOffsetClass } from "../../-components/header/header-chrome";
 import {
   BookOpen,
@@ -2899,6 +2900,22 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
             )}
           </div>
         </div>
+      )}
+
+      {/* Site Assistant (globalSettings.siteAssistant): knows this course
+          (page.course_id) and clears the mobile enrol bar above. */}
+      {catalogueData && (
+        <HostedSiteAssistant
+          globalSettings={catalogueData.globalSettings}
+          tagName={tagName}
+          pageKind="course"
+          courseId={courseId}
+          hasMobileBar={
+            !ebookLayout &&
+            (catalogueData.globalSettings as { courseCatalogeType?: { enabled?: boolean } } | undefined)
+              ?.courseCatalogeType?.enabled !== true
+          }
+        />
       )}
     </div>
   );

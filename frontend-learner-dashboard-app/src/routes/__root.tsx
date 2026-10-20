@@ -94,6 +94,7 @@ const PUBLIC_ROUTES = [
   "/admission/payment", // Public admission payment links shared by institutes
   "/pay/invoice", // Shareable invoice payment links
   "/leaderboard", // Public shareable course leaderboard
+  "/site-assistant-embed", // Site Assistant iframe on institutes' own websites
 ];
 
 // Marketplace / external-payment route prefixes that are hidden when the app
@@ -839,8 +840,11 @@ const RootComponent = () => {
   // around rather than posing an integrity problem.
   const isLiveTestActive = useLiveTestStore((s) => s.isActive);
   const hideLiveTestChrome = useLiveTestStore((s) => s.hideAppChrome);
-  const suppressAppChrome = isLiveTestActive && hideLiveTestChrome;
-  const hideChatbot = pathname.startsWith("/admission") || isLiveTestActive;
+  // The Site Assistant iframe (public/site-assistant.js) sits on someone
+  // else's website: nothing of the app's own chrome may paint in it.
+  const isSiteAssistantEmbed = pathname.startsWith("/site-assistant-embed");
+  const suppressAppChrome = (isLiveTestActive && hideLiveTestChrome) || isSiteAssistantEmbed;
+  const hideChatbot = pathname.startsWith("/admission") || isLiveTestActive || isSiteAssistantEmbed;
 
   // ── Sentry: tag events with the current route. Navigation breadcrumbs
   // come from the SDK's built-in history instrumentation; a custom one here

@@ -25,6 +25,7 @@ import {
   saveCourseFinderSelection,
 } from "../-utils/course-finder-bus";
 import { WhatsAppFloatingButton } from "./WhatsAppFloatingButton";
+import { HostedSiteAssistant } from "@/components/site-assistant/HostedSiteAssistant";
 import { IntroPageComponent } from "./IntroPageComponent";
 import { JsonRenderer } from "./JsonRenderer";
 import {
@@ -951,6 +952,18 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
         settings={(catalogueData?.globalSettings as any)?.whatsapp}
         hasMobileBar
       />
+
+      {/* Site Assistant (globalSettings.siteAssistant): stacks above the
+          WhatsApp bubble and clears the mobile bar; hidden in preview. */}
+      {(!showIntroPage || introCompleted) && (
+        <HostedSiteAssistant
+          globalSettings={catalogueData?.globalSettings}
+          tagName={tagName}
+          pageKind={pageSlug ? "page" : "home"}
+          pageComponents={activePage?.components}
+          hasMobileBar
+        />
+      )}
 
       {(!showIntroPage || introCompleted) && !isPreviewMode && catalogueData && (
         <MobileActionBar

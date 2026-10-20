@@ -3,9 +3,12 @@
 An answer RESERVES a slot on three counters before the model runs — the
 visitor (``v:``), the visitor's network (``ip:``) and the site — each with a
 conditional increment, all in one transaction: if any counter is at its cap
-the transaction rolls back and nothing was taken. When no answer is produced
-(the model failed), the slot is RELEASED. Guarded replies (distress, abuse)
-never reserve, so they never count.
+the transaction rolls back and nothing was taken. The slot is RELEASED only
+when no model call was made or the model gave nothing (engine.py). Guarded
+replies (distress, abuse) never reserve, so they never count.
+
+New chats (POST /sessions) are counted per visitor network on the same
+table under an ``s:`` key, so a script cannot fill the conversation table.
 """
 from __future__ import annotations
 
@@ -65,6 +68,16 @@ def reserve(db: Session, *, visitor_key: str, ip_key: Optional[str], institute_i
         return None
     db.commit()
     return Reservation(visitor_key=visitor_key, ip_key=ip_key, institute_id=institute_id, site_tag=site_tag)
+
+
+def take_session(db: Session, key: str, cap: int) -> bool:
+    """Count one new chat for this network today; False (nothing counted) at the cap. Commits."""
+    ok = _bump_key(db, key, cap)
+    if ok:
+        db.commit()
+    else:
+        db.rollback()
+    return ok
 
 
 def release(db: Session, r: Reservation) -> None:

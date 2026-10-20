@@ -70,6 +70,38 @@ describe("site assistant controller", () => {
     expect(c.store.getState().messages[1]).toMatchObject({ text: "Hello again", error: null });
   });
 
+  it("starts a new chat when the server says this one is closed", async () => {
+    const seen: string[] = [];
+    const api = makeApi(async (_sid, token, _body, onEvent) => {
+      seen.push(token);
+      if (token === "tok-s1") throw new SiteAssistantApiError(403, "closed", "This chat is closed.");
+      onEvent({ type: "done", message_id: "m2", answered: true, billed: true });
+    });
+    const c = createSiteAssistantController({
+      api,
+      source: { get: async () => session("s1"), refresh: async () => session("s2") },
+      getPage: () => page,
+    });
+    await c.send("hi");
+    expect(seen).toEqual(["tok-s1", "tok-s2"]);
+    expect(c.store.getState().messages[1].error).toBeNull();
+  });
+
+  it("keeps why a chat could not start (a site the assistant does not serve)", async () => {
+    const c = createSiteAssistantController({
+      api: makeApi(async () => {}),
+      source: {
+        get: async () => {
+          throw new SiteAssistantApiError(403, "not_allowed", "not verified");
+        },
+        refresh: async () => session("s2"),
+      },
+      getPage: () => page,
+    });
+    await c.connect();
+    expect(c.store.getState()).toMatchObject({ status: "failed", failure: "not_allowed" });
+  });
+
   it("keeps the server's error code on the turn (daily cap → contact fallback) and allows retry", async () => {
     let fail = true;
     const api = makeApi(async (_sid, _t, _b, onEvent) => {

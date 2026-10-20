@@ -46,6 +46,34 @@ class PublicLiveSessionControllerTest {
     }
 
     @Test
+    void limitsByCloudflareConnectingIpBeforeTheForwardedChain() throws Exception {
+        // Behind Cloudflare the first X-Forwarded-For hop can be the edge, shared by many visitors.
+        PublicLiveSessionService.Query q = new PublicLiveSessionService.Query("inst-1", Instant.now(), 30, 20);
+        when(service.parse(eq("inst-1"), any(), any(), any())).thenReturn(q);
+        when(limiter.tryAcquire(anyString(), eq("inst-1"))).thenReturn(true);
+        when(service.list(q)).thenReturn(Map.of("data", List.of()));
+        mvc.perform(get(URL).param("instituteId", "inst-1")
+                        .header("CF-Connecting-IP", "198.51.100.23")
+                        .header("X-Forwarded-For", "172.70.1.1, 10.0.0.1"))
+                .andExpect(status().isOk());
+        verify(limiter).tryAcquire("198.51.100.23", "inst-1");
+    }
+
+    @Test
+    void fallsBackToTheSocketPeerWithoutForwardingHeaders() throws Exception {
+        PublicLiveSessionService.Query q = new PublicLiveSessionService.Query("inst-1", Instant.now(), 30, 20);
+        when(service.parse(eq("inst-1"), any(), any(), any())).thenReturn(q);
+        when(limiter.tryAcquire(anyString(), eq("inst-1"))).thenReturn(true);
+        when(service.list(q)).thenReturn(Map.of("data", List.of()));
+        mvc.perform(get(URL).param("instituteId", "inst-1").with(r -> {
+                    r.setRemoteAddr("192.0.2.44");
+                    return r;
+                }))
+                .andExpect(status().isOk());
+        verify(limiter).tryAcquire("192.0.2.44", "inst-1");
+    }
+
+    @Test
     void badQueryIs400AndNotCounted() throws Exception {
         when(service.parse(isNull(), any(), any(), any())).thenThrow(new IllegalArgumentException("instituteId is required."));
         mvc.perform(get(URL))

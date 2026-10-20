@@ -68,6 +68,16 @@ describe('cards', () => {
         expect(safeHref('javascript:alert(1)')).toBeNull();
     });
 
+    it('refuses backslash and whitespace tricks that browsers read as another host', () => {
+        expect(safeHref('/\\evil.org')).toBeNull();
+        expect(safeHref('\\\\evil.org')).toBeNull();
+        expect(safeHref('/\\/evil.org/x')).toBeNull();
+        expect(safeHref('https://a.org\\@evil.org')).toBeNull();
+        expect(safeHref('/a b')).toBeNull();
+        expect(safeHref('/x\u0000y')).toBeNull();
+        expect(safeHref('/courses/a-b')).toBe('/courses/a-b');
+    });
+
     it('reads a course list, flat or wrapped in data', () => {
         const flat = normalizeCard({
             type: 'course_list',

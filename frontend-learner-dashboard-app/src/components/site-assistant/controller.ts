@@ -87,6 +87,9 @@ const initialState = (): SiteAssistantState => ({
 /** Errors that mean "talk to a person instead" — they get a contact card. */
 export const CONTACT_FALLBACK_CODES: SiteAssistantErrorCode[] = ["rate_limited", "daily_cap", "no_credits"];
 
+/** The token was refused or the chat was closed: a fresh session (same client_msg_id) is the fix. */
+const needsNewSession = (code: SiteAssistantErrorCode) => code === "unauthorized" || code === "closed";
+
 export const createSiteAssistantController = (deps: ControllerDeps): SiteAssistantController => {
   const store = createStore<SiteAssistantState>(() => initialState());
   let token: string | null = null;
@@ -181,7 +184,7 @@ export const createSiteAssistantController = (deps: ControllerDeps): SiteAssista
       } catch (err) {
         // The token expired mid-conversation: get a fresh session and resend
         // the same client_msg_id (the server is idempotent on it).
-        if (err instanceof SiteAssistantApiError && err.code === "unauthorized" && (await refreshSession())) {
+        if (err instanceof SiteAssistantApiError && needsNewSession(err.code) && (await refreshSession())) {
           patchMessage(assistantId, () => ({ text: "", cards: [], error: null, pending: true }));
           await run();
         } else {
@@ -276,7 +279,7 @@ export const createSiteAssistantController = (deps: ControllerDeps): SiteAssista
     try {
       result = await deps.api.contact(sessionId, token, body);
     } catch (err) {
-      if (err instanceof SiteAssistantApiError && err.code === "unauthorized" && (await refreshSession())) {
+      if (err instanceof SiteAssistantApiError && needsNewSession(err.code) && (await refreshSession())) {
         result = await deps.api.contact(store.getState().sessionId as string, token as string, body);
       } else {
         throw err;

@@ -94,10 +94,27 @@ const ERROR_CODES: SiteAssistantErrorCode[] = [
   "disabled",
   "invalid",
   "internal",
+  "not_allowed",
+  "closed",
 ];
 
-export const toErrorCode = (raw: unknown): SiteAssistantErrorCode =>
-  ERROR_CODES.includes(raw as SiteAssistantErrorCode) ? (raw as SiteAssistantErrorCode) : "internal";
+/** The ai_service refusal codes (SPEC §4.1 error bodies) that have no event code of their own. */
+const SERVER_CODES: Record<string, SiteAssistantErrorCode> = {
+  origin_not_allowed: "not_allowed",
+  unknown_site: "not_allowed",
+  invalid_api_key: "not_allowed",
+  not_found: "disabled",
+  // "This chat belongs to another session" / an expired token: a fresh session fixes it.
+  forbidden: "unauthorized",
+  invalid_token: "unauthorized",
+};
+
+/** A server code → the client's code; an unknown one → `fallback` (the HTTP status's meaning). */
+export const toErrorCode = (raw: unknown, fallback: SiteAssistantErrorCode = "internal"): SiteAssistantErrorCode => {
+  if (ERROR_CODES.includes(raw as SiteAssistantErrorCode)) return raw as SiteAssistantErrorCode;
+  if (typeof raw === "string" && Object.prototype.hasOwnProperty.call(SERVER_CODES, raw)) return SERVER_CODES[raw];
+  return fallback;
+};
 
 const parseJson = (data: string): Record<string, unknown> | null => {
   try {
@@ -121,7 +138,9 @@ export const toStreamEvent = (raw: RawSseEvent): SiteAssistantStreamEvent | null
       return typeof text === "string" && text ? { type: "token", text } : null;
     }
     case "card": {
-      const card: SiteAssistantCard | null = normalizeCard(payload?.card);
+      // The event data IS the card, flat ({type, ...fields}, SPEC §4.1/§4.4); a
+      // `{card: {...}}` wrapper is still read so an older server keeps working.
+      const card: SiteAssistantCard | null = normalizeCard(payload?.card ?? payload);
       return card ? { type: "card", card } : null;
     }
     case "done":

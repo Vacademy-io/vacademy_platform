@@ -17,12 +17,20 @@ export interface ContactFieldSpec extends ContactFormField {
   name: string;
 }
 
+/**
+ * admin_core names a campaign field "<slug>_inst_<instituteId>[_<n>]" (CustomFieldKeyGenerator).
+ * The server sends the short key already; this keeps role detection right for any card that
+ * still carries the long one, so a campaign's own name field never sits next to a second one.
+ */
+const INST_SUFFIX = /_inst_[A-Za-z0-9-]+(?:_\d+)?$/;
+export const stripInstSuffix = (key: string): string => key.trim().replace(INST_SUFFIX, "");
+
 const NAME_KEYS = new Set(["full_name", "fullname", "name", "your_name", "student_name", "parent_name"]);
 const EMAIL_KEYS = new Set(["email", "email_address", "emailaddress", "mail"]);
 const PHONE_KEYS = new Set(["phone", "mobile", "phone_number", "mobile_number", "phonenumber", "mobilenumber", "contact_number", "whatsapp"]);
 
 export const roleOf = (field: ContactFormField): ContactRole => {
-  const key = field.key.toLowerCase();
+  const key = stripInstSuffix(field.key).toLowerCase();
   const type = field.type.toLowerCase();
   if (type === "email" || EMAIL_KEYS.has(key)) return "email";
   if (type === "phone" || type === "tel" || type === "mobile" || PHONE_KEYS.has(key)) return "phone";

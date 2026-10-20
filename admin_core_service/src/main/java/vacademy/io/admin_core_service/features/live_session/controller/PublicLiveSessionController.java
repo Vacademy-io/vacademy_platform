@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import vacademy.io.admin_core_service.features.catalog_api.auth.CatalogApiAuth;
 import vacademy.io.admin_core_service.features.catalogue_analytics.service.CatalogueAnalyticsRateLimiter;
 import vacademy.io.admin_core_service.features.live_session.service.PublicLiveSessionService;
 
@@ -53,14 +54,14 @@ public class PublicLiveSessionController {
                 .body(service.list(query));
     }
 
-    /** Real client IP behind the ingress/CDN: XFF is a chain, take the first. */
+    /**
+     * The visitor's IP for the per-IP limit, by the Catalogue API's rule
+     * ({@link CatalogApiAuth#networkClientIp}): CF-Connecting-IP, else the first X-Forwarded-For
+     * hop, else the socket peer. Taking X-Forwarded-For first would bucket every visitor behind one
+     * Cloudflare edge into the same limit.
+     */
     static String clientIp(HttpServletRequest request) {
-        String xff = request.getHeader("X-Forwarded-For");
-        if (xff != null && !xff.isBlank()) {
-            int comma = xff.indexOf(',');
-            return (comma > 0 ? xff.substring(0, comma) : xff).trim();
-        }
-        String real = request.getHeader("X-Real-IP");
-        return (real != null && !real.isBlank()) ? real.trim() : request.getRemoteAddr();
+        String ip = CatalogApiAuth.networkClientIp(request);
+        return ip != null ? ip : request.getRemoteAddr();
     }
 }

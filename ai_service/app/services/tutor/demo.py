@@ -16,7 +16,7 @@ import json
 import logging
 import time
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from fastapi import Request
 from jose import jwt
@@ -205,17 +205,36 @@ def public_topics(db: Optional[Session] = None) -> Dict[str, Any]:
 
 # ── abuse controls ───────────────────────────────────────────────────────────
 
-def client_ip(request: Request) -> str:
-    fwd = request.headers.get("x-forwarded-for") or request.headers.get("cf-connecting-ip") or ""
-    ip = (fwd.split(",")[0].strip() if fwd else "") or (request.client.host if request.client else "") or "0.0.0.0"
+def _parsed_ip(raw: Optional[str]) -> Optional[Union[ipaddress.IPv4Address, ipaddress.IPv6Address]]:
     try:
-        parsed = ipaddress.ip_address(ip)
-        # IPv6: bucket by /64 so one household is one visitor.
-        if isinstance(parsed, ipaddress.IPv6Address):
-            ip = str(ipaddress.ip_network(f"{ip}/64", strict=False).network_address)
+        return ipaddress.ip_address((raw or "").strip())
     except ValueError:
-        pass
-    return ip
+        return None
+
+
+def client_ip(request: Request) -> str:
+    """The visitor's address, as the edge saw it.
+
+    Production traffic arrives through Cloudflare, and our ingress does not
+    rewrite forwarded headers, so the FIRST X-Forwarded-For hop can be a
+    Cloudflare edge address shared by thousands of visitors (one visitor's
+    cap would then throttle everyone behind that edge). Cloudflare's own
+    ``CF-Connecting-IP`` is the client, so it wins when it holds an IP; then
+    the first X-Forwarded-For hop; then the socket peer. IPv6 is bucketed by
+    /64 so one household is one visitor.
+    """
+    parsed = _parsed_ip(request.headers.get("cf-connecting-ip"))
+    if parsed is None:
+        fwd = request.headers.get("x-forwarded-for") or ""
+        parsed = _parsed_ip(fwd.split(",")[0]) if fwd else None
+    if parsed is None:
+        peer = request.client.host if request.client else ""
+        parsed = _parsed_ip(peer)
+        if parsed is None:
+            return peer or "0.0.0.0"
+    if isinstance(parsed, ipaddress.IPv6Address):
+        return str(ipaddress.ip_network(f"{parsed}/64", strict=False).network_address)
+    return str(parsed)
 
 
 def ip_hash(ip: str) -> str:

@@ -218,9 +218,10 @@ class Store:
         self.chunks[(iid, tag)] = [dict(c) for c in chunks]
         return len(chunks)
 
-    def list_conversations(self, db, iid, *, site_tag, lead, page, size):
+    def list_conversations(self, db, iid, *, site_tag, lead, page, size, include_empty=False):
         items = [dict(c) for c in self.convs.values() if c["institute_id"] == iid
-                 and (site_tag is None or c["site_tag"] == site_tag)]
+                 and (site_tag is None or c["site_tag"] == site_tag)
+                 and (include_empty or c["message_count"] > 0)]
         return {"items": items[page * size:(page + 1) * size], "page": page, "size": size, "total": len(items)}
 
     def unanswered_questions(self, db, iid, *, site_tag, days, limit=500):
@@ -245,6 +246,12 @@ class Store:
         self.site_daily[(institute_id, site_tag)] = self.site_daily.get((institute_id, site_tag), 0) + 1
         return caps_mod.Reservation(visitor_key=visitor_key, ip_key=ip_key, institute_id=institute_id,
                                     site_tag=site_tag)
+
+    def take_session(self, db, key, cap):
+        if cap <= 0 or self.visitor_daily.get(key, 0) >= cap:
+            return False
+        self.visitor_daily[key] = self.visitor_daily.get(key, 0) + 1
+        return True
 
     def release(self, db, r):
         for k in (r.visitor_key, r.ip_key):
@@ -443,6 +450,7 @@ def install(monkeypatch) -> Fakes:
         monkeypatch.setattr(repo_mod, name, getattr(store, name))
     monkeypatch.setattr(caps_mod, "reserve", store.reserve)
     monkeypatch.setattr(caps_mod, "release", store.release)
+    monkeypatch.setattr(caps_mod, "take_session", store.take_session)
 
     @contextmanager
     def fake_session():

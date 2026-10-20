@@ -129,6 +129,29 @@ class SiteAssistantLeadServiceTest {
     }
 
     @Test
+    void campaignFieldsArriveKeyedByCustomFieldIdNeverByTheLongInstituteFieldKey() {
+        // A BV-style campaign field: CustomFieldKeyGenerator appends "_inst_<instituteId>", so the
+        // field_key is longer than the 64-character custom_fields key limit. ai_service sends the
+        // custom field's id instead (36 chars), which saveCustomFieldValues resolves exactly.
+        String inst = "8a4b5c6d-7e8f-4a1b-9c2d-3e4f5a6b7c8d";
+        String fieldKey = "which_course_are_you_interested_in_inst_" + inst;
+        assertTrue(fieldKey.length() > 64);
+        String fieldId = "0f1e2d3c-4b5a-4968-8776-655443322110";
+        when(institutes.existsById(inst)).thenReturn(true);
+        when(audience.submitCatalogueLead(any(), eq(true))).thenReturn(RESP);
+
+        assertEquals("custom_fields", invalidParam("{\"institute_id\":\"" + inst + "\",\"kind\":\"SALES\","
+                + "\"full_name\":\"Asha\",\"phone\":\"9876543210\",\"custom_fields\":{\"" + fieldKey + "\":\"Garbh Sanskar\"}}"));
+
+        service.submit(SiteAssistantLeadService.validate(body("{\"institute_id\":\"" + inst + "\",\"kind\":\"SALES\","
+                + "\"campaign_id\":\"aud-9\",\"full_name\":\"Asha\",\"phone\":\"9876543210\","
+                + "\"custom_fields\":{\"" + fieldId + "\":\"Garbh Sanskar\"}}")));
+        ArgumentCaptor<CatalogueLeadRequestDTO> dto = ArgumentCaptor.forClass(CatalogueLeadRequestDTO.class);
+        verify(audience).submitCatalogueLead(dto.capture(), eq(true));
+        assertEquals("Garbh Sanskar", dto.getValue().getCustomFieldValues().get(fieldId));
+    }
+
+    @Test
     void aRepeatIsDuplicateWithoutARef() {
         when(audience.submitCatalogueLead(any(), eq(true))).thenReturn("You have already submitted your response for this campaign");
         SiteAssistantLeadService.Outcome out = service.submit(SiteAssistantLeadService.validate(body(

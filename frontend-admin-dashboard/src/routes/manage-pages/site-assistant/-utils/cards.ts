@@ -84,10 +84,16 @@ const strs = (v: unknown): string[] =>
     Array.isArray(v) ? v.map(s).filter((x): x is string => !!x) : [];
 const objs = (v: unknown): Raw[] => (Array.isArray(v) ? v.filter(isObject) : []);
 
-/** https://… or a site-relative path; never javascript:, data:, http: or protocol-relative. */
+/**
+ * An https URL or a site-relative path — the backend's rule (cards.safe_href): whitespace,
+ * control characters and backslashes anywhere are refused, because browsers read `/\evil.org`
+ * and `\\evil.org` as protocol-relative links to another host.
+ */
 export function safeHref(v: unknown): string | null {
     const href = s(v)?.trim();
     if (!href) return null;
+    // eslint-disable-next-line no-control-regex
+    if (/[\u0000-\u001f\u007f\s\\]/.test(href)) return null;
     if (href.startsWith('/') && !href.startsWith('//')) return href;
     try {
         return new URL(href).protocol === 'https:' ? href : null;

@@ -5,6 +5,7 @@ import type {
   SiteAssistantCard,
 } from "./types";
 import { safeHref, safeImageUrl } from "./links";
+import { stripInstSuffix } from "./contact-form";
 
 /**
  * Card JSON from the stream → a typed card, or null. The engine builds cards
@@ -66,7 +67,10 @@ const FIELD_KEY = /^[A-Za-z0-9_.-]{1,64}$/;
 const normalizeField = (raw: unknown): ContactFormField | null => {
   const o = asObj(raw);
   if (!o) return null;
-  const key = s(o.key);
+  // A long admin_core key ("…_inst_<instituteId>") loses the suffix instead of the whole field;
+  // the server maps the short key back to the campaign's field.
+  const rawKey = s(o.key);
+  const key = rawKey ? stripInstSuffix(rawKey) : null;
   const label = s(o.label) ?? key;
   if (!key || !FIELD_KEY.test(key) || !label) return null;
   return {

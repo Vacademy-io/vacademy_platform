@@ -192,6 +192,33 @@ def test_contact_form_uses_the_campaign_fields(monkeypatch):
     assert ("campaign", INST, "camp-1") in f.admin_core.calls
 
 
+def test_campaign_field_keys_lose_the_institute_suffix_and_keep_their_roles():
+    from app.site_assistant.tools import campaign_field_map, campaign_fields, field_role, short_field_key
+    inst = "_inst_8a4b5c6d-7e8f-4a1b-9c2d-3e4f5a6b7c8d"
+    assert short_field_key("full_name" + inst) == "full_name"
+    assert short_field_key("city" + inst + "_2") == "city"
+    assert short_field_key("which_course_are_you_interested_in" + inst) == "which_course_are_you_interested_in"
+    assert field_role("full_name" + inst, "text") == "name"
+    assert field_role("mobile_number" + inst, "text") == "phone"
+    assert field_role("email_address" + inst, "text") == "email"
+    assert field_role("institute_name" + inst, "text") is None       # "_inst" inside a slug is not the suffix
+    campaign = {"institute_custom_fields": [
+        {"status": "ACTIVE", "individual_order": 1, "custom_field": {
+            "id": "cf-1", "fieldKey": "full_name" + inst, "fieldName": "Full Name", "fieldType": "text"}},
+        {"status": "ACTIVE", "individual_order": 2, "custom_field": {
+            "id": "cf-2", "fieldKey": "institute_name" + inst, "fieldName": "School", "fieldType": "text"}},
+        {"status": "ACTIVE", "individual_order": 3, "custom_field": {
+            "id": "cf-3", "fieldKey": "full_name" + inst + "_1", "fieldName": "Full name (again)", "fieldType": "text"}},
+    ]}
+    fields = campaign_fields(campaign)
+    # The campaign's own name field is THE name: no default "full_name" is added in front of it.
+    assert [f["key"] for f in fields] == ["full_name", "institute_name", "full_name_2"]
+    m = campaign_field_map(campaign)
+    assert m["full_name"].field_id == "cf-1" and m["full_name"].role == "name"
+    assert m["institute_name"].field_id == "cf-2" and m["institute_name"].role is None
+    assert m["full_name_2"].field_id == "cf-3"
+
+
 def test_contact_form_stream_campaign_and_support_kind(monkeypatch):
     f = install(monkeypatch)
     res = run("offer_contact", {"kind": "SALES", "reason": "x", "course_ids": ["c1"]}, ctx())

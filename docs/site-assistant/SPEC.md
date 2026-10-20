@@ -94,16 +94,22 @@ Module `app/site_assistant/` (router, service, tools, knowledge, guards, reposit
 - `POST /sessions` → `{session_id, token, expires_at, assistant:{name, avatar_url, greeting, suggestions[], accent_color, position, persona}, history:[]}`
   - **Hosted**: body `{site_tag, page:{url, route, title, course_id?}, visitor_id?, resume_session_id?}`; the server takes the host from the `Origin` header (fallback `Referer`), resolves it with `resolve-site` and requires the body's `site_tag` to match. A learner JWT in `Authorization` (optional) identifies a logged-in learner (verify like `chat_auth.py`; institute must match).
   - **Embed**: header `X-API-Key: vak_pub_…` (verify via the existing internal API-key verify endpoint, product `catalog`), body `{site_tag, page:{…}, visitor_id?}`; `Origin` host must pass `origin-check`; `siteAssistant.embed.enabled` must be true.
-  - **Preview** (admin): staff JWT pinned to `clientId` institute; works even when `enabled:false`; channel PREVIEW; billed.
+  - **Preview** (admin): body `preview: true` + staff JWT pinned to `clientId` institute; works even when `enabled:false`; channel PREVIEW; billed. The admin app always sends `preview: true` (without it a staff call from a host that serves the site is a HOSTED visitor).
+  - New chats are limited per visitor network: `site_assistant.ip_daily_sessions` (platform setting, default 300) new conversations per day per client IP, counted in `site_assistant_visitor_daily` under an `s:` key; a resume and a preview do not count; over the limit → 429 `rate_limited`.
+  - Client IP (caps, lead brake, key verification): `CF-Connecting-IP`, else the first `X-Forwarded-For` hop, else the socket peer (our ingress does not rewrite forwarded headers, so the first XFF hop can be a Cloudflare edge). IPv6 is bucketed by /64.
   - `token`: HS256 signed by an ai_service secret, claims `{sid, iid, tag, vid, ch, exp: +12h}`. Every later call needs `Authorization: Bearer <token>` matching the session (ownership).
   - Resume: same `visitor_id` + `resume_session_id` within 12 h → same conversation + history.
 - `POST /sessions/{id}/messages` body `{text (1..1000 chars), page:{url, route, title, course_id?}, client_msg_id}` → **`text/event-stream` in the response** (no DB polling):
   - `event: token` `{text}` (incremental)
-  - `event: card` `{card}` (see 4.4)
+  - `event: card` — the data IS the card, flat: `{type, ...fields}` (see 4.4), e.g. `data: {"type": "notice", "title": "New batch", "body": "Starts 1 Nov"}`. There is no `{card: …}` wrapper.
   - `event: done` `{message_id, answered:boolean, billed:boolean}`
   - `event: error` `{code: rate_limited|daily_cap|no_credits|disabled|invalid|internal, message}`; for `daily_cap`/`no_credits` also emit the contact card so the visitor can still reach a person.
+  - `: ping` comment lines every 15 s while tools / the model run (clients ignore `:` lines); the whole stream ends within 90 s, with `error` `internal` if the answer was not done by then (the engine's own deadline is 85 s).
+  - The answer is produced by its own task, not by the response: a visitor who disconnects does not stop it; the finished answer is stored (history, and a resend of the same `client_msg_id` replays it) and billed like any other.
+  - Cap slot: reserved before the model runs; handed back only when no model call was made (guards, validation, credit pre-flight) or the model / provider failed without any output. Once the model produced output the slot stays taken (a disconnect is not a free call).
   - Idempotent on `client_msg_id`.
-- `POST /sessions/{id}/contact` body `{kind: SALES|SUPPORT, full_name, email?, phone?, fields:{}, consent:true, course_ids?:[]}` → `{status}`. Server builds the summary (deterministic or a cheap LLM call not billed to the visitor; flat cost included in the answer budget) and calls A's `/leads`.
+- `POST /sessions/{id}/contact` body `{kind: SALES|SUPPORT, full_name, email?, phone?, fields:{}, consent:true, course_ids?:[]}` → `{status}`. Server builds the summary (deterministic or a cheap LLM call not billed to the visitor; flat cost included in the answer budget) and calls A's `/leads`. `fields` keys are the contact_form card's keys (4.4); the server maps each back to the campaign's custom field **id** (what admin_core's `saveCustomFieldValues` resolves exactly) and also fills the campaign's own name / email / phone fields from `full_name` / `email` / `phone`. The lead goes to the campaign the card was shown for.
+- Error bodies: `{detail: {code, message}}`; codes on 401/403: `invalid_token`, `invalid_api_key`, `forbidden`, `closed`, `disabled`, `origin_not_allowed`, `unknown_site`; 404 `not_found`; 429 `rate_limited`.
 - `POST /sessions/{id}/feedback` `{message_id, rating: 1|-1}`.
 - `GET /sessions/{id}` → history (for reload).
 
@@ -130,6 +136,7 @@ Tools whose `knowledge_flag` is off for the site are not offered. Max 4 tool rou
 - `answered=false` when the model says it doesn't know / no source found (tool or explicit flag) → shows in Unanswered.
 
 ### 4.4 Cards (JSON, rendered natively by C; hrefs: https or site-relative only)
+Every card is ONE flat object `{type: <kind>, ...fields}` — in `event: card`, in stored messages and in history. (`type`, not `kind`: the contact_form card has its own `kind`.)
 - `course` `{id, title, subtitle, image_url, price_label, url, badges[], languages[], format_labels[], availability}`
 - `course_list` `{items: course[], more_url?}`
 - `compare` `{rows:[{label, values[]}], courses: course[]}`
@@ -138,7 +145,7 @@ Tools whose `knowledge_flag` is off for the site are not offered. Max 4 tool rou
 - `live_class_list` `{items:[{title, starts_at, ends_at, timezone, is_paid, price_label, registration_url}]}`
 - `notice` `{title, body, ends_at?}`
 - `contact_info` `{email?, phone?, whatsapp?, address?, login_url?}`
-- `contact_form` `{kind, reason, campaign_id, fields:[{key, label, type, required, options?}], consent_text}`
+- `contact_form` `{kind, reason, campaign_id, fields:[{key, label, type, required, options?}], consent_text}` — `key` is short and stable: the campaign field key WITHOUT admin_core's `_inst_<instituteId>[_n]` suffix (≤ 64 chars, form-safe, de-duplicated with `_2`…); the field's custom field id stays on the server. Name / email / phone are recognised by key (suffix stripped) or type, so the widget never shows a second name input.
 
 ### 4.5 Knowledge indexing
 - Site pages: on session start, compare the published catalogue fingerprint (sha256) with `site_assistant_index_state`; if different, index in the background (lock per site; one pod): extract sections with `catalogue_summary` (route, section id, heading, plain text), chunk ~800 chars, embed, replace rows. Not billed (platform cost) but log it.
@@ -147,7 +154,7 @@ Tools whose `knowledge_flag` is off for the site are not offered. Max 4 tool rou
 
 ### 4.6 Staff API (verified staff JWT pinned to the institute; admin role for writes)
 - `GET/POST /admin/knowledge?site_tag=&kind=`, `PUT/DELETE /admin/knowledge/{id}`
-- `GET /admin/conversations?site_tag=&lead=&page=&size=`, `GET /admin/conversations/{id}`
+- `GET /admin/conversations?site_tag=&lead=&page=&size=&include_empty=false` (chats with no message are hidden unless `include_empty=true`), `GET /admin/conversations/{id}`
 - `GET /admin/unanswered?site_tag=&days=30` (grouped by similar question, counts, last asked)
 - `GET /admin/status?site_tag=` → index state, today's answers vs cap, credits warning
 - `POST /admin/reindex?site_tag=`
@@ -156,7 +163,7 @@ Tools whose `knowledge_flag` is off for the site are not offered. Max 4 tool rou
 ## 5. C: learner app
 
 - Widget component (launcher bubble + panel) mounted on catalogue pages (`CourseCataloguePage`, `CourseSubPage`, course details) when `globalSettings.siteAssistant.enabled` and placement matches. Hidden where Student AI shows. Suggestion chips, streaming text (fetch + ReadableStream SSE parser), cards per 4.4 (course cards link to the course; "Take me there" uses the router for same-site routes), contact form card (native form from fields), thumbs, reload-resume (session + visitor ids in localStorage, wrapped in try/catch), mobile full-screen panel, keyboard and screen-reader accessible, site theme tokens. Page context sent with every message.
-- **Embed**: (1) loader script `public/site-assistant.js` (vanilla JS, < 6 KB): reads `data-key`, `data-site`, optional `data-position`; creates the session **from the parent page** (`POST /sessions` with `X-API-Key`, so the browser's Origin is the client's site) and an iframe to `/<learner-portal>/site-assistant-embed?sid=…`; passes the token to the iframe by `postMessage` (target origin = learner portal origin); the iframe renders the same panel; links: course/registration URLs open normally, the client's own page links navigate the parent (`postMessage` → loader sets `window.location`). Iframe resize/open/close via `postMessage` with origin checks both ways. (2) route `/site-assistant-embed` (no header/footer, transparent background).
+- **Embed**: (1) loader script `public/site-assistant.js` (vanilla JS, < 7 KB): reads `data-key`, `data-site`, optional `data-position`; draws its own launcher bubble at once and creates the session **on the first open** (a page view that never opens the chat makes no request; the session is made straight away only when reopening after a "Take me there" navigation), **from the parent page** (`POST /sessions` with `X-API-Key`, so the browser's Origin is the client's site), then an iframe to `/<learner-portal>/site-assistant-embed?sid=…`; passes the token to the iframe by `postMessage` (target origin = learner portal origin); the iframe renders the same panel; links: course/registration URLs open normally, the client's own page links navigate the parent (`postMessage` → loader sets `window.location`). Iframe resize/open/close via `postMessage` with origin checks both ways. (2) route `/site-assistant-embed` (no header/footer, transparent background).
 - Design system rules of the learner app apply (tokens, Phosphor icons, design-lint).
 
 ## 6. D: admin app

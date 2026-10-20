@@ -32,7 +32,9 @@
     "invalid": "Sorry, I couldn't take that question. Please rephrase it.",
     "internal": "Something went wrong on our side. Please try again.",
     "network": "The connection dropped. Please try again.",
-    "unauthorized": "This chat has expired. Please try again."
+    "unauthorized": "This chat has expired. Please try again.",
+    "not_allowed": "This assistant isn't set up for this website.",
+    "closed": "This chat has ended. Please start a new one."
   },
   "feedback": {
     "helpful": "Helpful",

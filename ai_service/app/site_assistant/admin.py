@@ -122,14 +122,15 @@ def delete_knowledge(staff: Staff, kid: str) -> Dict[str, Any]:
     return {"status": "deleted"}
 
 
-def list_conversations(staff: Staff, site_tag: Optional[str], lead: Optional[str], page: int, size: int) -> Dict[str, Any]:
+def list_conversations(staff: Staff, site_tag: Optional[str], lead: Optional[str], page: int, size: int,
+                       include_empty: bool = False) -> Dict[str, Any]:
     page = max(0, int(page or 0))
     size = max(1, min(int(size or 20), 100))
     lead_filter = lead.upper() if isinstance(lead, str) and lead.upper() in ("SALES", "SUPPORT") else (
         "any" if lead in ("true", "any", "1") else None)
     with db_session() as db:
         out = repo.list_conversations(db, staff.institute_id, site_tag=site_tag or None, lead=lead_filter,
-                                      page=page, size=size)
+                                      page=page, size=size, include_empty=bool(include_empty))
     out["total_pages"] = (int(out["total"]) + size - 1) // size
     return out
 

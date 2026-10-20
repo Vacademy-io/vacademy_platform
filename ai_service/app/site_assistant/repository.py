@@ -403,8 +403,11 @@ def search_page_chunks_keyword(db: Session, institute_id: str, site_tag: str, wo
 # ── staff views ───────────────────────────────────────────────────────────
 
 def list_conversations(db: Session, institute_id: str, *, site_tag: Optional[str], lead: Optional[str],
-                       page: int, size: int) -> Dict[str, Any]:
+                       page: int, size: int, include_empty: bool = False) -> Dict[str, Any]:
     clauses = ["c.institute_id = :iid"]
+    if not include_empty:
+        # A session nobody typed into (opened the chat, left) is not a conversation.
+        clauses.append("c.message_count > 0")
     params: Dict[str, Any] = {"iid": institute_id}
     if site_tag:
         clauses.append("c.site_tag = :tag")

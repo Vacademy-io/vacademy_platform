@@ -48,6 +48,8 @@ def open_hosted(api, **body):
 def sse_events(resp):
     out = []
     for block in resp.text.strip().split("\n\n"):
+        if block.startswith(":"):
+            continue          # a keep-alive comment
         lines = dict(line.split(": ", 1) for line in block.splitlines() if ": " in line)
         out.append((lines["event"], json.loads(lines["data"])))
     return out
@@ -114,6 +116,41 @@ def test_resume_same_visitor_within_ttl(api):
     assert other["session_id"] != first["session_id"]
 
 
+def test_new_chats_are_capped_per_network_but_resumes_and_previews_are_not(api):
+    api.monkeypatch.setattr(svc.S, "ip_daily_sessions", lambda db=None: 2)
+    first = open_hosted(api)
+    assert first.status_code == 200
+    assert open_hosted(api, visitor_id="v_visitor0002").status_code == 200
+    third = open_hosted(api, visitor_id="v_visitor0003")
+    assert third.status_code == 429 and third.json()["detail"]["code"] == "rate_limited"
+    assert len(api.store.convs) == 2
+    # Resuming an existing chat creates no row, so it is not counted.
+    again = open_hosted(api, resume_session_id=first.json()["session_id"])
+    assert again.status_code == 200 and again.json()["session_id"] == first.json()["session_id"]
+    # Another network has its own allowance (Cloudflare's visitor address, not the edge's).
+    other = open_hosted(api, visitor_id="v_visitor0004")
+    assert other.status_code == 429
+    r = api.client.post(f"{BASE}/sessions", json={"site_tag": TAG, "visitor_id": "v_visitor0005"},
+                        headers={"Origin": f"https://{HOST}", "CF-Connecting-IP": "203.0.113.50"})
+    assert r.status_code == 200
+    s_keys = [k for k in api.store.visitor_daily if k.startswith("s:")]
+    assert len(s_keys) == 2
+    # Staff previews are never counted.
+    for _ in range(3):
+        p = api.client.post(f"{BASE}/sessions", json={"site_tag": TAG, "preview": True},
+                            headers={"Authorization": "Bearer staff-admin", "clientId": INST})
+        assert p.status_code == 200
+
+
+def test_client_ip_is_cloudflares_visitor_address_not_the_edge():
+    class Req:
+        headers = {"cf-connecting-ip": "203.0.113.7", "x-forwarded-for": "172.70.1.1, 10.0.0.1"}
+        client = None
+    assert svc.client_ip(Req()) == "203.0.113.7"
+    Req.headers = {"x-forwarded-for": "198.51.100.4, 172.70.1.1"}
+    assert svc.client_ip(Req()) == "198.51.100.4"
+
+
 # ── embed ────────────────────────────────────────────────────────────────
 
 def embed(api, key=EMBED_KEY, origin="https://www.brahmvarchas.org"):
@@ -158,6 +195,13 @@ def test_staff_browsing_the_live_site_is_a_hosted_visitor(api):
     r = api.client.post(f"{BASE}/sessions", json={"site_tag": TAG},
                         headers={"Authorization": "Bearer staff-admin", "clientId": INST, "Origin": f"https://{HOST}"})
     assert api.store.convs[r.json()["session_id"]]["channel"] == "HOSTED"
+
+
+def test_preview_flag_wins_over_a_hosted_origin(api):
+    # The admin app sends preview: true, so an admin domain that also serves the site gets a preview.
+    r = api.client.post(f"{BASE}/sessions", json={"site_tag": TAG, "preview": True},
+                        headers={"Authorization": "Bearer staff-admin", "clientId": INST, "Origin": f"https://{HOST}"})
+    assert r.status_code == 200 and api.store.convs[r.json()["session_id"]]["channel"] == "PREVIEW"
 
 
 def test_preview_needs_staff_of_that_institute(api):
@@ -210,6 +254,26 @@ def test_sse_order_over_http(api):
     assert card["type"] == "course_list" and card["items"][0]["title"] == "Vedic Parenting"
 
 
+def test_sse_keepalive_pings_while_waiting_and_the_deadline_ends_with_internal():
+    import asyncio
+    from app.site_assistant import router as R
+
+    async def slow():
+        await asyncio.sleep(0.25)
+        yield R.sse("token", {"text": "Hi"})
+        await asyncio.sleep(5)
+        yield R.sse("done", {})
+
+    async def go():
+        return [f async for f in R.with_keepalive(slow(), ping_seconds=0.1, deadline_seconds=0.6)]
+
+    frames = asyncio.run(go())
+    assert frames[0] == R.PING == ": ping\n\n"
+    assert frames.index(R.sse("token", {"text": "Hi"})) >= 2
+    assert frames[-1] == R.sse("error", {"code": "internal", "message": engine.MESSAGES["internal"]})
+    assert R.sse("done", {}) not in frames
+
+
 # ── contact → leads ──────────────────────────────────────────────────────
 
 def test_contact_sends_the_lead_with_context(api):
@@ -236,6 +300,58 @@ def test_contact_sends_the_lead_with_context(api):
                             json={"kind": "SALES", "full_name": "Asha", "phone": "9876543210", "consent": True},
                             headers={"Authorization": f"Bearer {s['token']}"})
     assert again.json() == {"status": "duplicate"} and len(api.admin_core.leads) == 1
+
+
+# admin_core's CustomFieldKeyGenerator suffix with a real (UUID) institute id.
+BV_INST_KEY = "_inst_8a4b5c6d-7e8f-4a1b-9c2d-3e4f5a6b7c8d"
+
+
+def bv_campaign(api):
+    """A Brahm-Varchas-style campaign: admin_core's field keys end in "_inst_<instituteId>"."""
+    api.admin_core.campaigns[(INST, "camp-bv")] = {"id": "camp-bv", "institute_id": INST, "institute_custom_fields": [
+        {"status": "ACTIVE", "individual_order": 1, "field_id": "cf-name", "custom_field": {
+            "id": "cf-name", "fieldKey": "full_name" + BV_INST_KEY, "fieldName": "Full Name", "fieldType": "text",
+            "isMandatory": True}},
+        {"status": "ACTIVE", "individual_order": 2, "custom_field": {
+            "id": "cf-phone", "fieldKey": "phone_number" + BV_INST_KEY, "fieldName": "Phone Number",
+            "fieldType": "phone"}},
+        {"status": "ACTIVE", "individual_order": 3, "custom_field": {
+            "id": "cf-course", "fieldKey": "which_course_are_you_interested_in" + BV_INST_KEY,
+            "fieldName": "Which course are you interested in?", "fieldType": "dropdown",
+            "config": '{"coommaSepartedOptions":"Vedic Parenting,Garbh Sanskar"}'}},
+        {"status": "ACTIVE", "individual_order": 4, "custom_field": {
+            "id": "cf-city", "fieldKey": "city" + BV_INST_KEY + "_1", "fieldName": "City", "fieldType": "text"}},
+    ]}
+    api.admin_core.catalogues[(INST, TAG)]["globalSettings"]["siteAssistant"].setdefault("leads", {})["campaignId"] = "camp-bv"
+
+
+def test_campaign_form_with_long_institute_keys_reaches_the_lead_by_field_id(api):
+    bv_campaign(api)
+    raw = [f["custom_field"]["fieldKey"] for f in api.admin_core.campaigns[(INST, "camp-bv")]["institute_custom_fields"]]
+    assert max(len(k) for k in raw) > 64                    # what the widget and the lead API refuse
+    s = open_hosted(api).json()
+    events = sse_events(ask(api, s, "Can someone call me?", llm=ScriptedLLM([
+        [tool_call("offer_contact", {"kind": "SALES", "reason": "so our counsellor can call you"})],
+        tokens("Sure, leave your details below.")])))
+    card = next(d for k, d in events if k == "card" and d["type"] == "contact_form")
+    assert card["campaign_id"] == "camp-bv"
+    keys = [f["key"] for f in card["fields"]]
+    assert keys == ["full_name", "phone_number", "which_course_are_you_interested_in", "city"]
+    assert all(len(k) <= 64 and "_inst_" not in k for k in keys)
+    assert not any(k in ("cf-name", "cf-course") for k in json.dumps(card))       # ids stay on the server
+
+    # What the widget sends: name/phone pulled out, the rest under the card's keys.
+    r = api.client.post(f"{BASE}/sessions/{s['session_id']}/contact",
+                        json={"kind": "SALES", "full_name": "Asha Rao", "phone": "+91 98765 43210", "consent": True,
+                              "fields": {"which_course_are_you_interested_in": "Garbh Sanskar", "city": "Pune",
+                                         "email": "smuggled@x.co", "a" * 70: "too long"}},
+                        headers={"Authorization": f"Bearer {s['token']}"})
+    assert r.status_code == 200, r.text
+    lead = api.admin_core.leads[-1]
+    assert lead["campaign_id"] == "camp-bv"
+    assert lead["custom_fields"] == {"cf-course": "Garbh Sanskar", "cf-city": "Pune", "cf-name": "Asha Rao",
+                                     "cf-phone": "+919876543210", "conversation_id": s["session_id"]}
+    assert all(len(k) <= 64 for k in lead["custom_fields"])
 
 
 def test_support_contact_and_validation(api):
@@ -317,6 +433,16 @@ def test_other_institutes_rows_are_invisible(api):
                                         user_id=None, ip_hash=None, origin_host=None, started_page=None, utm=None,
                                         locale=None)
     assert api.client.get(f"{BASE}/admin/conversations/{cid}", headers=ADMIN).status_code == 404
+
+
+def test_conversations_list_hides_chats_nobody_typed_into(api):
+    talked = open_hosted(api).json()
+    ask(api, talked, "hi", llm=ScriptedLLM([tokens("Namaste!")]))
+    open_hosted(api, visitor_id="v_visitor0002")             # opened, never used
+    lst = api.client.get(f"{BASE}/admin/conversations?site_tag={TAG}", headers=TEACHER).json()
+    assert lst["total"] == 1 and lst["items"][0]["id"] == talked["session_id"]
+    every = api.client.get(f"{BASE}/admin/conversations?site_tag={TAG}&include_empty=true", headers=TEACHER).json()
+    assert every["total"] == 2
 
 
 def test_conversations_unanswered_status_reindex_shapes(api):

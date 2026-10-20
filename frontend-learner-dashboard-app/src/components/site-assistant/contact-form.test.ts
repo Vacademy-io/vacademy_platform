@@ -6,7 +6,16 @@ import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import i18next from "i18next";
 import { I18nextProvider } from "react-i18next";
-import { buildContactFields, buildContactSchema, emptyContactValues, roleOf, toContactBody, type ContactMessages } from "./contact-form";
+import {
+  buildContactFields,
+  buildContactSchema,
+  emptyContactValues,
+  roleOf,
+  stripInstSuffix,
+  toContactBody,
+  type ContactMessages,
+} from "./contact-form";
+import { normalizeCard } from "./cards-normalize";
 import { ContactFormCard } from "./ContactFormCard";
 import { SiteAssistantUiContext } from "./context";
 import { createSiteAssistantController } from "./controller";
@@ -39,6 +48,42 @@ describe("contact form fields", () => {
     expect(roleOf(f("x", "tel"))).toBe("phone");
     expect(roleOf(f("city", "dropdown", false, ["Delhi"]))).toBe("select");
     expect(roleOf(f("city", "dropdown"))).toBe("text");
+  });
+
+  it("reads a campaign's own name / phone field through admin_core's _inst_<instituteId> suffix", () => {
+    // Brahm Varchas-style keys: slug + "_inst_" + the institute's UUID (> 64 characters).
+    const inst = "_inst_8a4b5c6d-7e8f-4a1b-9c2d-3e4f5a6b7c8d";
+    expect(stripInstSuffix(`full_name${inst}`)).toBe("full_name");
+    expect(stripInstSuffix(`city${inst}_2`)).toBe("city");
+    expect(stripInstSuffix("institute_name")).toBe("institute_name");
+    const specs = buildContactFields(
+      [f(`full_name${inst}`, "text", true), f(`phone_number${inst}`), f(`which_course_are_you_interested_in${inst}`)],
+      labels,
+    );
+    // One name input (the campaign's), never a second default one.
+    expect(specs.map((s) => s.role)).toEqual(["name", "phone", "text"]);
+    expect(specs.filter((s) => s.role === "name")).toHaveLength(1);
+  });
+
+  it("keeps a campaign field whose key is over 64 characters (suffix dropped) instead of dropping it", () => {
+    const longKey = "which_course_are_you_interested_in_inst_8a4b5c6d-7e8f-4a1b-9c2d-3e4f5a6b7c8d";
+    expect(longKey.length).toBeGreaterThan(64);
+    const card = normalizeCard({
+      type: "contact_form",
+      kind: "SALES",
+      reason: "r",
+      campaign_id: "camp-bv",
+      consent_text: "ok",
+      fields: [
+        { key: "full_name", label: "Full Name", type: "text", required: true },
+        { key: longKey, label: "Which course?", type: "dropdown", options: ["Vedic Parenting"] },
+        { key: "x".repeat(70), label: "junk", type: "text" },
+      ],
+    });
+    expect(card?.type === "contact_form" && card.fields.map((x) => x.key)).toEqual([
+      "full_name",
+      "which_course_are_you_interested_in",
+    ]);
   });
 
   it("always yields a required name and some way to reach the visitor", () => {

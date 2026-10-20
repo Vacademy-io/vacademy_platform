@@ -5,10 +5,14 @@ session token after POST /sessions. Staff routes need a staff JWT pinned to
 the clientId institute; writes need the admin role.
 
 POST /sessions/{id}/messages answers with text/event-stream IN the response:
-the stream is produced as the model writes, nothing is polled.
+the stream is produced as the model writes, nothing is polled. While tools
+and the model run, a `: ping` comment goes out every PING_SECONDS so proxies
+and the browser keep the connection; the whole stream ends by
+STREAM_DEADLINE_SECONDS with an `error` event (code `internal`) at the latest.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import Any, AsyncIterator, Dict, List, Optional
@@ -25,9 +29,52 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/site-assistant/v1", tags=["site-assistant"])
 
+PING_SECONDS = 15.0
+# A backstop over the engine's own ANSWER_DEADLINE_SECONDS (which also covers
+# loading the site before the engine starts).
+STREAM_DEADLINE_SECONDS = 90.0
+PING = ": ping\n\n"
+
 
 def sse(event: str, data: Dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False, default=str)}\n\n"
+
+
+async def with_keepalive(events: AsyncIterator[str], *, ping_seconds: Optional[float] = None,
+                         deadline_seconds: Optional[float] = None) -> AsyncIterator[str]:
+    """Relay SSE frames, a `: ping` comment whenever nothing was sent for ping_seconds, and an
+    `internal` error when the deadline passes. The pending read is never cancelled by a ping
+    (asyncio.wait, not wait_for), so a slow tool or model round is not cut short."""
+    ping = PING_SECONDS if ping_seconds is None else ping_seconds
+    limit = STREAM_DEADLINE_SECONDS if deadline_seconds is None else deadline_seconds
+    loop = asyncio.get_running_loop()
+    ends_at = loop.time() + limit
+    it = events.__aiter__()
+    pending: Optional["asyncio.Future[str]"] = None
+    try:
+        while True:
+            remaining = ends_at - loop.time()
+            if remaining <= 0:
+                yield sse("error", {"code": "internal", "message": engine.MESSAGES["internal"]})
+                return
+            if pending is None:
+                pending = asyncio.ensure_future(it.__anext__())
+            done, _ = await asyncio.wait({pending}, timeout=min(ping, remaining))
+            if not done:
+                if loop.time() < ends_at:
+                    yield PING
+                continue
+            fut, pending = pending, None
+            try:
+                frame = fut.result()
+            except StopAsyncIteration:
+                return
+            yield frame
+    finally:
+        # The visitor left or the deadline passed: stop relaying. The engine's
+        # own task still finishes (and stores) an answer whose model already ran.
+        if pending is not None and not pending.done():
+            pending.cancel()
 
 
 # ── visitor API ───────────────────────────────────────────────────────────
@@ -61,7 +108,7 @@ async def post_message(session_id: str, request: Request, body: Dict[str, Any] =
             logger.exception("site-assistant stream failed (session %s)", session_id)
             yield sse("error", {"code": "internal", "message": engine.MESSAGES["internal"]})
 
-    return StreamingResponse(stream(), media_type="text/event-stream",
+    return StreamingResponse(with_keepalive(stream()), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
@@ -114,8 +161,9 @@ async def admin_delete_knowledge(knowledge_id: str, staff: svc.Staff = Depends(s
 @router.get("/admin/conversations")
 async def admin_conversations(site_tag: Optional[str] = Query(None), lead: Optional[str] = Query(None),
                               page: int = Query(0, ge=0), size: int = Query(20, ge=1, le=100),
+                              include_empty: bool = Query(False),
                               staff: svc.Staff = Depends(staff_dep)) -> Dict[str, Any]:
-    return A.list_conversations(staff, site_tag, lead, page, size)
+    return A.list_conversations(staff, site_tag, lead, page, size, include_empty)
 
 
 @router.get("/admin/conversations/{conversation_id}")

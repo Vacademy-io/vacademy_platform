@@ -529,11 +529,17 @@ export function normalizePreviewSession(data: unknown): PreviewSession {
     };
 }
 
-/** POST /sessions with the staff JWT = a PREVIEW session (works while the assistant is off). */
+/**
+ * POST /sessions with the staff JWT and `preview: true` = a PREVIEW session (works while the
+ * assistant is off). The flag matters: without it the server first tries the request's Origin
+ * as a hosted site, and an admin app on an institute domain that also serves the site would get
+ * a HOSTED (billed, capped, counted) conversation instead of a preview.
+ */
 export const startPreviewSession = async (siteTag: string): Promise<PreviewSession> => {
     const { data } = await authenticatedAxiosInstance.post(`${SITE_ASSISTANT_BASE}/sessions`, {
         site_tag: siteTag,
         page: previewPage(siteTag),
+        preview: true,
     });
     return normalizePreviewSession(data);
 };

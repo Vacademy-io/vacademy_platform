@@ -109,7 +109,11 @@ export type SiteAssistantErrorCode =
   | "disabled"
   | "invalid"
   | "internal"
-  /** Client-side only: the session token was refused (expired / not ours). */
+  /** The website is not one the assistant serves (unknown host, origin not verified, bad key). */
+  | "not_allowed"
+  /** The chat was closed on the server; a new one has to be started. */
+  | "closed"
+  /** The session token was refused (expired / not ours). */
   | "unauthorized"
   /** Client-side only: the network dropped or the stream ended early. */
   | "network";

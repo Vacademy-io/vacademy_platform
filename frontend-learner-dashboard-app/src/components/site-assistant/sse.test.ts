@@ -22,7 +22,7 @@ describe("createSseParser", () => {
   });
 
   it("survives any chunk split — inside field names, JSON and CRLF pairs", () => {
-    const stream = 'event: token\r\ndata: {"text":"Namaste 🙏"}\r\n\r\nevent: card\r\ndata: {"card":{"type":"notice"}}\r\n\r\n';
+    const stream = 'event: token\r\ndata: {"text":"Namaste 🙏"}\r\n\r\nevent: card\r\ndata: {"type":"notice"}\r\n\r\n';
     const whole = collect([stream]);
     for (let size = 1; size <= 7; size++) {
       const chunks: string[] = [];
@@ -37,6 +37,15 @@ describe("createSseParser", () => {
     expect(out).toEqual([{ event: "message", data: "line one\nline two", id: undefined }]);
   });
 
+  it("ignores the server's `: ping` keep-alives between and inside events, in any split", () => {
+    const stream = ': ping\n\nevent: token\ndata: {"text":"Hi"}\n\n: ping\n\n: ping\n\nevent: done\n: ping\ndata: {}\n\n';
+    for (let size = 1; size <= 5; size++) {
+      const chunks: string[] = [];
+      for (let i = 0; i < stream.length; i += size) chunks.push(stream.slice(i, i + size));
+      expect(collect(chunks).map((e) => e.event)).toEqual(["token", "done"]);
+    }
+  });
+
   it("does not dispatch a block without data, and flushes an unterminated last block on end()", () => {
     expect(collect(["event: token\n\n"])).toEqual([]);
     expect(collect(['event: done\ndata: {"answered":true}'], false)).toEqual([]);
@@ -44,7 +53,29 @@ describe("createSseParser", () => {
   });
 });
 
+/** The exact bytes ai_service's router.sse("card", card) writes for a course list (json.dumps, ensure_ascii=False). */
+const AI_SERVICE_CARD_FRAME =
+  'event: card\ndata: {"type": "course_list", "items": [{"id": "c1", "title": "Vedic Parenting", "subtitle": null, "image_url": "https://cdn.example.org/vp.jpg", "price_label": "₹4,999", "url": "/bv/course/vedic-parenting", "badges": ["Bestseller"], "languages": ["Hindi"], "format_labels": ["Live"], "availability": null}], "more_url": "/bv/courses"}\n\n';
+
 describe("toStreamEvent", () => {
+  it("reads the card ai_service actually streams: flat {type, ...fields}", () => {
+    const [raw] = collect([AI_SERVICE_CARD_FRAME]);
+    expect(toStreamEvent(raw)).toEqual({
+      type: "card",
+      card: {
+        type: "course_list",
+        more_url: "/bv/courses",
+        items: [
+          expect.objectContaining({ id: "c1", title: "Vedic Parenting", price_label: "₹4,999", url: "/bv/course/vedic-parenting" }),
+        ],
+      },
+    });
+    // The old wrapped shape is still read.
+    expect(toStreamEvent({ event: "card", data: JSON.stringify({ card: { type: "notice", title: "T", body: "B" } }) })).toMatchObject({
+      card: { type: "notice", title: "T" },
+    });
+  });
+
   it("maps the four SPEC events", () => {
     expect(toStreamEvent({ event: "token", data: '{"text":"Hello"}' })).toEqual({ type: "token", text: "Hello" });
     expect(toStreamEvent({ event: "done", data: '{"message_id":42,"answered":false,"billed":true}' })).toEqual({
@@ -66,7 +97,7 @@ describe("toStreamEvent", () => {
     expect(toStreamEvent({ event: "ping", data: "{}" })).toBeNull();
     // A card whose link is not https/site-relative is not a card.
     expect(
-      toStreamEvent({ event: "card", data: JSON.stringify({ card: { type: "page_link", title: "x", href: "javascript:alert(1)" } }) }),
+      toStreamEvent({ event: "card", data: JSON.stringify({ type: "page_link", title: "x", href: "javascript:alert(1)" }) }),
     ).toBeNull();
   });
 });
@@ -91,13 +122,16 @@ describe("api.streamMessage", () => {
       seen = init;
       return sseResponse([
         'event: token\ndata: {"text":"Yes, "}\n\n',
-        'event: token\ndata: {"text":"tomorrow."}\n\nevent: card\ndata: {"card":{"type":"notice","title":"Batch","body":"New batch"}}\n\n',
+        ": ping\n\n",
+        'event: token\ndata: {"text":"tomorrow."}\n\nevent: card\ndata: {"type": "notice", "title": "Batch", "body": "New batch"}\n\n',
+        AI_SERVICE_CARD_FRAME,
         'event: done\ndata: {"message_id":"m1","answered":true,"billed":true}\n\n',
       ]);
     });
     const events: SiteAssistantStreamEvent[] = [];
     await api.streamMessage("s1", "tok", body, (e) => events.push(e));
-    expect(events.map((e) => e.type)).toEqual(["token", "token", "card", "done"]);
+    expect(events.map((e) => e.type)).toEqual(["token", "token", "card", "card", "done"]);
+    expect(events[3]).toMatchObject({ type: "card", card: { type: "course_list" } });
     expect((seen?.headers as Record<string, string>).Authorization).toBe("Bearer tok");
     expect(JSON.parse(String(seen?.body))).toEqual(body);
   });
@@ -114,6 +148,31 @@ describe("api.streamMessage", () => {
       code: "daily_cap",
     });
     await expect(respond(500, {}).streamMessage("s", "t", body, () => {})).rejects.toBeInstanceOf(SiteAssistantApiError);
+  });
+
+  it("keeps each ai_service refusal code instead of collapsing it to internal", async () => {
+    const codeOf = async (status: number, code: string) => {
+      const api = createSiteAssistantApi("https://api/sa", async () =>
+        new Response(JSON.stringify({ detail: { code, message: "m" } }), {
+          status,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+      const err = await api.createSession({ site_tag: "bv", page: body.page }).catch((e: unknown) => e);
+      return (err as SiteAssistantApiError).code;
+    };
+    expect(await codeOf(403, "disabled")).toBe("disabled");
+    expect(await codeOf(503, "disabled")).toBe("disabled");
+    expect(await codeOf(403, "origin_not_allowed")).toBe("not_allowed");
+    expect(await codeOf(403, "unknown_site")).toBe("not_allowed");
+    expect(await codeOf(401, "invalid_api_key")).toBe("unauthorized");
+    expect(await codeOf(403, "closed")).toBe("closed");
+    expect(await codeOf(403, "forbidden")).toBe("unauthorized");
+    expect(await codeOf(404, "not_found")).toBe("disabled");
+    expect(await codeOf(400, "invalid")).toBe("invalid");
+    expect(await codeOf(429, "rate_limited")).toBe("rate_limited");
+    // A code this client does not know keeps the HTTP status's meaning, not "internal".
+    expect(await codeOf(403, "something_new")).toBe("disabled");
   });
 
   it("reports a stream that ends without done/error as a network error", async () => {

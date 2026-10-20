@@ -240,6 +240,60 @@ def test_model_failure_is_not_billed_and_releases_the_slot(fx):
     assert all(v == 0 for v in fx.store.site_daily.values())
 
 
+def test_visitor_leaving_mid_answer_still_stores_bills_and_keeps_the_slot(fx):
+    """The reviewer's repro (client gone after 5 tokens) — the opposite outcome: the model ran,
+    so the slot stays taken, and the finished answer is stored and charged."""
+    answer = "Our courses are great and you will love them a lot, really a lot. " * 5
+    llm = ScriptedLLM([tokens(answer)])
+    fx.monkeypatch.setattr(engine, "llm_stream", llm)
+
+    async def go():
+        gen = engine.answer(ctx(fx), "tell me about courses", PAGE, "m1", ip_key="ip:abc")
+        got = []
+        async for ev in gen:
+            got.append(ev)
+            if sum(1 for e in got if e[0] == "token") >= 5:
+                break
+        await gen.aclose()                      # the HTTP stream is gone
+        await engine.wait_for_running()         # the server keeps the loop running
+        return got
+
+    got = asyncio.run(go())
+    assert names(got) == ["token"] * 5
+    assert len(llm.calls) == 1
+    assert sum(fx.store.site_daily.values()) == 1                     # not handed back
+    assert fx.store.visitor_daily["ip:abc"] == 1
+    stored = [m for m in fx.store.msgs if m["role"] == "assistant"]
+    assert len(stored) == 1 and stored[0]["content"].startswith("Our courses are great")
+    assert len(fx.billing.charges) == 1 and fx.billing.charges[0]["message_id"] == stored[0]["id"]
+    # Reload / resend of the same message replays it, no second model call or charge.
+    replay = collect(fx, ctx(fx), "tell me about courses", cmid="m1", llm=llm)
+    assert replay[-1][1]["replayed"] is True and len(llm.calls) == 1 and len(fx.billing.charges) == 1
+
+
+def test_model_error_after_output_keeps_the_slot(fx):
+    # The model streamed (it cost us) and then broke: no answer, no charge, but no free slot either.
+    llm = ScriptedLLM([[{"type": "token", "content": "Our courses"}, RuntimeError("stream reset")]])
+    events = collect(fx, ctx(fx), "q1", llm=llm)
+    assert events[-1][0] == "error" and not fx.billing.charges
+    assert sum(fx.store.site_daily.values()) == 1
+
+
+def test_deadline_ends_with_internal_and_releases_a_slot_the_model_never_used(fx):
+    async def hung(messages, tools, c):
+        await asyncio.sleep(30)
+        yield {"type": "token", "content": "late"}
+
+    fx.monkeypatch.setattr(engine, "llm_stream", hung)
+
+    async def go():
+        return [ev async for ev in engine.answer(ctx(fx), "q1", PAGE, "m1", ip_key="ip:abc", deadline_seconds=0.2)]
+
+    events = asyncio.run(go())
+    assert events == [("error", {"code": "internal", "message": engine.MESSAGES["internal"]})]
+    assert sum(fx.store.site_daily.values()) == 0 and not fx.billing.charges
+
+
 def test_billing_failure_reports_billed_false(fx):
     fx.monkeypatch.setattr(engine.billing, "charge", lambda **kw: False)
     events = collect(fx, ctx(fx), "hi", llm=ScriptedLLM([tokens("Hello there.")]))

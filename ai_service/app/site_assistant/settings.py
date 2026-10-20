@@ -29,6 +29,7 @@ HISTORY_MESSAGES = 8
 SESSION_TTL_SECONDS = 12 * 3600
 VISITOR_DAILY_ANSWERS = 40
 IP_DAILY_ANSWERS = 80
+IP_DAILY_SESSIONS = 300          # new chats (POST /sessions) per visitor network per day
 SITE_DAILY_ANSWERS = 300
 MESSAGES_PER_MINUTE = 6
 MAX_CARDS_PER_ANSWER = 3
@@ -186,6 +187,13 @@ def ip_daily_cap(db=None) -> int:
         return max(0, int(float(_platform("site_assistant.ip_daily_answers", IP_DAILY_ANSWERS, db))))
     except (TypeError, ValueError):
         return IP_DAILY_ANSWERS
+
+
+def ip_daily_sessions(db=None) -> int:
+    try:
+        return max(0, int(float(_platform("site_assistant.ip_daily_sessions", IP_DAILY_SESSIONS, db))))
+    except (TypeError, ValueError):
+        return IP_DAILY_SESSIONS
 
 
 def disable_reasoning(db=None) -> bool:

@@ -11,13 +11,25 @@ Order of checks, cheapest first; everything before the model is unbilled:
 
 No in-process state: idempotency and caps live in the database, the stream
 is produced directly in the POST response (no polling).
+
+The answer is produced by its own task, not by the HTTP response: a visitor
+who closes the tab mid-answer does not stop it. The model call is already
+paid for at that point, so the answer is still stored (it shows on a reload,
+and a resend of the same client_msg_id replays it) and charged like any other.
+Only an overall deadline (ANSWER_DEADLINE_SECONDS) stops it early.
+
+Cap slots: one is reserved before the model runs and handed back ONLY when no
+model call was made (guards, validation, credit pre-flight) or the model /
+provider failed without producing anything. Once a model round has produced
+output, the slot stays taken whatever happens to the client.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import uuid
-from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
+from typing import Any, AsyncIterator, Dict, List, Optional, Set, Tuple
 
 from ..db import db_session
 from . import billing, caps
@@ -34,6 +46,14 @@ logger = logging.getLogger(__name__)
 
 Event = Tuple[str, Dict[str, Any]]
 IN_FLIGHT_SECONDS = 90
+# The whole answer (tools + model rounds) must finish inside this; the HTTP
+# stream (router.py) has a slightly longer backstop of its own.
+ANSWER_DEADLINE_SECONDS = 85.0
+
+# Answers still being produced after their client went away (strong refs, so
+# the loop does not garbage-collect a running task).
+_RUNNING: Set["asyncio.Task[None]"] = set()
+_END = object()
 
 MESSAGES = {
     "invalid": "Please type a question (up to 1000 characters).",
@@ -154,7 +174,51 @@ def _replay(reply: Dict[str, Any]) -> List[Event]:
 # ── the answer ────────────────────────────────────────────────────────────
 
 async def answer(ctx: SiteContext, raw_text: Any, page: Dict[str, Any], client_msg_id: Any,
-                 *, ip_key: Optional[str] = None) -> AsyncIterator[Event]:
+                 *, ip_key: Optional[str] = None,
+                 deadline_seconds: Optional[float] = None) -> AsyncIterator[Event]:
+    """The answer's events. The work runs in a task of its own that does not
+    depend on this generator being read to the end: closing it (the visitor
+    left) only stops the relaying; the answer is still finished, stored and
+    charged. The deadline does stop the work, with an `internal` error."""
+    queue: "asyncio.Queue[Any]" = asyncio.Queue()
+    limit = ANSWER_DEADLINE_SECONDS if deadline_seconds is None else deadline_seconds
+
+    async def drive() -> None:
+        async for ev in _answer(ctx, raw_text, page, client_msg_id, ip_key=ip_key):
+            queue.put_nowait(ev)
+
+    async def produce() -> None:
+        try:
+            await asyncio.wait_for(drive(), timeout=limit)
+        except asyncio.TimeoutError:
+            logger.warning("site-assistant: answer passed the %ss deadline (conversation %s)",
+                           limit, ctx.conversation_id)
+            queue.put_nowait(("error", {"code": "internal", "message": MESSAGES["internal"]}))
+        except Exception:  # noqa: BLE001
+            logger.exception("site-assistant: answer failed (conversation %s)", ctx.conversation_id)
+            queue.put_nowait(("error", {"code": "internal", "message": MESSAGES["internal"]}))
+        finally:
+            queue.put_nowait(_END)
+
+    task = asyncio.get_running_loop().create_task(produce())
+    _RUNNING.add(task)
+    task.add_done_callback(_RUNNING.discard)
+    while True:
+        ev = await queue.get()
+        if ev is _END:
+            return
+        yield ev
+
+
+async def wait_for_running(timeout: float = 5.0) -> None:
+    """Let answers whose client went away finish (tests; graceful shutdown)."""
+    pending = [t for t in _RUNNING if not t.done()]
+    if pending:
+        await asyncio.wait(pending, timeout=timeout)
+
+
+async def _answer(ctx: SiteContext, raw_text: Any, page: Dict[str, Any], client_msg_id: Any,
+                  *, ip_key: Optional[str] = None) -> AsyncIterator[Event]:
     text = clean_text(raw_text)
     cmid = str(client_msg_id or "").strip()[:64]
     if text is None or not cmid:
@@ -230,14 +294,16 @@ async def answer(ctx: SiteContext, raw_text: Any, page: Dict[str, Any], client_m
             yield ev
         return
 
-    produced = False
+    progress = {"started": False, "output": False}
     try:
-        async for ev in _model_answer(ctx, text, lang, hist_rows):
-            if ev[0] == "done":
-                produced = True
+        async for ev in _model_answer(ctx, text, lang, hist_rows, progress):
             yield ev
     finally:
-        if not produced:
+        # The slot goes back only when the model never ran or gave nothing at all
+        # (provider down, timed out before a token). Once it produced output the
+        # call cost us, and handing the slot back would make every abandoned or
+        # broken stream a free, uncapped model call.
+        if not progress["started"] or not progress["output"]:
             with db_session() as db:
                 caps.release(db, reservation)
 
@@ -256,8 +322,9 @@ async def _limit_reply(ctx: SiteContext, code: str) -> AsyncIterator[Event]:
     yield ("error", {"code": code, "message": MESSAGES[code]})
 
 
-async def _model_answer(ctx: SiteContext, text: str, lang: str,
-                        hist_rows: List[Dict[str, Any]]) -> AsyncIterator[Event]:
+async def _model_answer(ctx: SiteContext, text: str, lang: str, hist_rows: List[Dict[str, Any]],
+                        progress: Optional[Dict[str, bool]] = None) -> AsyncIterator[Event]:
+    progress = progress if progress is not None else {}
     specs = offered_tools(ctx)
     tool_schemas = [s.schema() for s in specs]
     sensitive = sensitive_kind(text)
@@ -285,8 +352,11 @@ async def _model_answer(ctx: SiteContext, text: str, lang: str,
             last = round_no == S.MAX_TOOL_ROUNDS
             calls: List[Dict[str, Any]] = []
             round_text = ""
+            progress["started"] = True
             async for chunk in llm_stream(messages, None if last or not tool_schemas else tool_schemas, ctx):
                 kind = chunk.get("type")
+                if kind in ("token", "tool_calls"):
+                    progress["output"] = True
                 if kind == "token" and chunk.get("content"):
                     round_text += chunk["content"]
                     out = sanitizer.push(chunk["content"])

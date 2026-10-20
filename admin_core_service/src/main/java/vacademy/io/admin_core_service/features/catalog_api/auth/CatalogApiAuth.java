@@ -227,8 +227,13 @@ public class CatalogApiAuth {
         return clean(request.getHeader("X-Client-IP"));
     }
 
-    /** CF-Connecting-IP, else the first X-Forwarded-For hop (null when neither is present). */
-    static String networkClientIp(HttpServletRequest request) {
+    /**
+     * CF-Connecting-IP, else the first X-Forwarded-For hop (null when neither is present). Behind
+     * Cloudflare the first X-Forwarded-For hop can be the edge (our ingress does not rewrite it), so
+     * CF-Connecting-IP — the visitor as Cloudflare saw them — wins. Shared by the open endpoints
+     * that rate-limit per visitor IP.
+     */
+    public static String networkClientIp(HttpServletRequest request) {
         String cf = clean(request.getHeader("CF-Connecting-IP"));
         if (cf != null) return cf;
         String xff = request.getHeader("X-Forwarded-For");

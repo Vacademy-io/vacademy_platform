@@ -92,9 +92,10 @@ def _salt() -> str:
 
 
 def hash_key(kind: str, value: str) -> str:
-    """Cap-table key: 'v:' / 'ip:' + a salted hash, 64 chars max."""
+    """Cap-table key: 'v:' (visitor answers) / 'ip:' (network answers) / 's:' (network's new
+    chats) + a salted hash, 64 chars max."""
     digest = hashlib.sha256(f"{_salt()}:{kind}:{value}".encode()).hexdigest()
-    prefix = "v:" if kind == "v" else "ip:"
+    prefix = "v:" if kind == "v" else ("s:" if kind == "s" else "ip:")
     return (prefix + digest)[:64]
 
 

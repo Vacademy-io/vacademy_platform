@@ -28,12 +28,13 @@ from fastapi import HTTPException, Request, status
 from sqlalchemy import text as sql
 
 from ..db import db_session
+from . import caps
 from . import internal_client as ac
 from . import knowledge as K
 from . import repository as repo
 from . import settings as S
 from . import tokens as T
-from .tools import SiteContext, campaign_for
+from .tools import SiteContext, campaign_field_map, campaign_for, short_field_key, strip_inst_suffix
 
 logger = logging.getLogger(__name__)
 
@@ -262,7 +263,11 @@ async def open_session(request: Request, body: Dict[str, Any]) -> Dict[str, Any]
             repo.touch_conversation(db, cid)
             history = public_history(repo.transcript(db, cid))
         else:
-            iph = T.ip_hash(client_ip(request)) if channel != "PREVIEW" else None
+            ip = client_ip(request)
+            if channel != "PREVIEW" and not caps.take_session(db, T.hash_key("s", ip), S.ip_daily_sessions(db)):
+                raise _deny(status.HTTP_429_TOO_MANY_REQUESTS, "rate_limited",
+                            "Too many chats were started from your network today. Please try again tomorrow.")
+            iph = T.ip_hash(ip) if channel != "PREVIEW" else None
             locale = (request.headers.get("accept-language") or "").split(",")[0].strip()[:16] or None
             cid = repo.create_conversation(db, institute_id=institute_id, site_tag=tag, channel=channel,
                                            visitor_id=vid, user_id=user_id, ip_hash=iph, origin_host=host,
@@ -411,6 +416,45 @@ def _course_refs(rows: List[Dict[str, Any]]) -> Tuple[List[str], List[str]]:
     return ids, titles
 
 
+# Keys admin_core sets itself (SiteAssistantLeadService + CatalogLeadService.RESERVED_FIELDS).
+_LEAD_OWN_KEYS = {"full_name", "fullname", "name", "email", "phone", "mobile", "mobile_number", "message", "source",
+                  "course_id", "lead_kind", "summary", "reason", "course_ids", "page_url", "conversation_id"}
+_LEAD_KEY_RE = re.compile(r"^[A-Za-z0-9 _.\-]{1,64}$")
+
+
+async def _campaign_values(institute_id: str, campaign_id: Optional[str], fields: Dict[str, str],
+                           contact: Dict[str, Optional[str]]) -> Dict[str, str]:
+    """The visitor's form answers as the lead's custom_fields, keyed the way admin_core resolves them.
+
+    The card showed short keys (tools.campaign_fields); each stands for one custom field of the
+    campaign, looked up again here and sent by its id — admin_core's saveCustomFieldValues matches
+    a custom field id exactly (its "_inst_<instituteId>" field_key would be over the 64-character
+    key limit). The name / email / phone the widget pulled out of the form go into the campaign's
+    own name / email / phone fields too, so the lead shows them where the campaign expects them.
+    A key that is not one of the campaign's fields is kept only when the lead API accepts it."""
+    mapping: Dict[str, Any] = {}
+    if campaign_id:
+        try:
+            mapping = campaign_field_map(await ac.campaign(institute_id, campaign_id))
+        except ac.AdminCoreUnavailable:
+            mapping = {}
+    out: Dict[str, str] = {}
+    for key, value in fields.items():
+        spec = mapping.get(key.lower()) or mapping.get(short_field_key(key).lower())
+        if spec is not None and spec.field_id:
+            out[spec.field_id] = value
+            continue
+        # Not a campaign field: kept as sent (suffix aside) when the lead API takes the key, never cut.
+        k = strip_inst_suffix(key) if spec is None else spec.card["key"]
+        if k and _LEAD_KEY_RE.match(k) and k.lower() not in _LEAD_OWN_KEYS:
+            out[k] = value
+    for role, value in (("name", contact.get("name")), ("email", contact.get("email")), ("phone", contact.get("phone"))):
+        spec = next((x for x in mapping.values() if x.role == role and x.field_id), None)
+        if spec is not None and value:
+            out.setdefault(spec.field_id, value)
+    return dict(list(out.items())[:25])
+
+
 async def submit_contact(session_id: str, authorization: Optional[str], body: Dict[str, Any]) -> Dict[str, Any]:
     _claims, conv = owned_conversation(session_id, authorization)
     kind = str(body.get("kind") or "").upper()
@@ -432,7 +476,7 @@ async def submit_contact(session_id: str, authorization: Optional[str], body: Di
                 raise _deny(status.HTTP_429_TOO_MANY_REQUESTS, "rate_limited",
                             "We already have your details. Our team will be in touch.")
     fields_in = body.get("fields") if isinstance(body.get("fields"), dict) else {}
-    fields = {str(k)[:80]: (" ".join(str(v).split())[:500] if not isinstance(v, (dict, list)) else None)
+    fields = {str(k)[:200]: (" ".join(str(v).split())[:500] if not isinstance(v, (dict, list)) else None)
               for k, v in list(fields_in.items())[:20]}
     fields = {k: v for k, v in fields.items() if v}
     with db_session() as db:
@@ -442,24 +486,31 @@ async def submit_contact(session_id: str, authorization: Optional[str], body: Di
     course_ids = list(dict.fromkeys(asked + seen_ids))[:5]
     last_page: Dict[str, Any] = {}
     reason = None
+    card_campaign: Optional[str] = None
     for r in rows:
         if r.get("role") == "user" and isinstance(r.get("page"), dict):
             last_page = r["page"]
         for c in r.get("cards") or []:
             if isinstance(c, dict) and c.get("type") == "contact_form" and c.get("kind") == kind:
                 reason = c.get("reason") or reason
+                card_campaign = c.get("campaign_id") if isinstance(c.get("campaign_id"), str) else card_campaign
     ctx = await site_context(conv, {}, host=None)
-    stream = None
-    if kind == "SALES" and course_ids:
-        try:
-            course = await ac.catalog_course(conv["institute_id"], course_ids[0])
-            stream = ((course or {}).get("stream") or {}).get("slug")
-        except ac.AdminCoreUnavailable:
-            stream = None
+    campaign_id = card_campaign if kind == "SALES" else None
+    if kind == "SALES" and not campaign_id:
+        stream = None
+        if course_ids:
+            try:
+                course = await ac.catalog_course(conv["institute_id"], course_ids[0])
+                stream = ((course or {}).get("stream") or {}).get("slug")
+            except ac.AdminCoreUnavailable:
+                stream = None
+        campaign_id = campaign_for(ctx, kind, stream)
+    custom = await _campaign_values(conv["institute_id"], campaign_id, fields,
+                                    {"name": name, "email": email, "phone": phone})
     lead = {
         "institute_id": conv["institute_id"],
         "kind": kind,
-        "campaign_id": campaign_for(ctx, kind, stream),
+        "campaign_id": campaign_id,
         "full_name": name,
         "email": email,
         "phone": phone,
@@ -469,7 +520,7 @@ async def submit_contact(session_id: str, authorization: Optional[str], body: Di
         "summary": build_summary(rows, [t for t in seen_titles if t], last_page.get("title")),
         "reason": reason or ("Support request from the website assistant" if kind == "SUPPORT"
                              else "Enquiry from the website assistant"),
-        "custom_fields": {**fields, "conversation_id": session_id},
+        "custom_fields": {**custom, "conversation_id": session_id},
     }
     try:
         result = await ac.submit_lead(lead)

@@ -171,6 +171,15 @@ def test_caps_are_all_or_nothing_and_releasable(Session):
                             visitor_cap=5, ip_cap=5, site_cap=2) is None
 
 
+def test_new_chat_count_per_network(Session):
+    key = f"s:{uuid.uuid4().hex}"
+    with Session() as db:
+        assert caps.take_session(db, key, 2) and caps.take_session(db, key, 2)
+        assert not caps.take_session(db, key, 2)
+        assert db.execute(text("SELECT answers FROM site_assistant_visitor_daily WHERE key_hash = :k"),
+                          {"k": key}).scalar() == 2
+
+
 def test_caps_hold_under_concurrency(Session):
     key = f"v:{uuid.uuid4().hex}"
     tag = f"cc-{uuid.uuid4().hex[:6]}"
@@ -268,13 +277,17 @@ def test_staff_lists(Session):
         repo.add_message(db, cid, "user", "Do you have a hostel?")
         a = repo.add_message(db, cid, "assistant", "I don't have that detail.", answered=False)
         repo.set_feedback(db, cid, a, -1)
+        repo.touch_conversation(db, cid, messages=2)
         repo.set_lead(db, cid, "SUPPORT", None)
         conv(db, iid=OTHER, tag=tag)
+        conv(db, tag=tag)                          # opened, nobody typed: not listed by default
         db.commit()
         assert repo.recent_leads_from_ip(db, INST, "h") >= 1
         out = repo.list_conversations(db, INST, site_tag=tag, lead=None, page=0, size=10)
         assert out["total"] == 1 and out["items"][0]["first_question"] == "Do you have a hostel?"
         assert out["items"][0]["thumbs_down"] == 1
+        assert repo.list_conversations(db, INST, site_tag=tag, lead=None, page=0, size=10,
+                                       include_empty=True)["total"] == 2
         assert repo.list_conversations(db, INST, site_tag=tag, lead="SALES", page=0, size=10)["total"] == 0
         assert repo.list_conversations(db, INST, site_tag=tag, lead="SUPPORT", page=0, size=10)["total"] == 1
         un = repo.unanswered_questions(db, INST, site_tag=tag, days=30)

@@ -264,7 +264,7 @@ describe('preview chat', () => {
         vi.unstubAllGlobals();
     });
 
-    it('starts a preview session with the staff JWT client and the site tag', async () => {
+    it('starts a preview session with the staff JWT client, the site tag and preview: true', async () => {
         http.post.mockResolvedValue({
             data: {
                 session_id: 's1',
@@ -278,6 +278,7 @@ describe('preview chat', () => {
         expect(http.post).toHaveBeenCalledWith(`${BASE}/sessions`, {
             site_tag: 'bv',
             page: { url: '/bv', route: '/', title: 'Admin preview' },
+            preview: true,
         });
         expect(s).toMatchObject({
             sessionId: 's1',

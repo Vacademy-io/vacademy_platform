@@ -33,7 +33,11 @@ interface PanelProps {
   className?: string;
 }
 
-const RETRYABLE: SiteAssistantErrorCode[] = ["internal", "network", "unauthorized"];
+const RETRYABLE: SiteAssistantErrorCode[] = ["internal", "network", "unauthorized", "closed"];
+/** Why the chat could not start, when there is a better sentence than "couldn't start". */
+const FAILURE_MESSAGES: SiteAssistantErrorCode[] = ["disabled", "not_allowed", "rate_limited"];
+/** Failures a retry cannot fix. */
+const FINAL_FAILURES: SiteAssistantErrorCode[] = ["disabled", "not_allowed"];
 
 export const AssistantAvatar: React.FC<{ url: string | null; className?: string }> = ({ url, className }) => {
   const safe = safeImageUrl(url);
@@ -256,8 +260,8 @@ export const SiteAssistantPanel: React.FC<PanelProps> = ({ display, onClose, fal
         )}
         {status === "failed" && !hasUserTurn && (
           <div role="alert" className="flex flex-col gap-2 rounded-catalogue-lg border border-warning-200 bg-warning-50 px-3 py-2 text-sm text-warning-700">
-            <span>{failure === "disabled" ? t("errors.disabled") : t("status.connectFailed")}</span>
-            {failure !== "disabled" && (
+            <span>{failure && FAILURE_MESSAGES.includes(failure) ? t(`errors.${failure}`) : t("status.connectFailed")}</span>
+            {!(failure && FINAL_FAILURES.includes(failure)) && (
               <button
                 type="button"
                 onClick={() => void controller.connect()}

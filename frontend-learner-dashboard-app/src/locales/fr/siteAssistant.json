@@ -32,7 +32,9 @@
     "invalid": "Désolé, je n'ai pas pu traiter cette question. Merci de la reformuler.",
     "internal": "Un problème est survenu de notre côté. Veuillez réessayer.",
     "network": "La connexion a été interrompue. Veuillez réessayer.",
-    "unauthorized": "Cette discussion a expiré. Veuillez réessayer."
+    "unauthorized": "Cette discussion a expiré. Veuillez réessayer.",
+    "not_allowed": "Cet assistant n'est pas configuré pour ce site.",
+    "closed": "Cette discussion est terminée. Veuillez en commencer une nouvelle."
   },
   "feedback": {
     "helpful": "Utile",

@@ -403,10 +403,43 @@ _DEFAULT_FIELDS = [
     {"key": "phone", "label": "Phone", "type": "phone", "required": False},
     {"key": "email", "label": "Email", "type": "email", "required": False},
 ]
-_NAME_KEYS = {"full_name", "fullname", "name"}
+# Same sets as the widget's contact-form.ts roleOf(): one name/email/phone input each.
+_NAME_KEYS = {"full_name", "fullname", "name", "your_name", "student_name", "parent_name"}
+_EMAIL_KEYS = {"email", "email_address", "emailaddress", "mail"}
+_PHONE_KEYS = {"phone", "mobile", "phone_number", "mobile_number", "phonenumber", "mobilenumber", "contact_number",
+               "whatsapp"}
 _TYPE_MAP = {"text": "text", "textfield": "text", "email": "email", "phone": "phone", "number": "number",
              "dropdown": "dropdown", "select": "dropdown", "textarea": "textarea", "date": "date",
              "checkbox": "checkbox", "mobile": "phone", "tel": "phone"}
+# admin_core's CustomFieldKeyGenerator makes "<slug>_inst_<instituteId>[_<n>]": > 64 characters
+# with a UUID institute id, past the widget's and the lead API's key limit.
+_INST_SUFFIX = re.compile(r"_inst_[A-Za-z0-9-]+(?:_\d+)?$")
+_KEY_UNSAFE = re.compile(r"[^A-Za-z0-9_.-]+")
+FIELD_KEY_MAX = 64
+
+
+def strip_inst_suffix(key: Any) -> str:
+    """The field key without admin_core's "_inst_<instituteId>[_<n>]" suffix."""
+    return _INST_SUFFIX.sub("", str(key or "").strip())
+
+
+def short_field_key(key: Any) -> str:
+    """A campaign field key without admin_core's "_inst_<instituteId>" suffix, form-safe, ≤ 64."""
+    k = strip_inst_suffix(key)
+    k = _KEY_UNSAFE.sub("_", k).strip("_.-")
+    return k[:FIELD_KEY_MAX]
+
+
+def field_role(key: str, ftype: str) -> Optional[str]:
+    """name | email | phone for the visitor's own contact fields (the widget pulls these out), else None."""
+    k = short_field_key(key).lower()
+    if ftype == "email" or k in _EMAIL_KEYS:
+        return "email"
+    if ftype == "phone" or k in _PHONE_KEYS:
+        return "phone"
+    if k in _NAME_KEYS:
+        return "name"
+    return None
 
 
 def _parse_options(config: Any) -> Optional[List[str]]:
@@ -435,33 +468,63 @@ def _parse_options(config: Any) -> Optional[List[str]]:
     return None
 
 
-def campaign_fields(campaign: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """The campaign's own form fields in contact_form shape, or name/phone/email."""
+@dataclass
+class CampaignField:
+    """One visible campaign field: what the card shows (``card``) and the custom field it fills."""
+    card: Dict[str, Any]
+    field_id: Optional[str]     # custom_fields.id — what admin_core's saveCustomFieldValues resolves exactly
+    role: Optional[str]         # name | email | phone | None
+
+
+def _campaign_field_specs(campaign: Optional[Dict[str, Any]]) -> List[CampaignField]:
     rows = [f for f in (campaign or {}).get("institute_custom_fields") or []
             if isinstance(f, dict) and isinstance(f.get("custom_field"), dict) and f.get("status") != "DELETED"]
     rows.sort(key=lambda f: f.get("individual_order") or 0)
-    fields: List[Dict[str, Any]] = []
+    out: List[CampaignField] = []
+    used: set = set()
     for f in rows:
         cf = f["custom_field"]
-        key = str(cf.get("fieldKey") or "").strip()
-        if not key or cf.get("isHidden"):
+        raw_key = str(cf.get("fieldKey") or cf.get("field_key") or "").strip()
+        if not raw_key or cf.get("isHidden") or cf.get("is_hidden"):
             continue
-        ftype = _TYPE_MAP.get(str(cf.get("fieldType") or "text").lower(), "text")
-        field_: Dict[str, Any] = {"key": key[:80], "label": str(cf.get("fieldName") or key)[:120], "type": ftype,
-                                  "required": bool(cf.get("isMandatory") or f.get("is_mandatory"))}
+        key = short_field_key(raw_key) or "field"
+        base, n = key, 2
+        while key.lower() in used:            # two fields with one slug: keep both, distinct keys
+            suffix = f"_{n}"
+            key = base[:FIELD_KEY_MAX - len(suffix)] + suffix
+            n += 1
+        used.add(key.lower())
+        ftype = _TYPE_MAP.get(str(cf.get("fieldType") or cf.get("field_type") or "text").lower(), "text")
+        card: Dict[str, Any] = {"key": key, "label": str(cf.get("fieldName") or cf.get("field_name") or key)[:120],
+                                "type": ftype, "required": bool(cf.get("isMandatory") or f.get("is_mandatory"))}
         if ftype == "dropdown":
             opts = _parse_options(cf.get("config"))
             if opts:
-                field_["options"] = opts
+                card["options"] = opts
             else:
-                field_["type"] = "text"
-        fields.append(field_)
+                card["type"] = "text"
+        fid = cf.get("id") or f.get("field_id")
+        out.append(CampaignField(card=card, field_id=str(fid)[:64] if fid else None, role=field_role(key, ftype)))
+    return out[:12]
+
+
+def campaign_fields(campaign: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """The campaign's own form fields in contact_form shape, or name/phone/email.
+
+    Keys are SHORT and stable: the field key without the "_inst_<instituteId>" suffix (a key over
+    64 characters is dropped by the widget and refused by the lead API). The custom field each key
+    fills stays on the server (``campaign_field_map``) and is looked up again on submit."""
+    fields = [dict(spec.card) for spec in _campaign_field_specs(campaign)]
     if not fields:
         return [dict(f) for f in _DEFAULT_FIELDS]
-    keys = {f["key"].lower() for f in fields}
-    if not keys & _NAME_KEYS:
+    if not any(field_role(f["key"], f["type"]) == "name" for f in fields):
         fields.insert(0, dict(_DEFAULT_FIELDS[0]))
     return fields[:12]
+
+
+def campaign_field_map(campaign: Optional[Dict[str, Any]]) -> Dict[str, CampaignField]:
+    """card key (lower case) → the campaign field it stands for; the server-side half of campaign_fields."""
+    return {spec.card["key"].lower(): spec for spec in _campaign_field_specs(campaign)}
 
 
 def campaign_for(ctx: SiteContext, kind: str, stream_slug: Optional[str] = None) -> Optional[str]:
@@ -618,4 +681,6 @@ async def execute(name: str, raw_args: Any, ctx: SiteContext) -> ToolResult:
 
 
 __all__ = ["SiteContext", "ToolResult", "SiteToolSpec", "SITE_TOOLS", "offered_tools", "execute", "fence",
-           "campaign_fields", "campaign_for", "site_path", "language_of"]
+           "campaign_fields", "campaign_field_map", "campaign_for", "field_role", "short_field_key", "strip_inst_suffix",
+           "site_path",
+           "language_of"]

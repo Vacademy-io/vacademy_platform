@@ -51,7 +51,7 @@ export const errorFromResponse = async (res: Response): Promise<SiteAssistantApi
     const body = (await res.json()) as Record<string, unknown>;
     const detail = body?.detail;
     const inner = (detail && typeof detail === "object" ? detail : body) as Record<string, unknown>;
-    if (typeof inner?.code === "string" && res.status !== 401) code = toErrorCode(inner.code);
+    if (typeof inner?.code === "string" && res.status !== 401) code = toErrorCode(inner.code, code);
     if (typeof inner?.message === "string") message = inner.message;
     else if (typeof detail === "string") message = detail;
   } catch {

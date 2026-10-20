@@ -8,7 +8,9 @@
         "documentPdfPrint": "PDF — Imprimer",
         "documentCode": "Code",
         "assignment": "Devoir",
-        "video": "Vidéo"
+        "video": "Vidéo",
+        "documentDoc": "Document (Docs) — Télécharger",
+        "audio": "Audio — Télécharger"
     },
     "footer": {
         "saving": "Enregistrement…",

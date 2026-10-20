@@ -8,7 +8,9 @@
         "documentPdfPrint": "PDF — प्रिंट",
         "documentCode": "कोड",
         "assignment": "असाइनमेंट",
-        "video": "वीडियो"
+        "video": "वीडियो",
+        "documentDoc": "दस्तावेज़ (Docs) — डाउनलोड",
+        "audio": "ऑडियो — डाउनलोड"
     },
     "footer": {
         "saving": "सहेजा जा रहा है…",

@@ -36,6 +36,8 @@ import {
 } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
+import { SlideDownloadTypeKey } from "@/constants/slide-download-permission";
+import { SlideDownloadButton } from "./slide-download-button";
 
 interface AudioPlayerProps {
     audioSlide: {
@@ -534,6 +536,15 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioSlide }) => {
                                         )}
                                     </Button>
                                 )}
+
+                                {/* Content Protection → Audio: off for learners unless switched on.
+                                    Never offered for an offline (decrypted, blob:) copy — same as video. */}
+                                <SlideDownloadButton
+                                    typeKey={SlideDownloadTypeKey.AUDIO}
+                                    title={activeItem?.title}
+                                    url={audioUrl.startsWith("blob:") ? null : audioUrl}
+                                    mimeType="audio/mpeg"
+                                />
                             </div>
                         </div>
                     </div>

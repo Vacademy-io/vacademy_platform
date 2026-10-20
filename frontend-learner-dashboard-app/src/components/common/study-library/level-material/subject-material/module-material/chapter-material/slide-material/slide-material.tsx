@@ -29,6 +29,8 @@ import { isItemLocked } from "@/components/drip-conditions/helpers";
 
 import { MyButton } from "@/components/design-system/button";
 import { DocViewer } from "./doc-viewer";
+import { SlideDownloadTypeKey } from "@/constants/slide-download-permission";
+import { SlideDownloadButton } from "./slide-download-button";
 import PresentationViewer from "./presentation-viewer";
 import DeckPlayer from "./deck-player";
 import { CodeEditorSlide } from "./code-editor-slide";
@@ -992,7 +994,14 @@ export const SlideMaterial = ({
               // 'HTML' = creative, self-contained HTML → sandboxed iframe.
               const isCreativeHtml = activeItem.document_slide?.type === "HTML";
               setContent(
-                <div className="h-full w-full animate-in fade-in slide-in-from-bottom-4 duration-700">
+                <div className="relative h-full w-full animate-in fade-in slide-in-from-bottom-4 duration-700">
+                  {/* Content Protection → Document (Docs): off for learners unless switched on. */}
+                  <SlideDownloadButton
+                    typeKey={SlideDownloadTypeKey.DOCUMENT_DOC}
+                    title={activeItem.title}
+                    html={activeItem.document_slide.published_data || ""}
+                    className="absolute end-3 top-3 z-10 bg-white"
+                  />
                   <div className="h-full w-full bg-white rounded-lg overflow-hidden border border-neutral-200">
                     <DocViewer
                       docUrl={activeItem.document_slide.published_data || ""}
@@ -1010,7 +1019,13 @@ export const SlideMaterial = ({
                 "application/octet-stream"
               );
               setContent(
-                <div className="h-full w-full animate-in fade-in slide-in-from-bottom-4 duration-700">
+                <div className="relative h-full w-full animate-in fade-in slide-in-from-bottom-4 duration-700">
+                  <SlideDownloadButton
+                    typeKey={SlideDownloadTypeKey.DOCUMENT_DOC}
+                    title={activeItem.title}
+                    url={url}
+                    className="absolute end-3 top-3 z-10 bg-white"
+                  />
                   <div className="h-full w-full bg-white rounded-lg overflow-hidden border border-neutral-200">
                     <DocViewer
                       docUrl={url || ""}

@@ -61,7 +61,9 @@ export const SlideDownloadTypeKey = {
 export const ADMIN_DEFAULT_DOWNLOAD: Record<string, boolean> = {
   DOCUMENT_PDF: true,
   DOCUMENT_PDF_PRINT: true,
-  DOCUMENT_DOC: true,
+  // Docs and Audio downloads are off for every role until Content Protection
+  // switches them on (no screen offered them before the learner Download button).
+  DOCUMENT_DOC: false,
   DOCUMENT_PRESENTATION: true,
   DOCUMENT_CODE: true,
   DOCUMENT_JUPYTER: true,

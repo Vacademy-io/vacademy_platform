@@ -22,7 +22,7 @@ import {
     ListChecks,
 } from '@phosphor-icons/react';
 import { Section } from '@/types/assessments/assessment-data-type';
-import { useSuspenseQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { Route } from '..';
 import {
     getAssessmentDetails,
@@ -54,6 +54,14 @@ import { AddEditCriteriaDialog } from '@/routes/assessment/create-assessment/$as
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { sanitizeRichHtml } from '@/lib/sanitize-html';
+import { cn } from '@/lib/utils';
+import {
+    COPY_CHECK_CRITERIA_KEY,
+    criteriaToCopyCheckRubric,
+    getCopyCheckCriteria,
+    saveCopyCheckCriteria,
+    toEditableCriteria,
+} from '@/services/copy-check-criteria';
 
 interface QuestionDuration {
     hrs: string;
@@ -267,12 +275,50 @@ const QuestionsTable = ({
     adaptiveMarking,
     examType,
     assessmentDetails,
+    assessmentId,
 }: {
     adaptiveMarking: Question[];
     examType: string;
     assessmentDetails: any;
+    assessmentId: string;
 }) => {
     const { t } = useTranslation('assessmentQuestionsSection');
+    const queryClient = useQueryClient();
+    // What the AI copy check marks each question by. Criteria are saved there:
+    // the question's own criteria are shared through the question bank and are
+    // not what the check reads.
+    const { data: aiCriteria } = useQuery({
+        queryKey: [COPY_CHECK_CRITERIA_KEY, assessmentId],
+        queryFn: () => getCopyCheckCriteria(assessmentId),
+        enabled: Boolean(assessmentId) && examType !== 'SURVEY',
+        staleTime: 30 * 1000,
+    });
+    const aiRubricOf = (questionId: string) =>
+        aiCriteria?.questions.find((q) => q.question_id === questionId)?.rubric ?? null;
+    const saveCriteria = useMutation({
+        mutationFn: (vars: { question: Question; criteria: CriteriaJson }) => {
+            const maxMarks = parseFloat(vars.question.questionMark) || vars.criteria.max_marks;
+            return saveCopyCheckCriteria(
+                assessmentId,
+                {
+                    [vars.question.questionId]: criteriaToCopyCheckRubric(
+                        vars.criteria,
+                        maxMarks,
+                        aiRubricOf(vars.question.questionId)
+                    ),
+                },
+                aiCriteria?.rubric_version
+            );
+        },
+        onSuccess: () => {
+            toast.success(t('toasts.criteriaSavedForAi'));
+            queryClient.invalidateQueries({ queryKey: [COPY_CHECK_CRITERIA_KEY, assessmentId] });
+        },
+        onError: () => {
+            toast.error(t('toasts.criteriaSaveFailed'));
+            queryClient.invalidateQueries({ queryKey: [COPY_CHECK_CRITERIA_KEY, assessmentId] });
+        },
+    });
     const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
     const [criteriaPreview, setCriteriaPreview] = useState<CriteriaJson | null>(null);
     const [criteriaDialogOpen, setCriteriaDialogOpen] = useState(false);
@@ -286,10 +332,18 @@ const QuestionsTable = ({
 
     if (localAdaptiveMarking.length === 0) return null;
 
-    const handlePreviewCriteria = (evaluation_criteria_json: string | null | undefined) => {
-        if (!evaluation_criteria_json) return;
+    /** The criteria shown for a question: the AI check's, else the question's own. */
+    const criteriaFor = (question: Question): CriteriaJson | undefined => {
+        const maxMarks = parseFloat(question.questionMark) || 0;
+        const rubric = aiRubricOf(question.questionId);
+        if (rubric && rubric.rubric.length > 0) return toEditableCriteria(rubric, maxMarks);
+        return question.evaluation_criteria_json
+            ? (parseCriteria(question.evaluation_criteria_json) ?? undefined)
+            : undefined;
+    };
 
-        const parsed = parseCriteria(evaluation_criteria_json);
+    const handlePreviewCriteria = (question: Question) => {
+        const parsed = criteriaFor(question);
 
         // Validate parsed criteria structure
         if (!parsed || !parsed.criteria || !Array.isArray(parsed.criteria)) {
@@ -310,6 +364,7 @@ const QuestionsTable = ({
     const handleSaveCriteria = (criteria: CriteriaJson | null, source: CriteriaSource) => {
         if (selectedQuestionIndex === null) return;
 
+        const question = localAdaptiveMarking[selectedQuestionIndex];
         const updated = [...localAdaptiveMarking];
         updated[selectedQuestionIndex] = {
             ...updated[selectedQuestionIndex]!,
@@ -317,6 +372,10 @@ const QuestionsTable = ({
         } as Question;
         setLocalAdaptiveMarking(updated);
         setCriteriaDialogOpen(false);
+        // Saved where the AI check reads it; before this the edit lived only in this table.
+        if (question && criteria && criteria.criteria.length > 0 && assessmentId) {
+            saveCriteria.mutate({ question, criteria });
+        }
     };
 
     const selectedQuestion =
@@ -377,6 +436,10 @@ const QuestionsTable = ({
                         </TableHeader>
                         <TableBody>
                             {localAdaptiveMarking.map((question: Question, index: number) => {
+                                const usedByAi =
+                                    (aiRubricOf(question.questionId)?.rubric.length ?? 0) > 0;
+                                const hasCriteria =
+                                    usedByAi || Boolean(question.evaluation_criteria_json);
                                 return (
                                     <TableRow
                                         key={index}
@@ -417,25 +480,35 @@ const QuestionsTable = ({
                                         )}
                                         {examType !== 'SURVEY' && (
                                             <TableCell className="align-top">
-                                                {question.evaluation_criteria_json ? (
+                                                <div className="flex flex-col gap-1">
                                                     <CriteriaStatusBadge
                                                         status={
-                                                            question.criteria_template_id
-                                                                ? 'template'
-                                                                : 'manual'
+                                                            !hasCriteria
+                                                                ? 'not-added'
+                                                                : question.criteria_template_id
+                                                                  ? 'template'
+                                                                  : 'manual'
                                                         }
                                                         onClick={() => handleEditCriteria(index)}
                                                         onPreview={() =>
-                                                            handlePreviewCriteria(
-                                                                question.evaluation_criteria_json
-                                                            )
+                                                            handlePreviewCriteria(question)
                                                         }
                                                     />
-                                                ) : (
-                                                    <span className="text-xs italic text-slate-400">
-                                                        {t('table.criteriaNotSet')}
-                                                    </span>
-                                                )}
+                                                    {hasCriteria && (
+                                                        <span
+                                                            className={cn(
+                                                                'text-caption',
+                                                                usedByAi
+                                                                    ? 'text-success-600'
+                                                                    : 'text-neutral-400'
+                                                            )}
+                                                        >
+                                                            {usedByAi
+                                                                ? t('table.criteriaUsedByAi')
+                                                                : t('table.criteriaNotUsedByAi')}
+                                                        </span>
+                                                    )}
+                                                </div>
                                             </TableCell>
                                         )}
                                         {assessmentDetails[1]?.saved_data?.duration_distribution ===
@@ -473,11 +546,7 @@ const QuestionsTable = ({
                         max_marks: parseFloat(selectedQuestion.questionMark) || 0,
                         subject: '', // Can be enhanced if subject data is available
                     }}
-                    existingCriteria={
-                        selectedQuestion.evaluation_criteria_json
-                            ? (parseCriteria(selectedQuestion.evaluation_criteria_json) ?? undefined)
-                            : undefined
-                    }
+                    existingCriteria={criteriaFor(selectedQuestion)}
                     open={criteriaDialogOpen}
                     onSave={handleSaveCriteria}
                     onClose={() => setCriteriaDialogOpen(false)}
@@ -564,6 +633,7 @@ const AssessmentQuestionsSection = ({ section, index }: { section: Section; inde
                     adaptiveMarking={adaptiveMarking}
                     examType={examType}
                     assessmentDetails={assessmentDetails}
+                    assessmentId={assessmentId}
                 />
                 {adaptiveMarking.length > 0 && examType !== 'SURVEY' && (
                     <div className="flex items-center justify-end">

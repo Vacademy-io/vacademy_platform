@@ -30,10 +30,14 @@
             "criteria": "المعايير",
             "time": "الوقت"
         },
-        "criteriaNotSet": "غير محدد"
+        "criteriaNotSet": "غير محدد",
+        "criteriaUsedByAi": "يصحح الذكاء الاصطناعي وفق هذه",
+        "criteriaNotUsedByAi": "غير مستخدمة في التصحيح الآلي بعد: عدّلها واحفظها لاستخدامها"
     },
     "toasts": {
-        "invalidCriteriaFormat": "تعذر معاينة المعايير. تنسيق البيانات غير صالح."
+        "invalidCriteriaFormat": "تعذر معاينة المعايير. تنسيق البيانات غير صالح.",
+        "criteriaSavedForAi": "تم حفظ المعايير. سيصحح الذكاء الاصطناعي هذا السؤال وفقها من الورقة التالية.",
+        "criteriaSaveFailed": "تعذر حفظ المعايير للتصحيح الآلي"
     },
     "accordion": {
         "questionCount_zero": "لا أسئلة ({{count}})",

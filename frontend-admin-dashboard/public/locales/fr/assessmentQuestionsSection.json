@@ -30,10 +30,14 @@
             "criteria": "Critères",
             "time": "Temps"
         },
-        "criteriaNotSet": "Non défini"
+        "criteriaNotSet": "Non défini",
+        "criteriaUsedByAi": "L'IA corrige selon ces critères",
+        "criteriaNotUsedByAi": "Pas encore utilisés par la correction IA : modifiez et enregistrez pour les utiliser"
     },
     "toasts": {
-        "invalidCriteriaFormat": "Impossible d'afficher l'aperçu des critères. Format de données invalide."
+        "invalidCriteriaFormat": "Impossible d'afficher l'aperçu des critères. Format de données invalide.",
+        "criteriaSavedForAi": "Critères enregistrés. L'IA corrige cette question selon eux dès la prochaine copie.",
+        "criteriaSaveFailed": "Les critères n'ont pas pu être enregistrés pour la correction IA"
     },
     "accordion": {
         "questionCount_one": "{{count}} question",

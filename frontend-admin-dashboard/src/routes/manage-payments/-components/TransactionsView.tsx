@@ -1,9 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { DownloadSimple, EnvelopeSimple, Plus, X } from '@phosphor-icons/react';
+import { CaretDown, DownloadSimple, EnvelopeSimple, Plus, X } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { MyButton } from '@/components/design-system/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { resolveInstituteCurrency } from '@/utils/institute-currency';
 import type { SelectOption } from '@/components/design-system/SelectChips';
@@ -28,7 +34,7 @@ import {
     type LeadColumnToggle,
 } from '@/components/shared/leads/use-lead-column-prefs';
 import { InvoicePreviewByIdDialog } from '@/components/common/invoice/invoice-preview-by-id-dialog';
-import type { PaymentLogInvoiceDTO } from '@/services/invoice-service';
+import { downloadInvoicesZip, type PaymentLogInvoiceDTO } from '@/services/invoice-service';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
@@ -81,6 +87,24 @@ const COLUMNS_ADDED_FLAG = 'manage-payments:hidden-columns:dates-added';
 /** Header actions (Send reminders / Record payment) are hidden until the flows are ready. */
 const SHOW_HEADER_ACTIONS = false;
 
+/** `invoices_acme_2026-10-01_to_2026-10-31.zip` — the window in the admin's own dates. */
+const invoicesZipFileName = (start: string, end: string, instituteName?: string): string => {
+    const localDate = (iso: string) => {
+        const d = new Date(iso);
+        const pad = (n: number) => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    };
+    const namePart = (instituteName || 'institute')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)/g, '');
+    const period =
+        start || end
+            ? `${start ? localDate(start) : 'start'}_to_${end ? localDate(end) : localDate(new Date().toISOString())}`
+            : 'all-time';
+    return `invoices_${namePart}_${period}.zip`;
+};
+
 interface ActiveChip {
     id: string;
     label: string;
@@ -106,6 +130,7 @@ export function TransactionsView() {
     // Filters. The date window lives in the toolbar (not the slide-over) so changing the period
     // is one click; start/end are the UTC instants it resolves to.
     const [dateRange, setDateRange] = useState<DateRangeValue>(ALL_TIME_RANGE);
+    const [exporting, setExporting] = useState<'csv' | 'zip' | null>(null);
     const { start: startDate, end: endDate } = dateRange;
     // Status is one control — the KPI tiles and the segmented switch drive this single bucket, and
     // it filters the loaded rows locally (see classifyEntry).
@@ -813,6 +838,40 @@ export function TransactionsView() {
         }
     };
 
+    // Every invoice issued in the toolbar's window, as one ZIP. Only the date window applies —
+    // an accounting pack is "all invoices for the period", not the slice of payments in view.
+    const handleExportInvoicesZip = async () => {
+        if (!instituteId) return;
+        const toastId = toast.loading('Preparing invoices… large periods can take a minute.');
+        try {
+            await downloadInvoicesZip(
+                instituteId,
+                {
+                    startDate: startDate ? startDate.slice(0, 19) : undefined,
+                    endDate: endDate ? endDate.slice(0, 19) : undefined,
+                },
+                invoicesZipFileName(startDate, endDate, instituteDetails?.institute_name)
+            );
+            toast.success('Invoices downloaded.', { id: toastId });
+        } catch (error) {
+            console.error('Failed to export invoices:', error);
+            const message =
+                error instanceof Error && error.message && !error.message.startsWith('Request failed')
+                    ? error.message
+                    : 'Failed to download invoices. Please try again.';
+            toast.error(message, { id: toastId });
+        }
+    };
+
+    const runExport = async (kind: 'csv' | 'zip') => {
+        setExporting(kind);
+        try {
+            await (kind === 'csv' ? handleExportCsv() : handleExportInvoicesZip());
+        } finally {
+            setExporting(null);
+        }
+    };
+
     const openDetail = (entry: PaymentLogEntry) => {
         setDetailEntry(entry);
         setDetailOpen(true);
@@ -868,17 +927,41 @@ export function TransactionsView() {
                                     : ['schedule']
                             }
                         />
-                        <MyButton
-                            buttonType="secondary"
-                            scale="medium"
-                            onAsyncClick={handleExportCsv}
-                            loadingText="Exporting…"
-                            className="gap-2"
-                            disable={paymentSummary.total.count === 0}
-                        >
-                            <DownloadSimple size={16} />
-                            Export
-                        </MyButton>
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <MyButton
+                                    buttonType="secondary"
+                                    scale="medium"
+                                    className="gap-2"
+                                    disable={exporting !== null}
+                                >
+                                    <DownloadSimple size={16} />
+                                    {exporting ? 'Exporting…' : 'Export'}
+                                    <CaretDown size={14} />
+                                </MyButton>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-64">
+                                <DropdownMenuItem
+                                    disabled={paymentSummary.total.count === 0}
+                                    onSelect={() => void runExport('csv')}
+                                    className="flex flex-col items-start gap-0.5"
+                                >
+                                    <span className="font-medium">Payments (CSV)</span>
+                                    <span className="text-caption text-neutral-500">
+                                        The payment records in view
+                                    </span>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                    onSelect={() => void runExport('zip')}
+                                    className="flex flex-col items-start gap-0.5"
+                                >
+                                    <span className="font-medium">Invoices (ZIP)</span>
+                                    <span className="text-caption text-neutral-500">
+                                        Every invoice PDF issued in the selected dates
+                                    </span>
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
                         {SHOW_HEADER_ACTIONS && (
                             <>
                                 <MyButton

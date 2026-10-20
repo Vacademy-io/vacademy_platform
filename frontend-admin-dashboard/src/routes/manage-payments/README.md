@@ -149,6 +149,21 @@ rows, but its obligation is in neither `billed_plans` (no user_plan) nor `billed
 payment logs). Widening that would risk double-counting against the `paid` CTE, so it was left
 alone deliberately.
 
+### ⬇️ Export (toolbar dropdown)
+
+-   **Payments (CSV)** — the payment records matching the current tile and filters.
+-   **Invoices (ZIP)** — every invoice PDF issued in the toolbar's date window (by invoice date;
+    the other filters don't apply), plus an `invoices.csv` manifest
+    (`GET /v1/invoices/institute/{id}/bulk-download`, `InvoiceBulkExportService`).
+    -   Voided (`REJECTED`) invoices are left out.
+    -   One invoice per payment: where a payment was invoiced more than once (concurrent
+        generation), the **first-issued** invoice is kept and the extras are listed in the
+        manifest as "duplicate of …", not packed.
+    -   A missing PDF is regenerated on the fly; one that still can't be produced is listed in the
+        manifest instead of failing the whole archive.
+    -   Capped at 1,000 invoices per download — a longer period is refused with a message to pick
+        a shorter range.
+
 ### 🔄 Pagination
 
 -   Configurable page size (default: 20 records per page)
@@ -246,7 +261,6 @@ The page automatically:
 
 Potential improvements:
 
--   Export to CSV/Excel
 -   Payment receipt generation
 -   Refund processing
 -   Advanced analytics and charts

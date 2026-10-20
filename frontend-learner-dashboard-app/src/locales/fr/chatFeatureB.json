@@ -87,6 +87,9 @@
             "label": "Interroge-moi",
             "prompt": "Interroge-moi sur "
         },
+        "quizMeOnThis": {
+            "prompt": "Fais-moi un quiz sur ce {{slide}}"
+        },
         "summarize": {
             "label": "Résume",
             "prompt": "Donne-moi un bref résumé de ce {{slide}}"
@@ -158,7 +161,8 @@
         "reviewingPerformance": "Analyse de vos données de performance...",
         "searchingResources": "Recherche de contenu associé...",
         "searchingCourseMaterials": "Recherche dans les supports de votre {{course}}...",
-        "workingOnIt": "Traitement en cours..."
+        "workingOnIt": "Traitement en cours...",
+        "preparingQuiz": "Préparation de votre quiz..."
     },
     "voiceAvatar": {
         "ready": "Prêt",

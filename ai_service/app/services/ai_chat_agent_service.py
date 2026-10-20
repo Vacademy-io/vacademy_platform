@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import logging
 from typing import Callable, Dict, Any, List, Optional, AsyncGenerator
 from uuid import uuid4
@@ -22,7 +23,11 @@ from ..models.ai_token_usage import ApiProvider, RequestType
 
 from ..repositories.chat_message_repository import ChatMessageRepository
 from ..services.context_resolver_service import ContextResolverService
-from ..services.tool_manager_service import ToolManagerService, TOOL_DEFINITIONS
+from ..services.tool_manager_service import (
+    ORCHESTRATOR_TOOLS,
+    TOOL_DEFINITIONS,
+    ToolManagerService,
+)
 from ..services.chat_cards import card_fallback_markdown, split_tool_output
 from ..services.chat_llm_client import ChatLLMClient
 from ..services.institute_settings_service import InstituteSettingsService
@@ -255,12 +260,17 @@ class AiChatAgentService:
         initial_message: Optional[str] = None,
         user_name: Optional[str] = None,
         session_mode: Optional[str] = "text",
+        ui_language: Optional[str] = None,
     ) -> tuple[str, str]:
         """Create a new chat session and optionally save an initial message."""
         if context_type is None:
             context_type = "general"
         if context_meta is None:
             context_meta = {}
+        if ui_language:
+            # The app's UI language: the reply language when the student's own
+            # message doesn't show one.
+            context_meta = {**context_meta, "ui_language": ui_language[:20]}
 
         with self._get_db() as db:
             session_repo = ChatSessionRepository(db)
@@ -375,6 +385,7 @@ class AiChatAgentService:
         session_id: str,
         context_type: str,
         context_meta: Dict[str, Any],
+        ui_language: Optional[str] = None,
     ) -> bool:
         """Update the context for an existing session without triggering AI response."""
         with self._get_db() as db:
@@ -393,6 +404,10 @@ class AiChatAgentService:
             existing_meta = getattr(session, "context_meta", None) or {}
             if existing_meta.get("voice_topic") and not (context_meta or {}).get("voice_topic"):
                 context_meta = {**(context_meta or {}), "voice_topic": existing_meta["voice_topic"]}
+            # Same for the UI language: a resync must not reset it.
+            language = (ui_language or "")[:20] or existing_meta.get("ui_language")
+            if language:
+                context_meta = {**(context_meta or {}), "ui_language": language}
 
             success = session_repo.update_context(
                 session_id=session_id,
@@ -674,6 +689,7 @@ class AiChatAgentService:
                     user_id,
                     institute_id,
                 )
+                ui_language = (session.context_meta or {}).get("ui_language")
 
                 inst_settings = InstituteSettingsService(db)
                 ai_settings = inst_settings.get_ai_settings(institute_id)
@@ -683,8 +699,28 @@ class AiChatAgentService:
                 keys = self._resolve_keys(db, institute_id, user_id)
             # ── DB released ──
 
+            from .platform_settings_service import get_platform_setting
+
+            use_llm = bool(get_platform_setting("chatbot.text.llm_greeting", default=False))
+            if not use_llm:
+                greeting_content = template_greeting(
+                    assistant_name=str(ai_settings.get("assistant_name") or "").strip(),
+                    context=context,
+                    ui_language=ui_language,
+                )
+                with self._get_db() as db:
+                    greeting_msg = ChatMessageRepository(db).create_message(
+                        session_id=session_id,
+                        message_type="assistant",
+                        content=greeting_content,
+                    )
+                    msg_data = _msg_event(greeting_msg)
+                yield {"event": "message", "data": msg_data}
+                return
+
             system_prompt = self._build_system_prompt(
-                institute_rules, context, user_id, institute_id, is_greeting=True
+                institute_rules, context, user_id, institute_id, is_greeting=True,
+                ui_language=ui_language,
             )
             messages = [{"role": "system", "content": system_prompt}]
 
@@ -775,6 +811,7 @@ class AiChatAgentService:
                     user_id,
                     institute_id,
                 )
+                ui_language = (session.context_meta or {}).get("ui_language")
 
                 # Pre-resolve API keys
                 keys = self._resolve_keys(db, institute_id, user_id)
@@ -890,8 +927,13 @@ class AiChatAgentService:
                 except Exception as e:
                     logger.warning(f"Failed to track doubt analytics: {e}")
 
-            # Handle PRACTICE intent (manages its own sessions)
-            if intent == MessageIntent.PRACTICE:
+            # Only an EXPLICIT practice intent from the app skips the model.
+            # A keyword guess no longer does: "quiz"/"practice"/"exercise" in
+            # a message sent 646 messages a month straight into 10-question
+            # quiz generation — pasted questions, "how to practice the
+            # assessment", and 354 bare "Quiz me on " sends. The model now
+            # decides, through the create_practice_quiz tool.
+            if intent == MessageIntent.PRACTICE and explicit_intent == MessageIntent.PRACTICE:
                 async for event in self._handle_practice_request(
                     session_id,
                     latest_msg_content,
@@ -912,6 +954,7 @@ class AiChatAgentService:
                 institute_id,
                 is_greeting=False,
                 is_doubt=(intent == MessageIntent.DOUBT),
+                ui_language=ui_language,
             )
             if kb_context:
                 system_prompt += kb_context
@@ -947,9 +990,11 @@ class AiChatAgentService:
                     tool_calls_result = None
                     usage_data = None
 
+                    # The last round gets no tools, so a turn that keeps
+                    # calling tools still ends with an answer.
                     async for chunk in llm_client.chat_completion_stream(
                         messages=messages,
-                        tools=tools,
+                        tools=tools if iteration < max_iterations else None,
                         temperature=temperature,
                         institute_id=institute_id,
                         user_id=user_id,
@@ -1051,6 +1096,18 @@ class AiChatAgentService:
                         )
                     break
 
+                # Text streamed alongside tool calls ("Let me look that up")
+                # was shown to the learner and then dropped; keep it.
+                if full_content.strip():
+                    with self._get_db() as db:
+                        pre_msg = ChatMessageRepository(db).create_message(
+                            session_id=session_id,
+                            message_type="assistant",
+                            content=full_content,
+                        )
+                        pre_data = _msg_event(pre_msg)
+                    yield {"event": "message", "data": pre_data}
+
                 # ── Process tool calls ──
                 for tool_call in tool_calls:
                     tool_name = tool_call["function"]["name"]
@@ -1068,48 +1125,13 @@ class AiChatAgentService:
                     if "user_id" in tool_args and not tool_args["user_id"]:
                         tool_args["user_id"] = user_id
 
-                    # Send engaging message before tool execution
-                    engaging_messages = {
-                        "get_learning_progress": "Let me check your progress! 🔍",
-                        "get_student_feedback": "Looking up your feedback... 📝",
-                        "search_related_resources": "Searching for helpful resources... 🔎",
-                    }
-                    engaging_msg_content = engaging_messages.get(
-                        tool_name, "One moment, let me check that for you... ⏳"
-                    )
-
+                    # Record the call BEFORE running it, so the learner app's
+                    # tool indicator ("Checking your progress...") is up while
+                    # the tool actually runs. (It used to arrive after the
+                    # result, so the indicator flashed for zero time and a canned
+                    # English filler line was stored as a reply instead.)
                     with self._get_db() as db:
-                        engaging_msg = ChatMessageRepository(db).create_message(
-                            session_id=session_id,
-                            message_type="assistant",
-                            content=engaging_msg_content,
-                        )
-                        engaging_data = _msg_event(engaging_msg)
-                    yield {"event": "message", "data": engaging_data}
-
-                    # Execute tool (in its own short-lived session)
-                    with self._get_db() as db:
-                        cached_resolver = _CachedKeyResolver(keys)
-                        embedding_service = EmbeddingService(cached_resolver)
-                        rag_service = RAGService(db, embedding_service)
-                        analytics_service = LearningAnalyticsService(db)
-                        tool_manager = ToolManagerService(
-                            db,
-                            rag_service=rag_service,
-                            analytics_service=analytics_service,
-                            institute_id=institute_id,
-                            user_id=user_id,
-                        )
-                        tool_output = await tool_manager.execute_tool(
-                            tool_name, tool_args
-                        )
-                    tool_result, tool_card = split_tool_output(tool_output)
-
-                    # Save tool call and result messages
-                    with self._get_db() as db:
-                        message_repo = ChatMessageRepository(db)
-
-                        tool_call_msg = message_repo.create_message(
+                        tool_call_msg = ChatMessageRepository(db).create_message(
                             session_id=session_id,
                             message_type="tool_call",
                             content=f"Calling tool: {tool_name}",
@@ -1120,8 +1142,57 @@ class AiChatAgentService:
                             },
                         )
                         tool_call_data = _msg_event(tool_call_msg)
+                    yield {"event": "message", "data": tool_call_data}
+                    self._refresh_claim(message_id)
 
-                        tool_result_msg = message_repo.create_message(
+                    tool_card = None
+                    if tool_name in ORCHESTRATOR_TOOLS:
+                        # The quiz is a chat message of its own, not text for
+                        # the model: generate it, show it, and tell the model
+                        # what was shown.
+                        quiz_outcome: Dict[str, Any] = {}
+                        async for event in self._generate_quiz(
+                            session_id=session_id,
+                            topic=str(tool_args.get("topic") or "").strip(),
+                            num_questions=tool_args.get("num_questions"),
+                            difficulty=tool_args.get("difficulty"),
+                            context=context,
+                            user_message=latest_msg_content,
+                            institute_id=institute_id,
+                            user_id=user_id,
+                            llm_client=llm_client,
+                            outcome=quiz_outcome,
+                        ):
+                            yield event
+                        tool_result = quiz_outcome.get("tool_result") or (
+                            "The quiz could not be created. Apologise briefly and offer to explain "
+                            "the topic instead."
+                        )
+                        # One quiz per turn: the model gets no second go.
+                        tools = [
+                            t for t in tools
+                            if t["function"]["name"] not in ORCHESTRATOR_TOOLS
+                        ] or None
+                    else:
+                        with self._get_db() as db:
+                            cached_resolver = _CachedKeyResolver(keys)
+                            embedding_service = EmbeddingService(cached_resolver)
+                            rag_service = RAGService(db, embedding_service)
+                            analytics_service = LearningAnalyticsService(db)
+                            tool_manager = ToolManagerService(
+                                db,
+                                rag_service=rag_service,
+                                analytics_service=analytics_service,
+                                institute_id=institute_id,
+                                user_id=user_id,
+                            )
+                            tool_output = await tool_manager.execute_tool(
+                                tool_name, tool_args
+                            )
+                        tool_result, tool_card = split_tool_output(tool_output)
+
+                    with self._get_db() as db:
+                        tool_result_msg = ChatMessageRepository(db).create_message(
                             session_id=session_id,
                             message_type="tool_result",
                             content=tool_result,
@@ -1131,8 +1202,6 @@ class AiChatAgentService:
                             },
                         )
                         tool_result_data = _msg_event(tool_result_msg)
-
-                    yield {"event": "message", "data": tool_call_data}
                     yield {"event": "message", "data": tool_result_data}
 
                     # A tool may hand back something to SHOW (links, progress)
@@ -1241,47 +1310,89 @@ class AiChatAgentService:
         user_id: str,
         llm_client: ChatLLMClient,
     ) -> AsyncGenerator[Dict[str, Any], None]:
-        """Handle PRACTICE intent — generate and send a quiz."""
-        try:
-            yield {"event": "status", "data": {"ai_status": "generating_quiz"}}
-
-            topic = self.intent_classifier.get_practice_topic(
-                user_message, context
-            )
-
-            # If topic is too generic, ask user to specify
-            if topic in ("Current Topic", "current topic"):
-                with self._get_db() as db:
-                    ask_msg = ChatMessageRepository(db).create_message(
-                        session_id=session_id,
-                        message_type="assistant",
-                        content=(
-                            "What topic would you like to practice? "
-                            "Please specify, for example:\n"
-                            '- "Quiz me on quadratic equations"\n'
-                            '- "Practice photosynthesis"\n'
-                            '- "Test me on Newton\'s laws"'
-                        ),
-                    )
-                    ask_data = _msg_event(ask_msg)
-                yield {"event": "message", "data": ask_data}
-                yield {"event": "status", "data": {"ai_status": "idle"}}
-                return
-
-            # Send engaging message
+        """Explicit practice intent from the app (no model turn): quiz on the current topic."""
+        topic = self.intent_classifier.get_practice_topic(user_message, context)
+        if topic in ("Current Topic", "current topic"):
             with self._get_db() as db:
-                prep_msg = ChatMessageRepository(db).create_message(
+                ask_msg = ChatMessageRepository(db).create_message(
                     session_id=session_id,
                     message_type="assistant",
-                    content=f"Great choice! Let me prepare a quiz on **{topic}** for you... 📝",
+                    content=(
+                        "What topic would you like to practice? "
+                        "Please specify, for example:\n"
+                        '- "Quiz me on quadratic equations"\n'
+                        '- "Practice photosynthesis"\n'
+                        '- "Test me on Newton\'s laws"'
+                    ),
                 )
-                prep_data = _msg_event(prep_msg)
-            yield {"event": "message", "data": prep_data}
+                ask_data = _msg_event(ask_msg)
+            yield {"event": "message", "data": ask_data}
+            return
+        outcome: Dict[str, Any] = {}
+        async for event in self._generate_quiz(
+            session_id=session_id,
+            topic=topic,
+            num_questions=None,
+            difficulty=None,
+            context=context,
+            user_message=user_message,
+            institute_id=institute_id,
+            user_id=user_id,
+            llm_client=llm_client,
+            outcome=outcome,
+        ):
+            yield event
+        if not outcome.get("shown"):
+            with self._get_db() as db:
+                fail_msg = ChatMessageRepository(db).create_message(
+                    session_id=session_id,
+                    message_type="assistant",
+                    content=(
+                        "I couldn't make a quiz on that just now. Tell me the specific topic "
+                        "you'd like to practise, or ask me to explain it instead."
+                    ),
+                )
+                fail_data = _msg_event(fail_msg)
+            yield {"event": "message", "data": fail_data}
 
-            # Enrich context with user message
+    async def _generate_quiz(
+        self,
+        session_id: str,
+        topic: str,
+        num_questions: Any,
+        difficulty: Any,
+        context: Dict[str, Any],
+        user_message: str,
+        institute_id: str,
+        user_id: str,
+        llm_client: ChatLLMClient,
+        outcome: Dict[str, Any],
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """
+        Generate a quiz, store its answer key, and post it as a `quiz` message.
+
+        Used by the create_practice_quiz tool (the model chose topic, count and
+        difficulty) and by the explicit practice intent. On return,
+        outcome["tool_result"] says what happened, for the model.
+        """
+        try:
+            n = int(num_questions) if num_questions not in (None, "") else 5
+        except (TypeError, ValueError):
+            n = 5
+        n = max(3, min(10, n))
+        level = difficulty if difficulty in ("easy", "medium", "hard") else "medium"
+        topic = (topic or "").strip()[:200]
+        if not topic:
+            outcome["tool_result"] = (
+                "No topic was given, so no quiz was created. Ask the student what they want "
+                "to practise."
+            )
+            return
+
+        yield {"event": "status", "data": {"ai_status": "generating_quiz"}}
+        try:
             quiz_context = dict(context)
-            if "context_data" not in quiz_context:
-                quiz_context["context_data"] = {}
+            quiz_context["context_data"] = dict(quiz_context.get("context_data") or {})
             existing_content = quiz_context["context_data"].get("content", "")
             quiz_context["context_data"]["content"] = (
                 f"{existing_content}\n\nUser's request: {user_message}"
@@ -1289,41 +1400,25 @@ class AiChatAgentService:
                 else f"User's request: {user_message}"
             )
 
-            # Generate quiz (LLM call — no DB held)
             quiz_service = QuizService(llm_client)
             quiz_data = await quiz_service.generate_quiz(
                 topic=topic,
                 context=quiz_context,
-                num_questions=10,
-                difficulty="medium",
+                num_questions=n,
+                difficulty=level,
                 institute_id=institute_id,
                 user_id=user_id,
             )
-
-            # If quiz generation failed
             if not quiz_data.questions:
-                with self._get_db() as db:
-                    fallback_msg = ChatMessageRepository(db).create_message(
-                        session_id=session_id,
-                        message_type="assistant",
-                        content=(
-                            "I couldn't generate quiz questions for that. "
-                            "Could you tell me the specific topic you'd like to practice? "
-                            "For example:\n"
-                            '- "Quiz me on quadratic equations"\n'
-                            '- "Practice questions on photosynthesis"\n'
-                            '- "Test me on Newton\'s laws"'
-                        ),
-                    )
-                    fallback_data = _msg_event(fallback_msg)
-                yield {"event": "message", "data": fallback_data}
-                yield {"event": "status", "data": {"ai_status": "idle"}}
+                outcome["tool_result"] = (
+                    f"Quiz generation for '{topic}' returned no questions. Tell the student "
+                    "briefly, and offer to explain the topic or try a more specific one."
+                )
                 return
 
-            # Store quiz for later evaluation. The in-process dict stays as a
-            # fast path; the DB row is what survives a restart or deploy between
-            # generation and submission (previously 18.7% of submissions were
-            # lost that way, and the student was told the quiz did not exist).
+            # The DB row is the answer key that survives restarts and deploys
+            # between generation and submission; the dict is a per-request
+            # fast path only.
             self._active_quizzes[session_id] = quiz_data
             with self._get_db() as db:
                 ChatQuizStateRepository(db).save(
@@ -1332,42 +1427,33 @@ class AiChatAgentService:
                     quiz_payload=quiz_data.model_dump(),
                 )
 
-            # Prepare quiz data for frontend (strip correct answers)
             frontend_quiz_data = quiz_service.get_quiz_for_frontend(quiz_data)
-
             with self._get_db() as db:
                 quiz_msg = ChatMessageRepository(db).create_message(
                     session_id=session_id,
                     message_type="quiz",
                     content=(
-                        f"Here's your quiz on **{topic}**! "
+                        f"Here's your quiz on **{quiz_data.topic or topic}**! "
                         f"Answer all {quiz_data.total_questions} questions "
                         "and submit when ready."
                     ),
                     metadata={"quiz_data": frontend_quiz_data},
                 )
-                quiz_data_dict = _msg_event(quiz_msg)
-            yield {"event": "message", "data": quiz_data_dict}
-
-            logger.info(
-                f"Quiz generated for session {session_id}: {quiz_data.quiz_id}"
+                quiz_event = _msg_event(quiz_msg)
+            yield {"event": "message", "data": quiz_event}
+            logger.info(f"Quiz generated for session {session_id}: {quiz_data.quiz_id}")
+            outcome["shown"] = True
+            outcome["tool_result"] = (
+                f"A {quiz_data.total_questions}-question {level} quiz on '{quiz_data.topic or topic}' "
+                "is now on screen as an interactive card; it is scored automatically when they "
+                "submit. Do NOT list the questions or answers. Reply with one short, encouraging "
+                "line in the student's language."
             )
-
         except Exception as e:
-            logger.error(
-                f"Error generating quiz for session {session_id}: {e}"
+            logger.error(f"Error generating quiz for session {session_id}: {e}")
+            outcome["tool_result"] = (
+                "Quiz generation failed. Apologise briefly and offer to explain the topic instead."
             )
-            with self._get_db() as db:
-                error_msg = ChatMessageRepository(db).create_message(
-                    session_id=session_id,
-                    message_type="assistant",
-                    content=(
-                        "I had trouble generating the quiz. Let me help you "
-                        "understand the topic instead. What would you like to know?"
-                    ),
-                )
-                error_data = _msg_event(error_msg)
-            yield {"event": "message", "data": error_data}
 
     async def _handle_quiz_submission(
         self,
@@ -1424,16 +1510,6 @@ class AiChatAgentService:
                 return
 
             yield {"event": "status", "data": {"ai_status": "thinking"}}
-
-            # Acknowledgment
-            with self._get_db() as db:
-                ack_msg = ChatMessageRepository(db).create_message(
-                    session_id=session_id,
-                    message_type="assistant",
-                    content="Evaluating your answers... 🔍",
-                )
-                ack_data = _msg_event(ack_msg)
-            yield {"event": "message", "data": ack_data}
 
             # Evaluate quiz (LLM call — no DB held)
             quiz_service = QuizService(llm_client)
@@ -1532,206 +1608,154 @@ class AiChatAgentService:
                 error_data = _msg_event(error_msg)
             yield {"event": "message", "data": error_data}
 
-    def _build_system_prompt(self, institute_rules: str, context: Dict[str, Any], user_id: str, institute_id: str, is_greeting: bool = False, is_doubt: bool = False) -> str:
+    def _build_system_prompt(
+        self,
+        institute_rules: str,
+        context: Dict[str, Any],
+        user_id: str,
+        institute_id: str,
+        is_greeting: bool = False,
+        is_doubt: bool = False,
+        ui_language: Optional[str] = None,
+    ) -> str:
         """
-        Build the system prompt combining institute rules and context.
+        System prompt: fixed instructions first, then the institute's rules,
+        then everything about THIS learner and page last.
 
-        Args:
-            is_greeting: If True, instructs AI to generate a personalized greeting
-            is_doubt: If True, the user has a specific doubt - be more explanatory
+        The order is deliberate. Providers cache a prompt's longest shared
+        prefix, and the old prompt put the learner's name, email, ids and the
+        slide text at the top, so no two learners shared one. The learner's
+        email and internal ids are no longer sent at all: tools take identity
+        from the session server-side.
         """
-        import json
+        from datetime import datetime, timedelta, timezone
 
-        # Extract user details
-        user_details = context.get("user_details", {})
-        user_name = user_details.get("name", "Student")
-        user_email = user_details.get("email")
+        user_details = context.get("user_details", {}) or {}
+        user_name = user_details.get("name") or "Student"
 
-        # Build user identity section
-        user_identity = f"""IMPORTANT - USER IDENTITY:
-- Current User ID: {user_id}
-- Current Institute ID: {institute_id}
-- Student Name: {user_name}"""
-        if user_email:
-            user_identity += f"\n- Student Email: {user_email}"
-        user_identity += """
-- When you call tools that require user_id or institute_id, use these values above
-- DO NOT ask the user for their user_id or institute_id - you already have them
-- Address the student by their name naturally in conversation"""
-
-        # Format context as JSON string
-        context_str = json.dumps({
-            "context_type": context.get("context_type"),
-            "context_data": context.get("context_data"),
-            "user_performance": context.get("user_performance")
-        }, indent=2)
-
-        # Extract assistant name from institute rules
         assistant_name = "your AI tutor"
-        if "You are" in institute_rules:
-            import re
-            match = re.search(r'You are ([^,]+),', institute_rules)
-            if match:
-                assistant_name = match.group(1).strip()
+        match = re.search(r"You are ([^,]+),", institute_rules or "")
+        if match:
+            assistant_name = match.group(1).strip()
+
+        today = (datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)).strftime("%A, %d %B %Y")
+        app_language = language_name(ui_language)
+
+        context_str = json.dumps(
+            {
+                "context_type": context.get("context_type"),
+                "context_data": context.get("context_data"),
+                "user_performance": context.get("user_performance"),
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
 
         greeting_instruction = ""
         if is_greeting:
             greeting_instruction = f"""
 
 SPECIAL INSTRUCTION - GENERATE GREETING:
-This is the first message of the conversation. Generate a warm, personalized greeting for {user_name}.
-- Introduce yourself using your name: "{assistant_name}"
-- Use the student's name naturally
-- Reference the current context (slide/course/general)
-- Keep it friendly and encouraging (1-2 sentences)
-- End with an open question to engage them
-- Example: "Hi {user_name}! 👋 I'm {assistant_name}, here to help you master this topic. What would you like to explore first?"
-"""
+This is the first message of the conversation. Write a warm, personalised greeting for {user_name}.
+- Introduce yourself as "{assistant_name}" and use the student's name naturally
+- Reference what they are looking at (lesson / course / general), in 1-2 sentences
+- End with an open question"""
 
-        prompt = f"""You are an AI educational tutor helping students learn. Your role is to guide students to understand concepts rather than just providing answers.
+        doubt_instruction = ""
+        if is_doubt:
+            doubt_instruction = (
+                "\n\nThe student is asking about something they don't understand: explain "
+                "clearly, check understanding, and guide them to the answer."
+            )
 
-{user_identity}
+        prompt = f"""You are an AI educational tutor helping students learn. Guide students to understand concepts rather than just handing over answers.
+
+RESPONSE FORMATTING:
+Replies render as Markdown (with LaTeX: $...$ inline, $$...$$ display) in a narrow chat panel.
+- Use real line breaks, `##` headings sparingly, **bold**, lists, `>` quotes, ``` code blocks.
+- Use a table only for genuinely tabular data (comparisons, progress); keep tables to 2-4 columns.
+- Match length to the question: a fact gets 1-2 sentences, a concept 2-4 short paragraphs, a problem step-by-step guidance.
+- Be encouraging, patient and conversational; ask guiding questions; use analogies and examples.
+
+LANGUAGE:
+Reply in the language the student writes in. If they write Hindi in Latin letters (Hinglish), reply in Hinglish in Latin letters; if they write in Devanagari, reply in Devanagari. When their message doesn't show a language (a number, "ok", a single English term), use {app_language}, the language of their app.
+
+TOOLS — WHEN TO USE THEM:
+- Progress, what they completed, where they left off, what's next → get_learning_progress (has next_recommendation).
+- Strengths, weaknesses, feedback → get_student_feedback; doubt and quiz patterns → get_learning_analytics.
+- Lessons, videos, PDFs or questions on a topic → search_related_resources. Its matches are shown to the student as clickable links, so don't repeat the list; say which to open first and why.
+- Any request to be quizzed, tested, given MCQs or practice questions → create_practice_quiz. Never type quiz questions into your reply yourself.
+- You never need the student's id: tools know who they are.
+
+TOOL RESULTS — WHAT YOU MAY AND MAY NOT CLAIM:
+1. The tool returned data → use it, and stay inside it.
+2. The tool ran and genuinely found nothing → say plainly it isn't in their courses, and offer to help another way.
+3. The result begins with "LOOKUP FAILED" → the lookup DID NOT RUN. Say you couldn't look it up right now and suggest they ask their institute. NEVER fill the gap with a plausible-sounding answer.
+Notes in the conversation that start with "[" (a quiz you showed, a quiz result, links you showed, an earlier lookup) are real records of this conversation: rely on them, e.g. to explain a question the student got wrong.
+
+You must NOT invent, guess or generalise about any of these — you have no access to them:
+- whether live classes are recorded, and when or where recordings appear
+- class timings, timetables, schedules, joining links, attendance
+- fees, payments, refunds, or any institute policy (unless the INSTITUTE KNOWLEDGE BASE below says so)
+- what is on a slide you have not been given the content of
+If asked and no tool result or knowledge-base entry answers it, say you don't have that information and point them to their institute or teacher. Do not promise to look up something you have no tool for.
+
+ADAPTIVE TEACHING:
+- Topics in their weaknesses: foundational explanations, check understanding often.
+- Topics in their strengths: go deeper, real-world applications.
+- Low overall performance: be extra encouraging and break things down more.
+- After a quiz, help with the questions they got wrong, using the quiz-result note.
+- "What should I learn next?": use get_learning_progress; if next_recommendation is next_available, say what they finished and what comes next; if chapter_complete, congratulate them and suggest the next chapter.
 
 {institute_rules}
 
-CONTEXT INFORMATION:
-{context_str}{greeting_instruction}
+ABOUT THIS CONVERSATION:
+- Today is {today} (India time).
+- The student's name is {user_name}; address them by name naturally.
+- Conversation history (with a running summary when it is long) comes after this prompt.{greeting_instruction}{doubt_instruction}
 
-INSTRUCTIONS FOR USING CONTEXT:
-The context above contains three key pieces of information:
-
-1. CONTEXT DATA (context_type & context_data):
-   - What the student is currently viewing (slide/course/general)
-   - Specific content, materials, or topics they're working on
-   - Their progress and difficulty level
-   - Use this to understand what "this", "here", or "the slide" refers to
-
-2. USER PERFORMANCE (user_performance):
-   - Student's strengths: Topics/skills they excel at
-   - Student's weaknesses: Topics/skills they struggle with
-   - Overall performance metrics and improvement areas
-   - Topics mastered vs topics they're struggling with
-   - Use this when student asks about "my weaknesses", "my strengths", "what should I focus on", "give me feedback"
-
-3. CONVERSATION HISTORY:
-   - Last 5 user messages (system provides this separately)
-   - Use for maintaining conversation context
-
-HOW TO USE THIS INFORMATION:
-- Reference specific slide content or course materials when relevant
-- When student asks about their performance/weaknesses/strengths, use the user_performance data
-- Tailor difficulty based on their known strengths and weaknesses
-- If they're asking about a topic in their "weaknesses" list, provide extra support
-- If they're asking about a topic in their "strengths" list, you can go deeper
-- Suggest focus areas based on their improvement_areas or topics_struggling
-
-RESPONSE FORMATTING - CRITICAL:
-Your responses will be rendered as Markdown in a React frontend. Follow these formatting rules:
-
-1. **Use Proper Markdown Syntax:**
-   - Use actual line breaks (not \\n escape sequences)
-   - Use `##` for headings, `**bold**`, `*italic*`, `- ` for lists
-   - Use `---` for horizontal rules
-   - Use ` ``` ` for code blocks
-   - Use `> ` for blockquotes
-
-2. **Rich Formatting When Appropriate:**
-   When showing progress, data, or structured information, use Markdown tables, lists, or formatting:
-
-   Example for progress:
-   ```markdown
-   ## Your Progress
-
-   | Course | Progress | Status |
-   |--------|----------|--------|
-   | Biology | 75% | 🟢 On Track |
-   | Math | 45% | 🟡 Needs Focus |
-
-   ### What You Completed Today
-   - ✅ Quiz 1 (100%)
-   - ✅ Quiz 2 (100%)
-   - ✅ Quiz 3 (100%)
-   ```
-
-3. **When to Use Rich Formatting:**
-   - Progress reports: Use tables or formatted lists with emojis
-   - Multiple items: Use bullet points or numbered lists
-   - Comparisons: Use tables
-   - Important info: Use **bold** or ## headings
-   - Quotes or definitions: Use blockquotes
-   - Step-by-step: Use numbered lists
-
-4. **Keep It Simple When Not Needed:**
-   - Regular explanations: Plain paragraphs
-   - Simple answers: Short, direct text
-   - Conversations: Natural, flowing text
-
-5. **Response Length - Be Smart:**
-   - Simple questions deserve simple answers:
-     * "What's 2+2?" → "4"
-     * "What does DNA stand for?" → "Deoxyribonucleic Acid"
-     * "Is this correct?" → "Yes!" or "Not quite."
-   - Complex questions deserve detailed explanations:
-     * "Explain photosynthesis" → Full explanation with steps
-     * "How do I solve this?" → Step-by-step guidance
-     * "What's my progress?" → Detailed breakdown with tables
-   - Match your response length to what the student needs:
-     * Factual questions: 1-2 sentences
-     * Conceptual questions: 2-4 paragraphs
-     * Problem-solving: Step-by-step with examples
-
-6. **General Response Guidelines:**
-   - Be encouraging, supportive, and patient
-   - Break down complex concepts into simpler parts
-   - Ask guiding questions to help students think critically
-   - Use analogies and examples to clarify difficult topics
-   - Guide students through thinking rather than giving direct answers
-   - Use tools when you need real-time information (grades, progress, resources, what's next)
-   - Use a friendly, conversational tone
-
-TOOL RESULTS — WHAT YOU MAY AND MAY NOT CLAIM:
-Distinguish three different outcomes and never blur them together.
-1. The tool returned data → use it, and stay inside it.
-2. The tool ran and genuinely found nothing (the result says the search ran
-   successfully) → say plainly that this material does not appear to exist in
-   their course, and offer to help another way.
-3. The result begins with "LOOKUP FAILED" → the lookup DID NOT RUN. You know
-   nothing. Say you could not look it up right now and suggest they ask their
-   institute. NEVER fill the gap with a plausible-sounding answer.
-
-You must NOT invent, guess or generalise about any of the following, because you
-have no access to them and cannot verify them:
-- whether live classes are recorded, and when or where recordings appear
-- class timings, timetables, schedules, joining links, attendance
-- fees, payments, refunds, or any institute policy
-- what is on a slide you have not been given the content of
-If asked about these and no tool result gives you the answer, say you don't have
-that information and point them to their institute or teacher. A short honest
-"I can't see that from here" is always better than a confident guess. Do not
-promise to look something up that you have no tool for.
-
-ADAPTIVE TEACHING:
-- For topics in their weaknesses: Provide foundational explanations, check understanding frequently
-- For topics in their strengths: Challenge with deeper questions, real-world applications
-- If overall_performance is low: Be extra encouraging, break things down more
-- If last_assessment_score is available: Reference it when discussing their progress
-
-LEARNING PATH GUIDANCE:
-When student asks "What's next?" or "What should I learn next?":
-- Use get_learning_progress tool (includes next_recommendation)
-- Check the "next_recommendation" field in the response
-- If status is "next_available": Explain what they completed and what comes next with enthusiasm
-- If status is "chapter_complete": Congratulate them and suggest exploring the next chapter
-- Encourage continuous learning and acknowledge their progress
-- Example: "Great work on 'Cell Structure'! Next up is 'Cell Division' which builds on what you just learned. Ready to continue? 🧬"
-
-When student asks "What are my weaknesses?" or "What should I improve?":
-- Refer to the weaknesses and topics_struggling from user_performance
-- Be constructive and encouraging
-- Suggest specific study strategies for each weakness
-- Connect weaknesses to current context if relevant
+WHAT THE STUDENT IS LOOKING AT (context_type / context_data) AND THEIR PERFORMANCE (user_performance):
+{context_str}
 """
         return prompt.strip()
+
+
+def template_greeting(assistant_name: str, context: Dict[str, Any], ui_language: Optional[str]) -> str:
+    """The opening line without a model call: name, current lesson/course, an invitation."""
+    first = str(((context.get("user_details") or {}).get("name") or "")).strip().split(" ")[0]
+    data = context.get("context_data") or {}
+    kind = context.get("context_type")
+    name = str(data.get("name") or "").strip()[:80] if isinstance(data, dict) else ""
+    hindi = (ui_language or "").lower().startswith("hi")
+    me = assistant_name or ("आपका AI ट्यूटर" if hindi else "your AI tutor")
+
+    if hindi:
+        hello = f"नमस्ते {first}! 👋 मैं {me} हूँ।" if first else f"नमस्ते! 👋 मैं {me} हूँ।"
+        if kind == "slide" and name:
+            return f"{hello} **{name}** में मदद चाहिए? मैं इसे समझा सकता हूँ, आपका क्विज़ ले सकता हूँ, या आपका डाउट दूर कर सकता हूँ।"
+        if kind == "course_details" and name:
+            return f"{hello} **{name}** के बारे में जानना है? पूछिए इसमें क्या-क्या है या यह आपके लिए सही है या नहीं।"
+        return f"{hello} आज आप क्या सीखना या प्रैक्टिस करना चाहेंगे?"
+
+    hello = f"Hi {first}! 👋 I'm {me}." if first else f"Hi! 👋 I'm {me}."
+    if kind == "slide" and name:
+        return f"{hello} Want help with **{name}**? I can explain it, quiz you on it, or clear up a doubt."
+    if kind == "course_details" and name:
+        return f"{hello} Curious about **{name}**? Ask me what it covers or whether it's right for you."
+    return f"{hello} What would you like to learn or practise today?"
+
+
+_LANGUAGE_NAMES = {
+    "en": "English", "hi": "Hindi", "fr": "French", "ar": "Arabic", "kn": "Kannada",
+    "ta": "Tamil", "te": "Telugu", "mr": "Marathi", "bn": "Bengali", "gu": "Gujarati",
+    "ml": "Malayalam", "pa": "Punjabi", "or": "Odia", "ur": "Urdu", "es": "Spanish",
+}
+
+
+def language_name(code: Optional[str]) -> str:
+    """'hi-IN' / 'hi' → 'Hindi'; unknown or empty → 'English'."""
+    primary = (code or "").split(",")[0].split(";")[0].strip().split("-")[0].lower()
+    return _LANGUAGE_NAMES.get(primary, "English")
 
 
 __all__ = ["AiChatAgentService"]

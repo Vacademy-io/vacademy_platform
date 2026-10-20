@@ -87,6 +87,9 @@
             "label": "اختبرني",
             "prompt": "اختبرني في "
         },
+        "quizMeOnThis": {
+            "prompt": "اختبرني في هذا {{slide}}"
+        },
         "summarize": {
             "label": "لخّص",
             "prompt": "أعطني ملخصاً موجزاً لهذا {{slide}}"
@@ -158,7 +161,8 @@
         "reviewingPerformance": "جارٍ مراجعة بيانات أدائك...",
         "searchingResources": "جارٍ البحث عن محتوى ذي صلة...",
         "searchingCourseMaterials": "جارٍ البحث في مواد {{course}}...",
-        "workingOnIt": "جارٍ العمل على ذلك..."
+        "workingOnIt": "جارٍ العمل على ذلك...",
+        "preparingQuiz": "جارٍ تحضير اختبارك..."
     },
     "voiceAvatar": {
         "ready": "جاهز",

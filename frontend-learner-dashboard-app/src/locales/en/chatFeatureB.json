@@ -87,6 +87,9 @@
             "label": "Quiz me",
             "prompt": "Quiz me on "
         },
+        "quizMeOnThis": {
+            "prompt": "Quiz me on this {{slide}}"
+        },
         "summarize": {
             "label": "Summarize",
             "prompt": "Give me a brief summary of this {{slide}}"
@@ -158,7 +161,8 @@
         "reviewingPerformance": "Reviewing your performance data...",
         "searchingResources": "Searching for related content...",
         "searchingCourseMaterials": "Searching your {{course}} materials...",
-        "workingOnIt": "Working on it..."
+        "workingOnIt": "Working on it...",
+        "preparingQuiz": "Preparing your quiz..."
     },
     "voiceAvatar": {
         "ready": "Ready",

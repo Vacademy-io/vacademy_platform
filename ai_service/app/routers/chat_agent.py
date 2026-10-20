@@ -74,6 +74,7 @@ async def whoami(caller: ChatCaller = Depends(get_chat_caller)):
 )
 async def init_session(
     request: InitSessionRequest,
+    http_request: Request,
     service: AiChatAgentService = Depends(get_chat_agent_service),
     caller: ChatCaller = Depends(get_chat_caller),
 ) -> InitSessionResponse:
@@ -94,6 +95,8 @@ async def init_session(
             initial_message=request.initial_message,
             user_name=request.user_name,
             session_mode=request.session_mode.value if request.session_mode else "text",
+            # The learner app's authenticated client sends its UI locale.
+            ui_language=http_request.headers.get("accept-language") or caller.locale,
         )
         
         return InitSessionResponse(
@@ -177,6 +180,7 @@ async def send_message(
 async def update_context(
     session_id: str,
     request: UpdateContextRequest,
+    http_request: Request,
     service: AiChatAgentService = Depends(get_chat_agent_service),
     caller: ChatCaller = Depends(get_chat_caller),
 ) -> UpdateContextResponse:
@@ -195,6 +199,7 @@ async def update_context(
             session_id=session_id,
             context_type=request.context_type.value,
             context_meta=request.context_meta,
+            ui_language=http_request.headers.get("accept-language"),
         )
         
         return UpdateContextResponse(

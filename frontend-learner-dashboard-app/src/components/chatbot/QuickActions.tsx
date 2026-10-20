@@ -40,10 +40,13 @@ export const getQuickActions = (
         intent: "doubt",
       },
       {
+        // A complete request (not the "Quiz me on " prefill): learners sent
+        // the bare prefill 354 times a month. The tutor quizzes on this
+        // lesson through its quiz tool.
         label: t("quickActions.quizMe.label"),
         icon: FileDashed,
-        prompt: t("quickActions.quizMe.prompt"),
-        intent: "practice",
+        prompt: t("quickActions.quizMeOnThis.prompt", { slide }),
+        intent: "general",
       },
       {
         label: t("quickActions.summarize.label"),

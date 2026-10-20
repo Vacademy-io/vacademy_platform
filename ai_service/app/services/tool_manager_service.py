@@ -26,17 +26,13 @@ TOOL_DEFINITIONS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "user_id": {
-                        "type": "string",
-                        "description": "The student's user ID"
-                    },
                     "source_filter": {
                         "type": "string",
                         "enum": ["SLIDE", "CHAPTER", "MODULE", "SUBJECT", "PACKAGE_SESSION"],
                         "description": "Optional: Filter progress by specific source level. Leave empty for all levels."
                     }
                 },
-                "required": ["user_id"]
+                "required": []
             }
         }
     },
@@ -48,17 +44,13 @@ TOOL_DEFINITIONS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "user_id": {
-                        "type": "string",
-                        "description": "The student's user ID"
-                    },
                     "date_range_days": {
                         "type": "integer",
                         "description": "Number of days to look back for analysis",
                         "default": 30
                     }
                 },
-                "required": ["user_id"]
+                "required": []
             }
         }
     },
@@ -66,7 +58,12 @@ TOOL_DEFINITIONS = [
         "type": "function",
         "function": {
             "name": "search_related_resources",
-            "description": "Search for slides, videos, or questions related to a topic to help the student",
+            "description": (
+                "Find lessons (videos, PDFs, notes, quizzes) and practice questions on a topic in the "
+                "courses THIS student is enrolled in. The matches are shown to the student as "
+                "clickable links, so don't repeat the list — say which one to start with and why. "
+                "Use short topic words ('circles', 'photosynthesis'), not whole sentences."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -93,38 +90,195 @@ TOOL_DEFINITIONS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "user_id": {
-                        "type": "string",
-                        "description": "The student's user ID"
-                    }
                 },
-                "required": ["user_id"]
+                "required": []
             }
         }
     },
+    # semantic_search_content is NOT offered to the model. Its corpus
+    # (content_embeddings) holds only the platform's admin help articles —
+    # nothing ingests course material into it — so in production it answered
+    # learners' study questions with "Add modules and chapters"-style admin
+    # docs (Oct 2026). The executor stays for when a course corpus exists;
+    # add SEMANTIC_SEARCH_TOOL back to this list then.
     {
         "type": "function",
         "function": {
-            "name": "semantic_search_content",
-            "description": "Search across all course materials (slides, chapters, questions) using semantic similarity. Use this when the student asks about a topic and you need to find relevant learning materials, or when you need more context about a subject.",
+            "name": "create_practice_quiz",
+            "description": (
+                "Create an interactive multiple-choice practice quiz that the student answers "
+                "inside the chat; it is scored automatically and you see the result afterwards. "
+                "Use it whenever the student asks to be quizzed/tested/given practice questions or "
+                "MCQs, or agrees to practise. Do NOT type quiz questions into your reply yourself. "
+                "If the request is vague (\"quiz me\") and they are on a lesson, use that lesson's "
+                "topic; if there is no usable topic at all, ask what to practise instead of calling this."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "query": {
+                    "topic": {
                         "type": "string",
-                        "description": "The search query - describe what you're looking for"
+                        "description": "The specific study topic, e.g. 'Areas related to circles' or 'Newton's second law'.",
                     },
-                    "top_k": {
+                    "num_questions": {
                         "type": "integer",
-                        "description": "Number of results to return (default 5)",
-                        "default": 5
-                    }
+                        "description": "How many questions (3-10). Default 5; use what the student asked for, capped at 10.",
+                    },
+                    "difficulty": {
+                        "type": "string",
+                        "enum": ["easy", "medium", "hard"],
+                        "description": "Default medium. Use what the student asked for (e.g. 'tough' = hard).",
+                    },
                 },
-                "required": ["query"]
-            }
+                "required": ["topic"],
+            },
+        },
+    },
+]
+
+
+SEMANTIC_SEARCH_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "semantic_search_content",
+        "description": "Search across all course materials (slides, chapters, questions) using semantic similarity. Use this when the student asks about a topic and you need to find relevant learning materials, or when you need more context about a subject.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "The search query - describe what you're looking for"
+                },
+                "top_k": {
+                    "type": "integer",
+                    "description": "Number of results to return (default 5)",
+                    "default": 5
+                }
+            },
+            "required": ["query"]
         }
     }
-]
+}
+
+# Tools the orchestrator runs itself because they produce chat messages (a quiz
+# card) rather than text for the model.
+ORCHESTRATOR_TOOLS = {"create_practice_quiz"}
+
+# ── search_related_resources helpers ─────────────────────────────────────────
+
+_SEARCH_STOPWORDS = frozenset(
+    """a an and are about any can chapter class do does find for from give how i in is it
+    lecture lectures lesson lessons me material materials my notes of on or please pdf pdfs
+    question questions related resource resources show some std standard study the this
+    to topic video videos want what with""".split()
+)
+
+
+def search_words(topic: str, limit: int = 6) -> List[str]:
+    """Topic words worth matching: >2 letters, no filler, light plural folding."""
+    import re
+
+    out: List[str] = []
+    # Split on whitespace/punctuation, not \w: \w breaks Devanagari words at
+    # their vowel signs.
+    for raw in re.split(r"[\s\.,;:!?()\[\]{}\"'/\\|+*=<>&_-]+", topic.lower()):
+        if len(raw) < 3 or raw.isdigit() or raw in _SEARCH_STOPWORDS:
+            continue
+        word = raw
+        if len(word) > 4 and word.endswith("es") and not word.endswith("ses"):
+            word = word[:-2]
+        elif len(word) > 3 and word.endswith("s") and not word.endswith("ss"):
+            word = word[:-1]
+        if word not in out:
+            out.append(word)
+        if len(out) >= limit:
+            break
+    return out
+
+
+_SLIDE_ROUTE = "/study-library/courses/course-details/subjects/modules/chapters/slides"
+
+
+def slide_href(row) -> str:
+    """The learner-app route that opens a slide (same search params the dashboard uses)."""
+    from urllib.parse import urlencode
+
+    return _SLIDE_ROUTE + "?" + urlencode({
+        "courseId": row["package_id"] or "",
+        "levelId": row["level_id"] or "",
+        "subjectId": row["subject_id"] or "",
+        "moduleId": row["module_id"] or "",
+        "chapterId": row["chapter_id"] or "",
+        "slideId": row["slide_id"] or "",
+        "sessionId": row["package_session_id"] or "",
+    })
+
+
+_SLIDE_ICONS = {"VIDEO": "video", "DOCUMENT": "pdf", "QUIZ": "quiz", "QUESTION": "question", "ASSIGNMENT": "assessment"}
+
+# Every published slide in the learner's ACTIVE enrolments, with the ids the
+# app needs to open it. Slides carry no institute id; tenancy and enrolment
+# both come through package_session.
+_ENROLLED_SLIDES_CTE = """
+WITH enrolled AS (
+    SELECT DISTINCT package_session_id
+      FROM student_session_institute_group_mapping
+     WHERE user_id = :user_id AND institute_id = :institute_id AND status = 'ACTIVE'
+), placed AS (
+    SELECT s.id AS slide_id, s.title, s.description, s.source_type, s.source_id,
+           c.id AS chapter_id, c.chapter_name, m.id AS module_id, m.module_name,
+           subj.id AS subject_id, subj.subject_name,
+           ps.id AS package_session_id, ps.package_id, ps.level_id
+      FROM enrolled e
+      JOIN package_session ps ON ps.id = e.package_session_id
+      JOIN chapter_package_session_mapping cpsm
+        ON cpsm.package_session_id = ps.id AND cpsm.status <> 'DELETED'
+      JOIN chapter c ON c.id = cpsm.chapter_id AND c.status <> 'DELETED'
+      JOIN chapter_to_slides cts ON cts.chapter_id = c.id AND cts.status <> 'DELETED'
+      JOIN slide s ON s.id = cts.slide_id AND s.status IN ('PUBLISHED', 'UNSYNC')
+      JOIN module_chapter_mapping mcm ON mcm.chapter_id = c.id
+      JOIN modules m ON m.id = mcm.module_id AND m.status <> 'DELETED'
+      JOIN subject_module_mapping smm ON smm.module_id = m.id
+      JOIN subject subj ON subj.id = smm.subject_id AND subj.status <> 'DELETED'
+      JOIN subject_session ss ON ss.subject_id = subj.id AND ss.session_id = ps.id
+)
+"""
+
+_RESOURCE_SLIDES_SQL = text(_ENROLLED_SLIDES_CTE + """
+, scored AS (
+    SELECT p.*,
+           (SELECT 3 * count(*) FILTER (WHERE p.title ILIKE '%' || w || '%')
+                 + 2 * count(*) FILTER (WHERE p.chapter_name ILIKE '%' || w || '%')
+                 + count(*) FILTER (WHERE p.module_name ILIKE '%' || w || '%'
+                                       OR p.subject_name ILIKE '%' || w || '%'
+                                       OR p.description ILIKE '%' || w || '%')
+              FROM unnest(CAST(:words AS text[])) AS w) AS score
+      FROM placed p
+)
+SELECT * FROM (
+    SELECT DISTINCT ON (slide_id) *
+      FROM scored
+     WHERE score > 0
+     ORDER BY slide_id, score DESC
+) best
+ORDER BY score DESC, title
+LIMIT 5
+""")
+
+_RESOURCE_QUESTIONS_SQL = text(_ENROLLED_SLIDES_CTE + """
+SELECT DISTINCT ON (q.id)
+       q.id AS question_id, p.title AS slide_title,
+       regexp_replace(rt.content, '<[^>]+>', '', 'g') AS question_text,
+       p.slide_id, p.chapter_id, p.module_id, p.subject_id,
+       p.package_session_id, p.package_id, p.level_id
+  FROM placed p
+  JOIN quiz_slide_question q ON q.quiz_slide_id = p.source_id AND q.status <> 'DELETED'
+  JOIN rich_text_data rt ON rt.id = q.text_id
+ WHERE p.source_type = 'QUIZ'
+   AND EXISTS (SELECT 1 FROM unnest(CAST(:words AS text[])) AS w
+                WHERE rt.content ILIKE '%' || w || '%')
+ LIMIT 3
+""")
 
 
 class ToolManagerService:
@@ -315,122 +469,90 @@ Use this information to provide personalized guidance to the student.
             logger.error(f"Error fetching student feedback: {e}")
             return f"Unable to fetch student feedback: {str(e)}"
     
-    async def _execute_search_resources(self, args: Dict[str, Any]) -> str:
+    async def _execute_search_resources(self, args: Dict[str, Any]) -> Union[str, ToolOutput]:
         """
-        Search for related resources (slides, questions) by topic.
-        """
-        topic = args.get("topic")
-        resource_type = args.get("resource_type", "all")
+        Find slides (and practice questions) on a topic in the learner's own
+        courses, with links that open them.
 
+        Scope is the learner's ACTIVE enrolments, not the whole institute: an
+        institute-wide hit is often a course the learner cannot open. Matching
+        is per word over the slide title and description and the chapter,
+        module and subject names, ranked — the old version matched the whole
+        topic phrase against slide titles only, so "Areas related to circles
+        class 10" found nothing even when "Areas Related to Circles Lecture -
+        01" was in the learner's course (~80% of production searches came back
+        empty, Sep-Oct 2026).
+        """
+        topic = (args.get("topic") or "").strip()
+        resource_type = args.get("resource_type", "all")
         if not topic:
             return "Error: topic is required"
-
-        # Both queries below were previously unscoped, so a keyword search ran
-        # across every tenant on the platform: a search for "motion" returned
-        # slides belonging to other institutes (verified in production). Slides
-        # carry no institute_id of their own, so tenancy is resolved through
-        # chapter_to_slides -> chapter_package_session_mapping -> package_session
-        # -> package_institute.
-        if not self.institute_id:
-            logger.error("search_related_resources called with no institute scope")
+        if not self.institute_id or not self.user_id:
+            logger.error("search_related_resources called without learner scope")
             return (
-                "LOOKUP FAILED: resource search is unavailable right now "
-                "(no institute scope). Do not invent slide or question names; "
-                "tell the student you could not search the material."
+                "LOOKUP FAILED: resource search is unavailable right now. Do not invent "
+                "lesson names; tell the student you could not search their course."
             )
-
+        words = search_words(topic)
+        if not words:
+            return (
+                f"'{topic}' has no searchable topic words. Ask the student which topic they "
+                "want material for."
+            )
         try:
-            results = []
-
-            # Search slides — scoped to this institute
-            if resource_type in ["slide", "all"]:
-                stmt = text("""
-                    SELECT DISTINCT s.id, s.title, s.source_type
-                    FROM slide s
-                    JOIN chapter_to_slides cts
-                        ON cts.slide_id = s.id AND cts.status <> 'DELETED'
-                    JOIN chapter_package_session_mapping cpsm
-                        ON cpsm.chapter_id = cts.chapter_id
-                       AND cpsm.status <> 'DELETED'
-                    JOIN package_session ps ON ps.id = cpsm.package_session_id
-                    JOIN package_institute pi ON pi.package_id = ps.package_id
-                    WHERE s.status != 'DELETED'
-                    AND pi.institute_id = :institute_id
-                    AND (
-                        s.title ILIKE :topic
-                        OR s.description ILIKE :topic
-                    )
-                    LIMIT 5
-                """)
-                result = self.db.execute(
-                    stmt,
-                    {"topic": f"%{topic}%", "institute_id": self.institute_id},
-                )
-                slides = result.fetchall()
-
-                if slides:
-                    results.append("Related Slides:")
-                    for slide in slides:
-                        results.append(
-                            f"- {slide[1]} (ID: {slide[0]}, Type: {slide[2]})"
-                        )
-
-            # Search questions — scoped to this institute, and actually filtered
-            # by `topic`. This branch used to ignore `topic` entirely and return
-            # three arbitrary question UUIDs with no text, which is unusable to
-            # the model; it was nonetheless the most-requested resource_type
-            # (153 of 283 production calls). The question text lives in
-            # rich_text_data via quiz_slide_question.text_id.
-            if resource_type in ["question", "all"]:
-                stmt = text("""
-                    SELECT DISTINCT q.id,
-                           regexp_replace(rt.content, '<[^>]+>', '', 'g') AS question_text
-                    FROM quiz_slide_question q
-                    JOIN rich_text_data rt ON rt.id = q.text_id
-                    JOIN slide s
-                        ON s.source_id = q.quiz_slide_id AND s.source_type = 'QUIZ'
-                    JOIN chapter_to_slides cts
-                        ON cts.slide_id = s.id AND cts.status <> 'DELETED'
-                    JOIN chapter_package_session_mapping cpsm
-                        ON cpsm.chapter_id = cts.chapter_id
-                       AND cpsm.status <> 'DELETED'
-                    JOIN package_session ps ON ps.id = cpsm.package_session_id
-                    JOIN package_institute pi ON pi.package_id = ps.package_id
-                    WHERE q.status != 'DELETED'
-                    AND s.status != 'DELETED'
-                    AND pi.institute_id = :institute_id
-                    AND rt.content ILIKE :topic
-                    LIMIT 3
-                """)
-                result = self.db.execute(
-                    stmt,
-                    {"topic": f"%{topic}%", "institute_id": self.institute_id},
-                )
-                questions = result.fetchall()
-
-                if questions:
-                    results.append("\nRelated Practice Questions:")
-                    for q in questions:
-                        q_text = " ".join((q[1] or "").split())[:300]
-                        results.append(f"- {q_text} (ID: {q[0]})")
-
-            if not results:
-                return (
-                    f"No resources found related to '{topic}' in this "
-                    f"institute's material. The search ran successfully — there "
-                    f"is genuinely no matching slide or question."
-                )
-
-            return "\n".join(results)
-
+            slides = []
+            if resource_type in ("slide", "all"):
+                slides = self.db.execute(
+                    _RESOURCE_SLIDES_SQL,
+                    {"user_id": self.user_id, "institute_id": self.institute_id, "words": words},
+                ).mappings().all()
+            questions = []
+            if resource_type in ("question", "all"):
+                questions = self.db.execute(
+                    _RESOURCE_QUESTIONS_SQL,
+                    {"user_id": self.user_id, "institute_id": self.institute_id, "words": words},
+                ).mappings().all()
         except Exception as e:
             logger.error(f"Error searching resources: {e}")
             return (
-                f"LOOKUP FAILED: could not search resources ({str(e)}). "
-                f"Tell the student you could not search the material rather "
-                f"than guessing at what exists."
+                "LOOKUP FAILED: could not search the course material right now. Tell the "
+                "student you could not search it rather than guessing at what exists."
             )
-    
+
+        if not slides and not questions:
+            return (
+                f"Searched the courses this student is enrolled in for {', '.join(words)}: no lesson, "
+                "chapter or question title matched. The material may still exist under a "
+                "different name — suggest they browse the course, or teach the topic directly."
+            )
+
+        items: List[Dict[str, Any]] = []
+        lines: List[str] = []
+        for row in slides:
+            where = " · ".join(x for x in (row["subject_name"], row["chapter_name"]) if x)
+            items.append({
+                "title": row["title"],
+                "subtitle": where,
+                "href": slide_href(row),
+                "icon": _SLIDE_ICONS.get(str(row["source_type"] or "").upper(), "slide"),
+            })
+            lines.append(f"- {row['title']} ({row['source_type']}; {where})")
+        for row in questions:
+            q_text = " ".join((row["question_text"] or "").split())[:200]
+            items.append({
+                "title": q_text,
+                "subtitle": f"Practice question · {row['slide_title']}",
+                "href": slide_href(row),
+                "icon": "question",
+            })
+            lines.append(f"- Question: {q_text} (in '{row['slide_title']}')")
+
+        text = (
+            "Found in the student's own courses (already shown to them as clickable links):\n"
+            + "\n".join(lines)
+        )
+        card = {"kind": "link_list", "title": f"From your courses: {topic}"[:120], "items": items}
+        return ToolOutput(text=text, card=card)
 
     async def _execute_semantic_search(self, args: Dict[str, Any]) -> str:
         """Search course content using semantic similarity via RAG."""

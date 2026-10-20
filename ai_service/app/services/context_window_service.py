@@ -20,6 +20,84 @@ logger = logging.getLogger(__name__)
 SUMMARY_THRESHOLD = 20
 # Keep this many recent messages in full (not summarized)
 RECENT_MESSAGES_LIMIT = 10
+# Rows that carry conversation the model needs on the NEXT turn. Quizzes, quiz
+# results, cards and tool lookups used to be left out, so the tutor could not
+# discuss the quiz it had just set ("I can't see that question") and invented
+# results when asked for them.
+HISTORY_MESSAGE_TYPES = ["user", "assistant", "quiz", "quiz_feedback", "card", "tool_result"]
+# Rows of those types fetched per turn (tool results and cards ride along with
+# the user/assistant turns they belong to, so this is larger than the limit).
+HISTORY_FETCH_LIMIT = 24
+# Longest piece of an earlier tool lookup replayed to the model.
+TOOL_NOTE_MAX_CHARS = 1500
+# Filler lines older builds stored as assistant turns. They carry nothing and
+# would crowd real turns out of the window.
+LEGACY_FILLER_PREFIXES = (
+    "Let me check your progress! ",
+    "Looking up your feedback...",
+    "Searching for helpful resources...",
+    "One moment, let me check that for you...",
+    "Evaluating your answers...",
+)
+
+
+def _quiz_note(msg: ChatMessage) -> Optional[str]:
+    quiz = (msg.meta_data or {}).get("quiz_data") or {}
+    questions = quiz.get("questions") or []
+    if not questions:
+        return None
+    lines = [
+        f"[Quiz I showed the student on \"{quiz.get('topic') or quiz.get('title') or 'this topic'}\" — "
+        "they answer it in the quiz card; until they submit, do not reveal answers.]"
+    ]
+    for i, q in enumerate(questions, 1):
+        opts = " | ".join(str(o)[:80] for o in (q.get("options") or []))
+        lines.append(f"Q{i}. {str(q.get('question', ''))[:300]}  Options: {opts}")
+    return "\n".join(lines)
+
+
+def _feedback_note(msg: ChatMessage) -> Optional[str]:
+    fb = (msg.meta_data or {}).get("feedback") or {}
+    if not fb:
+        return msg.content
+    lines = [f"[Quiz result: {fb.get('score')}/{fb.get('total')} ({fb.get('percentage')}%).]"]
+    for i, q in enumerate(fb.get("question_feedback") or [], 1):
+        if q.get("correct"):
+            lines.append(f"Q{i} correct: {str(q.get('question_text', ''))[:200]}")
+        else:
+            lines.append(
+                f"Q{i} WRONG: {str(q.get('question_text', ''))[:200]} — student chose "
+                f"\"{q.get('user_answer_text') or 'nothing'}\", correct is \"{q.get('correct_answer_text')}\""
+                + (f". Why: {str(q.get('explanation'))[:200]}" if q.get("explanation") else "")
+            )
+    return "\n".join(lines)
+
+
+def history_entry(msg: ChatMessage) -> Optional[Dict[str, str]]:
+    """One stored row as an LLM message, or None when it should not be replayed."""
+    from .chat_cards import card_summary_for_model
+
+    kind = msg.message_type
+    if kind == "user":
+        return {"role": "user", "content": msg.content}
+    if kind == "assistant":
+        if (msg.content or "").startswith(LEGACY_FILLER_PREFIXES):
+            return None
+        return {"role": "assistant", "content": msg.content}
+    if kind == "quiz":
+        note = _quiz_note(msg)
+        return {"role": "assistant", "content": note} if note else None
+    if kind == "quiz_feedback":
+        note = _feedback_note(msg)
+        return {"role": "assistant", "content": note} if note else None
+    if kind == "card":
+        card = (msg.meta_data or {}).get("card")
+        return {"role": "assistant", "content": card_summary_for_model(card)} if card else None
+    if kind == "tool_result":
+        tool = (msg.meta_data or {}).get("tool_name") or "a tool"
+        body = (msg.content or "")[:TOOL_NOTE_MAX_CHARS]
+        return {"role": "assistant", "content": f"[Earlier I looked this up with {tool}:]\n{body}"}
+    return None
 
 
 class ContextWindowService:
@@ -162,25 +240,29 @@ Summary:"""
         after_id = latest_summary.id if latest_summary else None
         recent = self.message_repo.get_conversation_history(
             session_id=session_id,
-            limit=RECENT_MESSAGES_LIMIT,
+            limit=HISTORY_FETCH_LIMIT,
+            message_types=HISTORY_MESSAGE_TYPES,
         )
 
         # If we have a summary, only include messages after it
         if latest_summary:
-            recent = [m for m in recent if m.id > latest_summary.id]
-            # If filtering leaves too few, get more
-            if len(recent) < 4:
-                recent = self.message_repo.get_conversation_history(
-                    session_id=session_id,
-                    limit=RECENT_MESSAGES_LIMIT,
-                )
+            after = [m for m in recent if m.id > latest_summary.id]
+            # If filtering leaves too few, keep the overlap for continuity
+            if sum(1 for m in after if m.message_type == "user") >= 2:
+                recent = after
 
-        for msg in recent:
-            if msg.message_type == "user":
-                result_messages.append({"role": "user", "content": msg.content})
-            elif msg.message_type == "assistant":
-                result_messages.append({"role": "assistant", "content": msg.content})
-
+        entries = [e for e in (history_entry(m) for m in recent) if e]
+        # Keep the last RECENT_MESSAGES_LIMIT conversational turns; notes
+        # (quiz, cards, lookups) between them ride along.
+        turns = 0
+        start = len(entries)
+        for i in range(len(entries) - 1, -1, -1):
+            if entries[i]["role"] == "user" or not entries[i]["content"].startswith("["):
+                turns += 1
+                if turns > RECENT_MESSAGES_LIMIT:
+                    break
+            start = i
+        result_messages.extend(entries[start:])
         return result_messages
 
     def _get_latest_summary(self, session_id: str) -> Optional[ChatMessage]:

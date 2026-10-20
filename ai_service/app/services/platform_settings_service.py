@@ -175,6 +175,18 @@ SETTING_SPECS: Dict[str, SettingSpec] = {
             default=lambda: get_settings().chat_require_auth,
         ),
         SettingSpec(
+            key="chatbot.text.llm_greeting",
+            group="chatbot",
+            label="AI-written greeting",
+            description=(
+                "Write each chat's opening greeting with the model. Off = a templated greeting "
+                "with the learner's name and current lesson, at no cost: 61% of chats (Sep-Oct "
+                "2026) never got a question, so the AI greeting was mostly paid for nothing."
+            ),
+            type="bool",
+            default=lambda: False,
+        ),
+        SettingSpec(
             key="tutor.compile.model",
             group="tutor",
             label="Tutor compile model",

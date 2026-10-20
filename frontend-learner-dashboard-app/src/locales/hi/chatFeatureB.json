@@ -87,6 +87,9 @@
             "label": "मुझे क्विज़ करें",
             "prompt": "मुझे क्विज़ करें "
         },
+        "quizMeOnThis": {
+            "prompt": "इस {{slide}} पर मेरा क्विज़ लीजिए"
+        },
         "summarize": {
             "label": "सारांश दें",
             "prompt": "इस {{slide}} का संक्षिप्त सारांश दें"
@@ -158,7 +161,8 @@
         "reviewingPerformance": "आपके प्रदर्शन डेटा की समीक्षा की जा रही है...",
         "searchingResources": "संबंधित सामग्री खोजी जा रही है...",
         "searchingCourseMaterials": "आपकी {{course}} सामग्री खोजी जा रही है...",
-        "workingOnIt": "इस पर काम किया जा रहा है..."
+        "workingOnIt": "इस पर काम किया जा रहा है...",
+        "preparingQuiz": "आपका क्विज़ तैयार हो रहा है..."
     },
     "voiceAvatar": {
         "ready": "तैयार",

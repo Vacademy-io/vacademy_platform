@@ -167,16 +167,12 @@ export const QuickActions: React.FC<QuickActionsProps> = ({
           type="button"
           onClick={() => onAction(action.prompt, action.intent)}
           disabled={disabled}
-          // text-caption is kept OUT of cn(): tailwind-merge does not know the
-          // custom font-size tokens and drops one of text-caption /
-          // text-muted-foreground as a "conflict", so the chips rendered at
-          // the inherited 16px.
-          className={`${cn(
+          className={cn(
             "inline-flex items-center font-medium rounded-full transition-colors disabled:opacity-50",
             compact
-              ? "h-5 px-2 text-muted-foreground bg-muted/50 hover:bg-primary/10 hover:text-primary border border-transparent hover:border-primary/20"
-              : "h-6 px-2.5 text-muted-foreground bg-muted/50 hover:bg-primary/10 hover:text-primary border border-transparent hover:border-primary/20",
-          )} text-caption`}
+              ? "h-5 px-2 text-caption text-muted-foreground bg-muted/50 hover:bg-primary/10 hover:text-primary border border-transparent hover:border-primary/20"
+              : "h-6 px-2.5 text-caption text-muted-foreground bg-muted/50 hover:bg-primary/10 hover:text-primary border border-transparent hover:border-primary/20",
+          )}
         >
           <action.icon
             className={cn(

@@ -431,25 +431,34 @@ class VoiceSessionService:
             summary_instruction = (
                 "You just administered an oral test. Analyze the conversation and produce a JSON scorecard."
             )
-        elif mode == "voice_doubt":
-            summary_instruction = (
-                "You just had a doubt-resolution session. Analyze how well the student understood the topic "
-                "and produce a JSON scorecard."
+        else:
+            summary_instruction = None
+
+        if summary_instruction:
+            summary_prompt = (
+                f"{summary_instruction}\n\n"
+                f"Conversation transcript:\n{transcript_text}\n\n"
+                f"Respond ONLY with valid JSON in this exact format:\n"
+                f'{{"score": <number 0-100>, "total_questions": <number>, '
+                f'"strengths": ["strength1", "strength2"], '
+                f'"areas_to_improve": ["area1", "area2"], '
+                f'"feedback": "Overall feedback paragraph"}}'
             )
         else:
-            summary_instruction = (
-                "Analyze the following tutoring conversation and produce a JSON scorecard."
+            # A doubt call is help, not a test: a recap, never a score. (It used
+            # to be graded like an oral test — a student who asked how to
+            # download an exam paper was told their understanding was "very
+            # limited", 30/100.)
+            summary_prompt = (
+                "You just helped a student with their doubts in a voice call. Write a short recap.\n\n"
+                f"Conversation transcript:\n{transcript_text}\n\n"
+                "Respond ONLY with valid JSON in this exact format:\n"
+                '{"score": null, "total_questions": 0, '
+                '"strengths": ["what the student now understands"], '
+                '"areas_to_improve": ["what to revise or practise next"], '
+                '"feedback": "Two or three encouraging sentences recapping what was covered"}\n'
+                "Use empty lists when the call had no study content (e.g. a question about the app)."
             )
-
-        summary_prompt = (
-            f"{summary_instruction}\n\n"
-            f"Conversation transcript:\n{transcript_text}\n\n"
-            f"Respond ONLY with valid JSON in this exact format:\n"
-            f'{{"score": <number 0-100>, "total_questions": <number>, '
-            f'"strengths": ["strength1", "strength2"], '
-            f'"areas_to_improve": ["area1", "area2"], '
-            f'"feedback": "Overall feedback paragraph"}}'
-        )
 
         messages = [
             {"role": "system", "content": "You are an assessment evaluator. Respond only with valid JSON."},
@@ -465,30 +474,32 @@ class VoiceSessionService:
             user_id=user_id,
         )
 
-        raw_content = llm_response.get("content", "{}")
+        raw_content = llm_response.get("content") or "{}"
 
-        # Parse JSON from LLM response
-        try:
-            # Strip markdown code fences if present
-            cleaned = raw_content.strip()
-            if cleaned.startswith("```"):
-                cleaned = cleaned.split("\n", 1)[-1]
-            if cleaned.endswith("```"):
-                cleaned = cleaned.rsplit("```", 1)[0]
-            cleaned = cleaned.strip()
-            summary = json.loads(cleaned)
-        except (json.JSONDecodeError, ValueError):
-            logger.warning(f"Failed to parse summary JSON for session {session_id}: {raw_content}")
-            summary = {
-                "score": 0,
-                "total_questions": 0,
-                "strengths": [],
-                "areas_to_improve": [],
-                "feedback": raw_content,
-            }
+        # Parse the JSON object out of the reply (models wrap it in fences or
+        # prose). On failure show nothing rather than the raw reply — a literal
+        # "```" once reached a learner as their feedback.
+        summary = None
+        start, end = raw_content.find("{"), raw_content.rfind("}")
+        if start != -1 and end > start:
+            try:
+                parsed = json.loads(raw_content[start:end + 1])
+                summary = parsed if isinstance(parsed, dict) else None
+            except (json.JSONDecodeError, ValueError):
+                summary = None
+        if summary is None:
+            logger.warning(f"Failed to parse summary JSON for session {session_id}: {raw_content[:300]}")
+            summary = {"score": None, "total_questions": 0, "strengths": [], "areas_to_improve": [], "feedback": ""}
+        if mode not in ("voice_interview", "voice_oral_test"):
+            summary["score"] = None
 
-        # Ensure all expected keys exist
-        summary.setdefault("score", 0)
+        # Ensure all expected keys exist; the score is a 0-100 percentage
+        if summary.get("score") is not None:
+            try:
+                summary["score"] = max(0, min(100, round(float(summary["score"]))))
+            except (TypeError, ValueError):
+                summary["score"] = None
+        summary.setdefault("score", None)
         summary.setdefault("total_questions", 0)
         summary.setdefault("strengths", [])
         summary.setdefault("areas_to_improve", [])

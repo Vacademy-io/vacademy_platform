@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 
 interface SessionScorecardProps {
   summary: {
-    score?: number;
+    /** 0-100 percentage; null for doubt calls, which get a recap, not a grade. */
+    score?: number | null;
     total_questions?: number;
     strengths?: string[];
     areas_to_improve?: string[];
@@ -29,11 +30,12 @@ export const SessionScorecard: React.FC<SessionScorecardProps> = ({
     voice_doubt: t("voiceModeLabels.doubt"),
     voice_oral_test: t("voiceModeLabels.oralTest"),
   };
-  const { score, total_questions, strengths, areas_to_improve, feedback } = summary;
-  const hasScore = score !== undefined && score !== null;
+  const { score, strengths, areas_to_improve, feedback } = summary;
+  const hasScore = typeof score === "number";
 
-  // Score circle calculations
-  const scorePercent = hasScore && total_questions ? Math.round((score / total_questions) * 100) : hasScore ? score : 0;
+  // The server sends a 0-100 percentage. It used to be divided by the question
+  // count, so 80 with 5 questions showed "80/5" and filled the ring 1600%.
+  const scorePercent = hasScore ? Math.max(0, Math.min(100, Math.round(score))) : 0;
   const circumference = 2 * Math.PI * 44; // r=44
   const strokeDashoffset = circumference - (circumference * scorePercent) / 100;
 
@@ -95,7 +97,7 @@ export const SessionScorecard: React.FC<SessionScorecardProps> = ({
               </svg>
               <div className="absolute inset-0 flex flex-col items-center justify-center">
                 <span className="text-2xl font-bold text-white">
-                  {total_questions ? `${score}/${total_questions}` : `${scorePercent}%`}
+                  {`${scorePercent}%`}
                 </span>
                 <span className="text-caption text-white/40 uppercase tracking-wider">{t("sessionScorecard.score")}</span>
               </div>

@@ -181,7 +181,8 @@
         "yourAnswer": "Your answer: ",
         "notAnswered": "Not answered",
         "correctAnswer": "Correct answer: ",
-        "explanation": "Explanation: "
+        "explanation": "Explanation: ",
+        "pointsEarned": "+{{points}} points toward your streak"
     },
     "sessionScorecard": {
         "summaryTitle": "{{mode}} Summary",

@@ -9,6 +9,8 @@ import { useChatbotContext } from "./useChatbotContext";
 import { AssistantAvatar, ChatMarkdown, MessageBubble } from "./MessageBubble";
 import { QuizComponent } from "./QuizComponent";
 import { QuizFeedbackComponent } from "./QuizFeedbackComponent";
+import { useQueryClient } from "@tanstack/react-query";
+import { POINTS_ME_KEY } from "@/services/points";
 import { ToolIndicator } from "./ToolIndicator";
 import { ChatStarters } from "./ChatStarters";
 import { AnswerActions, AnswerTransforms } from "./AnswerToolbelt";
@@ -66,7 +68,11 @@ const MessageRow: React.FC<{ msg: ChatMessage; isGreeting?: boolean; isLatestRep
   if (msg.role === "quiz_feedback" && msg.metadata?.feedback) {
     return (
       <AssistantBlock>
-        <QuizFeedbackComponent feedback={msg.metadata.feedback as QuizFeedbackData} content={msg.content} />
+        <QuizFeedbackComponent
+          feedback={msg.metadata.feedback as QuizFeedbackData}
+          content={msg.content}
+          pointsAwarded={(msg.metadata as { points?: { awarded?: number } }).points?.awarded}
+        />
       </AssistantBlock>
     );
   }
@@ -307,6 +313,8 @@ export const ChatMessageList: React.FC<{ className?: string }> = ({ className })
     !isSessionClosed &&
     !messages.some((m) => m.role === "assistant" && !m.fromServer);
 
+  const queryClient = useQueryClient();
+
   // One burst when a quiz comes back passed — live, not when history replays.
   const celebratedRef = useRef(new Set<number>());
   useEffect(() => {
@@ -315,6 +323,10 @@ export const ChatMessageList: React.FC<{ className?: string }> = ({ className })
     celebratedRef.current.add(lastMessage.id);
     if ((lastMessage.metadata?.feedback as QuizFeedbackData | undefined)?.passed === true) {
       celebrateCompletion(brandConfettiColors());
+    }
+    // A pass can earn streak points: refresh every points pill.
+    if ((lastMessage.metadata as { points?: { awarded?: number } } | undefined)?.points?.awarded) {
+      void queryClient.invalidateQueries({ queryKey: POINTS_ME_KEY });
     }
   }, [lastMessage]);
 

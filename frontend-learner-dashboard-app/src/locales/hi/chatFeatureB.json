@@ -181,7 +181,8 @@
         "yourAnswer": "आपका उत्तर: ",
         "notAnswered": "उत्तर नहीं दिया गया",
         "correctAnswer": "सही उत्तर: ",
-        "explanation": "स्पष्टीकरण: "
+        "explanation": "स्पष्टीकरण: ",
+        "pointsEarned": "+{{points}} पॉइंट्स आपकी स्ट्रीक में"
     },
     "sessionScorecard": {
         "summaryTitle": "{{mode}} सारांश",

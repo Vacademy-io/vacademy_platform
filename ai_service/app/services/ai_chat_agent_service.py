@@ -1715,6 +1715,20 @@ class AiChatAgentService:
             except Exception as e:
                 logger.warning(f"Failed to track quiz score analytics: {e}")
 
+            # Points toward the engagement streak for a pass (small, once per
+            # quiz, capped per day — decided in admin_core). Best effort: a
+            # points hiccup never holds back the result.
+            points_result: Dict[str, Any] = {}
+            if feedback.passed:
+                try:
+                    from .learner_tools import award_tutor_quiz_points
+
+                    points_result = await award_tutor_quiz_points(
+                        user_id, institute_id, quiz_data.quiz_id, float(feedback.percentage or 0)
+                    )
+                except Exception as e:  # noqa: BLE001
+                    logger.warning(f"Tutor quiz points not awarded for {session_id}: {e}")
+
             # Build result summary
             emoji = "🎉" if feedback.passed else "💪"
             result_text = f"""
@@ -1736,11 +1750,15 @@ class AiChatAgentService:
             with self._get_db() as db:
                 message_repo = ChatMessageRepository(db)
 
+                feedback_meta: Dict[str, Any] = {"feedback": feedback.model_dump()}
+                if points_result.get("awarded"):
+                    feedback_meta["points"] = {"awarded": int(points_result.get("points") or 0)}
+                    result_text += f"\n\n**+{int(points_result.get('points') or 0)} points** toward your streak ⭐"
                 feedback_msg = message_repo.create_message(
                     session_id=session_id,
                     message_type="quiz_feedback",
                     content=result_text.strip(),
-                    metadata={"feedback": feedback.model_dump()},
+                    metadata=feedback_meta,
                 )
                 feedback_data = _msg_event(feedback_msg)
 

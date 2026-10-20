@@ -9,6 +9,9 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import vacademy.io.admin_core_service.features.engagement.service.EngagementLearnerService;
 import vacademy.io.admin_core_service.features.points_ledger.service.PointsLedgerService;
+import vacademy.io.admin_core_service.features.points_ledger.service.TutorQuizPointsService;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -30,6 +33,7 @@ public class InternalEngagementController {
 
     private final EngagementLearnerService learnerService;
     private final PointsLedgerService pointsLedgerService;
+    private final TutorQuizPointsService tutorQuizPointsService;
 
     @GetMapping("/learner-snapshot")
     public ResponseEntity<Map<String, Object>> learnerSnapshot(
@@ -45,5 +49,22 @@ public class InternalEngagementController {
             out.put("points", null);
         }
         return ResponseEntity.ok(out);
+    }
+
+    /**
+     * Points for a passed AI-tutor practice quiz (small, once per quiz, capped per day; see
+     * {@link TutorQuizPointsService}). Body: {@code {user_id, institute_id, quiz_id, percentage}}.
+     */
+    @PostMapping("/tutor-quiz-points")
+    public ResponseEntity<Map<String, Object>> tutorQuizPoints(@RequestBody Map<String, Object> body) {
+        double pct;
+        try {
+            pct = Double.parseDouble(String.valueOf(body.getOrDefault("percentage", "0")));
+        } catch (NumberFormatException e) {
+            pct = 0;
+        }
+        return ResponseEntity.ok(tutorQuizPointsService.award(
+                (String) body.get("user_id"), (String) body.get("institute_id"),
+                (String) body.get("quiz_id"), pct));
     }
 }

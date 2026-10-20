@@ -1182,6 +1182,26 @@ async def get_my_daily_tasks(db: Session, user_id: str, institute_id: str) -> To
     return ToolOutput(text=text_out, card={"kind": "link_list", "title": title, "items": items[:8]})
 
 
+
+async def award_tutor_quiz_points(user_id: str, institute_id: str, quiz_id: str, percentage: float) -> Dict[str, Any]:
+    """Ask admin_core to award points for a passed tutor quiz (small, capped; see TutorQuizPointsService)."""
+    import httpx
+
+    from ..config import get_settings
+    from .internal_auth import internal_auth_headers
+
+    base = get_settings().admin_core_service_base_url.rstrip("/")
+    async with httpx.AsyncClient(timeout=8.0) as client:
+        resp = await client.post(
+            f"{base}/admin-core-service/internal/engagement/v1/tutor-quiz-points",
+            json={"user_id": user_id, "institute_id": institute_id, "quiz_id": quiz_id, "percentage": percentage},
+            headers=await internal_auth_headers({"Content-Type": "application/json"}),
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    return data if isinstance(data, dict) else {}
+
+
 __all__ = [
     "MY_COURSES_TOOL",
     "get_my_courses",
@@ -1195,6 +1215,7 @@ __all__ = [
     "get_my_performance",
     "ASK_TEACHER_TOOL",
     "ask_teacher",
+    "award_tutor_quiz_points",
     "DAILY_TASKS_TOOL",
     "get_my_daily_tasks",
     "engagement_snapshot",

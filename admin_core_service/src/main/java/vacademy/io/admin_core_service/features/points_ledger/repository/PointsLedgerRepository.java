@@ -14,6 +14,10 @@ public interface PointsLedgerRepository extends JpaRepository<PointsLedger, Stri
 
     boolean existsByIdempotencyKey(String idempotencyKey);
 
+    /** Awards of one source for one learner since an instant (daily caps). */
+    long countByInstituteIdAndUserIdAndSourceTypeAndAwardedAtGreaterThanEqual(
+            String instituteId, String userId, String sourceType, java.sql.Timestamp since);
+
     /** Total points for one learner in one institute (all sources, all time). */
     @Query("SELECT COALESCE(SUM(p.points), 0) FROM PointsLedger p " +
             "WHERE p.instituteId = :instituteId AND p.userId = :userId")

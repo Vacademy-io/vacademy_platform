@@ -21,11 +21,14 @@ import { QuizFeedbackData } from "./types";
 
 interface QuizFeedbackComponentProps {
   feedback: QuizFeedbackData;
+  /** Points this pass earned toward the engagement streak (tutor quizzes; small, capped). */
+  pointsAwarded?: number;
   content: string; // Pre-formatted markdown summary
 }
 
 export const QuizFeedbackComponent: React.FC<QuizFeedbackComponentProps> = ({
   feedback,
+  pointsAwarded,
   content,
 }) => {
   const { t } = useTranslation("chatFeatureB");
@@ -66,6 +69,11 @@ export const QuizFeedbackComponent: React.FC<QuizFeedbackComponentProps> = ({
               <h3 className="font-bold text-foreground">
                 {feedback.passed ? t("quizFeedback.passed") : t("quizFeedback.keepPracticing")}
               </h3>
+              {pointsAwarded ? (
+                <span className="mt-1 inline-flex items-center rounded-full bg-primary-50 px-2 py-0.5 text-caption font-semibold text-primary-500">
+                  {t("quizFeedback.pointsEarned", { points: pointsAwarded })}
+                </span>
+              ) : null}
               <p className="text-xs text-muted-foreground">
                 {feedback.time_taken_seconds &&
                   t("quizFeedback.completedIn", {
@@ -204,6 +212,7 @@ export const QuizFeedbackComponent: React.FC<QuizFeedbackComponentProps> = ({
                                 remarkPlugins={[remarkGfm, remarkMath]}
                                 rehypePlugins={[rehypeKatex]}
                                 components={{
+                                  // eslint-disable-next-line @typescript-eslint/no-unused-vars
                                   p: ({node: _node, ...props}) => <span {...props} />
                                 }}
                               >

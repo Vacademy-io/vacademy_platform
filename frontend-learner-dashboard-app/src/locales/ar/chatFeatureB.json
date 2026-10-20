@@ -181,7 +181,8 @@
         "yourAnswer": "إجابتك: ",
         "notAnswered": "لم تتم الإجابة",
         "correctAnswer": "الإجابة الصحيحة: ",
-        "explanation": "الشرح: "
+        "explanation": "الشرح: ",
+        "pointsEarned": "+{{points}} نقاط لسلسلتك"
     },
     "sessionScorecard": {
         "summaryTitle": "ملخص {{mode}}",

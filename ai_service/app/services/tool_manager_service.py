@@ -5,12 +5,13 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Dict, Any, List, Callable
+from typing import Dict, Any, List, Callable, Union
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from .learning_progress_service import LearningProgressService
+from .chat_cards import ToolOutput
 
 logger = logging.getLogger(__name__)
 
@@ -172,7 +173,7 @@ class ToolManagerService:
         """
         return TOOL_DEFINITIONS
     
-    async def execute_tool(self, tool_name: str, arguments: Dict[str, Any]) -> str:
+    async def execute_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Union[str, ToolOutput]:
         """
         Execute a tool by name with given arguments.
         

@@ -248,6 +248,7 @@ class Settings(BaseSettings):
     # Voice sockets verify any token they are given. Flip this on once every
     # client ships one, and unauthenticated calls are refused outright.
     voice_require_auth: bool = os.getenv("VOICE_REQUIRE_AUTH", "false").lower() == "true"
+    chat_require_auth: bool = os.getenv("CHAT_REQUIRE_AUTH", "false").lower() == "true"
     jwt_token_expiry_minutes: int = 43200  # 30 days in minutes (matching Java 2592000000ms)
 
     # Internal service-to-service auth.

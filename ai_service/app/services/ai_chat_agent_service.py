@@ -13,6 +13,7 @@ import logging
 from typing import Callable, Dict, Any, List, Optional, AsyncGenerator
 from uuid import uuid4
 
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from ..repositories.chat_session_repository import ChatSessionRepository
@@ -22,6 +23,7 @@ from ..models.ai_token_usage import ApiProvider, RequestType
 from ..repositories.chat_message_repository import ChatMessageRepository
 from ..services.context_resolver_service import ContextResolverService
 from ..services.tool_manager_service import ToolManagerService, TOOL_DEFINITIONS
+from ..services.chat_cards import card_fallback_markdown, split_tool_output
 from ..services.chat_llm_client import ChatLLMClient
 from ..services.institute_settings_service import InstituteSettingsService
 from ..services.quiz_service import QuizService
@@ -43,6 +45,70 @@ from ..schemas.chat_agent import (
 )
 
 logger = logging.getLogger(__name__)
+
+# A user message is answered by exactly one stream. The stream that wins the
+# claim (an atomic UPDATE on the message's metadata) runs the agent; any other
+# stream open on the same session — a second tab, a reconnect racing the old
+# connection — just relays what the winner writes. A claim not refreshed for
+# CLAIM_STALE_SECONDS belongs to a stream that died (pod restart, deploy), and
+# the next stream to look takes it over: that is how a reconnect now recovers a
+# stuck turn. The slowest legitimate single step is quiz generation (max 62 s
+# in production, Sep-Oct 2026); the claim is refreshed between steps.
+CLAIM_STALE_SECONDS = 75
+# Never auto-answer a message older than this when a stream re-opens: a learner
+# coming back to an old session should not get a reply to yesterday's question.
+CLAIM_MAX_AGE_SECONDS = 15 * 60
+
+_CLAIM_SQL = text(
+    """
+    UPDATE chat_messages
+       SET metadata = COALESCE(metadata, '{}'::jsonb)
+                      || jsonb_build_object('claimed_at', to_char(clock_timestamp() AT TIME ZONE 'UTC',
+                                                                  'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
+     WHERE id = :id
+       AND session_id = :session_id
+       AND message_type = 'user'
+       AND created_at > (now() AT TIME ZONE 'UTC') - make_interval(secs => :max_age)
+       AND (metadata IS NULL OR metadata->>'answered_at' IS NULL)
+       AND (
+             metadata IS NULL
+          OR metadata->>'claimed_at' IS NULL
+          OR (metadata->>'claimed_at')::timestamptz < clock_timestamp() - make_interval(secs => :stale)
+       )
+    RETURNING id
+    """
+)
+
+_REFRESH_CLAIM_SQL = text(
+    """
+    UPDATE chat_messages
+       SET metadata = metadata || jsonb_build_object('claimed_at', to_char(clock_timestamp() AT TIME ZONE 'UTC',
+                                                                           'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
+     WHERE id = :id AND metadata->>'answered_at' IS NULL
+    RETURNING id
+    """
+)
+
+_MARK_ANSWERED_SQL = text(
+    """
+    UPDATE chat_messages
+       SET metadata = COALESCE(metadata, '{}'::jsonb)
+                      || jsonb_build_object('answered_at', to_char(clock_timestamp() AT TIME ZONE 'UTC',
+                                                                   'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
+     WHERE id = :id
+    RETURNING id
+    """
+)
+
+# Is this message still worth waiting for? (claimed by a live stream, young.)
+_PENDING_STATE_SQL = text(
+    """
+    SELECT (metadata->>'answered_at') IS NOT NULL AS answered,
+           created_at <= (now() AT TIME ZONE 'UTC') - make_interval(secs => :max_age) AS too_old
+      FROM chat_messages
+     WHERE id = :id
+    """
+)
 
 
 class _CachedKeyResolver:
@@ -254,6 +320,10 @@ class AiChatAgentService:
 
         # Extract LaTeX from image attachments via Mathpix OCR (async, no DB)
         enriched_message = message
+        if not (message or "").strip() and attachments:
+            # Image-only send: give the model (and the transcript) something to
+            # anchor on; the image itself travels as an attachment.
+            enriched_message = "Please look at the image I sent."
         if attachments:
             mathpix = MathpixService()
             for att in attachments:
@@ -368,16 +438,83 @@ class AiChatAgentService:
             "session_status": session_status,
         }
 
+    # ── exactly-once processing ──────────────────────────────────────────
+
+    def _try_claim(self, session_id: str, message_id: int) -> bool:
+        """Atomically take ownership of answering `message_id` (see CLAIM_*)."""
+        try:
+            with self._get_db() as db:
+                row = db.execute(
+                    _CLAIM_SQL,
+                    {
+                        "id": message_id,
+                        "session_id": session_id,
+                        "stale": CLAIM_STALE_SECONDS,
+                        "max_age": CLAIM_MAX_AGE_SECONDS,
+                    },
+                ).first()
+            return row is not None
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"Claim failed for message {message_id}: {e}")
+            return False
+
+    def _refresh_claim(self, message_id: Optional[int]) -> None:
+        if not message_id:
+            return
+        try:
+            with self._get_db() as db:
+                db.execute(_REFRESH_CLAIM_SQL, {"id": message_id}).first()
+        except Exception as e:  # noqa: BLE001
+            logger.debug(f"Claim refresh failed for message {message_id}: {e}")
+
+    def _mark_answered(self, message_id: Optional[int]) -> None:
+        if not message_id:
+            return
+        try:
+            with self._get_db() as db:
+                db.execute(_MARK_ANSWERED_SQL, {"id": message_id}).first()
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"Could not mark message {message_id} answered: {e}")
+
+    def _still_pending(self, message_id: int) -> bool:
+        """False once the message is answered (by anyone) or too old to auto-answer."""
+        try:
+            with self._get_db() as db:
+                row = db.execute(
+                    _PENDING_STATE_SQL,
+                    {"id": message_id, "max_age": CLAIM_MAX_AGE_SECONDS},
+                ).first()
+            if row is None:
+                return False
+            return not (row[0] or row[1])
+        except Exception as e:  # noqa: BLE001
+            logger.debug(f"Pending check failed for message {message_id}: {e}")
+            return True
+
+    def get_session_identity(self, session_id: str) -> Optional[Dict[str, Any]]:
+        """Owner and status of a session, for the router's ownership check."""
+        with self._get_db() as db:
+            session = ChatSessionRepository(db).get_session_by_id(session_id)
+            if not session:
+                return None
+            return {
+                "user_id": session.user_id,
+                "institute_id": session.institute_id,
+                "status": session.status,
+            }
+
     async def stream_session(
         self,
         session_id: str,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """
         Stream messages for a session via SSE.
-        Uses short-lived DB sessions so the connection pool is not exhausted
-        during the long-lived SSE polling loop.
+
+        Replays the transcript, then polls for new rows every 2 s. The newest
+        unanswered user message is answered by whichever open stream wins its
+        claim; every other stream relays the rows the winner writes. Uses
+        short-lived DB sessions so the pool is never held across the loop.
         """
-        # Verify session and extract identity
         with self._get_db() as db:
             session = ChatSessionRepository(db).get_session_by_id(session_id)
             if not session:
@@ -388,153 +525,110 @@ class AiChatAgentService:
 
         logger.info(f"SSE stream started for session {session_id}")
 
-        # Send existing messages
         with self._get_db() as db:
             existing_messages = ChatMessageRepository(db).get_messages_by_session(
                 session_id
             )
 
-        logger.info(
-            f"Sending {len(existing_messages)} existing messages to SSE stream "
-            f"for session {session_id}"
-        )
+        # `cursor` only ever advances through rows this stream has READ from the
+        # table, never through ids it produced itself. Rows written by our own
+        # processing are remembered in `sent` so the next poll skips them. (The
+        # old loop advanced to the highest id it had produced, which silently
+        # skipped a learner message that landed while a reply was generating.)
+        cursor = 0
+        sent: set = set()
+        pending: Optional[int] = None
+
+        def _relay(msg) -> Dict[str, Any]:
+            sent.add(msg.id)
+            return {"event": "message", "data": _msg_event(msg)}
 
         for msg in existing_messages:
-            yield {"event": "message", "data": _msg_event(msg)}
+            cursor = msg.id
+            yield _relay(msg)
+        if existing_messages and existing_messages[-1].message_type == "user":
+            pending = existing_messages[-1].id
 
-        last_processed_id = existing_messages[-1].id if existing_messages else 0
-
-        # If no messages exist, generate AI greeting
         if not existing_messages:
-            logger.info(
-                f"No existing messages for session {session_id}, generating AI greeting"
-            )
-
             async for event in self._stream_greeting_generation(
                 session_id, user_id, institute_id
             ):
+                if event.get("event") == "message" and event.get("data", {}).get("id"):
+                    sent.add(event["data"]["id"])
                 yield event
-                if (
-                    event.get("event") == "message"
-                    and event.get("data", {}).get("id")
-                ):
-                    last_processed_id = max(
-                        last_processed_id, event["data"]["id"]
-                    )
 
-            yield {
-                "event": "status",
-                "data": {
-                    "ai_status": "idle",
-                    "session_status": session_status,
-                },
-            }
-
-        # Check for pending unprocessed user message
-        with self._get_db() as db:
-            latest = ChatMessageRepository(db).get_latest_message(session_id)
-        needs_processing = (
-            latest
-            and latest.message_type == "user"
-            and latest.id > last_processed_id
-        )
-
-        ai_status = "thinking" if needs_processing else "idle"
         yield {
             "event": "status",
-            "data": {"ai_status": ai_status, "session_status": session_status},
+            "data": {"ai_status": "idle", "session_status": session_status},
         }
 
-        if needs_processing:
-            logger.info(
-                f"Processing pending user message for session {session_id}"
-            )
-            async for event in self._stream_agentic_processing(
-                session_id, user_id, institute_id
-            ):
-                yield event
-                if (
-                    event.get("event") == "message"
-                    and event.get("data", {}).get("id")
-                ):
-                    last_processed_id = max(
-                        last_processed_id, event["data"]["id"]
-                    )
-
-            yield {
-                "event": "status",
-                "data": {
-                    "ai_status": "idle",
-                    "session_status": session_status,
-                },
-            }
-
-        # Keep connection alive and watch for new messages
-        logger.info(f"SSE stream entering polling loop for session {session_id}")
-
-        idle_counter = 0
-        max_idle_time = 30 * 60  # 30 minutes
-        max_idle_iterations = max_idle_time // 2
+        idle_iterations = 0
+        max_idle_iterations = (30 * 60) // 2  # 30 minutes of nothing new
 
         while True:
-            # Short-lived session for polling
+            if pending is not None:
+                if self._try_claim(session_id, pending):
+                    claimed = pending
+                    pending = None
+                    idle_iterations = 0
+                    logger.info(
+                        f"Answering message {claimed} for session {session_id}"
+                    )
+                    yield {
+                        "event": "status",
+                        "data": {"ai_status": "thinking", "session_status": session_status},
+                    }
+                    try:
+                        async for event in self._stream_agentic_processing(
+                            session_id, user_id, institute_id, message_id=claimed
+                        ):
+                            if event.get("event") == "message" and event.get("data", {}).get("id"):
+                                sent.add(event["data"]["id"])
+                            yield event
+                    finally:
+                        self._mark_answered(claimed)
+                    yield {
+                        "event": "status",
+                        "data": {"ai_status": "idle", "session_status": session_status},
+                    }
+                elif not self._still_pending(pending):
+                    pending = None
+
             with self._get_db() as db:
-                new_messages = ChatMessageRepository(
-                    db
-                ).get_messages_by_session(
+                new_messages = ChatMessageRepository(db).get_messages_by_session(
                     session_id=session_id,
-                    after_message_id=last_processed_id,
+                    after_message_id=cursor,
                 )
 
             if new_messages:
-                idle_counter = 0
-
+                idle_iterations = 0
+                newest_user: Optional[int] = None
                 for msg in new_messages:
+                    cursor = msg.id
                     if msg.message_type == "user":
-                        logger.info(
-                            f"New user message detected for session {session_id}, "
-                            "starting processing"
-                        )
-
-                        yield {"event": "message", "data": _msg_event(msg)}
-                        last_processed_id = msg.id
-
-                        yield {
-                            "event": "status",
-                            "data": {
-                                "ai_status": "thinking",
-                                "session_status": session_status,
-                            },
-                        }
-
-                        async for event in self._stream_agentic_processing(
-                            session_id, user_id, institute_id
-                        ):
-                            yield event
-                            if (
-                                event.get("event") == "message"
-                                and event.get("data", {}).get("id")
-                            ):
-                                last_processed_id = max(
-                                    last_processed_id, event["data"]["id"]
-                                )
-
-                        yield {
-                            "event": "status",
-                            "data": {
-                                "ai_status": "idle",
-                                "session_status": session_status,
-                            },
-                        }
-            else:
-                idle_counter += 1
-                if idle_counter >= max_idle_iterations:
+                        newest_user = msg.id
+                    if msg.id in sent:
+                        continue
+                    yield _relay(msg)
+                if newest_user is not None and newest_user not in (pending,):
+                    # Answer the newest question; earlier unanswered ones in the
+                    # same burst are in the history the model sees.
+                    pending = newest_user
+                if pending is not None:
+                    # Another stream may already be answering it — tell the UI.
+                    yield {
+                        "event": "status",
+                        "data": {"ai_status": "thinking", "session_status": session_status},
+                    }
+                    continue
+            elif pending is None:
+                idle_iterations += 1
+                if idle_iterations >= max_idle_iterations:
                     logger.info(
                         f"Session {session_id} idle for 30 minutes, closing stream"
                     )
                     break
 
-            # Check if session closed (short-lived session)
             with self._get_db() as db:
                 session = ChatSessionRepository(db).get_session_by_id(session_id)
             if not session or session.status == "CLOSED":
@@ -637,6 +731,7 @@ class AiChatAgentService:
         session_id: str,
         user_id: str,
         institute_id: str,
+        message_id: Optional[int] = None,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """
         Main agentic processing loop with tool calling support.
@@ -655,8 +750,17 @@ class AiChatAgentService:
                 if not session:
                     return
 
-                latest_msg = message_repo.get_latest_message(session_id)
-                if not latest_msg or latest_msg.message_type != "user":
+                # Answer the message this stream claimed — not "whatever is
+                # newest", which may be a later message another stream owns.
+                if message_id is not None:
+                    latest_msg = db.get(ChatMessage, message_id)
+                else:
+                    latest_msg = message_repo.get_latest_message(session_id)
+                if (
+                    not latest_msg
+                    or latest_msg.message_type != "user"
+                    or latest_msg.session_id != session_id
+                ):
                     return
 
                 # Materialise ORM data into local variables
@@ -738,6 +842,9 @@ class AiChatAgentService:
                 # Extract quiz submission data before session closes
                 quiz_submission_data = msg_metadata.get("quiz_submission")
             # ── DB released ──
+
+            # Context gathering (KB embedding search) can take seconds.
+            self._refresh_claim(message_id)
 
             # Handle quiz submission (manages its own sessions)
             if quiz_submission_data:
@@ -829,6 +936,7 @@ class AiChatAgentService:
 
             while iteration < max_iterations:
                 iteration += 1
+                self._refresh_claim(message_id)
                 logger.info(
                     f"Agentic loop iteration {iteration} for session {session_id}"
                 )
@@ -992,9 +1100,10 @@ class AiChatAgentService:
                             institute_id=institute_id,
                             user_id=user_id,
                         )
-                        tool_result = await tool_manager.execute_tool(
+                        tool_output = await tool_manager.execute_tool(
                             tool_name, tool_args
                         )
+                    tool_result, tool_card = split_tool_output(tool_output)
 
                     # Save tool call and result messages
                     with self._get_db() as db:
@@ -1025,6 +1134,22 @@ class AiChatAgentService:
 
                     yield {"event": "message", "data": tool_call_data}
                     yield {"event": "message", "data": tool_result_data}
+
+                    # A tool may hand back something to SHOW (links, progress)
+                    # alongside the text the model reads. It is its own message
+                    # so it renders as a card and survives a reload; `content`
+                    # is the plain-markdown fallback for older app builds and
+                    # the admin transcript viewer.
+                    if tool_card:
+                        with self._get_db() as db:
+                            card_msg = ChatMessageRepository(db).create_message(
+                                session_id=session_id,
+                                message_type="card",
+                                content=card_fallback_markdown(tool_card),
+                                metadata={"card": tool_card, "tool_name": tool_name},
+                            )
+                            card_data = _msg_event(card_msg)
+                        yield {"event": "message", "data": card_data}
 
                     # Append to conversation for next LLM call
                     messages.append(

@@ -161,6 +161,20 @@ SETTING_SPECS: Dict[str, SettingSpec] = {
             default=lambda: get_settings().voice_require_auth,
         ),
         SettingSpec(
+            key="chatbot.text.require_auth",
+            group="rollout",
+            label="Require a login token on the text chatbot",
+            description=(
+                "Refuse /chat-agent requests that don't present a learner access token. Until it "
+                "is on, a token is verified when present (and must belong to the session's "
+                "learner) but not demanded, so older app builds keep working. Turn on once the "
+                "'chat-agent request without a token' log line goes quiet. Also settable via "
+                "CHAT_REQUIRE_AUTH."
+            ),
+            type="bool",
+            default=lambda: get_settings().chat_require_auth,
+        ),
+        SettingSpec(
             key="tutor.compile.model",
             group="tutor",
             label="Tutor compile model",

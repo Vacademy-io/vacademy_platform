@@ -6,6 +6,7 @@ import { format } from 'date-fns';
 import {
     CalendarBlank,
     DownloadSimple,
+    Flame,
     Folders,
     ListBullets,
     MagnifyingGlass,
@@ -275,6 +276,19 @@ const FollowUpsContent = () => {
     const { t: tCampaignType } = useTranslation('audienceManagerCampaignTypeDropdown');
     const [campaignTypeFilters, setCampaignTypeFilters] = useState<string[]>([]);
     const [audienceFilters, setAudienceFilters] = useState<string[]>([]);
+    // Interest level recorded on the follow-up. Offered only to an institute that
+    // configured the list (Lead settings → Follow-up fields); everyone else never
+    // sees the control and nothing is sent.
+    const [interestFilters, setInterestFilters] = useState<string[]>([]);
+    const interestOptions = useMemo(
+        () =>
+            leadSettings.followUpFields.enabled ? leadSettings.followUpFields.interestLevels : [],
+        [leadSettings.followUpFields.enabled, leadSettings.followUpFields.interestLevels]
+    );
+    const activeInterests = useMemo(
+        () => interestFilters.filter((level) => interestOptions.includes(level)),
+        [interestFilters, interestOptions]
+    );
     const [utmFilters, setUtmFilters] = useState<UtmFilterSelection>({});
     const setUtmFilter = (dimension: UtmFilterDimension, values: string[]) =>
         setUtmFilters((prev) => {
@@ -363,7 +377,8 @@ const FollowUpsContent = () => {
     const statusFilterReady = !leadSettings.isLoading;
 
     // Completed tile controls. Its own search and window because it queries a
-    // different endpoint — the lead filters above do not apply to follow-up events.
+    // different endpoint. The lead filters above (Source, Label, UTM, interest
+    // level) go with it too — they used to show on this tab without filtering it.
     const [completedRange, setCompletedRange] = useState(COMPLETED_DEFAULT_RANGE);
     const [completedFrom, setCompletedFrom] = useState('');
     const [completedTo, setCompletedTo] = useState('');
@@ -381,6 +396,9 @@ const FollowUpsContent = () => {
             ...completedWindow(completedRange, completedFrom, completedTo),
             leadStatusId,
             leadStatusExcludeId,
+            audienceIds: resolvedAudienceIds?.length ? resolvedAudienceIds : undefined,
+            utmFilters: utmFiltersPayload,
+            interestLevels: activeInterests.length ? activeInterests : undefined,
         }),
         [
             completedSearch,
@@ -389,6 +407,9 @@ const FollowUpsContent = () => {
             completedTo,
             leadStatusId,
             leadStatusExcludeId,
+            resolvedAudienceIds,
+            utmFiltersPayload,
+            activeInterests,
         ]
     );
 
@@ -432,6 +453,7 @@ const FollowUpsContent = () => {
             follow_up_pending: true,
             ...audienceParams,
             utm_filters: utmFiltersPayload,
+            follow_up_interest_levels: activeInterests.length ? activeInterests : undefined,
         }),
         [
             instituteId,
@@ -441,6 +463,7 @@ const FollowUpsContent = () => {
             appliedSearch,
             audienceParams,
             utmFiltersPayload,
+            activeInterests,
         ]
     );
 
@@ -531,7 +554,9 @@ const FollowUpsContent = () => {
                 page,
                 size: PAGE_SIZE,
             }),
-        enabled: !!instituteId && bucket === 'completed' && statusFilterReady,
+        // Same guard as the open buckets: a Source with no audiences must show
+        // nothing, not every completed follow-up.
+        enabled: !!instituteId && !noTypeAudiences && bucket === 'completed' && statusFilterReady,
         staleTime: 30 * 1000,
     });
 
@@ -974,6 +999,16 @@ const FollowUpsContent = () => {
                     selection={utmFilters}
                     onChange={setUtmFilter}
                 />
+                {interestOptions.length > 0 && (
+                    <MultiSelectFilter
+                        label={t('filters.interestLevel')}
+                        icon={<Flame className="size-4 shrink-0 text-neutral-400" />}
+                        options={interestOptions.map((level) => ({ value: level, label: level }))}
+                        selected={activeInterests}
+                        onChange={setInterestFilters}
+                        widthClass="w-48"
+                    />
+                )}
                 {/* Completed has its own range below — it filters on when a follow-up
                     was closed, this one on when it is due. Today is one day already. */}
                 {bucket !== 'completed' && bucket !== 'today' && (

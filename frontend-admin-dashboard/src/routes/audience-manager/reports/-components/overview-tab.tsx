@@ -12,6 +12,7 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { useLeadTiers } from '@/hooks/use-lead-tiers';
+import { PerLeadExports } from './per-lead-exports';
 import { useTranslation } from 'react-i18next';
 import {
     CaretRight,
@@ -99,6 +100,16 @@ export function OverviewTab({
 
     return (
         <div className="flex flex-col gap-6">
+            {/* Per-lead TAT / SLA exports — only for institutes that turned them on. */}
+            <PerLeadExports
+                kinds={['tat', 'sla']}
+                instituteId={instituteId}
+                fromDate={fromDate}
+                toDate={toDate}
+                teamId={teamId}
+                counsellorUserId={counsellorUserId}
+                audienceId={audienceId}
+            />
             {/* KPI cards */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <KpiCard

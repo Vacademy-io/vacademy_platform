@@ -21,7 +21,7 @@
     "iframePanel": {
         "heading": "Customize iFrame",
         "widthLabel": "Width",
-        "heightLabel": "Height (px)",
+        "heightLabel": "Starting height (px) — adjusts to the form",
         "previewScaledLabel": "Preview (scaled)",
         "formPreviewTitle": "Form Preview",
         "tipPrefix": "Tip: Use",

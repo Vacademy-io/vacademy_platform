@@ -96,7 +96,8 @@
     "filters": {
         "campaignType": "सभी {{term}}",
         "audience": "सभी {{term}}",
-        "audienceUntitled": "अनाम ऑडियंस"
+        "audienceUntitled": "अनाम ऑडियंस",
+        "interestLevel": "सभी रुचि स्तर"
     },
     "completedRange": {
         "preset_one": "आज",

@@ -7,6 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.admin_activity_logs.annotation.Auditable;
 import vacademy.io.admin_core_service.features.audience.dto.CloseLeadFollowupRequest;
+import vacademy.io.admin_core_service.features.audience.dto.CompletedFollowUpsQuery;
 import vacademy.io.admin_core_service.features.audience.dto.CreateLeadFollowupRequest;
 import vacademy.io.admin_core_service.features.audience.dto.LeadFollowupDto;
 import vacademy.io.admin_core_service.features.audience.dto.UpdateLeadFollowupRequest;
@@ -88,6 +89,27 @@ public class LeadFollowupController {
                         toTimestamp(closedFrom), toTimestamp(closedTo),
                         leadStatusId, leadStatusExcludeId,
                         PageRequest.of(page, size), includeLeadDetail));
+    }
+
+    /**
+     * Same as the GET, with the lead filters in the body (see
+     * {@link CompletedFollowUpsQuery} for why a body).
+     */
+    @PostMapping("/completed")
+    public ResponseEntity<Page<LeadFollowupDto>> completedFiltered(
+            @RequestBody CompletedFollowUpsQuery q,
+            @RequestAttribute("user") CustomUserDetails user) {
+        int page = q.getPage() == null ? 0 : q.getPage();
+        int size = q.getSize() == null ? 20 : q.getSize();
+        String audienceIdsCsv = q.getAudienceIds() == null || q.getAudienceIds().isEmpty()
+                ? null
+                : String.join(",", q.getAudienceIds());
+        return ResponseEntity.ok(
+                leadFollowupService.completed(user, q.getInstituteId(), q.getCounsellorUserId(),
+                        q.getSearch(), toTimestamp(q.getClosedFrom()), toTimestamp(q.getClosedTo()),
+                        q.getLeadStatusId(), q.getLeadStatusExcludeId(),
+                        audienceIdsCsv, q.getUtmFilters(), q.getInterestLevels(),
+                        PageRequest.of(page, size), Boolean.TRUE.equals(q.getIncludeLeadDetail())));
     }
 
     /** ISO-8601 instant from the browser, or null when the range is open-ended. */

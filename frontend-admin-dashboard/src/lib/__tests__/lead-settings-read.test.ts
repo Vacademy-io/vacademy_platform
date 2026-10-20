@@ -85,6 +85,7 @@ describe('follow-up fields config', () => {
             keepPopupsOpen: false,
             showHistory: false,
             allowEditing: false,
+            reportExports: false,
         });
     });
 

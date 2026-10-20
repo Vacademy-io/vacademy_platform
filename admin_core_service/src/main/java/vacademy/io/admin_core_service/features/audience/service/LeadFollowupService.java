@@ -52,6 +52,7 @@ public class LeadFollowupService {
     private final vacademy.io.admin_core_service.features.common.repository.CustomFieldValuesRepository customFieldValuesRepository;
     private final vacademy.io.admin_core_service.features.common.repository.CustomFieldRepository customFieldRepository;
     private final LeadFollowupSettingService leadFollowupSettingService;
+    private final vacademy.io.admin_core_service.features.utm_attribution.service.UtmListFilterResolver utmListFilterResolver;
 
     @Transactional
     public LeadFollowupDto create(CreateLeadFollowupRequest request, CustomUserDetails user) {
@@ -194,6 +195,24 @@ public class LeadFollowupService {
                                            Timestamp closedFrom, Timestamp closedTo,
                                            String leadStatusCsv, String leadStatusExcludeCsv,
                                            Pageable pageable, boolean includeLeadDetail) {
+        return completed(user, instituteId, counsellorUserId, search, closedFrom, closedTo,
+                leadStatusCsv, leadStatusExcludeCsv, null, null, null, pageable, includeLeadDetail);
+    }
+
+    /**
+     * Same, with the Follow-ups page's lead filters, which used to show on the
+     * Completed tab without filtering it: Source / Label (audience ids), UTM
+     * (resolved to response ids the way the leads query does it) and the
+     * interest level recorded on the follow-up. All null = no filter.
+     */
+    public Page<LeadFollowupDto> completed(CustomUserDetails user, String instituteId,
+                                           String counsellorUserId, String search,
+                                           Timestamp closedFrom, Timestamp closedTo,
+                                           String leadStatusCsv, String leadStatusExcludeCsv,
+                                           String audienceIdsCsv,
+                                           vacademy.io.admin_core_service.features.utm_attribution.dto.UtmListFilterDTO utmFilters,
+                                           List<String> interestLevels,
+                                           Pageable pageable, boolean includeLeadDetail) {
         // ORDER BY lives in the query, so the Pageable stays unsorted.
         Pageable paged = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
 
@@ -239,10 +258,41 @@ public class LeadFollowupService {
             }
         }
 
+        String matchedResponseIdsCsv = null;
+        String excludedResponseIdsCsv = null;
+        if (vacademy.io.admin_core_service.features.utm_attribution.service.UtmListFilterResolver
+                .hasFilter(utmFilters)) {
+            var utm = utmListFilterResolver.resolve(utmFilters,
+                    vacademy.io.admin_core_service.features.common.service.CustomFieldListFilterResolver.Surface.RESPONSE,
+                    instituteId);
+            // A filter that matches nothing must return nothing — an empty CSV
+            // would read as "no filter" to the query.
+            if (utm.shortCircuitsToEmpty()) return Page.empty(paged);
+            matchedResponseIdsCsv = utm.matchedIdsCsv();
+            excludedResponseIdsCsv = utm.excludedIdsCsv();
+        }
+
         return hydrate(leadFollowupRepository.findCompleted(
                 instituteId, createdByCsv, closedFrom, closedTo,
                 search == null || search.isBlank() ? null : search.trim(),
-                searchUserIdsCsv, leadStatusCsv, leadStatusExcludeCsv, paged), includeLeadDetail);
+                searchUserIdsCsv, leadStatusCsv, leadStatusExcludeCsv,
+                isBlank(audienceIdsCsv) ? null : audienceIdsCsv.trim(),
+                matchedResponseIdsCsv, excludedResponseIdsCsv,
+                joinInterestLevels(interestLevels), paged), includeLeadDetail);
+    }
+
+    /**
+     * Interest levels for the CHR(31)-joined SQL parameter, or null for "no
+     * filter". The labels are the institute's own, so they may hold commas.
+     */
+    public static String joinInterestLevels(List<String> levels) {
+        if (levels == null) return null;
+        List<String> clean = levels.stream()
+                .filter(l -> l != null && !l.isBlank())
+                .map(String::trim)
+                .distinct()
+                .toList();
+        return clean.isEmpty() ? null : String.join("\u001F", clean);
     }
 
     /** Map a page of entities through the same lead-name hydration the lists use. */

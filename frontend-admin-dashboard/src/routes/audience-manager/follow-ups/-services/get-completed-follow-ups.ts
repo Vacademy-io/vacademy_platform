@@ -1,5 +1,6 @@
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { COMPLETED_LEAD_FOLLOWUPS } from '@/constants/urls';
+import type { UtmListFiltersPayload } from '@/services/utm-list-filters';
 
 /**
  * Completed follow-ups — one row per closed follow-up, newest first.
@@ -63,6 +64,12 @@ export async function fetchCompletedFollowUps(params: {
     leadStatusId?: string;
     /** Same, but "every lead except these" (`statusExclude=1`). */
     leadStatusExcludeId?: string;
+    /** The page's Source / Label filters, resolved to audience ids. */
+    audienceIds?: string[];
+    /** UTM selection, in the shape the leads query takes it. */
+    utmFilters?: UtmListFiltersPayload;
+    /** Interest levels recorded on the follow-up. */
+    interestLevels?: string[];
     page: number;
     size: number;
     /**
@@ -74,6 +81,28 @@ export async function fetchCompletedFollowUps(params: {
      */
     includeLeadDetail?: boolean;
 }): Promise<CompletedFollowUpsPage | undefined> {
+    // With the page's lead filters on, POST them as a body: a Source can resolve
+    // to 100+ audience ids, too long for a URL. Without them, the original GET.
+    const filtered =
+        !!params.audienceIds?.length || !!params.utmFilters || !!params.interestLevels?.length;
+    if (filtered) {
+        const res = await authenticatedAxiosInstance.post(COMPLETED_LEAD_FOLLOWUPS, {
+            institute_id: params.instituteId,
+            counsellor_user_id: params.counsellorUserId,
+            search: params.search || undefined,
+            closed_from: params.closedFrom,
+            closed_to: params.closedTo,
+            lead_status_id: params.leadStatusId,
+            lead_status_exclude_id: params.leadStatusExcludeId,
+            audience_ids: params.audienceIds?.length ? params.audienceIds : undefined,
+            utm_filters: params.utmFilters,
+            interest_levels: params.interestLevels?.length ? params.interestLevels : undefined,
+            page: params.page,
+            size: params.size,
+            include_lead_detail: params.includeLeadDetail || undefined,
+        });
+        return res?.data;
+    }
     const res = await authenticatedAxiosInstance.get(COMPLETED_LEAD_FOLLOWUPS, {
         params: {
             instituteId: params.instituteId,

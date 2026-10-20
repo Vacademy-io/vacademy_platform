@@ -88,6 +88,14 @@ public interface LeadFollowupRepository extends JpaRepository<LeadFollowup, Stri
                    OR COALESCE(ls.status_key, ulp.conversion_status) IS NULL
                    OR NOT (COALESCE(ls.status_key, ulp.conversion_status)
                            = ANY(STRING_TO_ARRAY(:leadStatusExcludeCsv, ','))))
+              AND (COALESCE(:audienceIdsCsv, '') = ''
+                   OR ar.audience_id = ANY(STRING_TO_ARRAY(:audienceIdsCsv, ',')))
+              AND (COALESCE(:matchedResponseIdsCsv, '') = ''
+                   OR f.audience_response_id = ANY(STRING_TO_ARRAY(:matchedResponseIdsCsv, ',')))
+              AND (COALESCE(:excludedResponseIdsCsv, '') = ''
+                   OR NOT (f.audience_response_id = ANY(STRING_TO_ARRAY(:excludedResponseIdsCsv, ','))))
+              AND (COALESCE(:interestLevels, '') = ''
+                   OR f.interest_level = ANY(STRING_TO_ARRAY(:interestLevels, CHR(31))))
             ORDER BY f.closed_at DESC
             """,
             countQuery = """
@@ -117,6 +125,14 @@ public interface LeadFollowupRepository extends JpaRepository<LeadFollowup, Stri
                    OR COALESCE(ls.status_key, ulp.conversion_status) IS NULL
                    OR NOT (COALESCE(ls.status_key, ulp.conversion_status)
                            = ANY(STRING_TO_ARRAY(:leadStatusExcludeCsv, ','))))
+              AND (COALESCE(:audienceIdsCsv, '') = ''
+                   OR ar.audience_id = ANY(STRING_TO_ARRAY(:audienceIdsCsv, ',')))
+              AND (COALESCE(:matchedResponseIdsCsv, '') = ''
+                   OR f.audience_response_id = ANY(STRING_TO_ARRAY(:matchedResponseIdsCsv, ',')))
+              AND (COALESCE(:excludedResponseIdsCsv, '') = ''
+                   OR NOT (f.audience_response_id = ANY(STRING_TO_ARRAY(:excludedResponseIdsCsv, ','))))
+              AND (COALESCE(:interestLevels, '') = ''
+                   OR f.interest_level = ANY(STRING_TO_ARRAY(:interestLevels, CHR(31))))
             """,
             nativeQuery = true)
     Page<LeadFollowup> findCompleted(@Param("instituteId") String instituteId,
@@ -127,7 +143,28 @@ public interface LeadFollowupRepository extends JpaRepository<LeadFollowup, Stri
                                      @Param("searchUserIdsCsv") String searchUserIdsCsv,
                                      @Param("leadStatusCsv") String leadStatusCsv,
                                      @Param("leadStatusExcludeCsv") String leadStatusExcludeCsv,
+                                     @Param("audienceIdsCsv") String audienceIdsCsv,
+                                     @Param("matchedResponseIdsCsv") String matchedResponseIdsCsv,
+                                     @Param("excludedResponseIdsCsv") String excludedResponseIdsCsv,
+                                     @Param("interestLevels") String interestLevels,
                                      Pageable pageable);
+
+    /**
+     * Leads (audience_response ids) with an OPEN follow-up whose recorded interest
+     * level is one of the given values. interestLevels is joined with the ASCII
+     * unit separator CHR(31), not a comma, because the levels are labels an
+     * institute writes itself and may contain commas. Feeds the Follow-ups page
+     * interest filter through the leads query matched-id channel, so that query
+     * itself is unchanged.
+     */
+    @Query(value = """
+            SELECT DISTINCT lf.audience_response_id FROM lead_followup lf
+            WHERE lf.is_closed = FALSE
+              AND (COALESCE(:instituteId, '') = '' OR lf.institute_id = :instituteId)
+              AND lf.interest_level = ANY(STRING_TO_ARRAY(:interestLevels, CHR(31)))
+            """, nativeQuery = true)
+    List<String> findOpenResponseIdsByInterestLevels(@Param("instituteId") String instituteId,
+                                                     @Param("interestLevels") String interestLevels);
 
     /**
      * Batch fetch of every OPEN scheduled follow-up for the given leads, oldest schedule_time first.

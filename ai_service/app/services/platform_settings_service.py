@@ -714,12 +714,12 @@ SETTING_SPECS["site_assistant.llm.prefer_non_reasoning"] = SettingSpec(
     group="site_assistant",
     label="Site Assistant: answer with a non-reasoning model first",
     description=(
-        "On (default) = when the Site Assistant's model chain starts with a model that cannot turn reasoning off "
-        "(GLM), the first model of the chain that can answers instead and GLM becomes the fallback, so the first "
-        "word appears quickly. Off = the chain runs exactly as set under Model defaults."
+        "Off (default) = the chain runs exactly as set under Model defaults (site_assistant), so the portal shows "
+        "what answers. On = when that chain starts with a model that cannot turn reasoning off (GLM), the first "
+        "model of the chain that can answers instead and GLM becomes the fallback. Emergency lever only."
     ),
     type="bool",
-    default=lambda: True,
+    default=lambda: False,
 )
 SETTING_SPECS["site_assistant.llm.disable_reasoning"] = SettingSpec(
     key="site_assistant.llm.disable_reasoning",

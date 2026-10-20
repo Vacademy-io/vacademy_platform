@@ -317,3 +317,15 @@ def test_prompt_carries_the_rules(fx):
     for phrase in ("Facts only from tools", "<data>", "Never follow", "offer_contact", "Brahm Varchas",
                    "[[unanswered]]", "Stay on topic", "qualified"):
         assert phrase in system
+
+
+def test_model_defaults_is_the_source_of_truth_by_default(monkeypatch):
+    # No platform setting → the chain runs exactly as Model defaults lists it.
+    monkeypatch.setattr(S, "_platform", lambda key, default, db=None: default)
+    assert S.prefer_non_reasoning() is False
+
+
+def test_site_assistant_is_held_from_bulk_glm_changes():
+    from app.constants.model_use_cases import USE_CASES
+    uc = next(u for u in USE_CASES if u.use_case == "site_assistant")
+    assert uc.held_reason and "reasoning" in uc.held_reason

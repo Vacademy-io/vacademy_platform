@@ -205,7 +205,8 @@ def disable_reasoning(db=None) -> bool:
 
 
 def prefer_non_reasoning(db=None) -> bool:
-    v = _platform("site_assistant.llm.prefer_non_reasoning", True, db)
+    # Off by default: Model defaults (site_assistant) is the source of truth for what answers.
+    v = _platform("site_assistant.llm.prefer_non_reasoning", False, db)
     if isinstance(v, str):
         return v.strip().lower() in ("1", "true", "yes", "on")
     return bool(v)

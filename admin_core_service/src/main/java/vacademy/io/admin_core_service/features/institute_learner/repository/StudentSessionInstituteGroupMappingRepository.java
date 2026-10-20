@@ -146,6 +146,13 @@ public interface StudentSessionInstituteGroupMappingRepository
    * cancelled are naturally excluded. charge_date_label is preformatted for messages
    * ("11 Aug 2026") and is likewise rendered in the invite's zone, so the date a learner
    * reads matches the date they are charged.
+   *
+   * <p>{@code is_trial} is returned so callers can split the audience: a trial's upcoming
+   * charge is its FIRST charge ("your free trial ends tomorrow") while a member's is a
+   * RENEWAL ("your plan renews tomorrow"). Both used to arrive here indistinguishable, so a
+   * single workflow greeted both with one wording — SuchBliss was telling paying members
+   * their free trial was ending. Filtered by the {@code trialOnly} param in
+   * {@code QueryServiceImpl.getUpcomingAutopayCharges}, which defaults to returning both.
    */
   @Query(value = """
       SELECT DISTINCT ON (up.id)
@@ -159,7 +166,8 @@ public interface StudentSessionInstituteGroupMappingRepository
           to_char(up.next_charge_at AT TIME ZONE 'UTC'
                   AT TIME ZONE coalesce(jsonb_extract_path_text(cast(ei.setting_json as jsonb),
                                         'setting', 'AUTOPAY_SETTING', 'TRIAL_TIMEZONE'), 'UTC'),
-                  'DD Mon YYYY') AS charge_date_label
+                  'DD Mon YYYY') AS charge_date_label,
+          up.is_trial AS is_trial
       FROM user_plan up
       JOIN student_session_institute_group_mapping ssigm
         ON ssigm.user_plan_id = up.id AND ssigm.status = 'ACTIVE'

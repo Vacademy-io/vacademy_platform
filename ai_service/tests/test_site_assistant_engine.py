@@ -95,7 +95,7 @@ def test_invented_price_and_link_are_scrubbed_in_the_stream(fx):
     out = text_of(events)
     assert "3,999" not in out and "cheap-courses" not in out and "[[" not in out
     assert events[-1][1]["answered"] is False      # the model flagged it
-    assert events[-1][1]["billed"] is True         # still a produced answer
+    assert events[-1][1]["billed"] is False        # "I don't know" is not charged (owner, 2026-10-20)
 
 
 def test_no_source_found_marks_unanswered(fx):

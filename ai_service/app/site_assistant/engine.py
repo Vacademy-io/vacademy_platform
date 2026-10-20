@@ -347,9 +347,13 @@ async def _model_answer(ctx: SiteContext, text: str, lang: str,
                                sources={"items": sources[:30], "tools": tools_used, "model": model_used,
                                         "billed": False}, answered=answered)
         repo.touch_conversation(db, ctx.conversation_id, messages=1)
-    billed = billing.charge(institute_id=ctx.institute_id, model=model_used, prompt_tokens=prompt_tokens,
-                            completion_tokens=completion_tokens, message_id=mid, conversation_id=ctx.conversation_id,
-                            site_tag=ctx.site_tag, channel=ctx.channel, user_id=ctx.user_id)
+    # Owner decision (2026-10-20): 1 credit per answer; an "I don't know" is not an answer.
+    # It still costs us the model call, but the visitor is sent to a person and the
+    # question lands in the admin's Unanswered list, so the institute is not charged.
+    billed = answered and billing.charge(
+        institute_id=ctx.institute_id, model=model_used, prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens, message_id=mid, conversation_id=ctx.conversation_id,
+        site_tag=ctx.site_tag, channel=ctx.channel, user_id=ctx.user_id)
     if billed:
         with db_session() as db:
             repo.mark_billed(db, mid)

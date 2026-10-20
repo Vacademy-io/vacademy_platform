@@ -150,7 +150,7 @@ CREATE TABLE IF NOT EXISTS site_assistant_visitor_daily (
 --    admin already edited. unit_field flat is allowed by ai_tool_pricing_unit_field_valid.
 -- -------------------------------------------------------------------------------
 INSERT INTO ai_tool_pricing (tool_key, request_type, flat_base_credits, per_unit_credits, unit_field, params_json)
-VALUES ('site_assistant_answer', 'chatbot', 1, 0, 'flat', '{}'::jsonb)
+VALUES ('site_assistant_answer', 'chatbot', 1, 0, 'flat', '{"fixed_price": true}'::jsonb)
 ON CONFLICT (tool_key) DO NOTHING;
 
 -- -------------------------------------------------------------------------------

@@ -25,10 +25,21 @@ interface EnrollmentRow {
   remainingDays: number | null;
 }
 
+/**
+ * The "Invited" placeholder batch every course carries (level and session ids
+ * both INVITED). A learner sits in it while an invite is pending; it is not
+ * access, so it has no place in a list of memberships. The details API returns
+ * names only, so match the seeded names, both of them, so a real batch that
+ * happens to be called "Invited" still shows.
+ */
+const isInvitedPlaceholder = (s: Student): boolean =>
+  s.level_name?.trim().toLowerCase() === "invited level" &&
+  s.session_name?.trim().toLowerCase() === "invited";
+
 const buildRows = (students: Student[]): EnrollmentRow[] => {
   const course = getTerminology(ContentTerms.Course, SystemTerms.Course);
   return students
-    .filter((s) => s.package_session_id)
+    .filter((s) => s.package_session_id && !isInvitedPlaceholder(s))
     .map((s) => {
       const expiry = s.expiry_date ? new Date(s.expiry_date) : null;
       const validExpiry = expiry && !isNaN(expiry.getTime()) ? expiry : null;

@@ -96,7 +96,8 @@
     "filters": {
         "campaignType": "All {{term}}",
         "audience": "All {{term}}",
-        "audienceUntitled": "Untitled audience"
+        "audienceUntitled": "Untitled audience",
+        "interestLevel": "All interest levels"
     },
     "completedRange": {
         "preset_one": "Today",

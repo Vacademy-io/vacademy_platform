@@ -3563,6 +3563,31 @@ public class AudienceService {
                 return Page.empty(pageable);
             }
         }
+        // Follow-ups page interest filter rides the same channel: the leads whose
+        // open follow-up carries one of the chosen interest levels.
+        String followUpInterestLevels = LeadFollowupService.joinInterestLevels(
+                filterDTO.getFollowUpInterestLevels());
+        if (followUpInterestLevels != null) {
+            // The per-campaign path may carry no institute id; take it from the
+            // campaign, so the lookup never scans every institute's follow-ups.
+            String interestInstituteId = StringUtils.hasText(filterDTO.getInstituteId())
+                    ? filterDTO.getInstituteId()
+                    : (StringUtils.hasText(filterDTO.getAudienceId())
+                            ? audienceRepository.findById(filterDTO.getAudienceId())
+                                    .map(Audience::getInstituteId).orElse(null)
+                            : null);
+            if (!StringUtils.hasText(interestInstituteId)) {
+                return Page.empty(pageable);
+            }
+            cfResolution = cfResolution.and(
+                    new vacademy.io.admin_core_service.features.common.service.CustomFieldListFilterResolver.Resolution(
+                            new java.util.HashSet<>(leadFollowupRepository.findOpenResponseIdsByInterestLevels(
+                                    interestInstituteId, followUpInterestLevels)),
+                            null));
+            if (cfResolution.shortCircuitsToEmpty()) {
+                return Page.empty(pageable);
+            }
+        }
         String customFieldMatchedIdsCsv = cfResolution.matchedIdsCsv();
         String customFieldExcludedIdsCsv = cfResolution.excludedIdsCsv();
 
@@ -4077,6 +4102,8 @@ public class AudienceService {
                             scheduledFollowup != null ? scheduledFollowup.getStudentResponse() : null)
                     .followUpMode(scheduledFollowup != null ? scheduledFollowup.getFollowUpMode() : null)
                     .followUpNextAction(scheduledFollowup != null ? scheduledFollowup.getNextAction() : null)
+                    .followUpInterestLevel(
+                            scheduledFollowup != null ? scheduledFollowup.getInterestLevel() : null)
                     .sourceAudienceName("OPT_OUT".equals(response.getSourceType())
                             ? sourceAudienceIdToName.get(response.getSourceId())
                             : null)

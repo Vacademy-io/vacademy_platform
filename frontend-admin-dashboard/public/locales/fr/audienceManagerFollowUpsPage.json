@@ -107,7 +107,8 @@
     "filters": {
         "campaignType": "Tous : {{term}}",
         "audience": "Tous : {{term}}",
-        "audienceUntitled": "Audience sans titre"
+        "audienceUntitled": "Audience sans titre",
+        "interestLevel": "Tous les niveaux d’intérêt"
     },
     "completedRange": {
         "preset_one": "Aujourd'hui",

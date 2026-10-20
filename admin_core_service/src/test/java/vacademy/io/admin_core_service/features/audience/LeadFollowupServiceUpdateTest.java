@@ -80,7 +80,8 @@ class LeadFollowupServiceUpdateTest {
                 mock(TimelineEventService.class), mock(AuthService.class), responses,
                 mock(AudienceRepository.class), scope, workbench, mock(UserLeadProfileRepository.class),
                 mock(LeadStatusRepository.class), mock(CustomFieldValuesRepository.class),
-                mock(CustomFieldRepository.class), settings);
+                mock(CustomFieldRepository.class), settings,
+                mock(vacademy.io.admin_core_service.features.utm_attribution.service.UtmListFilterResolver.class));
     }
 
     private LeadFollowup followup(boolean closed) {

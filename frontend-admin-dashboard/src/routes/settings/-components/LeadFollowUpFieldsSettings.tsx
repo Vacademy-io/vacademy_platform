@@ -66,7 +66,7 @@ const LISTS: { key: ListKey; title: string; hint: string }[] = [
     },
 ];
 
-type BehaviourKey = 'keepPopupsOpen' | 'showHistory' | 'allowEditing';
+type BehaviourKey = 'keepPopupsOpen' | 'showHistory' | 'allowEditing' | 'reportExports';
 
 const BEHAVIOUR_SWITCHES: { key: BehaviourKey; label: string; hint: string }[] = [
     {
@@ -83,6 +83,11 @@ const BEHAVIOUR_SWITCHES: { key: BehaviourKey; label: string; hint: string }[] =
         key: 'allowEditing',
         label: 'Allow editing past follow-ups',
         hint: 'Counsellors can correct a follow-up’s comment, closing note and interest level, including completed ones. The earlier text stays in the activity log.',
+    },
+    {
+        key: 'reportExports',
+        label: 'Per-lead report exports',
+        hint: 'Reports gets per-lead CSV exports: TAT (response time and met / breached per enquiry), SLA (where each lead sits on the SLA clock) and Overdue follow-ups.',
     },
 ];
 

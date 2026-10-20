@@ -95,6 +95,8 @@ public class LeadDetailDTO {
     private String followUpStudentResponse;
     private String followUpMode;
     private String followUpNextAction;
+    /** Interest level recorded on that same open follow-up (lead_followup.interest_level). */
+    private String followUpInterestLevel;
 
     // ── TAT / Follow-up SLA (deadlines computed live from SLA config; badges from scheduler state) ──
     private Timestamp tatDueAt;          // reach-out deadline: admin override, else working-hours-aware lead_sla_due_at (live when TAT enabled)

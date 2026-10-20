@@ -13,6 +13,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
+import { PerLeadExports } from './per-lead-exports';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import {
@@ -147,6 +148,16 @@ export function FollowupsTab({
 
     return (
         <div className="flex flex-col gap-6">
+            {/* Per-lead overdue export — only for institutes that turned it on. */}
+            <PerLeadExports
+                kinds={['overdue']}
+                instituteId={instituteId}
+                fromDate={fromDate}
+                toDate={toDate}
+                teamId={teamId}
+                counsellorUserId={counsellorUserId}
+                audienceId={audienceId}
+            />
             {/* Aging bucket tiles */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
                 {BUCKET_ORDER.map((key) => (

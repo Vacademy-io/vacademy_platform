@@ -144,7 +144,8 @@
     "filters": {
         "campaignType": "كل {{term}}",
         "audience": "كل {{term}}",
-        "audienceUntitled": "جمهور بلا اسم"
+        "audienceUntitled": "جمهور بلا اسم",
+        "interestLevel": "كل مستويات الاهتمام"
     },
     "completedRange": {
         "preset_one": "اليوم",

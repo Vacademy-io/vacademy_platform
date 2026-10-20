@@ -48,6 +48,7 @@ import {
   type PostSubmitTokens,
 } from "../-utils/post-submit-config";
 import { PostSubmitArtwork } from "./post-submit-artwork";
+import { useEmbedHeight } from "../-utils/use-embed-height";
 import {
   AUDIENCE_FORM_HOOKS,
   parseAudienceFormAppearance,
@@ -141,6 +142,9 @@ const AudienceResponseForm = ({
   const { setInstituteDetails } = useInstituteDetailsStore();
   const [loading, setLoading] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
+  // Inside an iframe, tells the host page how tall the form is (see the embed
+  // snippet). Does nothing on the standalone page.
+  const embedHeightRef = useEmbedHeight();
   // What the visitor typed, kept after the form resets so the thank-you screen
   // can resolve {{name}} / {{email}} tokens.
   const [respondent, setRespondent] = useState<PostSubmitTokens>({});
@@ -531,6 +535,7 @@ const AudienceResponseForm = ({
 
     return (
       <div
+        ref={embedHeightRef}
         className={cn(
           AUDIENCE_FORM_HOOKS.page,
           AUDIENCE_FORM_HOOKS.success,
@@ -972,6 +977,7 @@ const AudienceResponseForm = ({
 
   return (
     <div
+      ref={embedHeightRef}
       className={cn(
         AUDIENCE_FORM_HOOKS.page,
         "min-h-screen w-full",

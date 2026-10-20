@@ -21,7 +21,7 @@
     "iframePanel": {
         "heading": "تخصيص الإطار",
         "widthLabel": "العرض",
-        "heightLabel": "الارتفاع (بكسل)",
+        "heightLabel": "الارتفاع الأولي (بكسل) — يتكيّف مع النموذج",
         "previewScaledLabel": "معاينة (مصغّرة)",
         "formPreviewTitle": "معاينة النموذج",
         "tipPrefix": "نصيحة: استخدم",

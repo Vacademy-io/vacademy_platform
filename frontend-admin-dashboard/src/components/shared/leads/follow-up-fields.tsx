@@ -117,12 +117,14 @@ export function useFollowUpFeatures(): {
     keepPopupsOpen: boolean;
     showHistory: boolean;
     allowEditing: boolean;
+    reportExports: boolean;
 } {
     const { followUpFields } = useLeadSettings();
     return {
         keepPopupsOpen: followUpFields.keepPopupsOpen,
         showHistory: followUpFields.showHistory,
         allowEditing: followUpFields.allowEditing,
+        reportExports: followUpFields.reportExports,
     };
 }
 

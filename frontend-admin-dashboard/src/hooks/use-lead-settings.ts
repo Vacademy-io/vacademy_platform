@@ -184,6 +184,8 @@ export interface FollowUpFieldsConfig {
     showHistory: boolean;
     /** Counsellors can edit a follow-up's note, closing note and interest level, closed ones included. */
     allowEditing: boolean;
+    /** Per-lead TAT / SLA / Overdue CSV exports in the Reports Center. */
+    reportExports: boolean;
 }
 
 /**
@@ -283,6 +285,7 @@ export const LEAD_SETTINGS_DEFAULTS: LeadSettingsConfig = {
         keepPopupsOpen: false,
         showHistory: false,
         allowEditing: false,
+        reportExports: false,
     },
     leadLookup: {
         enabled: false,
@@ -375,6 +378,7 @@ export function normaliseFollowUpFields(
         keepPopupsOpen: saved?.keepPopupsOpen === true,
         showHistory: saved?.showHistory === true,
         allowEditing: saved?.allowEditing === true,
+        reportExports: saved?.reportExports === true,
     };
 }
 

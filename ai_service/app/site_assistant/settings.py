@@ -19,8 +19,9 @@ logger = logging.getLogger(__name__)
 
 USE_CASE = "site_assistant"
 TOOL_KEY = "site_assistant_answer"
-# Fast, non-reasoning default when ai_model_defaults has no row for the use case.
-DEFAULT_MODEL = "google/gemini-2.5-flash"
+# Fast, non-reasoning default when ai_model_defaults has no row for the use case:
+# the registry's one non-GLM model (constants.model_defaults), never a literal here.
+from ..constants.model_defaults import NON_GLM_FALLBACK as DEFAULT_MODEL  # noqa: E402
 TEMPERATURE = 0.3
 MAX_ANSWER_TOKENS = 450
 MAX_TOOL_ROUNDS = 4

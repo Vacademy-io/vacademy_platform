@@ -234,12 +234,9 @@ function useCourseThumbnails(courses: EnrolledCourse[]) {
  * other first-class widgets around them. The only wrapper is an unstyled
  * spacing div, which paints nothing.
  */
-export const EnrolledCoursesWidget: React.FC<{
-  className?: string;
-  /** The main column has the full page width (no rail beside it): courses lay
-   *  out as tiles in a 2–3 column grid instead of full-width rows. */
-  wide?: boolean;
-}> = ({ className, wide = false }) => {
+export const EnrolledCoursesWidget: React.FC<{ className?: string }> = ({
+  className,
+}) => {
   const { t } = useTranslation("dashboard");
   const navigate = useNavigate();
   const isPlay = usePlayTheme();
@@ -388,8 +385,7 @@ export const EnrolledCoursesWidget: React.FC<{
             alt=""
             aria-hidden="true"
             className={cn(
-              "aspect-video w-full shrink-0 bg-white object-contain ring-1 ring-black/5",
-              !wide && "sm:w-44",
+              "aspect-video w-full shrink-0 bg-white object-contain ring-1 ring-black/5 sm:w-44",
               s.cover,
             )}
           />
@@ -397,8 +393,7 @@ export const EnrolledCoursesWidget: React.FC<{
           <span
             aria-hidden="true"
             className={cn(
-              "flex aspect-video w-full shrink-0 items-center justify-center font-black uppercase",
-              !wide && "sm:w-44",
+              "flex aspect-video w-full shrink-0 items-center justify-center font-black uppercase sm:w-44",
               s.cover,
               s.coverText,
               tint.thumbBg,
@@ -428,8 +423,7 @@ export const EnrolledCoursesWidget: React.FC<{
             width of the main column. */}
         <span
           className={cn(
-            "flex flex-col gap-2 border-t pt-3",
-            wide ? "mt-auto" : "sm:w-52 sm:shrink-0 sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0",
+            "flex flex-col gap-2 border-t pt-3 sm:w-52 sm:shrink-0 sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0",
             s.divider,
           )}
         >
@@ -461,9 +455,7 @@ export const EnrolledCoursesWidget: React.FC<{
     });
 
     const shellClass = cn(
-      "flex w-full flex-col items-stretch gap-3 text-start transition-transform duration-200 hover:-translate-y-0.5",
-      // Tiles fill their grid cell; rows lay the cover, text and progress side by side.
-      wide ? "h-full" : "sm:flex-row sm:items-center sm:gap-4",
+      "flex w-full flex-col items-stretch gap-3 text-start transition-transform duration-200 hover:-translate-y-0.5 sm:flex-row sm:items-center sm:gap-4",
       s.shell,
       s.tintShell && tint.surface,
     );
@@ -564,17 +556,12 @@ export const EnrolledCoursesWidget: React.FC<{
   }
 
   return (
-    <div
-      className={cn(
-        wide ? "grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-3 lg:gap-6" : COLUMN_RHYTHM,
-        className,
-      )}
-    >
+    <div className={cn(COLUMN_RHYTHM, className)}>
       {visible.map(renderCourseWidget)}
       {courses.length > visible.length && (
         // Bare link, not a card: adding a box here would re-introduce exactly
         // the container the widgets were pulled out of.
-        <div className="col-span-full flex justify-end">
+        <div className="flex justify-end">
           <button type="button" onClick={viewAll} className={s.viewAll}>
             {t("enrolledCourses.viewAll", {
               courses: coursesLabel.toLocaleLowerCase(),

@@ -1041,11 +1041,9 @@ export function DashboardComponent() {
 
   // The rail is "on screen" only when some rail widget is switched on AND one
   // of them actually rendered (most return null on a quiet day). Measured from
-  // the DOM below; the enrolled-courses widget lays out as tiles when the main
-  // column gets the full width.
+  // the DOM below; while it is empty the main column takes the full width.
   const railRef = useRef<HTMLDivElement>(null);
   const [railHasContent, setRailHasContent] = useState(true);
-  const [mainIsWide, setMainIsWide] = useState(false);
 
   // MAIN column (lg:col-span-2): continue learning, stats row, progress
   // insights, custom widget, commerce. Commerce is hidden for the play
@@ -1075,7 +1073,7 @@ export function DashboardComponent() {
       id: "enrolledCourses" as const,
       order: getWidgetOrder("enrolledCourses"),
       visible: isWidgetVisible("enrolledCourses"),
-      render: <EnrolledCoursesWidget wide={mainIsWide} />,
+      render: <EnrolledCoursesWidget />,
     },
     {
       id: "statsRow" as const,
@@ -1233,9 +1231,6 @@ export function DashboardComponent() {
     observer.observe(el, { childList: true, subtree: true });
     return () => observer.disconnect();
   }, [hasRail]);
-  useLayoutEffect(() => {
-    setMainIsWide(!showRail);
-  }, [showRail]);
 
   return (
     // One task runner for the whole page, mounted ABOVE the Today module so a

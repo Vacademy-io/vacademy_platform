@@ -1308,6 +1308,9 @@ export const GET_INVOICES_BY_USER = (userId: string) =>
     `${BASE_URL}/admin-core-service/v1/invoices/user/${userId}`;
 export const GET_INVOICES_BY_INSTITUTE = (instituteId: string) =>
     `${BASE_URL}/admin-core-service/v1/invoices/institute/${instituteId}`;
+// ZIP of every invoice PDF issued in ?startDate&endDate, plus an invoices.csv manifest.
+export const GET_INVOICES_BULK_DOWNLOAD = (instituteId: string) =>
+    `${BASE_URL}/admin-core-service/v1/invoices/institute/${instituteId}/bulk-download`;
 export const GET_INVOICE_DOWNLOAD_URL = (invoiceId: string) =>
     `${BASE_URL}/admin-core-service/v1/invoices/${invoiceId}/download`;
 export const GET_INVOICE_BY_ID = (invoiceId: string) =>

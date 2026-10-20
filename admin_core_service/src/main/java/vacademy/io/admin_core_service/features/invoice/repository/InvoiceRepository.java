@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import vacademy.io.admin_core_service.features.invoice.dto.InvoiceExportRow;
 import vacademy.io.admin_core_service.features.invoice.entity.Invoice;
 
 import java.math.BigDecimal;
@@ -101,6 +102,25 @@ public interface InvoiceRepository extends JpaRepository<Invoice, String> {
                      "AND l.event_type IN ('CREDIT_PAYMENT', 'CREDIT_WAIVER', 'CREDIT_ADJUSTMENT'))", nativeQuery = true)
        BigDecimal sumUnledgeredAdminInvoicePayments(@Param("userId") String userId,
                      @Param("instituteId") String instituteId);
+
+       /**
+        * Live (non-REJECTED) invoices issued in the window, oldest first — the bulk ZIP export.
+        * The caller passes a page one larger than its cap so it can tell "exactly the cap"
+        * from "too many" without a separate count.
+        */
+       @Query("SELECT i.id AS id, i.invoiceNumber AS invoiceNumber, i.invoiceDate AS invoiceDate, " +
+                     "i.userId AS userId, i.status AS status, i.source AS source, " +
+                     "i.totalAmount AS totalAmount, i.currency AS currency, i.createdAt AS createdAt " +
+                     "FROM Invoice i WHERE i.instituteId = :instituteId " +
+                     "AND i.status <> 'REJECTED' " +
+                     "AND (:startDate IS NULL OR i.invoiceDate >= :startDate) " +
+                     "AND (:endDate IS NULL OR i.invoiceDate <= :endDate) " +
+                     "ORDER BY i.invoiceDate ASC, i.createdAt ASC")
+       List<InvoiceExportRow> findForBulkExport(
+                     @Param("instituteId") String instituteId,
+                     @Param("startDate") LocalDateTime startDate,
+                     @Param("endDate") LocalDateTime endDate,
+                     Pageable pageable);
 
        @Query("SELECT i FROM Invoice i WHERE i.instituteId = :instituteId " +
                      "AND (:userId IS NULL OR i.userId = :userId) " +

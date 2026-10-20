@@ -4,6 +4,7 @@ import {
     GET_INVOICES_BY_USER,
     GET_INVOICES_BY_INSTITUTE,
     GET_INVOICE_DOWNLOAD_URL,
+    GET_INVOICES_BULK_DOWNLOAD,
     GET_INVOICE_BY_ID,
     POST_ADMIN_CREATE_INVOICE,
     POST_ADMIN_PREVIEW_INVOICE,
@@ -238,6 +239,55 @@ export async function fetchInvoicesForPaymentLogs(
         { params: { instituteId } }
     );
     return response.data ?? [];
+}
+
+/**
+ * Download every invoice issued in the window as one ZIP (PDFs + an `invoices.csv` manifest).
+ * One invoice per payment — a payment that was invoiced twice keeps its first-issued invoice and
+ * the manifest lists the extra. Dates are UTC instants; empty = unbounded.
+ *
+ * The server refuses an empty period (404) or one with too many invoices (400) with a message;
+ * with a blob response that message arrives as a Blob, so it is unpacked into the thrown Error.
+ */
+export async function downloadInvoicesZip(
+    instituteId: string,
+    range: { startDate?: string; endDate?: string },
+    fileName: string
+): Promise<void> {
+    const params: Record<string, string> = {};
+    if (range.startDate) params['startDate'] = range.startDate;
+    if (range.endDate) params['endDate'] = range.endDate;
+    let data: Blob;
+    try {
+        const response = await authenticatedAxiosInstance.get<Blob>(
+            GET_INVOICES_BULK_DOWNLOAD(instituteId),
+            // A large period takes a while to assemble; don't let a default timeout cut it off.
+            { params, responseType: 'blob', timeout: 0 }
+        );
+        data = response.data;
+    } catch (error) {
+        const body = (error as { response?: { data?: unknown } })?.response?.data;
+        if (body instanceof Blob) {
+            try {
+                const parsed = JSON.parse(await body.text());
+                const message = parsed?.ex ?? parsed?.message ?? parsed?.error;
+                if (typeof message === 'string' && message) throw new Error(message);
+            } catch (parseError) {
+                if (parseError instanceof Error && !(parseError instanceof SyntaxError)) {
+                    throw parseError;
+                }
+            }
+        }
+        throw error;
+    }
+    const url = URL.createObjectURL(new Blob([data], { type: 'application/zip' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
 }
 
 export function getInvoiceDownloadUrl(invoiceId: string): string {

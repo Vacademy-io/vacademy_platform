@@ -49,6 +49,24 @@ public class SubscriptionDTO {
     private boolean canRenewManually;
 
     /**
+     * How long one paid period lasts, in days — so the renewal screen can say what the
+     * learner is actually buying ("AUD for 12 months", "back for another month") instead of
+     * hardcoding a year. Resolved with {@code PlanValidityResolver}, which falls back to the
+     * plan_json snapshot when a later Payment Settings edit retired the live PaymentPlan
+     * row, so a learner on a withdrawn plan still sees their real period rather than the
+     * 30-day default.
+     */
+    private Integer planValidityDays;
+
+    /**
+     * Where a learner should write about their renewal — the institute's
+     * {@code EMAIL_SETTING.data.UTILITY_EMAIL} address. Sent so the renewal screen can offer
+     * a real contact under the institute's own brand; null when unconfigured, and the screen
+     * then omits the line rather than showing another institute's address.
+     */
+    private String supportEmail;
+
+    /**
      * This plan row was never a membership: no enrolment was ever created against it and no
      * payment ever succeeded on it — an abandoned or failed first checkout. Renewal is
      * refused for it (a renewal extends existing access, and there is none), so the client

@@ -358,6 +358,59 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
                                                            @Param("assessmentType") List<String> assessmentTypes,
                                                            Pageable pageable);
 
+    /**
+     * Learner chatbot: the learner's latest ENDED attempt per published test in an institute,
+     * newest first, with NO release filter so the caller can split released results from ones
+     * awaiting release (a held MANUAL attempt has a NULL release status, which an IN-list filter
+     * cannot express). Same columns as findAssessmentForUserWithFilter; marks of any attempt that
+     * is not RELEASED on a MANUAL or NO_AUTO_RELEASE test, or that is held PENDING, are NULL here
+     * as well, so a held score never leaves this query.
+     */
+    @Query(value = """
+            SELECT
+                a.id AS assessmentId,
+                a.name AS assessmentName,
+                sa.id AS attemptId,
+                a.play_mode AS playMode,
+                a.evaluation_type AS evaluationType,
+                a.bound_start_time AS startTime,
+                a.bound_end_time AS endTime,
+                sa.status AS attemptStatus,
+                sa.created_at AS attemptDate,
+                sa.total_time_in_seconds AS durationInSeconds,
+                CASE
+                    WHEN sa.report_release_status = 'PENDING'
+                      OR (a.result_type IN ('MANUAL', 'NO_AUTO_RELEASE')
+                          AND (sa.report_release_status IS NULL OR sa.report_release_status <> 'RELEASED'))
+                    THEN NULL
+                    ELSE sa.total_marks
+                END AS totalMarks,
+                aim.subject_id AS subjectId,
+                'ENDED' AS assessmentStatus,
+                sa.report_release_status AS reportReleaseStatus
+            FROM public.assessment a
+            JOIN public.assessment_institute_mapping aim
+                ON a.id = aim.assessment_id AND aim.institute_id = :instituteId
+            JOIN public.assessment_user_registration aur
+                ON a.id = aur.assessment_id AND aur.user_id = :userId
+            JOIN public.student_attempt sa
+                ON aur.id = sa.registration_id
+                AND sa.id = (
+                    SELECT sa_inner.id
+                    FROM public.student_attempt sa_inner
+                    WHERE sa_inner.registration_id = aur.id
+                    ORDER BY sa_inner.created_at DESC
+                    LIMIT 1
+                )
+            WHERE sa.status = 'ENDED'
+              AND a.status = 'PUBLISHED'
+            ORDER BY sa.created_at DESC
+            LIMIT :maxRows
+            """, nativeQuery = true)
+    List<StudentReportDto> findLatestEndedAttemptsForLearnerChat(@Param("userId") String userId,
+                                                                 @Param("instituteId") String instituteId,
+                                                                 @Param("maxRows") int maxRows);
+
 
     @Query(value = """
             SELECT

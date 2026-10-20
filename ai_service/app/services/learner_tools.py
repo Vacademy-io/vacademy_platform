@@ -612,7 +612,8 @@ def _test_line_and_item(item: Dict[str, Any], live: bool, now: datetime):
     if status == "LIVE":
         bits.append("you have an attempt in progress")
     elif used:
-        bits.append(f"attempted {used}" + (f" of {allowed}" if allowed else "") + " time(s)")
+        # Very large allowances (e.g. 100000) mean "unlimited".
+        bits.append(f"attempted {used}" + (f" of {allowed}" if allowed and int(allowed) < 1000 else "") + " time(s)")
     entry = {
         "title": name,
         "subtitle": " · ".join(bits),

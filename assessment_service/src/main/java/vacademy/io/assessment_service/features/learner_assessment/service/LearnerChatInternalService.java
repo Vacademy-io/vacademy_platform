@@ -2,7 +2,6 @@ package vacademy.io.assessment_service.features.learner_assessment.service;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.StudentReportDto;
 import vacademy.io.assessment_service.features.assessment.enums.AssessmentModeEnum;
@@ -83,18 +82,8 @@ public class LearnerChatInternalService {
 
     public LearnerChatResultsResponse listResults(String userId, String instituteId, Integer limit) {
         int max = Math.max(1, Math.min(limit == null ? MAX_RESULTS : limit, MAX_RESULTS));
-        // The query has no ORDER BY, so fetch a generous page and sort newest first here
-        // (rather than rely on Spring rewriting a native query for a Sort).
-        List<StudentReportDto> attempts = new ArrayList<>(studentAttemptRepository.findAssessmentForUserWithFilter(
-                        true, userId, instituteId, List.of("ENDED"), null, null,
-                        PageRequest.of(0, SCAN_ATTEMPTS))
-                .getContent());
-        attempts.sort((a, b) -> {
-            java.util.Date x = a.getAttemptDate();
-            java.util.Date y = b.getAttemptDate();
-            if (x == null || y == null) return x == null ? (y == null ? 0 : 1) : -1;
-            return y.compareTo(x);
-        });
+        List<StudentReportDto> attempts = studentAttemptRepository
+                .findLatestEndedAttemptsForLearnerChat(userId, instituteId, SCAN_ATTEMPTS);
 
         List<AssessmentHistoryItemDto> results = new ArrayList<>();
         List<LearnerChatResultsResponse.AwaitingResult> awaiting = new ArrayList<>();

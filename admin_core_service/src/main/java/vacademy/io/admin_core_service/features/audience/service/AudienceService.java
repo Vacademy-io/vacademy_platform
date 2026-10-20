@@ -626,14 +626,30 @@ public class AudienceService {
      * since this is a same-bean self-invocation.)
      */
     public String submitCatalogueLead(CatalogueLeadRequestDTO dto) {
+        return submitCatalogueLead(dto, false);
+    }
+
+    /**
+     * {@link #submitCatalogueLead(CatalogueLeadRequestDTO)}, optionally accepting a lead with a
+     * phone number and no email (the Site Assistant contact card, where a visitor often leaves
+     * only a number). Such a lead's auth user is keyed on the same deterministic, non-deliverable
+     * placeholder that Meta/Google webhook leads and phone-only bulk rows already use
+     * ({@link PlaceholderEmailService}, suppressed by every send path); the lead row itself keeps
+     * {@code parent_email} NULL and gets no email custom field, exactly like an inbound-call lead.
+     * The public catalogue form keeps requiring an email (allowPhoneOnly=false).
+     */
+    public String submitCatalogueLead(CatalogueLeadRequestDTO dto, boolean allowPhoneOnly) {
         if (dto == null || !StringUtils.hasText(dto.getInstituteId())) {
             throw new VacademyException("instituteId is required");
         }
         // submitLeadV2 builds the lead's user from the email; without an email it
         // saves nothing and returns an error sentinel. The catalogue form already
         // makes email mandatory, so require it here too rather than silently drop.
-        if (!StringUtils.hasText(dto.getEmail())) {
-            throw new VacademyException("Email is required to capture a lead");
+        boolean hasEmail = StringUtils.hasText(dto.getEmail());
+        if (!hasEmail && !(allowPhoneOnly && StringUtils.hasText(dto.getMobileNumber()))) {
+            throw new VacademyException(allowPhoneOnly
+                    ? "An email or a phone number is required to capture a lead"
+                    : "Email is required to capture a lead");
         }
 
         // Destination routing: a website capture point (contact form, newsletter,
@@ -658,7 +674,8 @@ public class AudienceService {
 
         UserDTO userDTO = UserDTO.builder()
                 .fullName(dto.getFullName())
-                .email(dto.getEmail())
+                .email(hasEmail ? dto.getEmail()
+                        : placeholderEmailService.synthesize(dto.getFullName(), dto.getMobileNumber(), null))
                 .mobileNumber(dto.getMobileNumber())
                 .build();
 

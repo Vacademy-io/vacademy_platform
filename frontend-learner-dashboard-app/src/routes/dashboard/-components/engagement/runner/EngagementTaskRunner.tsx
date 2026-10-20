@@ -673,6 +673,7 @@ function RunnerSession({
             revealHint={interactive ? revealCopy(item, null, t, nowForCopy) : null}
             disabled={!interactive || submitting}
             tone={visual.tone}
+            onBeforeAskTutor={onClose}
           />
         );
       case "text":

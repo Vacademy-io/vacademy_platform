@@ -3,7 +3,9 @@
  * Each category has route prefixes that match learner app routes.
  */
 const PAGE_CATEGORY_ROUTES: Record<string, string[]> = {
-  dashboard: ['/dashboard'],
+  // The daily-tasks page is part of the learner's home: the tutor helps
+  // there ("Why was I wrong?" after a reveal, the Buddy line).
+  dashboard: ['/dashboard', '/engagement'],
   all_courses: ['/study-library'],
   course_details: ['/study-library/courses'],
   study_material: ['/study-library/courses/course-details'],

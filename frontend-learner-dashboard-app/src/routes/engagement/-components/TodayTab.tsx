@@ -24,6 +24,7 @@ import {
 } from "@/routes/dashboard/-components/engagement/engagement-copy";
 import { isoDayShort } from "./DayStrip";
 import { EarnedPoints } from "./PastRow";
+import { TutorBuddyLine } from "@/components/chatbot/moments/TutorBuddyLine";
 
 /**
  * The Today tab (§3.6): today's tasks as rich grouped rows. Every row opens the
@@ -316,6 +317,8 @@ export function TodayTab({ feed, showPoints }: TodayTabProps) {
 
   return (
     <div className="flex flex-col gap-section">
+      <TutorBuddyLine />
+
       {feed.refetchError && (
         <ErrorState variant="inline" message={t("page.refreshError")} onRetry={feed.retry} />
       )}

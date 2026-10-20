@@ -71,6 +71,7 @@ export const VoiceModePanel: React.FC<VoiceModePanelProps> = ({
   const [notice, setNotice] = useState<string | null>(null);
   const [summaryData, setSummaryData] = useState<SessionSummary | null>(null);
   const [showScorecard, setShowScorecard] = useState(false);
+  const [showTranscript, setShowTranscript] = useState(false);
 
   const transcriptEndRef = useRef<HTMLDivElement>(null);
   const voiceStateRef = useRef(voiceState);
@@ -89,10 +90,10 @@ export const VoiceModePanel: React.FC<VoiceModePanelProps> = ({
   isMicMutedRef.current = isMicMuted;
   const endTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Auto-scroll transcript
+  // Auto-scroll the full transcript while it is open.
   useEffect(() => {
-    transcriptEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [transcript]);
+    if (showTranscript) transcriptEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [transcript, showTranscript]);
 
   // Audio player
   const audioPlayer = useAudioPlayer();
@@ -442,6 +443,14 @@ export const VoiceModePanel: React.FC<VoiceModePanelProps> = ({
   }, [finishSpeaking]);
 
   const modeInfo = MODE_LABELS[mode];
+
+  // Live captions: the latest line large, the other side's line before it small.
+  const latestLine = transcript.length > 0 ? transcript[transcript.length - 1] : null;
+  const earlierLine =
+    transcript.length > 1 && transcript[transcript.length - 2].role !== latestLine?.role
+      ? transcript[transcript.length - 2]
+      : null;
+
   const isReconnecting = ws.connectionState === "connecting" && voiceState !== "connecting";
 
   const hint = isReconnecting
@@ -508,28 +517,73 @@ export const VoiceModePanel: React.FC<VoiceModePanelProps> = ({
           {notice && <p className="text-amber-300/80 text-xs mt-1">{notice}</p>}
         </div>
 
-        {/* Transcript area */}
-        <div className="max-h-pct-30 px-6 overflow-y-auto">
-          <div className="max-w-lg mx-auto space-y-2 pb-2">
-            {transcript.map((msg, i) => (
-              <div
-                key={i}
-                className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+        {/* Live captions. Not a live region: the tutor's lines are already spoken
+            aloud, so announcing them too would talk over the call. */}
+        <section
+          aria-label={t("voiceModePanel.captionsLabel")}
+          className="shrink-0 px-6 pb-2"
+        >
+          <div className="mx-auto flex min-h-24 max-w-xl flex-col justify-end gap-2 text-center">
+            {earlierLine && (
+              <p dir="auto" className="line-clamp-2 text-sm text-white/50">
+                {earlierLine.role === "user" && (
+                  <span className="font-medium text-white/70">{t("voiceModePanel.captionYou")}: </span>
+                )}
+                {earlierLine.text}
+              </p>
+            )}
+            {latestLine && (
+              <p
+                dir="auto"
+                className={`line-clamp-4 text-xl font-medium leading-snug sm:text-2xl ${
+                  latestLine.role === "user" ? "text-white/80" : "text-white"
+                }`}
               >
-                <div
-                  className={`rounded-lg px-3 py-1.5 text-sm max-w-pct-80 ${
-                    msg.role === "user"
-                      ? "bg-primary/20 text-white"
-                      : "bg-white/10 text-white"
-                  }`}
-                >
-                  {msg.text}
-                </div>
-              </div>
-            ))}
-            <div ref={transcriptEndRef} />
+                {latestLine.role === "user" && (
+                  <span className="text-primary-200">{t("voiceModePanel.captionYou")}: </span>
+                )}
+                {latestLine.text}
+              </p>
+            )}
           </div>
-        </div>
+          {transcript.length > 1 && (
+            <div className="mt-2 flex justify-center">
+              <button
+                type="button"
+                onClick={() => setShowTranscript((v) => !v)}
+                aria-expanded={showTranscript}
+                className="rounded-full px-3 py-1 text-caption text-white/50 transition-colors hover:bg-white/10 hover:text-white/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+              >
+                {showTranscript ? t("voiceModePanel.hideTranscript") : t("voiceModePanel.showTranscript")}
+              </button>
+            </div>
+          )}
+        </section>
+
+        {/* Full transcript, on request */}
+        {showTranscript && (
+          <div className="max-h-pct-30 px-6 overflow-y-auto">
+            <div className="max-w-lg mx-auto space-y-2 pb-2">
+              {transcript.map((msg, i) => (
+                <div
+                  key={i}
+                  className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                >
+                  <div
+                    className={`rounded-lg px-3 py-1.5 text-sm max-w-pct-80 ${
+                      msg.role === "user"
+                        ? "bg-primary/20 text-white"
+                        : "bg-white/10 text-white"
+                    }`}
+                  >
+                    {msg.text}
+                  </div>
+                </div>
+              ))}
+              <div ref={transcriptEndRef} />
+            </div>
+          </div>
+        )}
 
         {/* Controls bar */}
         <div className="shrink-0 pb-8 pt-4 flex items-center justify-center gap-6">

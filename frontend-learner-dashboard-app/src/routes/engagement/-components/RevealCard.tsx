@@ -4,6 +4,9 @@ import DOMPurify from "dompurify";
 import { useQuery } from "@tanstack/react-query";
 import { Paperclip, UsersThree, Warning } from "@phosphor-icons/react";
 import { formatPercent } from "@/lib/formatters";
+import { parseHtmlToString } from "@/lib/utils";
+import { WhyWrongButton } from "@/components/chatbot/moments/WhyWrongButton";
+import { SelectionAskZone } from "@/components/chatbot/moments/SelectionAskPill";
 import { getFileDetail } from "@/services/upload_file";
 import { parseQuestionPayload, type EngagementItem } from "@/services/engagement";
 import { ChoiceOptions } from "@/routes/dashboard/-components/engagement/ChoiceOptions";
@@ -253,6 +256,21 @@ export function RevealCard({ item, variant, showPoints, now, className }: Reveal
   const earned = showPoints && (item.pointsAwarded ?? 0) > 0;
   const dateLabel = isoDayShort(item.runDate);
 
+  // "Why was I wrong?" only on the revealed card of a keyed question the
+  // learner missed: the key is on screen (the server sends it only after the
+  // reveal, once the learner can no longer answer — §19.1).
+  const pickedText = options.find((o) => o.id === item.selectedOptionId)?.text ?? "";
+  const keyText = options.find((o) => o.id === correctId)?.text ?? "";
+  const canAskWhy =
+    !waiting &&
+    !isPoll &&
+    format === "MCQ" &&
+    item.isRevealed !== false &&
+    item.resultPending !== true &&
+    item.isCorrect === false &&
+    Boolean(correctId && pickedText && keyText) &&
+    item.selectedOptionId !== correctId;
+
   return (
     <article
       aria-labelledby={titleId}
@@ -307,8 +325,23 @@ export function RevealCard({ item, variant, showPoints, now, className }: Reveal
 
       {!waiting && explanation && format === "MCQ" && (
         <Block label={t("page.answers.why")}>
-          <TeacherText value={explanation} />
+          <SelectionAskZone lessonName={item.title}>
+            <TeacherText value={explanation} />
+          </SelectionAskZone>
         </Block>
+      )}
+
+      {canAskWhy && (
+        <WhyWrongButton
+          className="self-start"
+          getDetails={() => ({
+            question: prompt || item.title,
+            yourAnswer: pickedText,
+            correctAnswer: keyText,
+            explanation: explanation ? parseHtmlToString(explanation) : null,
+            source: showPrompt ? item.title : typeLabel(item, t),
+          })}
+        />
       )}
 
       {!waiting && (format === "TEXT" || format === "UPLOAD") && (modelAnswer || explanation) && (

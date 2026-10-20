@@ -230,7 +230,11 @@
         "noticeNoSpeech": "I didn't catch that — try again",
         "noticeError": "Something went wrong. Tap the mic to try again.",
         "noticeMic": "I can't reach your microphone. Check permissions and tap the mic.",
-        "topicPrefix": "On {{topic}}"
+        "topicPrefix": "On {{topic}}",
+        "captionsLabel": "Live captions",
+        "captionYou": "You",
+        "showTranscript": "Show full transcript",
+        "hideTranscript": "Hide transcript"
     },
     "voiceModeSelector": {
         "title": "Voice Call",
@@ -348,5 +352,42 @@
     },
     "peek": {
         "dismiss": "Dismiss"
+    },
+    "moments": {
+        "selection": {
+            "toolbar": "Ask {{name}} about this text",
+            "explain": "Explain",
+            "simplify": "Simplify",
+            "quiz": "Quiz me",
+            "prompt": {
+                "explain": "Explain this: “{{text}}”",
+                "explainInLesson": "Explain this from my lesson \"{{lesson}}\": “{{text}}”",
+                "simplify": "Explain this in simpler words, with an everyday example: “{{text}}”",
+                "simplifyInLesson": "Explain this from my lesson \"{{lesson}}\" in simpler words, with an everyday example: “{{text}}”",
+                "quiz": "Quiz me on this: “{{text}}”",
+                "quizInLesson": "Quiz me on this from my lesson \"{{lesson}}\": “{{text}}”"
+            }
+        },
+        "whyWrong": {
+            "button": "Why was I wrong?",
+            "prompt": {
+                "intro": "I got this question wrong.",
+                "introFrom": "I got this question wrong in \"{{source}}\".",
+                "question": "Question: {{text}}",
+                "yours": "My answer: {{text}}",
+                "correct": "Correct answer: {{text}}",
+                "explanation": "Explanation shown: {{text}}",
+                "ask": "Please explain where my thinking went wrong, then give me one similar practice question to try."
+            }
+        },
+        "video": {
+            "chip": "Stuck at {{time}}? Ask {{name}}",
+            "prompt": "I'm stuck at {{time}} in the video \"{{lesson}}\". Can you help me understand this part?",
+            "promptNoLesson": "I'm stuck at {{time}} in this video. Can you help me understand this part?",
+            "dismiss": "Dismiss"
+        },
+        "buddy": {
+            "aria": "Ask {{name}}: {{label}}"
+        }
     }
 }

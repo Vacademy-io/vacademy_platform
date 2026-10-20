@@ -55,6 +55,10 @@ import { isOnlineOnlySlide } from "@/lib/offline/online-only";
 import { Network } from "@/utils/network-plugin";
 import { resolveSlideSource, getOfflineLockReason } from "@/lib/offline/resolve";
 import { getUserId } from "@/constants/getUserId";
+import { SelectionAsk } from "@/components/chatbot/moments/SelectionAskPill";
+import { VideoStuckChip } from "@/components/chatbot/moments/VideoStuckChip";
+import { useVideoStuckMoment } from "@/components/chatbot/moments/use-video-stuck-moment";
+import { useAvailableTutor } from "@/components/chatbot/moments/tutor-moments";
 
 export const SlideMaterial = ({
   onNavigateToSlide,
@@ -226,10 +230,24 @@ export const SlideMaterial = ({
     if (canOverflowNext) onPastLastSlide?.();
   };
 
-  // Video time update handler - simplified since questions are now handled internally by YouTube player
-  const handleVideoTimeUpdate = () => {
-    // Questions are now handled internally by the YouTube player component
-    // This function can be used for other time-based functionality if needed
+  // Tutor moments: select-to-ask on text documents, and a "Stuck at 03:12?"
+  // offer when the learner keeps rewinding to the same part of a video.
+  const momentTutor = useAvailableTutor();
+  const contentAreaRef = useRef<HTMLDivElement>(null);
+  const isTextDocument =
+    activeItem?.source_type === "DOCUMENT" &&
+    (activeItem.document_slide?.type === "PDF" ||
+      activeItem.document_slide?.type === "DOC");
+  const videoMoment = useVideoStuckMoment(
+    activeItem?.source_type === "VIDEO" ? activeItem.id : null,
+    !!momentTutor
+  );
+
+  // Video time update handler. Questions are handled inside each player; the
+  // time only feeds the stuck-moment detector (its `track` is stable, so the
+  // copy baked into the player JSX at load time stays current).
+  const handleVideoTimeUpdate = (currentTime?: number) => {
+    videoMoment.track(currentTime);
   };
 
   const handleQuestionSubmit = async (selectedOption: string | string[]) => {
@@ -1365,9 +1383,22 @@ export const SlideMaterial = ({
       </div>
 
       <div className="w-full flex-1 min-h-0 relative pb-16 sm:pb-0 [.ui-play_&]:pb-0">
-        <div className="h-full w-full transition-all duration-500">
+        <div ref={contentAreaRef} className="h-full w-full transition-all duration-500">
           {content}
         </div>
+        <SelectionAsk
+          containerRef={contentAreaRef}
+          lessonName={activeItem?.title}
+          enabled={isTextDocument && !isLoading}
+        />
+        {videoMoment.stuckAt !== null && !isLoading && (
+          <VideoStuckChip
+            stuckAt={videoMoment.stuckAt}
+            lessonName={activeItem?.title}
+            onDismiss={videoMoment.dismiss}
+            className="absolute start-3 top-3 z-20 max-w-pct-80"
+          />
+        )}
 
         {/* Loading skeleton of slide content */}
         {isLoading && (

@@ -230,7 +230,11 @@
         "noticeNoSpeech": "Je n'ai pas entendu — réessayez",
         "noticeError": "Un problème est survenu. Appuyez sur le micro pour réessayer.",
         "noticeMic": "Je n'ai pas accès à votre microphone. Vérifiez les autorisations puis appuyez sur le micro.",
-        "topicPrefix": "Sujet : {{topic}}"
+        "topicPrefix": "Sujet : {{topic}}",
+        "captionsLabel": "Sous-titres en direct",
+        "captionYou": "Vous",
+        "showTranscript": "Afficher toute la transcription",
+        "hideTranscript": "Masquer la transcription"
     },
     "voiceModeSelector": {
         "title": "Appel vocal",
@@ -349,5 +353,42 @@
     },
     "peek": {
         "dismiss": "Fermer"
+    },
+    "moments": {
+        "selection": {
+            "toolbar": "Demander à {{name}} à propos de ce texte",
+            "explain": "Explique",
+            "simplify": "Simplifie",
+            "quiz": "Interroge-moi",
+            "prompt": {
+                "explain": "Explique-moi ceci : « {{text}} »",
+                "explainInLesson": "Explique-moi ce passage de ma leçon « {{lesson}} » : « {{text}} »",
+                "simplify": "Explique-moi ceci avec des mots plus simples et un exemple de la vie courante : « {{text}} »",
+                "simplifyInLesson": "Explique-moi ce passage de ma leçon « {{lesson}} » avec des mots plus simples et un exemple de la vie courante : « {{text}} »",
+                "quiz": "Interroge-moi sur ceci : « {{text}} »",
+                "quizInLesson": "Interroge-moi sur ce passage de ma leçon « {{lesson}} » : « {{text}} »"
+            }
+        },
+        "whyWrong": {
+            "button": "Pourquoi ma réponse est-elle fausse ?",
+            "prompt": {
+                "intro": "J'ai mal répondu à cette question.",
+                "introFrom": "J'ai mal répondu à cette question dans « {{source}} ».",
+                "question": "Question : {{text}}",
+                "yours": "Ma réponse : {{text}}",
+                "correct": "Bonne réponse : {{text}}",
+                "explanation": "Explication affichée : {{text}}",
+                "ask": "Explique-moi où mon raisonnement s'est trompé, puis donne-moi une question d'entraînement similaire."
+            }
+        },
+        "video": {
+            "chip": "Vous bloquez à {{time}} ? Demandez à {{name}}",
+            "prompt": "Je bloque à {{time}} dans la vidéo « {{lesson}} ». Peux-tu m'aider à comprendre ce passage ?",
+            "promptNoLesson": "Je bloque à {{time}} dans cette vidéo. Peux-tu m'aider à comprendre ce passage ?",
+            "dismiss": "Fermer"
+        },
+        "buddy": {
+            "aria": "Demander à {{name}} : {{label}}"
+        }
     }
 }

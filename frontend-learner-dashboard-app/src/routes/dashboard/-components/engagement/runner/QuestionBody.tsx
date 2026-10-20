@@ -7,6 +7,8 @@ import {
   type EngagementItem,
   type EngagementPollResult,
 } from "@/services/engagement";
+import { parseHtmlToString } from "@/lib/utils";
+import { WhyWrongButton } from "@/components/chatbot/moments/WhyWrongButton";
 import { ChoiceOptions, type ChoiceMode } from "../ChoiceOptions";
 import { ecn, skinClasses, type EngagementTone } from "../engagement-tone";
 
@@ -53,6 +55,8 @@ export interface QuestionBodyProps {
   revealHint?: string | null;
   disabled?: boolean;
   tone?: EngagementTone;
+  /** Closes the runner sheet before the tutor chat opens ("Why was I wrong?"). */
+  onBeforeAskTutor?: () => void;
 }
 
 export function QuestionBody({
@@ -64,6 +68,7 @@ export function QuestionBody({
   revealHint,
   disabled,
   tone,
+  onBeforeAskTutor,
 }: QuestionBodyProps) {
   const { t } = useTranslation("dashboardEngagement");
   const promptId = useId();
@@ -76,6 +81,18 @@ export function QuestionBody({
     const hasPollSplit = isPoll && Array.isArray(outcome.pollResults) && outcome.pollResults.length > 0;
     mode = hasPollSplit ? "pollResults" : outcome.correctId ? "revealed" : "result";
   }
+
+  // "Why was I wrong?" only once the key is shown for a missed answer. The
+  // server sends the key only after the reveal, when the learner can no longer
+  // answer (§19.1), so an open graded question never offers it.
+  const pickedText = options.find((o) => o.id === outcome?.selectedId)?.text ?? "";
+  const keyText = options.find((o) => o.id === outcome?.correctId)?.text ?? "";
+  const canAskWhy =
+    !isPoll &&
+    !!outcome?.correctId &&
+    outcome.isCorrect === false &&
+    outcome.selectedId !== outcome.correctId &&
+    Boolean(pickedText && keyText);
 
   return (
     <div className="flex min-w-0 flex-col gap-4 px-4 py-5 sm:px-6">
@@ -127,6 +144,20 @@ export function QuestionBody({
           </p>
           <RichText html={outcome.explanation} className={ecn("text-body", skinClasses("ink"))} />
         </section>
+      )}
+
+      {canAskWhy && (
+        <WhyWrongButton
+          className="self-start"
+          onBeforeAsk={onBeforeAskTutor}
+          getDetails={() => ({
+            question: prompt ? parseHtmlToString(prompt) : item.title,
+            yourAnswer: pickedText,
+            correctAnswer: keyText,
+            explanation: outcome?.explanation ? parseHtmlToString(outcome.explanation) : null,
+            source: item.title,
+          })}
+        />
       )}
     </div>
   );

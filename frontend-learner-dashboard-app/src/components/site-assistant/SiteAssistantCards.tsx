@@ -24,7 +24,7 @@ import type { CourseCardData, LiveClassItem, SiteAssistantCard } from "./types";
  * so the assistant reads as part of the institute's site, not a widget on it.
  */
 
-const cardShell = "rounded-catalogue-lg border border-palette-border bg-catalogue-bg-elevated text-palette-text";
+const cardShell = "min-w-0 max-w-full break-words rounded-catalogue-lg border border-palette-border bg-catalogue-bg-elevated text-palette-text";
 const ctaLink =
   "inline-flex items-center gap-1 text-sm font-semibold text-catalogue-brand-ink no-underline hover:underline underline-offset-2";
 const chip = "rounded-full bg-palette-cream px-2 py-0.5 text-xs text-palette-body";
@@ -162,7 +162,7 @@ export const SiteAssistantCardView: React.FC<{ card: SiteAssistantCard; cardKey:
 
     case "course_list":
       return (
-        <div className="flex flex-col gap-2" data-card="course_list">
+        <div className="flex min-w-0 flex-col gap-2" data-card="course_list">
           {card.items.map((c) => (
             <CourseRow key={c.id} course={c} compact />
           ))}

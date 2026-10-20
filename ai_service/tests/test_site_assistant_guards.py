@@ -198,3 +198,17 @@ def test_normalize_scrubs_nested_hrefs_and_unknown_kinds():
     out = C.normalize(card)
     assert out["items"][0]["url"] is None and out["items"][0]["image_url"] is None
     assert C.normalize({"type": "iframe", "src": "https://x"}) is None
+
+
+def test_a_link_the_card_already_shows_is_dropped_from_the_text():
+    from app.site_assistant.guards import AnswerPolicy
+    course = ("https://learning.brahmvarchas.org/store/46dd9295-0b6f-458a-be69-1a2b3c4d5e6f"
+              "?enrollInviteId=68cd51cb-2ef1-489d-a065-0a1b2c3d4e5f&level=Gurukul%20Education")
+    other = "https://learning.brahmvarchas.org/store/contact"
+    p = AnswerPolicy(site_hosts=["learning.brahmvarchas.org"])
+    p.learn(f'{{"url": "{course}"}} {other}')
+    p.carded(f'{{"type": "course", "url": "{course}"}}')
+    out = p.sanitize(f"It is ₹151. Learn more here: {course} or [the course]({course}). Contact: {other}")
+    assert course not in out and "enrollInviteId" not in out
+    assert "the course" in out                 # a markdown link keeps its label
+    assert other in out                        # a link no card shows stays

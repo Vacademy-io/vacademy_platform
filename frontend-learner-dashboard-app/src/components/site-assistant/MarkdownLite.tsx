@@ -18,7 +18,7 @@ const renderInline = (nodes: MdInline[], keyPrefix: string): React.ReactNode[] =
         return <em key={key}>{renderInline(n.c, key)}</em>;
       case "link":
         return (
-          <AssistantLink key={key} href={n.href} className="font-medium text-catalogue-brand-ink underline underline-offset-2">
+          <AssistantLink key={key} href={n.href} className="break-all font-medium text-catalogue-brand-ink underline underline-offset-2">
             {renderInline(n.c, key)}
           </AssistantLink>
         );

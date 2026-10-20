@@ -197,6 +197,9 @@ class AnswerPolicy:
     def __init__(self, *, site_hosts: Iterable[str] = (), pii: Iterable[str] = ()):
         self.urls: Set[str] = set()
         self.paths: Set[str] = set()
+        # Links a card shown with this answer already carries (as its button):
+        # dropped from the text, which only says what to tap.
+        self.card_urls: Set[str] = set()
         self.amounts: Set[str] = set()
         self.hosts: Set[str] = {h.lower() for h in site_hosts if h}
         self.pii: Set[str] = set(pii)
@@ -206,6 +209,16 @@ class AnswerPolicy:
         self.urls |= urls_in(text)
         self.paths |= relative_paths_in(text)
         self.amounts |= amounts_in(text)
+
+    def carded(self, card_json: str) -> None:
+        self.card_urls |= urls_in(card_json)
+        self.card_urls |= relative_paths_in(card_json)
+
+    def on_card(self, url: str) -> bool:
+        u = url.rstrip(_TRAILING_PUNCT)
+        if u.startswith("/") and not u.startswith("//"):
+            return (u.rstrip("/") or "/") in self.card_urls
+        return _norm_url(u) in self.card_urls
 
     def url_allowed(self, url: str) -> bool:
         u = url.rstrip(_TRAILING_PUNCT)
@@ -243,7 +256,7 @@ class AnswerPolicy:
 
         def link_sub(m: re.Match) -> str:
             label, href = m.group(1), m.group(2)
-            return m.group(0) if self.url_allowed(href) else label
+            return m.group(0) if self.url_allowed(href) and not self.on_card(href) else label
 
         t = _MD_LINK_RE.sub(link_sub, t)
         t = _HTML_RE.sub("", t)
@@ -254,7 +267,7 @@ class AnswerPolicy:
             while url and url[-1] in _TRAILING_PUNCT:
                 trail = url[-1] + trail
                 url = url[:-1]
-            return (url + trail) if self.url_allowed(url) else trail
+            return (url + trail) if self.url_allowed(url) and not self.on_card(url) else trail
 
         # Bare URLs (a markdown link's href was handled above and is kept as "(…)").
         parts = re.split(r"(\]\([^)]*\))", t)

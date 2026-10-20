@@ -62,14 +62,14 @@ const AssistantTurn: React.FC<{
   const showFallback = needsContactFallback(message) && !hasContactCard(message.cards) && fallbackContact;
 
   return (
-    <div className="flex flex-col gap-2 pe-6" data-role="assistant">
+    <div className="flex min-w-0 flex-col gap-2 pe-6" data-role="assistant">
       {waiting && (
         <div className="self-start rounded-catalogue-lg bg-palette-cream px-3 py-2 text-sm text-palette-muted">
           <span className="animate-pulse">{t("status.thinking")}</span>
         </div>
       )}
       {message.text && (
-        <div className="self-start rounded-catalogue-lg bg-palette-cream px-3 py-2 text-sm text-palette-text">
+        <div className="min-w-0 max-w-full self-start break-words rounded-catalogue-lg bg-palette-cream px-3 py-2 text-sm text-palette-text">
           <MarkdownLite text={message.text} />
         </div>
       )}
@@ -216,18 +216,18 @@ export const SiteAssistantPanel: React.FC<PanelProps> = ({ display, onClose, fal
           const el = e.currentTarget;
           stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
         }}
-        className="flex flex-1 flex-col gap-3 overflow-y-auto overscroll-contain px-4 py-4"
+        className="flex min-w-0 flex-1 flex-col gap-3 overflow-y-auto overflow-x-hidden overscroll-contain px-4 py-4"
       >
-        <div className="flex flex-col gap-2 pe-6" data-role="greeting">
-          <div className="self-start rounded-catalogue-lg bg-palette-cream px-3 py-2 text-sm text-palette-text">
+        <div className="flex min-w-0 flex-col gap-2 pe-6" data-role="greeting">
+          <div className="min-w-0 max-w-full self-start break-words rounded-catalogue-lg bg-palette-cream px-3 py-2 text-sm text-palette-text">
             <MarkdownLite text={display.greeting} />
           </div>
         </div>
 
         {messages.map((m) =>
           m.role === "user" ? (
-            <div key={m.localId} className="flex justify-end ps-8" data-role="user">
-              <p className="whitespace-pre-wrap break-words rounded-catalogue-lg bg-primary-500 px-3 py-2 text-sm text-primary-foreground">
+            <div key={m.localId} className="flex min-w-0 justify-end ps-8" data-role="user">
+              <p className="min-w-0 max-w-full whitespace-pre-wrap break-words rounded-catalogue-lg bg-primary-500 px-3 py-2 text-sm text-primary-foreground">
                 <span className="sr-only">{t("a11y.you")}: </span>
                 {m.text}
               </p>

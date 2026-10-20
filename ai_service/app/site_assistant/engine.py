@@ -386,6 +386,8 @@ async def _model_answer(ctx: SiteContext, text: str, lang: str, hist_rows: List[
                     policy.learn(json.dumps(card, ensure_ascii=False))
                     if len(shown_cards) < S.MAX_CARDS_PER_ANSWER:
                         shown_cards.append(card)
+                        # The card carries its own button, so the text never repeats its link.
+                        policy.carded(json.dumps(card, ensure_ascii=False))
                 sources.extend(result.sources)
                 messages.append({"role": "tool", "tool_call_id": c["id"], "content": result.text})
                 with db_session() as db:

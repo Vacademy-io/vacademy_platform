@@ -166,7 +166,8 @@
         "checkingCourses": "Vérification de vos {{course}}s...",
         "checkingLiveClasses": "Recherche de vos cours en direct...",
         "checkingTests": "Vérification de vos tests...",
-        "checkingResults": "Récupération de vos résultats..."
+        "checkingResults": "Récupération de vos résultats...",
+        "askingTeacher": "Envoi de votre question à votre enseignant..."
     },
     "voiceAvatar": {
         "ready": "Prêt",

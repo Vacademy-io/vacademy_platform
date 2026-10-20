@@ -52,6 +52,11 @@ export interface ContextMeta {
 
   // Voice call: what the interview / oral test / doubt call is about
   voice_topic?: string;
+
+  // Ids the tutor's tools act on (e.g. a doubt handed to a teacher)
+  slide_id?: string;
+  subject_id?: string;
+  package_session_id?: string;
 }
 
 export interface InitSessionRequest {

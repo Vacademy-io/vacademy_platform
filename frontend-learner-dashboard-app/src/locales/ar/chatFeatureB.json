@@ -166,7 +166,8 @@
         "checkingCourses": "جارٍ التحقق من {{course}}...",
         "checkingLiveClasses": "جارٍ البحث عن حصصك المباشرة...",
         "checkingTests": "جارٍ التحقق من اختباراتك...",
-        "checkingResults": "جارٍ جلب نتائجك..."
+        "checkingResults": "جارٍ جلب نتائجك...",
+        "askingTeacher": "جارٍ إرسال سؤالك إلى معلمك..."
     },
     "voiceAvatar": {
         "ready": "جاهز",

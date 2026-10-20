@@ -166,7 +166,8 @@
         "checkingCourses": "आपके {{course}} देखे जा रहे हैं...",
         "checkingLiveClasses": "आपकी लाइव क्लासेस देखी जा रही हैं...",
         "checkingTests": "आपके टेस्ट देखे जा रहे हैं...",
-        "checkingResults": "आपके रिज़ल्ट लाए जा रहे हैं..."
+        "checkingResults": "आपके रिज़ल्ट लाए जा रहे हैं...",
+        "askingTeacher": "आपका सवाल आपके टीचर को भेजा जा रहा है..."
     },
     "voiceAvatar": {
         "ready": "तैयार",

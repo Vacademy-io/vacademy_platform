@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Dict, Any, List, Callable, Union
+from typing import Dict, Any, List, Callable, Optional, Union
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -13,6 +13,8 @@ from sqlalchemy.orm import Session
 from .learning_progress_service import LearningProgressService
 from .chat_cards import ToolOutput
 from .learner_tools import (
+    ASK_TEACHER_TOOL,
+    ask_teacher,
     LIVE_CLASSES_TOOL,
     MY_COURSES_TOOL,
     MY_PERFORMANCE_TOOL,
@@ -35,6 +37,7 @@ TOOL_DEFINITIONS = [
     MY_TESTS_TOOL,
     MY_RESULTS_TOOL,
     MY_PERFORMANCE_TOOL,
+    ASK_TEACHER_TOOL,
     {
         "type": "function",
         "function": {
@@ -315,6 +318,7 @@ class ToolManagerService:
         analytics_service=None,
         institute_id: str = "",
         user_id: str = "",
+        context_meta: Optional[Dict[str, Any]] = None,
     ):
         self.db = db_session
         self.learning_progress_service = LearningProgressService(db_session)
@@ -330,6 +334,8 @@ class ToolManagerService:
         # be used to read another learner's progress.
         self.institute_id = institute_id or ""
         self.user_id = user_id or ""
+        # What the learner is looking at (slide / batch ids), for tools that act on it.
+        self.context_meta = context_meta or {}
 
         # Map tool names to executor methods
         self.executors: Dict[str, Callable] = {
@@ -338,6 +344,7 @@ class ToolManagerService:
             "get_my_tests": self._learner_tool(get_my_tests, "tests"),
             "get_my_results": self._learner_tool(get_my_results, "test results"),
             "get_my_performance": self._learner_tool(get_my_performance, "performance data"),
+            "ask_teacher": self._execute_ask_teacher,
             "get_learning_progress": self._execute_get_learning_progress,
             "get_student_feedback": self._execute_get_student_feedback,
             "search_related_resources": self._execute_search_resources,
@@ -391,6 +398,18 @@ class ToolManagerService:
             return (
                 "LOOKUP FAILED: could not load the student's courses right now. Say so and "
                 "suggest the Courses page."
+            )
+
+    async def _execute_ask_teacher(self, args: Dict[str, Any]) -> Union[str, ToolOutput]:
+        if not self.user_id or not self.institute_id:
+            return "LOOKUP FAILED: the question could not be sent right now. Do not say it was sent."
+        try:
+            return await ask_teacher(self.db, self.user_id, self.institute_id, args, self.context_meta)
+        except Exception as e:
+            logger.error(f"ask_teacher failed: {e}")
+            return (
+                "FAILED: the question could NOT be sent to the teacher. Tell the student honestly "
+                "and suggest Help & Queries in the app (the ? icon)."
             )
 
     def _learner_tool(self, fn: Callable, what: str) -> Callable:

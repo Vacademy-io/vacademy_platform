@@ -66,6 +66,65 @@ async def whoami(caller: ChatCaller = Depends(get_chat_caller)):
     }
 
 
+@router.get(
+    "/sessions",
+    summary="The learner's past chats",
+    description="Own text chats with at least one question, newest first. Requires a login token.",
+)
+async def list_sessions(
+    http_request: Request,
+    limit: int = Query(20, ge=1, le=50),
+    service: AiChatAgentService = Depends(get_chat_agent_service),
+    caller: ChatCaller = Depends(get_chat_caller),
+):
+    # A new endpoint has no legacy clients: always require a real identity,
+    # whatever the rollout flag says.
+    if not caller.authenticated:
+        raise HTTPException(status_code=401, detail="Login required")
+    institute_id = http_request.headers.get("clientId") or http_request.headers.get("client_id") or ""
+    if institute_id not in caller.institute_ids:
+        raise HTTPException(status_code=403, detail="You are not a member of this institute")
+    return {"sessions": service.list_sessions(caller.user_id, institute_id, limit)}
+
+
+@router.post(
+    "/session/{session_id}/resume",
+    summary="Reopen one of the learner's chats",
+)
+async def resume_session(
+    session_id: str,
+    service: AiChatAgentService = Depends(get_chat_agent_service),
+    caller: ChatCaller = Depends(get_chat_caller),
+):
+    if not caller.authenticated:
+        raise HTTPException(status_code=401, detail="Login required")
+    identity = _owned_session(service, session_id, caller)
+    if identity["user_id"] != caller.user_id:
+        raise HTTPException(status_code=403, detail="This chat belongs to someone else")
+    return {"session_id": session_id, "status": service.resume_session(session_id)}
+
+
+@router.post(
+    "/session/{session_id}/messages/{message_id}/feedback",
+    summary="Thumbs up / down on a tutor reply",
+)
+async def message_feedback(
+    session_id: str,
+    message_id: int,
+    body: dict,
+    service: AiChatAgentService = Depends(get_chat_agent_service),
+    caller: ChatCaller = Depends(get_chat_caller),
+):
+    _owned_session(service, session_id, caller)
+    rating = str((body or {}).get("rating") or "").lower()
+    if rating not in ("up", "down", "none"):
+        raise HTTPException(status_code=422, detail="rating must be 'up', 'down' or 'none'")
+    comment = (body or {}).get("comment")
+    if not service.set_feedback(session_id, message_id, rating, comment if isinstance(comment, str) else None):
+        raise HTTPException(status_code=404, detail="Reply not found in this chat")
+    return {"message_id": message_id, "rating": rating}
+
+
 @router.post(
     "/session/init",
     response_model=InitSessionResponse,

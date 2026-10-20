@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+from datetime import datetime
 import logging
 from typing import Callable, Dict, Any, List, Optional, AsyncGenerator
 from uuid import uuid4
@@ -60,6 +61,8 @@ logger = logging.getLogger(__name__)
 # stuck turn. The slowest legitimate single step is quiz generation (max 62 s
 # in production, Sep-Oct 2026); the claim is refreshed between steps.
 CLAIM_STALE_SECONDS = 75
+# Tools with side effects that must run at most once per learner message.
+ONCE_PER_TURN_TOOLS = {"ask_teacher"}
 # Never auto-answer a message older than this when a stream re-opens: a learner
 # coming back to an old session should not get a reply to yesterday's question.
 CLAIM_MAX_AGE_SECONDS = 15 * 60
@@ -106,6 +109,25 @@ _MARK_ANSWERED_SQL = text(
 )
 
 # Is this message still worth waiting for? (claimed by a live stream, young.)
+_LIST_SESSIONS_SQL = text(
+    """
+    SELECT s.id, s.context_type, s.status, s.last_active,
+           (SELECT left(m.content, 160) FROM chat_messages m
+             WHERE m.session_id = s.id AND m.message_type = 'user'
+               AND (m.metadata IS NULL OR m.metadata->'quiz_submission' IS NULL)
+             ORDER BY m.id LIMIT 1) AS title,
+           (SELECT count(*) FROM chat_messages m
+             WHERE m.session_id = s.id AND m.message_type = 'user') AS question_count
+      FROM chat_sessions s
+     WHERE s.user_id = :user_id AND s.institute_id = :institute_id
+       AND s.session_mode = 'text'
+       AND s.context_type IN ('general', 'slide', 'course_details')
+       AND EXISTS (SELECT 1 FROM chat_messages m WHERE m.session_id = s.id AND m.message_type = 'user')
+     ORDER BY s.last_active DESC
+     LIMIT :limit
+    """
+)
+
 _PENDING_STATE_SQL = text(
     """
     SELECT (metadata->>'answered_at') IS NOT NULL AS answered,
@@ -518,6 +540,53 @@ class AiChatAgentService:
                 "status": session.status,
             }
 
+    # ── chat history & controls ──────────────────────────────────────────
+
+    def list_sessions(self, user_id: str, institute_id: str, limit: int = 20) -> List[Dict[str, Any]]:
+        """The learner's own text chats that have at least one question, newest first."""
+        with self._get_db() as db:
+            rows = db.execute(_LIST_SESSIONS_SQL, {
+                "user_id": user_id,
+                "institute_id": institute_id,
+                "limit": max(1, min(limit, 50)),
+            }).mappings().all()
+        return [
+            {
+                "session_id": r["id"],
+                "title": " ".join(str(r["title"] or "").split())[:80],
+                "context_type": r["context_type"],
+                "status": r["status"],
+                "last_active": r["last_active"].isoformat() if r["last_active"] else None,
+                "question_count": int(r["question_count"] or 0),
+            }
+            for r in rows
+        ]
+
+    def resume_session(self, session_id: str) -> str:
+        """Reopen a chat (a closed one becomes ACTIVE again). Returns its status."""
+        with self._get_db() as db:
+            session = ChatSessionRepository(db).get_session_by_id(session_id)
+            if not session:
+                raise ValueError(f"Session {session_id} not found")
+            session.status = "ACTIVE"
+            session.last_active = datetime.utcnow()
+            return session.status
+
+    def set_feedback(self, session_id: str, message_id: int, rating: str, comment: Optional[str]) -> bool:
+        """Thumbs up/down on one of the tutor's replies, kept on the message."""
+        with self._get_db() as db:
+            msg = db.get(ChatMessage, message_id)
+            if not msg or msg.session_id != session_id or msg.message_type not in ("assistant", "card", "quiz_feedback"):
+                return False
+            meta = dict(msg.meta_data or {})
+            meta["feedback"] = {
+                "rating": rating,
+                "comment": (comment or "").strip()[:500] or None,
+                "at": datetime.utcnow().isoformat() + "Z",
+            }
+            msg.meta_data = meta
+            return True
+
     async def stream_session(
         self,
         session_id: str,
@@ -812,6 +881,7 @@ class AiChatAgentService:
                     institute_id,
                 )
                 ui_language = (session.context_meta or {}).get("ui_language")
+                session_context_meta = dict(session.context_meta or {})
 
                 # Pre-resolve API keys
                 keys = self._resolve_keys(db, institute_id, user_id)
@@ -992,23 +1062,39 @@ class AiChatAgentService:
 
                     # The last round gets no tools, so a turn that keeps
                     # calling tools still ends with an answer.
-                    async for chunk in llm_client.chat_completion_stream(
-                        messages=messages,
-                        tools=tools if iteration < max_iterations else None,
-                        temperature=temperature,
-                        institute_id=institute_id,
-                        user_id=user_id,
-                    ):
-                        if chunk["type"] == "token":
-                            full_content += chunk["content"]
-                            yield {
-                                "event": "token",
-                                "data": {"content": chunk["content"]},
-                            }
-                        elif chunk["type"] == "tool_calls":
-                            tool_calls_result = chunk["tool_calls"]
-                        elif chunk["type"] == "done":
-                            usage_data = chunk
+                    try:
+                        async for chunk in llm_client.chat_completion_stream(
+                            messages=messages,
+                            tools=tools if iteration < max_iterations else None,
+                            temperature=temperature,
+                            institute_id=institute_id,
+                            user_id=user_id,
+                        ):
+                            if chunk["type"] == "token":
+                                full_content += chunk["content"]
+                                yield {
+                                    "event": "token",
+                                    "data": {"content": chunk["content"]},
+                                }
+                            elif chunk["type"] == "tool_calls":
+                                tool_calls_result = chunk["tool_calls"]
+                            elif chunk["type"] == "done":
+                                usage_data = chunk
+                    except (asyncio.CancelledError, GeneratorExit):
+                        # The learner pressed Stop (the app closed the stream).
+                        # Keep what was already written instead of losing it.
+                        if full_content.strip():
+                            try:
+                                with self._get_db() as db:
+                                    ChatMessageRepository(db).create_message(
+                                        session_id=session_id,
+                                        message_type="assistant",
+                                        content=full_content,
+                                        metadata={"stopped": True},
+                                    )
+                            except Exception:  # noqa: BLE001
+                                logger.warning(f"Could not keep the stopped reply for {session_id}")
+                        raise
 
                     # Record token usage (opens its own session)
                     if usage_data:
@@ -1185,11 +1271,18 @@ class AiChatAgentService:
                                 analytics_service=analytics_service,
                                 institute_id=institute_id,
                                 user_id=user_id,
+                                context_meta=session_context_meta,
                             )
                             tool_output = await tool_manager.execute_tool(
                                 tool_name, tool_args
                             )
                         tool_result, tool_card = split_tool_output(tool_output)
+                        if tool_name in ONCE_PER_TURN_TOOLS:
+                            # One hand-off per turn — a second call would file a duplicate doubt.
+                            tools = [
+                                t for t in (tools or [])
+                                if t["function"]["name"] != tool_name
+                            ] or None
 
                     with self._get_db() as db:
                         tool_result_msg = ChatMessageRepository(db).create_message(
@@ -1690,6 +1783,7 @@ TOOLS — WHEN TO USE THEM:
 - Strengths, weaknesses, what to improve, overall feedback, a study plan → get_my_performance (combines test analyses, study time, streak, attendance, doubts).
 - Lessons, videos, PDFs or questions on a topic → search_related_resources. Its matches are shown to the student as clickable links, so don't repeat the list; say which to open first and why.
 - Any request to be quizzed, tested, given MCQs or practice questions → create_practice_quiz. Never type quiz questions into your reply yourself.
+- When you can't resolve something — an institute/operational question (fees, schedules, recordings, certificates, access problems) no tool answers, a study doubt they're still stuck on after your help, or they ask for a teacher — OFFER to send it to their teacher ("Shall I ask your teacher?"). Call ask_teacher only AFTER they clearly say yes, with a clear summary for the teacher. Never claim it was sent unless the tool says so.
 - You never need the student's id: tools know who they are.
 
 TOOL RESULTS — WHAT YOU MAY AND MAY NOT CLAIM:
@@ -1703,7 +1797,7 @@ You must NOT invent, guess or generalise about any of these — you have no acce
 - live classes, recordings, timings, joining links or attendance beyond what get_my_live_classes returns
 - fees, payments, refunds, or any institute policy (unless the INSTITUTE KNOWLEDGE BASE below says so)
 - what is on a slide you have not been given the content of
-If asked and no tool result or knowledge-base entry answers it, say you don't have that information and point them to their institute or teacher. Do not promise to look up something you have no tool for.
+If asked and no tool result or knowledge-base entry answers it, say you don't have that information and offer to ask their teacher (ask_teacher, after they agree). Do not promise to look up something you have no tool for.
 
 ADAPTIVE TEACHING:
 - Topics in their weaknesses: foundational explanations, check understanding often.

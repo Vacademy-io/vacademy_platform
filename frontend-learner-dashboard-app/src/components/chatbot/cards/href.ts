@@ -23,6 +23,9 @@ export const classifyHref = (
   const value = href.trim();
   if (!value) return { kind: "none" };
 
+  // "?x=1" keeps the learner on this page with extra params (e.g. ?openQueries=1).
+  if (value.startsWith("?")) return { kind: "internal", href: value };
+
   // "/path?x=1" is an app route; "//host" and "/\host" are protocol-relative
   // URLs to another site in every browser, so they are not.
   if (value.startsWith("/")) {

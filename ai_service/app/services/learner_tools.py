@@ -941,6 +941,114 @@ def params_camel(params: Dict[str, str]) -> Dict[str, str]:
     return {"userId": params["user_id"], "instituteId": params["institute_id"]}
 
 
+# ── ask_teacher: hand a question to a human teacher ─────────────────────────
+
+ASK_TEACHER_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "ask_teacher",
+        "description": (
+            "Send the student's question to their teacher as a doubt in the institute's Help & "
+            "Queries system; a teacher is assigned and notified, and the student can follow the "
+            "reply in the app. Use ONLY after the student has clearly said yes to your offer to "
+            "ask their teacher. Offer it when you can't resolve something: institute/operational "
+            "questions (fees, schedules, recordings, certificates, access), or a study doubt "
+            "they're still stuck on after your help, or when they ask for a teacher."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "question_for_teacher": {
+                    "type": "string",
+                    "description": (
+                        "Written for the teacher, in the student's words where possible: the exact "
+                        "question, the topic/lesson, and what you already explained or tried. "
+                        "3-6 sentences."
+                    ),
+                },
+                "type": {
+                    "type": "string",
+                    "description": "DOUBT for study questions (default); otherwise a category like TECHNICAL or PAYMENT.",
+                },
+            },
+            "required": ["question_for_teacher"],
+        },
+    },
+}
+
+_PICK_BATCH_SQL = text("""
+SELECT package_session_id FROM student_session_institute_group_mapping
+ WHERE user_id = :user_id AND institute_id = :institute_id AND status = 'ACTIVE'
+   AND package_session_id IS NOT NULL
+   AND COALESCE(type, '') <> 'ABANDONED_CART'
+ ORDER BY (package_session_id = :preferred) DESC, updated_at DESC NULLS LAST
+ LIMIT 1
+""")
+
+_QUERIES_ENABLED_SQL = text("""
+SELECT COALESCE((setting_json::jsonb #>> '{setting,DOUBT_MANAGEMENT_SETTING,data,learner_query,enabled}')::boolean, false)
+  FROM institutes WHERE id = :institute_id
+""")
+
+
+async def ask_teacher(db: Session, user_id: str, institute_id: str, args: Dict[str, Any],
+                      context_meta: Optional[Dict[str, Any]] = None) -> ToolOutput | str:
+    import httpx
+
+    from ..config import get_settings
+    from .internal_auth import internal_auth_headers
+
+    question = " ".join(str(args.get("question_for_teacher") or "").split())
+    if len(question) < 10:
+        return "No question was given. Ask the student what exactly they want their teacher to answer."
+    meta = context_meta or {}
+    preferred = str(meta.get("package_session_id") or meta.get("session_id") or "")
+    row = db.execute(_PICK_BATCH_SQL, {"user_id": user_id, "institute_id": institute_id,
+                                       "preferred": preferred}).first()
+    batch_id = row[0] if row else None
+    slide_id = str(meta.get("slide_id") or "") or None
+
+    base = get_settings().admin_core_service_base_url.rstrip("/")
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        resp = await client.post(
+            f"{base}/admin-core-service/internal/doubts/v1/learner-create",
+            json={
+                "user_id": user_id,
+                "institute_id": institute_id,
+                "batch_id": batch_id,
+                "slide_id": slide_id,
+                "type": str(args.get("type") or "DOUBT"),
+                "text": question,
+            },
+            headers=await internal_auth_headers({"Content-Type": "application/json"}),
+        )
+        resp.raise_for_status()
+        doubt_id = (resp.json() or {}).get("doubt_id")
+
+    try:
+        trackable = bool(db.execute(_QUERIES_ENABLED_SQL, {"institute_id": institute_id}).scalar())
+    except Exception:  # noqa: BLE001
+        trackable = False
+    item: Dict[str, Any] = {
+        "title": question if len(question) <= 120 else question[:117] + "…",
+        "subtitle": "Sent to your teacher · you'll be notified when it's answered",
+        "icon": "question",
+        "badge": "Sent",
+    }
+    if trackable:
+        # Opens Help & Queries → My queries on the page the learner is on.
+        item["href"] = "?openQueries=1" + (f"&doubtId={doubt_id}" if doubt_id else "")
+    text_out = (
+        "Done — the question was sent to the student's teacher as a doubt"
+        + (f" (id {doubt_id})" if doubt_id else "")
+        + ". A teacher has been notified. Tell the student briefly"
+        + (" that they can follow the reply in Help & Queries → My queries" if trackable
+           else " that they'll be notified when it's answered")
+        + ". Do not promise a time."
+    )
+    return ToolOutput(text=text_out, card={"kind": "link_list", "title": "Sent to your teacher", "items": [item]})
+
+
 __all__ = [
     "MY_COURSES_TOOL",
     "get_my_courses",
@@ -952,6 +1060,8 @@ __all__ = [
     "get_my_results",
     "MY_PERFORMANCE_TOOL",
     "get_my_performance",
+    "ASK_TEACHER_TOOL",
+    "ask_teacher",
     "slide_link",
     "course_link",
     "to_ist",

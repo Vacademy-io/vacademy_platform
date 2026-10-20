@@ -19,7 +19,8 @@ export const useChatLinkNavigation = () => {
 
   return useCallback(
     (href: string) => {
-      router.history.push(href);
+      // "?x=1": stay on the current page, add the params.
+      router.history.push(href.startsWith("?") ? `${window.location.pathname}${href}` : href);
       if (window.innerWidth < MOBILE_MAX_WIDTH) {
         setIsOpen(false);
       } else if (viewMode === "popup") {

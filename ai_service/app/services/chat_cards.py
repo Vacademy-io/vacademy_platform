@@ -51,6 +51,9 @@ def safe_href(value: Any) -> Optional[str]:
     href = value.strip()
     if href.startswith("/") and not href.startswith("//"):
         return href[:1000]
+    if href.startswith("?"):
+        # Query-only: the same page with extra params (e.g. ?openQueries=1).
+        return href[:1000]
     if href.lower().startswith("https://"):
         return href[:1000]
     return None

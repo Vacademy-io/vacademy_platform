@@ -166,7 +166,8 @@
         "checkingCourses": "Checking your {{course}}s...",
         "checkingLiveClasses": "Looking up your live classes...",
         "checkingTests": "Checking your tests...",
-        "checkingResults": "Fetching your results..."
+        "checkingResults": "Fetching your results...",
+        "askingTeacher": "Sending your question to your teacher..."
     },
     "voiceAvatar": {
         "ready": "Ready",

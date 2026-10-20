@@ -109,6 +109,21 @@ export function Navbar() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const isDashboard = pathname.startsWith("/dashboard");
 
+  // Deep link into Help & Queries → My queries: `?openQueries=1` (the AI
+  // tutor's "Sent to your teacher" card) and `?doubtId=…` (the doubt email
+  // link, which had no handler). Open the dialog, then drop the params so a
+  // refresh or Back doesn't reopen it.
+  const searchStr = useRouterState({ select: (s) => s.location.searchStr });
+  useEffect(() => {
+    const params = new URLSearchParams(searchStr);
+    if (!params.has("openQueries") && !params.has("doubtId")) return;
+    openQueryDialog("my-queries");
+    params.delete("openQueries");
+    params.delete("doubtId");
+    const rest = params.toString();
+    router.history.replace(`${window.location.pathname}${rest ? `?${rest}` : ""}`);
+  }, [searchStr, openQueryDialog, router]);
+
   // Session state wiped mid-page (expired refresh token, cleared storage):
   // the role query fails with the missing-userId error, or with the
   // interceptor's "Unauthorized" (only thrown after auth state was wiped on a
@@ -529,7 +544,7 @@ export function Navbar() {
               <button
                 type="button"
                 aria-label={t("navbar.raiseQuery")}
-                onClick={openQueryDialog}
+                onClick={() => openQueryDialog()}
                 className="flex h-9 w-9 items-center justify-center rounded-md text-primary-600 transition-colors duration-200 hover:bg-primary-50 hover:text-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 dark:text-primary-400 dark:hover:bg-neutral-700 dark:hover:text-primary-300 [.ui-play_&]:rounded-full [.ui-play_&]:border [.ui-play_&]:border-border [.ui-play_&]:bg-primary/10"
               >
                 <Question className="h-4 w-4 md:h-5 md:w-5" />

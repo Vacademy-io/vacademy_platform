@@ -222,7 +222,7 @@ export const useChatbot = () => {
     return "general";
   }, [location.pathname]);
 
-  const buildContextMeta = useCallback(async (): Promise<ContextMeta> => {
+  const buildPageContextMeta = useCallback(async (): Promise<ContextMeta> => {
     const contextType = getContextType();
     const context = getContext();
 
@@ -413,6 +413,24 @@ export const useChatbot = () => {
     studyLibraryData,
     modulesWithChaptersData,
   ]);
+
+  /**
+   * Page context plus the ids the tutor's tools act on: which lesson (so a
+   * doubt sent to a teacher is attached to it and routed to its subject
+   * teacher) and which batch the learner is studying in.
+   */
+  const buildContextMeta = useCallback(async (): Promise<ContextMeta> => {
+    const meta = await buildPageContextMeta();
+    const context = getContext();
+    return {
+      ...meta,
+      ...(context.slideId && { slide_id: context.slideId }),
+      ...(context.subjectId && { subject_id: context.subjectId }),
+      ...((context.sessionId || context.packageSessionId) && {
+        package_session_id: context.sessionId || context.packageSessionId,
+      }),
+    };
+  }, [buildPageContextMeta, getContext]);
 
   // ── SSE stream lifecycle ──────────────────────────────────────────────
   // Replies are produced by the server INSIDE the session's SSE loop, so a

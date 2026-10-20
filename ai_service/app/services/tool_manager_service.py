@@ -12,17 +12,34 @@ from sqlalchemy.orm import Session
 
 from .learning_progress_service import LearningProgressService
 from .chat_cards import ToolOutput
+from .learner_tools import (
+    LIVE_CLASSES_TOOL,
+    MY_COURSES_TOOL,
+    MY_PERFORMANCE_TOOL,
+    MY_RESULTS_TOOL,
+    MY_TESTS_TOOL,
+    get_my_courses,
+    get_my_live_classes,
+    get_my_performance,
+    get_my_results,
+    get_my_tests,
+)
 
 logger = logging.getLogger(__name__)
 
 
 # Tool definitions in OpenAI function calling format
 TOOL_DEFINITIONS = [
+    MY_COURSES_TOOL,
+    LIVE_CLASSES_TOOL,
+    MY_TESTS_TOOL,
+    MY_RESULTS_TOOL,
+    MY_PERFORMANCE_TOOL,
     {
         "type": "function",
         "function": {
             "name": "get_learning_progress",
-            "description": "Get comprehensive learning progress including course paths, completion percentages, last viewed content, recent activity, and what to learn next. Use this when student asks about their progress, what they completed, where they left off, what's next, what they should learn next, or their learning path.",
+            "description": "Detailed progress below course level: completion % per chapter/module/subject, recent activity, and the recommended next lesson. Use for 'what have I completed in <subject>', 'what's next in this chapter'. For 'my courses' / 'where did I leave off' / 'continue', use get_my_courses instead.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -30,24 +47,6 @@ TOOL_DEFINITIONS = [
                         "type": "string",
                         "enum": ["SLIDE", "CHAPTER", "MODULE", "SUBJECT", "PACKAGE_SESSION"],
                         "description": "Optional: Filter progress by specific source level. Leave empty for all levels."
-                    }
-                },
-                "required": []
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_student_feedback",
-            "description": "Get detailed performance feedback for the student including strengths, weaknesses, and recent activity",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "date_range_days": {
-                        "type": "integer",
-                        "description": "Number of days to look back for analysis",
-                        "default": 30
                     }
                 },
                 "required": []
@@ -79,19 +78,6 @@ TOOL_DEFINITIONS = [
                     }
                 },
                 "required": ["topic"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_learning_analytics",
-            "description": "Get learning analytics including doubt patterns, quiz performance trends, and topic engagement. Use when the student asks about their learning patterns, weak areas, or overall performance trends.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                },
-                "required": []
             }
         }
     },
@@ -159,6 +145,42 @@ SEMANTIC_SEARCH_TOOL = {
         }
     }
 }
+
+# Superseded for the model by get_my_performance (which folds in their data and
+# adds released-test analysis, study time, streak and attendance). Kept so the
+# executors stay documented and can be offered again.
+STUDENT_FEEDBACK_TOOL = {
+        "type": "function",
+        "function": {
+            "name": "get_student_feedback",
+            "description": "Get detailed performance feedback for the student including strengths, weaknesses, and recent activity",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "date_range_days": {
+                        "type": "integer",
+                        "description": "Number of days to look back for analysis",
+                        "default": 30
+                    }
+                },
+                "required": []
+            }
+        }
+    }
+
+LEARNING_ANALYTICS_TOOL = {
+        "type": "function",
+        "function": {
+            "name": "get_learning_analytics",
+            "description": "Get learning analytics including doubt patterns, quiz performance trends, and topic engagement. Use when the student asks about their learning patterns, weak areas, or overall performance trends.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                },
+                "required": []
+            }
+        }
+    }
 
 # Tools the orchestrator runs itself because they produce chat messages (a quiz
 # card) rather than text for the model.
@@ -311,6 +333,11 @@ class ToolManagerService:
 
         # Map tool names to executor methods
         self.executors: Dict[str, Callable] = {
+            "get_my_courses": self._execute_get_my_courses,
+            "get_my_live_classes": self._execute_get_my_live_classes,
+            "get_my_tests": self._learner_tool(get_my_tests, "tests"),
+            "get_my_results": self._learner_tool(get_my_results, "test results"),
+            "get_my_performance": self._learner_tool(get_my_performance, "performance data"),
             "get_learning_progress": self._execute_get_learning_progress,
             "get_student_feedback": self._execute_get_student_feedback,
             "search_related_resources": self._execute_search_resources,
@@ -354,6 +381,49 @@ class ToolManagerService:
             logger.error(error_msg)
             return error_msg
     
+    async def _execute_get_my_courses(self, args: Dict[str, Any]) -> Union[str, ToolOutput]:
+        if not self.user_id or not self.institute_id:
+            return "LOOKUP FAILED: course lookup is unavailable right now. Do not guess their courses."
+        try:
+            return await get_my_courses(self.db, self.user_id, self.institute_id)
+        except Exception as e:
+            logger.error(f"get_my_courses failed: {e}")
+            return (
+                "LOOKUP FAILED: could not load the student's courses right now. Say so and "
+                "suggest the Courses page."
+            )
+
+    def _learner_tool(self, fn: Callable, what: str) -> Callable:
+        """Executor for a learner_tools function: session identity in, honest failure out."""
+
+        async def run(args: Dict[str, Any]) -> Union[str, ToolOutput]:
+            if not self.user_id or not self.institute_id:
+                return f"LOOKUP FAILED: {what} lookup is unavailable right now. Do not guess."
+            try:
+                return await fn(self.db, self.user_id, self.institute_id)
+            except Exception as e:
+                logger.error(f"{fn.__name__} failed: {e}")
+                return (
+                    f"LOOKUP FAILED: could not load the student's {what} right now. Say so; do "
+                    "not guess names, dates, marks or ranks."
+                )
+
+        return run
+
+    async def _execute_get_my_live_classes(self, args: Dict[str, Any]) -> Union[str, ToolOutput]:
+        if not self.user_id or not self.institute_id:
+            return "LOOKUP FAILED: live-class lookup is unavailable right now. Do not guess timings or links."
+        try:
+            return await get_my_live_classes(
+                self.db, self.user_id, self.institute_id, str(args.get("which") or "upcoming")
+            )
+        except Exception as e:
+            logger.error(f"get_my_live_classes failed: {e}")
+            return (
+                "LOOKUP FAILED: could not load live classes right now. Do not guess timings, links "
+                "or recordings; point them to the Live Classes page."
+            )
+
     async def _execute_get_learning_progress(self, args: Dict[str, Any]) -> str:
         """
         Get comprehensive learning progress from learner_operation table.

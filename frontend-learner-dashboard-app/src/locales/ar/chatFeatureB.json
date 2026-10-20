@@ -162,7 +162,11 @@
         "searchingResources": "جارٍ البحث عن محتوى ذي صلة...",
         "searchingCourseMaterials": "جارٍ البحث في مواد {{course}}...",
         "workingOnIt": "جارٍ العمل على ذلك...",
-        "preparingQuiz": "جارٍ تحضير اختبارك..."
+        "preparingQuiz": "جارٍ تحضير اختبارك...",
+        "checkingCourses": "جارٍ التحقق من {{course}}...",
+        "checkingLiveClasses": "جارٍ البحث عن حصصك المباشرة...",
+        "checkingTests": "جارٍ التحقق من اختباراتك...",
+        "checkingResults": "جارٍ جلب نتائجك..."
     },
     "voiceAvatar": {
         "ready": "جاهز",

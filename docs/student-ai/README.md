@@ -347,12 +347,16 @@ Identity is server-side: no tool takes a `user_id` and the prompt carries no ids
 
 | Tool | What it does |
 |---|---|
-| `get_learning_progress(source_filter?)` | `learner_operation` paths, %, next recommendation |
-| `get_student_feedback(date_range_days?)` | strengths/weaknesses + latest analysis summary |
-| `get_learning_analytics()` | doubt and quiz-score patterns |
+| `get_my_courses()` | Active enrolments (unpaid `ABANDONED_CART` rows excluded) with completion % (the `PACKAGE_SESSION` rollup the course cards show), the last slide opened (newest `activity_log` view) or the first slide for a course not started, as a `progress` card with Continue/Start links. ([learner_tools.py](../../ai_service/app/services/learner_tools.py)) |
+| `get_my_live_classes(which)` | Mirrors the learner app's live-class list: participants by batch or user, unassigned public classes when the institute shows them, the `attendanceOnlyMode`/`showPastSessions`/`showRecordings`/`showAttendance` settings. Upcoming (7 days, IST, live/joinable now) and past (14 days, attendance, recording). The Join link is the app's own join page `/study-library/live-class/{username}` (payment, waiting room, attendance, personal BBB link), never the raw meeting URL. |
+| `get_my_tests()` | Open and upcoming tests through assessment_service's internal `GET /assessment-service/internal/learner-chat/v1/assessments` (HMAC). It reuses the examination page's own query. Links to `/assessment/examination/{id}`. |
+| `get_my_results()` | `GET …/learner-chat/v1/results`: the report list's own query, with **only RELEASED attempts carrying marks**, enriched with total, %, rank, percentile, class average and sections (latest 5). Unreleased attempts are listed as awaiting result. Links to `/assessment/reports/student-report?assessmentId&attemptId`. |
+| `get_my_performance()` | Coaching data in one call: released results; the per-test AI analysis in `activity_log` (`llm_assessment`) for **released tests only**; `user_linked_data`; the latest `student_analysis_process` summary; study minutes, active days and streak; 30-day live attendance; doubt topics. |
+| `get_learning_progress(source_filter?)` | `learner_operation` paths, %, next recommendation (detail inside a course) |
 | `search_related_resources(topic, resource_type?)` | Searches the learner's **ACTIVE enrolments** only, per word with light plural folding, over slide title/description and chapter/module/subject names, ranked. Returns text for the model plus a `link_list` **card** whose links open each slide (`/study-library/courses/course-details/subjects/modules/chapters/slides?courseId&levelId&subjectId&moduleId&chapterId&slideId&sessionId`). |
 | `create_practice_quiz(topic, num_questions 3-10 = 5, difficulty)` | Run by the orchestrator: posts a `quiz` message. The model gets a note saying the quiz is on screen. Offered once per turn. |
 
+`get_student_feedback` and `get_learning_analytics` are no longer offered: `get_my_performance` includes their data.
 `semantic_search_content` is **not offered**. Its corpus (`content_embeddings`) holds only
 the platform's admin help articles, so it answered learners with admin docs. The executor
 and `SEMANTIC_SEARCH_TOOL` stay for when a course corpus exists.

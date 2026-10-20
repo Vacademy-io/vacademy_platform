@@ -162,7 +162,11 @@
         "searchingResources": "Recherche de contenu associé...",
         "searchingCourseMaterials": "Recherche dans les supports de votre {{course}}...",
         "workingOnIt": "Traitement en cours...",
-        "preparingQuiz": "Préparation de votre quiz..."
+        "preparingQuiz": "Préparation de votre quiz...",
+        "checkingCourses": "Vérification de vos {{course}}s...",
+        "checkingLiveClasses": "Recherche de vos cours en direct...",
+        "checkingTests": "Vérification de vos tests...",
+        "checkingResults": "Récupération de vos résultats..."
     },
     "voiceAvatar": {
         "ready": "Prêt",

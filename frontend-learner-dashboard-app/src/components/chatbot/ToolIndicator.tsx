@@ -1,5 +1,5 @@
 import React from "react";
-import { MagnifyingGlass, BookOpen, ChartBar, SpinnerGap, Exam } from "@phosphor-icons/react";
+import { MagnifyingGlass, BookOpen, ChartBar, SpinnerGap, Exam, VideoCamera } from "@phosphor-icons/react";
 import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { getAppTerminology } from "@/components/common/layout-container/sidebar/utils";
@@ -20,6 +20,11 @@ export const ToolIndicator: React.FC<ToolIndicatorProps> = ({ toolName }) => {
     search_related_resources: { label: t("toolIndicator.searchingResources"), icon: MagnifyingGlass },
     semantic_search_content: { label: t("toolIndicator.searchingCourseMaterials", { course }), icon: MagnifyingGlass },
     create_practice_quiz: { label: t("toolIndicator.preparingQuiz"), icon: Exam },
+    get_my_courses: { label: t("toolIndicator.checkingCourses", { course }), icon: BookOpen },
+    get_my_live_classes: { label: t("toolIndicator.checkingLiveClasses"), icon: VideoCamera },
+    get_my_tests: { label: t("toolIndicator.checkingTests"), icon: Exam },
+    get_my_results: { label: t("toolIndicator.checkingResults"), icon: ChartBar },
+    get_my_performance: { label: t("toolIndicator.reviewingPerformance"), icon: ChartBar },
     get_learning_analytics: { label: t("toolIndicator.reviewingPerformance"), icon: ChartBar },
   };
 

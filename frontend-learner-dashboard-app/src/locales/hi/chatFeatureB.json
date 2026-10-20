@@ -162,7 +162,11 @@
         "searchingResources": "संबंधित सामग्री खोजी जा रही है...",
         "searchingCourseMaterials": "आपकी {{course}} सामग्री खोजी जा रही है...",
         "workingOnIt": "इस पर काम किया जा रहा है...",
-        "preparingQuiz": "आपका क्विज़ तैयार हो रहा है..."
+        "preparingQuiz": "आपका क्विज़ तैयार हो रहा है...",
+        "checkingCourses": "आपके {{course}} देखे जा रहे हैं...",
+        "checkingLiveClasses": "आपकी लाइव क्लासेस देखी जा रही हैं...",
+        "checkingTests": "आपके टेस्ट देखे जा रहे हैं...",
+        "checkingResults": "आपके रिज़ल्ट लाए जा रहे हैं..."
     },
     "voiceAvatar": {
         "ready": "तैयार",

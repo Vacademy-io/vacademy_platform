@@ -128,6 +128,21 @@ _LIST_SESSIONS_SQL = text(
     """
 )
 
+_LIST_SAVED_SQL = text(
+    """
+    SELECT m.id, m.session_id, m.message_type, m.content, m.metadata,
+           (SELECT q.content FROM chat_messages q
+             WHERE q.session_id = m.session_id AND q.message_type = 'user' AND q.id < m.id
+             ORDER BY q.id DESC LIMIT 1) AS question
+      FROM chat_messages m
+      JOIN chat_sessions s ON s.id = m.session_id
+     WHERE s.user_id = :user_id AND s.institute_id = :institute_id
+       AND m.metadata->>'saved_at' IS NOT NULL
+     ORDER BY m.metadata->>'saved_at' DESC
+     LIMIT :limit
+    """
+)
+
 _PENDING_STATE_SQL = text(
     """
     SELECT (metadata->>'answered_at') IS NOT NULL AS answered,
@@ -528,6 +543,22 @@ class AiChatAgentService:
             logger.debug(f"Pending check failed for message {message_id}: {e}")
             return True
 
+    def get_session_context(self, session_id: str):
+        """(context_type, context_meta) of a session."""
+        with self._get_db() as db:
+            session = ChatSessionRepository(db).get_session_by_id(session_id)
+            if not session:
+                return None, {}
+            return session.context_type, dict(session.context_meta or {})
+
+    def get_message_content(self, session_id: str, message_id: int) -> Optional[str]:
+        """A tutor reply's text (assistant messages only)."""
+        with self._get_db() as db:
+            msg = db.get(ChatMessage, message_id)
+            if not msg or msg.session_id != session_id or msg.message_type != "assistant":
+                return None
+            return msg.content
+
     def get_session_identity(self, session_id: str) -> Optional[Dict[str, Any]]:
         """Owner and status of a session, for the router's ownership check."""
         with self._get_db() as db:
@@ -571,6 +602,39 @@ class AiChatAgentService:
             session.status = "ACTIVE"
             session.last_active = datetime.utcnow()
             return session.status
+
+    def set_saved(self, session_id: str, message_id: int, saved: bool) -> bool:
+        """Bookmark (or un-bookmark) a tutor reply into the learner's Saved answers."""
+        with self._get_db() as db:
+            msg = db.get(ChatMessage, message_id)
+            if not msg or msg.session_id != session_id or msg.message_type not in ("assistant", "card"):
+                return False
+            meta = dict(msg.meta_data or {})
+            if saved:
+                meta["saved_at"] = datetime.utcnow().isoformat() + "Z"
+            else:
+                meta.pop("saved_at", None)
+            msg.meta_data = meta
+            return True
+
+    def list_saved(self, user_id: str, institute_id: str, limit: int = 50) -> List[Dict[str, Any]]:
+        """The learner's saved replies across all their chats, newest saved first."""
+        with self._get_db() as db:
+            rows = db.execute(_LIST_SAVED_SQL, {
+                "user_id": user_id, "institute_id": institute_id, "limit": max(1, min(limit, 100)),
+            }).mappings().all()
+        return [
+            {
+                "message_id": r["id"],
+                "session_id": r["session_id"],
+                "type": r["message_type"],
+                "content": r["content"],
+                "metadata": r["metadata"],
+                "saved_at": (r["metadata"] or {}).get("saved_at"),
+                "question": " ".join(str(r["question"] or "").split())[:160],
+            }
+            for r in rows
+        ]
 
     def stop_turn(self, session_id: str) -> bool:
         """
@@ -1803,6 +1867,8 @@ TOOLS — WHEN TO USE THEM:
 - Their courses, where they left off, what to continue or start → get_my_courses (shown as cards with Continue links; don't repeat the list).
 - Detailed progress inside a course (chapters/subjects completed, next lesson) → get_learning_progress.
 - Live classes — timings, today's class, how to join / class link, recordings, missed classes, attendance → get_my_live_classes (Join links open the class in the app).
+- Their institute's daily tasks (question of the day, readings, flashcards), points, streak, "what should I do today" → get_my_daily_tasks. An OPEN daily question is graded: never solve it or confirm an answer before it is revealed — teach the concept and give a hint instead. After the reveal, explain it fully.
+- A worked solution or a process, or "step by step" → show_steps (the student reveals one step at a time; good for "never give the final answer" rules too). "Flashcards" / revision cards → make_flashcards.
 - Tests open now or coming up, exam dates → get_my_tests.
 - Their marks, results, rank, how a test went → get_my_results (only released results have marks; never guess a score).
 - Strengths, weaknesses, what to improve, overall feedback, a study plan → get_my_performance (combines test analyses, study time, streak, attendance, doubts).

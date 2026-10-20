@@ -13,6 +13,8 @@ from sqlalchemy.orm import Session
 from .learning_progress_service import LearningProgressService
 from .chat_cards import ToolOutput
 from .learner_tools import (
+    DAILY_TASKS_TOOL,
+    get_my_daily_tasks,
     ASK_TEACHER_TOOL,
     ask_teacher,
     LIVE_CLASSES_TOOL,
@@ -33,6 +35,7 @@ logger = logging.getLogger(__name__)
 # Tool definitions in OpenAI function calling format
 TOOL_DEFINITIONS = [
     MY_COURSES_TOOL,
+    DAILY_TASKS_TOOL,
     LIVE_CLASSES_TOOL,
     MY_TESTS_TOOL,
     MY_RESULTS_TOOL,
@@ -184,6 +187,68 @@ LEARNING_ANALYTICS_TOOL = {
             }
         }
     }
+
+# Presentation tools: the model hands over content, the learner gets an
+# interactive card. No lookups, no side effects.
+SHOW_STEPS_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "show_steps",
+        "description": (
+            "Show a worked solution or a process as steps the student reveals one at a time. Use "
+            "when they ask for step-by-step, how to solve/derive something, or seem stuck on a "
+            "problem — it lets them try each step before seeing the next. 2-8 steps; each body may "
+            "use markdown and LaTeX."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "What is being solved, e.g. 'Area of a 90° sector, r = 7'."},
+                "steps": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "title": {"type": "string", "description": "Short step name, e.g. 'Write the formula'."},
+                            "body": {"type": "string", "description": "The step's working."},
+                        },
+                        "required": ["title", "body"],
+                    },
+                },
+            },
+            "required": ["steps"],
+        },
+    },
+}
+
+MAKE_FLASHCARDS_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "make_flashcards",
+        "description": (
+            "Turn what was just explained into flip cards for revision (3-8 cards: a short "
+            "question or term on the front, a crisp answer on the back). Use when the student asks "
+            "for flashcards, revision cards, or to memorise something."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string"},
+                "cards": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {"front": {"type": "string"}, "back": {"type": "string"}},
+                        "required": ["front", "back"],
+                    },
+                },
+            },
+            "required": ["cards"],
+        },
+    },
+}
+
+TOOL_DEFINITIONS.extend([SHOW_STEPS_TOOL, MAKE_FLASHCARDS_TOOL])
 
 # Tools the orchestrator runs itself because they produce chat messages (a quiz
 # card) rather than text for the model.
@@ -345,6 +410,9 @@ class ToolManagerService:
             "get_my_results": self._learner_tool(get_my_results, "test results"),
             "get_my_performance": self._learner_tool(get_my_performance, "performance data"),
             "ask_teacher": self._execute_ask_teacher,
+            "get_my_daily_tasks": self._learner_tool(get_my_daily_tasks, "daily tasks"),
+            "show_steps": self._execute_show_steps,
+            "make_flashcards": self._execute_make_flashcards,
             "get_learning_progress": self._execute_get_learning_progress,
             "get_student_feedback": self._execute_get_student_feedback,
             "search_related_resources": self._execute_search_resources,
@@ -399,6 +467,27 @@ class ToolManagerService:
                 "LOOKUP FAILED: could not load the student's courses right now. Say so and "
                 "suggest the Courses page."
             )
+
+    async def _execute_show_steps(self, args: Dict[str, Any]) -> Union[str, ToolOutput]:
+        steps = args.get("steps") or []
+        card = {"kind": "steps", "title": args.get("title") or "Step by step", "items": steps}
+        if len([s for s in steps if isinstance(s, dict)]) < 2:
+            return "Not shown: give at least 2 steps, each with a title and body."
+        return ToolOutput(
+            text=(f"Shown as {len(steps)} steps the student reveals one at a time. Reply with one "
+                  "short line inviting them to try each step before revealing the next."),
+            card=card,
+        )
+
+    async def _execute_make_flashcards(self, args: Dict[str, Any]) -> Union[str, ToolOutput]:
+        cards = args.get("cards") or []
+        if len([c for c in cards if isinstance(c, dict)]) < 2:
+            return "Not shown: give at least 2 cards, each with a front and back."
+        return ToolOutput(
+            text=(f"Shown as {len(cards)} flashcards. Reply with one short line telling them to "
+                  "flip each card after trying to recall the answer."),
+            card={"kind": "flashcards", "title": args.get("title") or "Flashcards", "items": cards},
+        )
 
     async def _execute_ask_teacher(self, args: Dict[str, Any]) -> Union[str, ToolOutput]:
         if not self.user_id or not self.institute_id:

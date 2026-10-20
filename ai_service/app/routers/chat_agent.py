@@ -104,6 +104,96 @@ async def resume_session(
     return {"session_id": session_id, "status": service.resume_session(session_id)}
 
 
+def _require_member(http_request: Request, caller: ChatCaller) -> str:
+    """Institute from the clientId header, for endpoints that list the learner's own data."""
+    if not caller.authenticated:
+        raise HTTPException(status_code=401, detail="Login required")
+    institute_id = http_request.headers.get("clientId") or http_request.headers.get("client_id") or ""
+    if institute_id not in caller.institute_ids:
+        raise HTTPException(status_code=403, detail="You are not a member of this institute")
+    return institute_id
+
+
+@router.get(
+    "/starters",
+    summary="Personal one-tap starters",
+    description=(
+        "Up to four complete requests built from the learner's page and day (lesson, live class, "
+        "daily tasks, lesson to continue, upcoming test), a time-sensitive launcher peek, and "
+        "'try saying' examples. Works before a chat exists (the launcher peek). Requires a login."
+    ),
+)
+async def chat_starters(
+    http_request: Request,
+    context_type: Optional[str] = Query(None),
+    lesson: Optional[str] = Query(None, max_length=300),
+    service: AiChatAgentService = Depends(get_chat_agent_service),
+    caller: ChatCaller = Depends(get_chat_caller),
+):
+    from ..services.chat_starters import build_starters
+
+    institute_id = _require_member(http_request, caller)
+    meta = {"name": lesson or "", "ui_language": http_request.headers.get("accept-language") or ""}
+    return await build_starters(service._db_factory, caller.user_id, institute_id, context_type, meta)
+
+
+@router.post(
+    "/session/{session_id}/messages/{message_id}/save",
+    summary="Save or unsave a tutor reply",
+)
+async def save_message(
+    session_id: str,
+    message_id: int,
+    body: dict,
+    service: AiChatAgentService = Depends(get_chat_agent_service),
+    caller: ChatCaller = Depends(get_chat_caller),
+):
+    _owned_session(service, session_id, caller)
+    saved = bool((body or {}).get("saved", True))
+    if not service.set_saved(session_id, message_id, saved):
+        raise HTTPException(status_code=404, detail="Reply not found in this chat")
+    return {"message_id": message_id, "saved": saved}
+
+
+@router.get(
+    "/saved",
+    summary="The learner's saved answers across chats",
+)
+async def list_saved(
+    http_request: Request,
+    limit: int = Query(50, ge=1, le=100),
+    service: AiChatAgentService = Depends(get_chat_agent_service),
+    caller: ChatCaller = Depends(get_chat_caller),
+):
+    institute_id = _require_member(http_request, caller)
+    return {"saved": service.list_saved(caller.user_id, institute_id, limit)}
+
+
+@router.post(
+    "/session/{session_id}/messages/{message_id}/speech",
+    summary="Read a tutor reply aloud",
+    description="Returns the reply as audio segments (base64) to play in order.",
+)
+async def message_speech(
+    session_id: str,
+    message_id: int,
+    service: AiChatAgentService = Depends(get_chat_agent_service),
+    caller: ChatCaller = Depends(get_chat_caller),
+):
+    from ..services.reply_speech import speak_reply
+
+    identity = _owned_session(service, session_id, caller)
+    check_rate_limit(f"msg:{identity['user_id']}")
+    content = service.get_message_content(session_id, message_id)
+    if content is None:
+        raise HTTPException(status_code=404, detail="Reply not found in this chat")
+    _ctype, meta = service.get_session_context(session_id)
+    segments = await speak_reply(content, (meta or {}).get("ui_language"))
+    if not segments:
+        raise HTTPException(status_code=502, detail="Could not create audio for this reply")
+    return {"message_id": message_id, "segments": segments}
+
+
 @router.post(
     "/session/{session_id}/stop",
     summary="Stop the reply being generated",

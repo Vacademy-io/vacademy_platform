@@ -13,6 +13,8 @@ src/components/chatbot/cards/):
 
     link_list  {title?, items: [{title, subtitle?, href?, icon?, badge?}]}
     progress   {title?, items: [{title, percent, subtitle?, href?}]}
+    steps      {title?, items: [{title, body}]}         worked solution, revealed step by step
+    flashcards {title?, items: [{front, back}]}         flip cards
 
 Links are either in-app routes ("/study-library/...") or https URLs. Anything
 else is dropped here, before it is stored — the app never sees a javascript:
@@ -23,7 +25,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-CARD_KINDS = ("link_list", "progress")
+CARD_KINDS = ("link_list", "progress", "steps", "flashcards")
 CARD_ICONS = ("course", "slide", "video", "pdf", "quiz", "question", "live", "assessment", "link")
 _MAX_ITEMS = 10
 _MAX_TEXT = 200
@@ -92,12 +94,32 @@ def _clean_items(items: Any, *, progress: bool) -> List[Dict[str, Any]]:
     return out
 
 
+def _clean_pairs(items: Any, a: str, b: str, limit_a: int, limit_b: int) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    for raw in items if isinstance(items, list) else []:
+        if not isinstance(raw, dict):
+            continue
+        first = str(raw.get(a) or "").strip()[:limit_a]
+        second = str(raw.get(b) or "").strip()[:limit_b]
+        if first and second:
+            out.append({a: first, b: second})
+        if len(out) >= _MAX_ITEMS:
+            break
+    return out
+
+
 def normalize_card(card: Any) -> Optional[Dict[str, Any]]:
     """The card in its stored shape, or None when there is nothing valid to show."""
     if not isinstance(card, dict) or card.get("kind") not in CARD_KINDS:
         return None
     kind = card["kind"]
-    items = _clean_items(card.get("items"), progress=(kind == "progress"))
+    if kind == "steps":
+        # Bodies keep their markdown/LaTeX (rendered like a reply), so no whitespace folding.
+        items = _clean_pairs(card.get("items"), "title", "body", _MAX_TEXT, 1500)
+    elif kind == "flashcards":
+        items = _clean_pairs(card.get("items"), "front", "back", 300, 600)
+    else:
+        items = _clean_items(card.get("items"), progress=(kind == "progress"))
     if not items:
         return None
     normalized: Dict[str, Any] = {"kind": kind, "items": items}
@@ -119,6 +141,14 @@ def card_fallback_markdown(card: Dict[str, Any]) -> str:
     lines: List[str] = []
     if card.get("title"):
         lines.append(f"**{card['title']}**")
+    if card.get("kind") == "steps":
+        for n, item in enumerate(card.get("items", []), 1):
+            lines.append(f"{n}. **{item['title']}** — {item['body']}")
+        return "\n".join(lines)
+    if card.get("kind") == "flashcards":
+        for item in card.get("items", []):
+            lines.append(f"- **{item['front']}** — {item['back']}")
+        return "\n".join(lines)
     for item in card.get("items", []):
         label = item["title"]
         if item.get("href", "").startswith("https://"):
@@ -137,6 +167,12 @@ def card_fallback_markdown(card: Dict[str, Any]) -> str:
 def card_summary_for_model(card: Dict[str, Any]) -> str:
     """One compact line per item, for putting a shown card back into history."""
     kind = card.get("kind")
+    if kind == "steps":
+        return "[Shown to the student as step-by-step cards: " + " | ".join(
+            f"{i['title']}: {i['body'][:200]}" for i in card.get("items", [])) + "]"
+    if kind == "flashcards":
+        return "[Shown to the student as flashcards: " + " | ".join(
+            f"{i['front']} → {i['back'][:120]}" for i in card.get("items", [])) + "]"
     titles = []
     for item in card.get("items", []):
         if kind == "progress":

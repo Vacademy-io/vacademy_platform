@@ -1049,6 +1049,139 @@ async def ask_teacher(db: Session, user_id: str, institute_id: str, args: Dict[s
     return ToolOutput(text=text_out, card={"kind": "link_list", "title": "Sent to your teacher", "items": [item]})
 
 
+# ── daily engagement tasks ───────────────────────────────────────────────────
+# The institute's Daily Engagement plan (teacher- or AI-planned daily tasks,
+# points ledger, server streak) is the learner's daily habit loop. The tutor
+# reads the SAME feed the Today module shows, through admin_core's internal
+# learner-snapshot (answer keys are redacted there exactly as for the app).
+
+ENGAGEMENT_ROUTE = "/engagement"
+_TASK_LABELS = {
+    "READING_HTML": "Reading", "VISUAL_NOTE": "Visual note", "QUESTION_OF_DAY": "Question of the day",
+    "QUIZ": "Quiz", "GAME": "Game", "POLL": "Poll", "COURSE_SLIDE": "Lesson", "FLASHCARDS": "Flashcards",
+}
+_TASK_ICONS = {
+    "READING_HTML": "pdf", "VISUAL_NOTE": "pdf", "QUESTION_OF_DAY": "question", "QUIZ": "quiz",
+    "GAME": "quiz", "POLL": "question", "COURSE_SLIDE": "slide", "FLASHCARDS": "quiz",
+}
+_GRADED_TYPES = ("QUESTION_OF_DAY",)
+
+DAILY_TASKS_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "get_my_daily_tasks",
+        "description": (
+            "The student's daily tasks from their institute (question of the day, readings, "
+            "flashcards, games, polls, lessons): what's open today and until when, points, what's "
+            "done, catch-ups, what unlocks next, plus their points and streak. Shown as cards with "
+            "links. Use for: 'what should I do today', 'daily task', 'question of the day', "
+            "'my streak', 'my points', 'did I miss anything'."
+        ),
+        "parameters": {"type": "object", "properties": {}, "required": []},
+    },
+}
+
+
+async def engagement_snapshot(user_id: str, institute_id: str) -> Dict[str, Any]:
+    import httpx
+
+    from ..config import get_settings
+    from .internal_auth import internal_auth_headers
+
+    base = get_settings().admin_core_service_base_url.rstrip("/")
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.get(
+            f"{base}/admin-core-service/internal/engagement/v1/learner-snapshot",
+            params={"userId": user_id, "instituteId": institute_id},
+            headers=await internal_auth_headers(),
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    return data if isinstance(data, dict) else {}
+
+
+def _task_href(item: Dict[str, Any]) -> str:
+    slot = _f(item, "slot_id")
+    return f"{ENGAGEMENT_ROUTE}?slot={slot}" if slot else ENGAGEMENT_ROUTE
+
+
+def summarize_engagement(data: Dict[str, Any], now: Optional[datetime] = None):
+    """(lines for the model, card items, counts) from a learner snapshot."""
+    now = now or datetime.now(IST)
+    feed = data.get("feed") or {}
+    points = data.get("points") or {}
+    catch_ids = {_f(i, "id") for i in (feed.get("catchUp") or feed.get("catch_up") or [])}
+    open_items = [i for i in (feed.get("items") or []) if _f(i, "id") not in catch_ids]
+    catch_up = feed.get("catchUp") or feed.get("catch_up") or []
+    done = feed.get("doneToday") or feed.get("done_today") or []
+    upcoming = feed.get("upcoming") or []
+    lines: List[str] = []
+    items: List[Dict[str, Any]] = []
+
+    def label(i):
+        return _TASK_LABELS.get(str(_f(i, "item_type") or ""), "Task")
+
+    for i in open_items:
+        closes = when_label(_parse_when(_f(i, "closes_at")), now)
+        pts = _f(i, "earnable_points") or _f(i, "effective_points")
+        graded = str(_f(i, "item_type")) in _GRADED_TYPES and not _f(i, "is_revealed")
+        lines.append(
+            f"- OPEN {label(i)}: {_f(i, 'title')}" + (f", closes {closes}" if closes else "")
+            + (f", {pts} pts" if pts else "")
+            + (" [GRADED and not yet revealed: do NOT solve it or confirm an answer; you may explain the underlying concept and give a hint]" if graded else "")
+        )
+        items.append({"title": str(_f(i, "title") or label(i)),
+                      "subtitle": " · ".join(x for x in (label(i), f"closes {closes}" if closes else "", f"{pts} pts" if pts else "") if x),
+                      "href": _task_href(i), "icon": _TASK_ICONS.get(str(_f(i, "item_type")), "slide"), "badge": "To do"})
+    for i in catch_up:
+        pts = _f(i, "effective_points")
+        lines.append(f"- CATCH-UP {label(i)}: {_f(i, 'title')}" + (f", {pts} pts if done now" if pts else ""))
+        items.append({"title": str(_f(i, "title") or label(i)), "subtitle": f"{label(i)} · catch up" + (f" · {pts} pts" if pts else ""),
+                      "href": _task_href(i), "icon": _TASK_ICONS.get(str(_f(i, "item_type")), "slide"), "badge": "Catch up"})
+    for i in done:
+        res = "correct" if _f(i, "is_correct") is True else ("wrong" if _f(i, "is_correct") is False else "done")
+        if _f(i, "result_pending"):
+            res = "answer revealed later"
+        lines.append(f"- DONE {label(i)}: {_f(i, 'title')} ({res}" + (f", +{_f(i, 'points_awarded')} pts" if _f(i, 'points_awarded') else "") + ")")
+    for i in upcoming[:3]:
+        lines.append(f"- LOCKED until {when_label(_parse_when(_f(i, 'opens_at')), now)}: {label(i)} {_f(i, 'title')}")
+    for i in (feed.get("revealed") or [])[:3]:
+        prompt = " ".join(str(_f(i, "prompt_text") or "").split())[:300]
+        expl = " ".join(str(_f(i, "explanation") or "").split())[:300]
+        if prompt:
+            lines.append(f"- REVEALED {label(i)}: \"{prompt}\"" + (f" Explanation: {expl}" if expl else "")
+                         + (" (student was correct)" if _f(i, "is_correct") is True else " (student was wrong)" if _f(i, "is_correct") is False else ""))
+    scheduled = int(feed.get("scheduledToday") or feed.get("scheduled_today") or 0)
+    completed = int(feed.get("completedToday") or feed.get("completed_today") or 0)
+    if points:
+        streak = points.get("currentStreak") if "currentStreak" in points else points.get("current_streak")
+        kept = points.get("keptToday") if "keptToday" in points else points.get("kept_today")
+        lines.append(
+            f"Points: {points.get('totalPoints', points.get('total_points', 0))} total, "
+            f"{points.get('weekPoints', points.get('week_points', 0))} this week, level {points.get('level', '?')}. "
+            f"Streak: {streak or 0} day(s)" + (", kept today" if kept else ", NOT yet kept today")
+        )
+    return lines, items, {"scheduled": scheduled, "completed": completed, "open": len(open_items), "catch_up": len(catch_up)}
+
+
+async def get_my_daily_tasks(db: Session, user_id: str, institute_id: str) -> ToolOutput | str:
+    data = await engagement_snapshot(user_id, institute_id)
+    lines, items, counts = summarize_engagement(data)
+    if not lines:
+        return ("The student has no daily tasks from their institute right now (none scheduled, or "
+                "daily tasks aren't used here). Say so briefly and offer to help with their courses.")
+    head = (f"Today: {counts['completed']} of {counts['scheduled']} daily tasks done."
+            if counts["scheduled"] else "No daily tasks scheduled today.")
+    text_out = (
+        head + " Open tasks are shown to the student as cards linking to them, so don't repeat the "
+        "list; encourage the next one. Never solve an open graded question.\n" + "\n".join(lines)
+    )
+    if not items:
+        return text_out
+    title = f"Today's tasks · {counts['completed']}/{counts['scheduled']} done" if counts["scheduled"] else "Your tasks"
+    return ToolOutput(text=text_out, card={"kind": "link_list", "title": title, "items": items[:8]})
+
+
 __all__ = [
     "MY_COURSES_TOOL",
     "get_my_courses",
@@ -1062,6 +1195,10 @@ __all__ = [
     "get_my_performance",
     "ASK_TEACHER_TOOL",
     "ask_teacher",
+    "DAILY_TASKS_TOOL",
+    "get_my_daily_tasks",
+    "engagement_snapshot",
+    "summarize_engagement",
     "slide_link",
     "course_link",
     "to_ist",

@@ -4,6 +4,8 @@ import { AssistantAvatar, MessageBubble } from "../MessageBubble";
 import { parseCard } from "./parse-card";
 import { LinkListCard } from "./LinkListCard";
 import { ProgressCard } from "./ProgressCard";
+import { StepsCard } from "./StepsCard";
+import { FlashcardsCard } from "./FlashcardsCard";
 
 /**
  * Renders a "card" message by `metadata.card.kind`. An unknown kind or
@@ -23,6 +25,8 @@ export const ChatCard: React.FC<{ message: ChatMessage }> = ({ message }) => {
       <div className="min-w-0 flex-1">
         {card.kind === "link_list" && <LinkListCard card={card} />}
         {card.kind === "progress" && <ProgressCard card={card} />}
+        {card.kind === "steps" && <StepsCard card={card} />}
+        {card.kind === "flashcards" && <FlashcardsCard card={card} />}
       </div>
     </div>
   );

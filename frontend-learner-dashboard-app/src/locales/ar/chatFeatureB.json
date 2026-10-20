@@ -76,7 +76,26 @@
     },
     "cards": {
         "opensInNewTab": "(يُفتح في علامة تبويب جديدة)",
-        "progressLabel": "{{title}}: {{percent}}% مكتمل"
+        "progressLabel": "{{title}}: {{percent}}% مكتمل",
+        "steps": {
+            "title": "خطوة بخطوة",
+            "progress": "تم عرض {{shown}} من {{total}} خطوات",
+            "stepN": "الخطوة {{n}}",
+            "next": "عرض الخطوة التالية",
+            "showAll": "عرض الكل"
+        },
+        "flashcards": {
+            "title": "بطاقات المراجعة",
+            "front": "السؤال",
+            "back": "الإجابة",
+            "showFront": "اضغط لرؤية السؤال",
+            "showBack": "اضغط لرؤية الإجابة",
+            "counter": "{{n}} / {{total}}",
+            "tapToFlip": "اضغط أو اضغط مفتاح المسافة لقلب البطاقة",
+            "previous": "البطاقة السابقة",
+            "next": "البطاقة التالية",
+            "shuffle": "خلط"
+        }
     },
     "micButton": {
         "transcribing": "جارٍ تحويل الصوت إلى نص...",
@@ -129,6 +148,18 @@
         },
         "practice": {
             "label": "تدريب"
+        },
+        "studyNext": {
+            "label": "ماذا أدرس بعد ذلك",
+            "prompt": "ماذا يجب أن أدرس بعد ذلك؟"
+        },
+        "quizRecent": {
+            "label": "اختبرني",
+            "prompt": "اختبرني فيما درسته مؤخرًا"
+        },
+        "myProgress": {
+            "label": "تقدّمي",
+            "prompt": "كيف أدائي في دوراتي؟"
         }
     },
     "quiz": {
@@ -172,7 +203,10 @@
         "checkingLiveClasses": "جارٍ البحث عن حصصك المباشرة...",
         "checkingTests": "جارٍ التحقق من اختباراتك...",
         "checkingResults": "جارٍ جلب نتائجك...",
-        "askingTeacher": "جارٍ إرسال سؤالك إلى معلمك..."
+        "askingTeacher": "جارٍ إرسال سؤالك إلى معلمك...",
+        "makingFlashcards": "جارٍ إعداد بطاقاتك...",
+        "writingSteps": "جارٍ كتابة الحل خطوة بخطوة...",
+        "checkingDailyTasks": "جارٍ التحقق من مهام اليوم..."
     },
     "voiceAvatar": {
         "ready": "جاهز",
@@ -263,5 +297,59 @@
         "questions_few": "{{count}} أسئلة",
         "questions_many": "{{count}} سؤالًا",
         "questions_other": "{{count}} سؤال"
+    },
+    "starters": {
+        "label": "اقتراحات لك",
+        "loading": "جارٍ تحميل الاقتراحات",
+        "trySaying": "جرّب أن تقول:"
+    },
+    "toolbelt": {
+        "label": "اسأل عن هذه الإجابة",
+        "simpler": {
+            "label": "أبسط",
+            "request": "اشرح ذلك بطريقة أبسط"
+        },
+        "example": {
+            "label": "مثال",
+            "request": "أعطني مثالًا"
+        },
+        "examReady": {
+            "label": "جاهز للامتحان",
+            "request": "أعطني إجابة الامتحان: النقاط الأساسية التي يجب كتابتها"
+        },
+        "hinglish": {
+            "label": "Hinglish",
+            "request": "اشرح ذلك بالهنجليزية (Hinglish)"
+        },
+        "steps": {
+            "label": "خطوة بخطوة",
+            "request": "اشرح لي ذلك خطوة بخطوة"
+        },
+        "flashcards": {
+            "label": "بطاقات",
+            "request": "اصنع بطاقات مراجعة من ذلك"
+        },
+        "hindiLabel": "हिंदी में",
+        "readAloud": "اقرأ بصوت عالٍ",
+        "stopReading": "إيقاف القراءة",
+        "save": "حفظ الإجابة",
+        "unsave": "إزالة من المحفوظات",
+        "more": "طرق أخرى للشرح",
+        "aboutEarlier": "{{request}} (بخصوص إجابتك السابقة: \"{{excerpt}}\")"
+    },
+    "saved": {
+        "tab": "المحفوظة",
+        "untitled": "إجابة محفوظة",
+        "openChat": "فتح المحادثة",
+        "unsave": "إزالة",
+        "unsaveError": "تعذّرت الإزالة. يُرجى المحاولة مرة أخرى.",
+        "loading": "جارٍ تحميل الإجابات المحفوظة...",
+        "loadError": "تعذّر تحميل إجاباتك المحفوظة.",
+        "empty": "لا توجد إجابات محفوظة بعد",
+        "emptyHint": "اضغط على الإشارة المرجعية أسفل أي إجابة لحفظها هنا.",
+        "listLabel": "الإجابات المحفوظة"
+    },
+    "peek": {
+        "dismiss": "إغلاق"
     }
 }

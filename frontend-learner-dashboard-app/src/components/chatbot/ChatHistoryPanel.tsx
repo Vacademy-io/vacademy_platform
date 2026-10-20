@@ -1,39 +1,16 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, ChatCircle, ClockCounterClockwise, Plus, SpinnerGap } from "@phosphor-icons/react";
 import { useTranslation } from "react-i18next";
-import type { TFunction } from "i18next";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import type { ChatSessionSummary } from "@/services/chatbot-api";
 import { useChatbotContext } from "./useChatbotContext";
-
-const MINUTE = 60_000;
-const HOUR = 60 * MINUTE;
-const DAY = 24 * HOUR;
-
-/** The server sends UTC timestamps, sometimes without the trailing "Z". */
-const parseUtc = (iso: string | null): number | null => {
-  if (!iso) return null;
-  const hasZone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(iso);
-  const ms = new Date(hasZone ? iso : `${iso}Z`).getTime();
-  return Number.isNaN(ms) ? null : ms;
-};
-
-/** "Just now", "5m ago", "2h ago", "Yesterday", "3d ago", then a short date. */
-const relativeTime = (iso: string | null, t: TFunction, language: string): string => {
-  const ms = parseUtc(iso);
-  if (ms === null) return "";
-  const diff = Math.max(0, Date.now() - ms);
-  if (diff < MINUTE) return t("history.justNow");
-  if (diff < HOUR) return t("history.minutesAgo", { n: Math.floor(diff / MINUTE) });
-  if (diff < DAY) return t("history.hoursAgo", { n: Math.floor(diff / HOUR) });
-  if (diff < 2 * DAY) return t("history.yesterday");
-  if (diff < 7 * DAY) return t("history.daysAgo", { n: Math.floor(diff / DAY) });
-  return new Date(ms).toLocaleDateString(language, { day: "numeric", month: "short" });
-};
+import { relativeTime } from "./history-time";
+import { SavedAnswersList } from "./SavedAnswers";
 
 type LoadState = "loading" | "ready" | "error";
+type HistoryTab = "chats" | "saved";
 
 interface ChatHistoryPanelProps {
   /** Return to the conversation (after opening a chat, starting one, or Back). */
@@ -42,9 +19,10 @@ interface ChatHistoryPanelProps {
 }
 
 /**
- * The learner's past chats, shown in place of the message list by both chat
- * panels: "New chat" on top, then each chat (title, when, how many questions),
- * the open one highlighted. Choosing one reopens it.
+ * The learner's past chats and saved answers, shown in place of the message
+ * list by both chat panels: "New chat" on top, then a Past chats | Saved
+ * switch. Past chats lists each chat (title, when, how many questions), the
+ * open one highlighted; choosing one reopens it.
  */
 export const ChatHistoryPanel: React.FC<ChatHistoryPanelProps> = ({ onDone, className }) => {
   const { t, i18n } = useTranslation("chatFeatureB");
@@ -52,6 +30,7 @@ export const ChatHistoryPanel: React.FC<ChatHistoryPanelProps> = ({ onDone, clas
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [openingId, setOpeningId] = useState<string | null>(null);
   const [openFailed, setOpenFailed] = useState(false);
+  const [tab, setTab] = useState<HistoryTab>("chats");
   const newChatRef = useRef<HTMLButtonElement>(null);
   const mountedRef = useRef(true);
 
@@ -110,7 +89,7 @@ export const ChatHistoryPanel: React.FC<ChatHistoryPanelProps> = ({ onDone, clas
         >
           <ArrowLeft className="h-4 w-4 rtl:rotate-180" aria-hidden="true" />
         </Button>
-        <h2 className="flex-1 truncate text-sm font-semibold text-foreground">{t("history.title")}</h2>
+        <h2 className="flex-1 truncate text-sm font-semibold text-foreground">{t("history.open")}</h2>
         <Button
           ref={newChatRef}
           type="button"
@@ -123,93 +102,135 @@ export const ChatHistoryPanel: React.FC<ChatHistoryPanelProps> = ({ onDone, clas
         </Button>
       </div>
 
-      <ScrollArea className="flex-1 min-h-0 [&>[data-radix-scroll-area-viewport]>div]:!block">
-        <div className="flex flex-col gap-1 p-2">
-          {openFailed && (
-            <p role="alert" className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">
-              {t("history.openError")}
-            </p>
-          )}
+      <div
+        role="tablist"
+        aria-label={t("history.open")}
+        className="mx-2.5 mt-2 grid shrink-0 grid-cols-2 gap-1 rounded-lg bg-muted p-1"
+      >
+        {(["chats", "saved"] as const).map((id) => {
+          const selected = tab === id;
+          return (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              id={`chat-history-tab-${id}`}
+              aria-selected={selected}
+              aria-controls={`chat-history-panel-${id}`}
+              onClick={() => setTab(id)}
+              className={cn(
+                "h-7 rounded-md text-caption font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                selected
+                  ? "bg-background text-primary shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {id === "chats" ? t("history.title") : t("saved.tab")}
+            </button>
+          );
+        })}
+      </div>
 
-          {showSpinner && (
-            <div className="flex items-center justify-center gap-2 py-8 text-xs text-muted-foreground" role="status">
-              <SpinnerGap className="h-4 w-4 animate-spin" aria-hidden="true" />
-              {t("history.loading")}
-            </div>
-          )}
+      {tab === "saved" ? (
+        <SavedAnswersList
+          id="chat-history-panel-saved"
+          labelledBy="chat-history-tab-saved"
+          onOpened={onDone}
+        />
+      ) : (
+        <ScrollArea
+          id="chat-history-panel-chats"
+          role="tabpanel"
+          aria-labelledby="chat-history-tab-chats"
+          className="flex-1 min-h-0 [&>[data-radix-scroll-area-viewport]>div]:!block"
+        >
+          <div className="flex flex-col gap-1 p-2">
+            {openFailed && (
+              <p role="alert" className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                {t("history.openError")}
+              </p>
+            )}
 
-          {showError && (
-            <div role="alert" className="flex flex-col items-center gap-2 py-8 text-center">
-              <p className="text-xs text-destructive">{t("history.loadError")}</p>
-              <button
-                type="button"
-                onClick={refresh}
-                className="text-xs text-primary underline hover:text-primary/80"
-              >
-                {t("common.retry")}
-              </button>
-            </div>
-          )}
+            {showSpinner && (
+              <div className="flex items-center justify-center gap-2 py-8 text-xs text-muted-foreground" role="status">
+                <SpinnerGap className="h-4 w-4 animate-spin" aria-hidden="true" />
+                {t("history.loading")}
+              </div>
+            )}
 
-          {showEmpty && (
-            <div className="flex flex-col items-center gap-2 py-10 text-center">
-              <ClockCounterClockwise className="h-8 w-8 text-muted-foreground/60" aria-hidden="true" />
-              <p className="text-sm font-medium text-foreground">{t("history.empty")}</p>
-              <p className="text-caption text-muted-foreground">{t("history.emptyHint")}</p>
-            </div>
-          )}
+            {showError && (
+              <div role="alert" className="flex flex-col items-center gap-2 py-8 text-center">
+                <p className="text-xs text-destructive">{t("history.loadError")}</p>
+                <button
+                  type="button"
+                  onClick={refresh}
+                  className="text-xs text-primary underline hover:text-primary/80"
+                >
+                  {t("common.retry")}
+                </button>
+              </div>
+            )}
 
-          {sessions.length > 0 && (
-            <ul className="flex flex-col gap-1" aria-label={t("history.listLabel")}>
-              {sessions.map((chat: ChatSessionSummary) => {
-                const isCurrent = chat.session_id === sessionId;
-                const isOpening = openingId === chat.session_id;
-                const when = relativeTime(chat.last_active, t, i18n.language);
-                return (
-                  <li key={chat.session_id}>
-                    <button
-                      type="button"
-                      onClick={() => handleOpen(chat.session_id)}
-                      disabled={!!openingId && !isOpening}
-                      aria-current={isCurrent ? "true" : undefined}
-                      aria-busy={isOpening || undefined}
-                      className={cn(
-                        "flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-start transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
-                        isCurrent && "bg-primary/10 ring-1 ring-primary/30 hover:bg-primary/15",
-                      )}
-                    >
-                      {isOpening ? (
-                        <SpinnerGap className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-primary" aria-hidden="true" />
-                      ) : (
-                        <ChatCircle
-                          className={cn("mt-0.5 h-4 w-4 shrink-0", isCurrent ? "text-primary" : "text-muted-foreground")}
-                          aria-hidden="true"
-                        />
-                      )}
-                      <span className="min-w-0 flex-1">
-                        <span className="flex items-center gap-1.5">
-                          <span className="truncate text-sm font-medium text-foreground">
-                            {chat.title?.trim() || t("history.untitled")}
-                          </span>
-                          {isCurrent && (
-                            <span className="shrink-0 rounded-full bg-primary px-1.5 text-caption font-medium text-primary-foreground">
-                              {t("history.current")}
+            {showEmpty && (
+              <div className="flex flex-col items-center gap-2 py-10 text-center">
+                <ClockCounterClockwise className="h-8 w-8 text-muted-foreground/60" aria-hidden="true" />
+                <p className="text-sm font-medium text-foreground">{t("history.empty")}</p>
+                <p className="text-caption text-muted-foreground">{t("history.emptyHint")}</p>
+              </div>
+            )}
+
+            {sessions.length > 0 && (
+              <ul className="flex flex-col gap-1" aria-label={t("history.listLabel")}>
+                {sessions.map((chat: ChatSessionSummary) => {
+                  const isCurrent = chat.session_id === sessionId;
+                  const isOpening = openingId === chat.session_id;
+                  const when = relativeTime(chat.last_active, t, i18n.language);
+                  return (
+                    <li key={chat.session_id}>
+                      <button
+                        type="button"
+                        onClick={() => handleOpen(chat.session_id)}
+                        disabled={!!openingId && !isOpening}
+                        aria-current={isCurrent ? "true" : undefined}
+                        aria-busy={isOpening || undefined}
+                        className={cn(
+                          "flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-start transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
+                          isCurrent && "bg-primary/10 ring-1 ring-primary/30 hover:bg-primary/15",
+                        )}
+                      >
+                        {isOpening ? (
+                          <SpinnerGap className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-primary" aria-hidden="true" />
+                        ) : (
+                          <ChatCircle
+                            className={cn("mt-0.5 h-4 w-4 shrink-0", isCurrent ? "text-primary" : "text-muted-foreground")}
+                            aria-hidden="true"
+                          />
+                        )}
+                        <span className="min-w-0 flex-1">
+                          <span className="flex items-center gap-1.5">
+                            <span className="truncate text-sm font-medium text-foreground">
+                              {chat.title?.trim() || t("history.untitled")}
                             </span>
-                          )}
+                            {isCurrent && (
+                              <span className="shrink-0 rounded-full bg-primary px-1.5 text-caption font-medium text-primary-foreground">
+                                {t("history.current")}
+                              </span>
+                            )}
+                          </span>
+                          <span className="mt-0.5 block truncate text-caption text-muted-foreground">
+                            {when && `${when} · `}
+                            {t("history.questions", { count: chat.question_count })}
+                          </span>
                         </span>
-                        <span className="mt-0.5 block truncate text-caption text-muted-foreground">
-                          {when && `${when} · `}
-                          {t("history.questions", { count: chat.question_count })}
-                        </span>
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </div>
-      </ScrollArea>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        </ScrollArea>
+      )}
     </div>
   );
 };

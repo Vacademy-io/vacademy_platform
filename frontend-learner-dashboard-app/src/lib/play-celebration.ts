@@ -31,15 +31,18 @@ function quiet(): boolean {
   );
 }
 
-/** Quick burst for a single completion (slide done, badge unlocked). */
-export function celebrateCompletion(): void {
+/**
+ * Quick burst for a single completion (slide done, badge unlocked). `colors`
+ * overrides the play palette (e.g. the institute's brand shades).
+ */
+export function celebrateCompletion(colors?: string[]): void {
   if (quiet()) return;
   confetti({
     particleCount: 80,
     spread: 70,
     startVelocity: 35,
     origin: { y: 0.7 },
-    colors: PLAY_COLORS,
+    colors: colors?.length ? colors : PLAY_COLORS,
     disableForReducedMotion: true,
   });
 }

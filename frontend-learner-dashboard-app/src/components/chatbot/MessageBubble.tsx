@@ -120,7 +120,7 @@ export const AssistantAvatar: React.FC<{ className?: string }> = ({ className })
  * desktop it shows on hover and whenever it (or anything in the message) has
  * keyboard focus.
  */
-const ACTION_BUTTON =
+export const ACTION_BUTTON =
   "shrink-0 p-1 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-opacity md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 md:focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 const CopyButton: React.FC<{ content: string }> = ({ content }) => {
@@ -200,6 +200,10 @@ export interface MessageBubbleProps {
   /** Current thumbs rating; with onRate, shows the thumbs buttons. */
   rating?: "up" | "down" | null;
   onRate?: (rating: FeedbackRating) => void;
+  /** More buttons at the end of the actions row (read aloud, save). */
+  extraActions?: React.ReactNode;
+  /** A row under the actions (the answer toolbelt on the latest reply). */
+  belowActions?: React.ReactNode;
 }
 
 /** One chat bubble: the learner's text/images, or an assistant markdown reply. */
@@ -213,6 +217,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   stopped = false,
   rating = null,
   onRate,
+  extraActions,
+  belowActions,
 }) => {
   const { t } = useTranslation("chatFeatureB");
 
@@ -266,8 +272,10 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             )}
             <CopyButton content={content} />
             {onRate && <RateButtons rating={rating} onRate={onRate} />}
+            {extraActions}
           </div>
         )}
+        {!streaming && content && belowActions}
       </div>
     </div>
   );

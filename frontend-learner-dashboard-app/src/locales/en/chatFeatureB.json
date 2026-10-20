@@ -76,7 +76,26 @@
     },
     "cards": {
         "opensInNewTab": "(opens in a new tab)",
-        "progressLabel": "{{title}}: {{percent}}% complete"
+        "progressLabel": "{{title}}: {{percent}}% complete",
+        "steps": {
+            "title": "Step by step",
+            "progress": "{{shown}} of {{total}} steps shown",
+            "stepN": "Step {{n}}",
+            "next": "Show next step",
+            "showAll": "Show all"
+        },
+        "flashcards": {
+            "title": "Flashcards",
+            "front": "Question",
+            "back": "Answer",
+            "showFront": "Tap to see the question",
+            "showBack": "Tap to see the answer",
+            "counter": "{{n}} / {{total}}",
+            "tapToFlip": "Tap or press Space to flip",
+            "previous": "Previous card",
+            "next": "Next card",
+            "shuffle": "Shuffle"
+        }
     },
     "micButton": {
         "transcribing": "Transcribing...",
@@ -129,6 +148,18 @@
         },
         "practice": {
             "label": "Practice"
+        },
+        "studyNext": {
+            "label": "What to study next",
+            "prompt": "What should I study next?"
+        },
+        "quizRecent": {
+            "label": "Quiz me",
+            "prompt": "Quiz me on what I've been studying recently"
+        },
+        "myProgress": {
+            "label": "My progress",
+            "prompt": "How am I doing in my courses?"
         }
     },
     "quiz": {
@@ -172,7 +203,10 @@
         "checkingLiveClasses": "Looking up your live classes...",
         "checkingTests": "Checking your tests...",
         "checkingResults": "Fetching your results...",
-        "askingTeacher": "Sending your question to your teacher..."
+        "askingTeacher": "Sending your question to your teacher...",
+        "makingFlashcards": "Making your flashcards...",
+        "writingSteps": "Writing it out step by step...",
+        "checkingDailyTasks": "Checking today's tasks..."
     },
     "voiceAvatar": {
         "ready": "Ready",
@@ -259,5 +293,59 @@
         "daysAgo": "{{n}}d ago",
         "questions_one": "{{count}} question",
         "questions_other": "{{count}} questions"
+    },
+    "starters": {
+        "label": "Suggestions for you",
+        "loading": "Loading suggestions",
+        "trySaying": "Try saying:"
+    },
+    "toolbelt": {
+        "label": "Ask about this answer",
+        "simpler": {
+            "label": "Simpler",
+            "request": "Explain that more simply"
+        },
+        "example": {
+            "label": "Example",
+            "request": "Give me an example"
+        },
+        "examReady": {
+            "label": "Exam-ready",
+            "request": "Give me the exam-ready answer: the key points to write"
+        },
+        "hinglish": {
+            "label": "Hinglish",
+            "request": "Explain that in Hinglish"
+        },
+        "steps": {
+            "label": "Step by step",
+            "request": "Show me that step by step"
+        },
+        "flashcards": {
+            "label": "Flashcards",
+            "request": "Make flashcards from that"
+        },
+        "hindiLabel": "हिंदी में",
+        "readAloud": "Read aloud",
+        "stopReading": "Stop reading",
+        "save": "Save answer",
+        "unsave": "Remove from saved",
+        "more": "More ways to explain",
+        "aboutEarlier": "{{request}} (about your earlier answer: \"{{excerpt}}\")"
+    },
+    "saved": {
+        "tab": "Saved",
+        "untitled": "Saved answer",
+        "openChat": "Open chat",
+        "unsave": "Unsave",
+        "unsaveError": "Couldn't remove it. Please try again.",
+        "loading": "Loading saved answers...",
+        "loadError": "Couldn't load your saved answers.",
+        "empty": "No saved answers yet",
+        "emptyHint": "Tap the bookmark under an answer to keep it here.",
+        "listLabel": "Saved answers"
+    },
+    "peek": {
+        "dismiss": "Dismiss"
     }
 }

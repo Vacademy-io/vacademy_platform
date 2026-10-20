@@ -76,7 +76,26 @@
     },
     "cards": {
         "opensInNewTab": "(s'ouvre dans un nouvel onglet)",
-        "progressLabel": "{{title}} : {{percent}} % terminé"
+        "progressLabel": "{{title}} : {{percent}} % terminé",
+        "steps": {
+            "title": "Étape par étape",
+            "progress": "{{shown}} étape(s) sur {{total}} affichée(s)",
+            "stepN": "Étape {{n}}",
+            "next": "Afficher l'étape suivante",
+            "showAll": "Tout afficher"
+        },
+        "flashcards": {
+            "title": "Fiches",
+            "front": "Question",
+            "back": "Réponse",
+            "showFront": "Touchez pour voir la question",
+            "showBack": "Touchez pour voir la réponse",
+            "counter": "{{n}} / {{total}}",
+            "tapToFlip": "Touchez ou appuyez sur Espace pour retourner",
+            "previous": "Fiche précédente",
+            "next": "Fiche suivante",
+            "shuffle": "Mélanger"
+        }
     },
     "micButton": {
         "transcribing": "Transcription en cours...",
@@ -129,6 +148,18 @@
         },
         "practice": {
             "label": "Entraînement"
+        },
+        "studyNext": {
+            "label": "Quoi étudier ensuite",
+            "prompt": "Qu'est-ce que je devrais étudier ensuite ?"
+        },
+        "quizRecent": {
+            "label": "Interroge-moi",
+            "prompt": "Interroge-moi sur ce que j'ai étudié récemment"
+        },
+        "myProgress": {
+            "label": "Ma progression",
+            "prompt": "Où en suis-je dans mes cours ?"
         }
     },
     "quiz": {
@@ -172,7 +203,10 @@
         "checkingLiveClasses": "Recherche de vos cours en direct...",
         "checkingTests": "Vérification de vos tests...",
         "checkingResults": "Récupération de vos résultats...",
-        "askingTeacher": "Envoi de votre question à votre enseignant..."
+        "askingTeacher": "Envoi de votre question à votre enseignant...",
+        "makingFlashcards": "Création de vos fiches...",
+        "writingSteps": "Rédaction étape par étape...",
+        "checkingDailyTasks": "Vérification des tâches du jour..."
     },
     "voiceAvatar": {
         "ready": "Prêt",
@@ -260,5 +294,59 @@
         "questions_one": "{{count}} question",
         "questions_many": "{{count}} questions",
         "questions_other": "{{count}} questions"
+    },
+    "starters": {
+        "label": "Suggestions pour vous",
+        "loading": "Chargement des suggestions",
+        "trySaying": "Essayez de dire :"
+    },
+    "toolbelt": {
+        "label": "Demander à propos de cette réponse",
+        "simpler": {
+            "label": "Plus simple",
+            "request": "Explique-moi ça plus simplement"
+        },
+        "example": {
+            "label": "Exemple",
+            "request": "Donne-moi un exemple"
+        },
+        "examReady": {
+            "label": "Prêt pour l'examen",
+            "request": "Donne-moi la réponse pour l'examen : les points clés à écrire"
+        },
+        "hinglish": {
+            "label": "Hinglish",
+            "request": "Explique-moi ça en hinglish"
+        },
+        "steps": {
+            "label": "Étape par étape",
+            "request": "Montre-moi ça étape par étape"
+        },
+        "flashcards": {
+            "label": "Fiches",
+            "request": "Fais des fiches de révision à partir de ça"
+        },
+        "hindiLabel": "हिंदी में",
+        "readAloud": "Lire à voix haute",
+        "stopReading": "Arrêter la lecture",
+        "save": "Enregistrer la réponse",
+        "unsave": "Retirer des enregistrements",
+        "more": "Autres façons d'expliquer",
+        "aboutEarlier": "{{request}} (à propos de ta réponse précédente : « {{excerpt}} »)"
+    },
+    "saved": {
+        "tab": "Enregistrées",
+        "untitled": "Réponse enregistrée",
+        "openChat": "Ouvrir la discussion",
+        "unsave": "Retirer",
+        "unsaveError": "Impossible de la retirer. Veuillez réessayer.",
+        "loading": "Chargement des réponses enregistrées...",
+        "loadError": "Impossible de charger vos réponses enregistrées.",
+        "empty": "Aucune réponse enregistrée",
+        "emptyHint": "Touchez le signet sous une réponse pour la garder ici.",
+        "listLabel": "Réponses enregistrées"
+    },
+    "peek": {
+        "dismiss": "Fermer"
     }
 }

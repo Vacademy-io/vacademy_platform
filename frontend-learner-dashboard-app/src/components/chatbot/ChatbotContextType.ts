@@ -3,12 +3,14 @@ import { ChatMessage, QuizSubmission } from "./types";
 import {
   AIStatus,
   ChatSessionSummary,
+  ChatStartersResponse,
   FeedbackRating,
   MessageIntent,
   SessionMode,
 } from "@/services/chatbot-api";
 import { ChatbotSettingsData } from "@/services/chatbot-settings";
 import { QueuedMessage } from "@/services/offline-queue";
+import type { StartersState } from "./useChatbot";
 
 export interface ChatbotContextType {
   isOpen: boolean;
@@ -57,6 +59,24 @@ export interface ChatbotContextType {
   stopGeneration: () => void;
   /** Rate an assistant reply; "none" clears the rating. */
   setFeedback: (messageId: number, rating: FeedbackRating) => Promise<void>;
+  /**
+   * Save (bookmark) or unsave a reply; optimistic in the open chat. Pass
+   * `targetSessionId` for a reply from another chat (the Saved list).
+   */
+  setSaved: (messageId: number, saved: boolean, targetSessionId?: string) => Promise<boolean>;
+  /** Personal starters for the current page, filled by loadStarters(). */
+  starters: ChatStartersResponse | null;
+  startersState: StartersState;
+  /** Fetch (or reuse) the starters for the current page; null when unavailable. */
+  loadStarters: () => Promise<ChatStartersResponse | null>;
+  /** Open the chat and send `prompt` once the chat is ready. */
+  openAndSend: (prompt: string) => void;
+  /** The reply being read aloud / whose audio is loading. */
+  speakingMessageId: number | null;
+  speechLoadingId: number | null;
+  /** Read a reply aloud, or stop it if it is the one playing. */
+  toggleReadAloud: (messageId: number) => Promise<void>;
+  stopSpeech: () => void;
   showVoiceSelector: boolean;
   setShowVoiceSelector: (show: boolean) => void;
   enterVoiceMode: (mode: SessionMode, language?: string, topic?: string) => Promise<void>;

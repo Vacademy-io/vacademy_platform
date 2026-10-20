@@ -10,41 +10,49 @@ import { QuickActions } from "./QuickActions";
 /**
  * Route-aware quick actions plus the voice-call chip. A prompt ending in a
  * space only prefills the input (the learner finishes the sentence); any
- * other prompt is sent straight away.
+ * other prompt is sent straight away. `completeOnly` (the empty chat) offers
+ * complete requests only; `voiceOnly` shows just the voice-call chip.
  */
-export const ChatSuggestions: React.FC<{ compact?: boolean; centered?: boolean }> = ({
-  compact = false,
-  centered = false,
-}) => {
+export const ChatSuggestions: React.FC<{
+  compact?: boolean;
+  centered?: boolean;
+  completeOnly?: boolean;
+  voiceOnly?: boolean;
+}> = ({ compact = false, centered = false, completeOnly = false, voiceOnly = false }) => {
   const { t } = useTranslation("chatFeatureB");
   const location = useLocation();
   const { isLoading, sessionId, sendMessage, setInputValue, chatbotSettings, startVoiceCall } =
     useChatbotContext();
   const disabled = isLoading || !sessionId;
+  const hasVoice = !!chatbotSettings.enabled_modes?.some((m) => m.startsWith("voice_"));
+  if (voiceOnly && !hasVoice) return null;
 
   return (
     <div className={cn("w-full flex flex-wrap", compact ? "gap-1" : "gap-1.5", centered && "justify-center")}>
-      <QuickActions
-        pathname={location.pathname}
-        onAction={(prompt: string, intent?: MessageIntent) => {
-          if (prompt.endsWith(" ")) {
-            setInputValue(prompt);
-          } else {
-            sendMessage(prompt, intent);
-          }
-        }}
-        disabled={disabled}
-        compact={compact}
-        className={cn(centered && "justify-center")}
-      />
-      {chatbotSettings.enabled_modes?.some((m) => m.startsWith("voice_")) && (
+      {!voiceOnly && (
+        <QuickActions
+          pathname={location.pathname}
+          completeOnly={completeOnly}
+          onAction={(prompt: string, intent?: MessageIntent) => {
+            if (prompt.endsWith(" ")) {
+              setInputValue(prompt);
+            } else {
+              sendMessage(prompt, intent);
+            }
+          }}
+          disabled={disabled}
+          compact={compact}
+          className={cn(centered && "justify-center")}
+        />
+      )}
+      {hasVoice && (
         <button
           type="button"
           onClick={startVoiceCall}
           disabled={disabled}
           title={t("common.startVoiceConversation")}
           className={cn(
-            "inline-flex items-center rounded-full border border-warning-200 bg-warning-50 font-medium text-warning-700 transition-colors hover:bg-warning-100 disabled:opacity-50 dark:border-warning-500/30 dark:bg-warning-500/10 dark:text-warning-300",
+            "inline-flex items-center rounded-full border border-primary/25 bg-primary/10 font-medium text-primary transition-colors hover:bg-primary/15 disabled:opacity-50",
             compact ? "h-5 px-2 text-caption" : "h-6 px-2.5 text-caption",
           )}
         >

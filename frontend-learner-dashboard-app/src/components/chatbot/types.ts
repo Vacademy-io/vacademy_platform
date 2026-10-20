@@ -84,6 +84,8 @@ export interface ChatMessage {
   isLocal?: boolean;
   /** Delivered by the server's stream, so `id` is the saved message's id (ratable). */
   fromServer?: boolean;
+  /** Arrived in the transcript replay of an opened chat (shown without entrance motion). */
+  replayed?: boolean;
   metadata?: {
     tool_name?: string;
     tool_arguments?: object;
@@ -100,6 +102,8 @@ export interface ChatMessage {
     suggestions?: string[];
     /** The learner stopped this reply mid-stream; the content is partial. */
     stopped?: boolean;
+    /** Set when the learner saved (bookmarked) this reply; null/absent = not saved. */
+    saved_at?: string | null;
   };
 }
 
@@ -160,7 +164,34 @@ export interface ProgressCardData {
   items: ProgressCardItem[];
 }
 
-export type ChatCardData = LinkListCardData | ProgressCardData;
+export interface StepsCardItem {
+  title: string;
+  /** Markdown + LaTeX, rendered with ChatMarkdown. */
+  body: string;
+}
+
+export interface StepsCardData {
+  kind: "steps";
+  title?: string;
+  items: StepsCardItem[];
+}
+
+export interface FlashcardItem {
+  front: string;
+  back: string;
+}
+
+export interface FlashcardsCardData {
+  kind: "flashcards";
+  title?: string;
+  items: FlashcardItem[];
+}
+
+export type ChatCardData =
+  | LinkListCardData
+  | ProgressCardData
+  | StepsCardData
+  | FlashcardsCardData;
 
 export interface ChatResponse {
   message: string;

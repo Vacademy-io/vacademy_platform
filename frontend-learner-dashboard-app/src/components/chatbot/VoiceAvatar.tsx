@@ -17,8 +17,6 @@ function getRingStyle(
   audioLevel: number,
   ringIndex: number,
 ) {
-  const base = RING_SIZES[ringIndex]!;
-
   switch (state) {
     case "idle":
       return {
@@ -36,7 +34,7 @@ function getRingStyle(
       };
     case "listening":
       return {
-        className: "border-green-400",
+        className: "border-primary-300",
         animate: {
           scale: 1 + audioLevel * 0.3 + ringIndex * 0.03,
           opacity: 0.2 + audioLevel * 0.5,
@@ -45,7 +43,7 @@ function getRingStyle(
       };
     case "speaking":
       return {
-        className: "border-blue-400",
+        className: "border-primary",
         animate: {
           scale: 1 + audioLevel * 0.25 + ringIndex * 0.03,
           opacity: 0.2 + audioLevel * 0.4,
@@ -54,7 +52,7 @@ function getRingStyle(
       };
     case "processing":
       return {
-        className: "border-amber-400",
+        className: "border-primary/60",
         animate: {
           rotate: [0, 360],
           opacity: [0.3, 0.5, 0.3],
@@ -139,7 +137,7 @@ export const VoiceAvatar: React.FC<VoiceAvatarProps> = ({
 
       {/* Audio waveform bars */}
       <div className="flex items-end gap-1 h-8">
-        {barOffsets.map((offset, i) => {
+        {barOffsets.map((_offset, i) => {
           const barScale = state === "idle"
             ? 0.15 + 0.05 * Math.sin(i * 0.9)
             : audioLevel * (0.6 + 0.4 * Math.sin(i * 1.2));
@@ -149,11 +147,11 @@ export const VoiceAvatar: React.FC<VoiceAvatarProps> = ({
               key={i}
               className={`w-1 rounded-full transition-all duration-100 ${
                 state === "listening"
-                  ? "bg-green-400"
+                  ? "bg-primary-300"
                   : state === "speaking"
-                    ? "bg-blue-400"
+                    ? "bg-primary"
                     : state === "processing"
-                      ? "bg-amber-400"
+                      ? "bg-primary/60"
                       : "bg-white/30"
               }`}
               style={{ height: `${height}px` }}

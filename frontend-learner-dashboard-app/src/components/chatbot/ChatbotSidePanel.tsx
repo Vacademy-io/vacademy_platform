@@ -9,6 +9,7 @@ import {
   ArrowsInSimple,
 } from "@phosphor-icons/react";
 import { Link } from "@tanstack/react-router";
+import { motion, useReducedMotion, type MotionProps } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { CardHeader, CardTitle } from "@/components/ui/card";
@@ -71,6 +72,7 @@ export const ChatbotSidePanel: React.FC = () => {
     setIsOpen: setStorePanelOpen,
   } = useChatbotPanelStore();
 
+  const reduceMotion = useReducedMotion();
   const [isResizing, setIsResizing] = useState(false);
   // Past chats shown in place of the conversation.
   const [showHistory, setShowHistory] = useState(false);
@@ -142,14 +144,34 @@ export const ChatbotSidePanel: React.FC = () => {
 
   if (!isOpen || !shouldShowChatbot()) return null;
 
+  // Docked: slides in from the edge with a spring. Popup: grows from the
+  // launcher's corner. Reduced motion: a plain fade.
+  const isRtl = typeof document !== "undefined" && document.documentElement.dir === "rtl";
+  const entrance: MotionProps = reduceMotion
+    ? { initial: { opacity: 0 }, animate: { opacity: 1 }, transition: { duration: 0.15 } }
+    : viewMode === "popup"
+      ? {
+          initial: { opacity: 0, scale: 0.9 },
+          animate: { opacity: 1, scale: 1 },
+          transition: { type: "spring", stiffness: 320, damping: 28 },
+        }
+      : {
+          initial: { x: isRtl ? "-100%" : "100%" },
+          animate: { x: 0 },
+          transition: { type: "spring", stiffness: 300, damping: 32 },
+        };
+
   return (
-    <div
+    <motion.div
+      {...entrance}
       ref={panelRef}
       // In the popup the wrapper decides the width; docked keeps the drag-resized width.
       style={viewMode === "popup" ? undefined : { width: panelWidth }}
       className={cn(
         "h-full flex flex-col bg-background/95 backdrop-blur-sm relative shrink-0 shadow-xl",
-        viewMode === "popup" ? "w-full" : "border-s border-border/50",
+        viewMode === "popup"
+          ? "w-full ltr:origin-bottom-right rtl:origin-bottom-left"
+          : "border-s border-border/50",
         isDragOver && "ring-2 ring-inset ring-primary/50"
       )}
       {...dropHandlers}
@@ -306,6 +328,6 @@ export const ChatbotSidePanel: React.FC = () => {
           topic={voiceTopic}
         />
       )}
-    </div>
+    </motion.div>
   );
 };

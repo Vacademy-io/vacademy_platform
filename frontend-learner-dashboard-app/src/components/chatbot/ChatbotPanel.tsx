@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   X,
   Plus,
@@ -91,6 +91,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
   const [isMobile, setIsMobile] = useState(false);
   // Past chats shown in place of the conversation.
   const [showHistory, setShowHistory] = useState(false);
+  const reduceMotion = useReducedMotion();
   
   const panelRef = useRef<HTMLDivElement>(null);
   const dragStartRef = useRef({ x: 0, y: 0, panelX: 0, panelY: 0 });
@@ -264,6 +265,9 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
     return null;
   }
 
+  // Phones open full screen (decided in an effect, so also check the width now).
+  const slideUp = isFullScreen || window.innerWidth < 640;
+
   const toggleFullScreen = () => {
     setIsFullScreen(!isFullScreen);
   };
@@ -292,10 +296,26 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
             {/* Chat Panel - Floating Overlay */}
             <motion.div
               ref={panelRef}
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.9 }}
-              transition={{ type: "spring", damping: 25, stiffness: 300 }}
+              // Full screen (phones) slides up from the bottom; the floating
+              // window grows in place. Reduced motion: a plain fade.
+              initial={
+                reduceMotion
+                  ? { opacity: 0 }
+                  : slideUp
+                    ? { opacity: 1, y: "100%" }
+                    : { opacity: 0, scale: 0.9 }
+              }
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={
+                reduceMotion
+                  ? { opacity: 0 }
+                  : slideUp
+                    ? { opacity: 1, y: "100%" }
+                    : { opacity: 0, scale: 0.9 }
+              }
+              transition={
+                reduceMotion ? { duration: 0.15 } : { type: "spring", damping: 30, stiffness: 300 }
+              }
               style={
                 isFullScreen
                   ? isNativePlatform

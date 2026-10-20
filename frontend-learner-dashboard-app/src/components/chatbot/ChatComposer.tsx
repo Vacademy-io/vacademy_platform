@@ -96,8 +96,8 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({ attachments, classNa
         className,
       )}
     >
-      {/* With no messages the suggestions sit in the list's empty state. */}
-      {!hasText && messages.length > 0 && <ChatSuggestions compact />}
+      {/* Until the first question, the starters sit in the conversation instead. */}
+      {!hasText && messages.some((m) => m.role === "user") && <ChatSuggestions compact />}
 
       {attachments.attachments.length > 0 && (
         <ul className="flex gap-1.5 w-full px-1 py-1">

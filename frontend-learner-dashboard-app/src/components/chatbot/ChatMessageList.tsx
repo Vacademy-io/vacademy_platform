@@ -1,16 +1,19 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { AnimatePresence } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { WifiSlash } from "@phosphor-icons/react";
 import { useTranslation } from "react-i18next";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
+import { celebrateCompletion } from "@/lib/play-celebration";
 import { useChatbotContext } from "./useChatbotContext";
 import { AssistantAvatar, ChatMarkdown, MessageBubble } from "./MessageBubble";
 import { QuizComponent } from "./QuizComponent";
 import { QuizFeedbackComponent } from "./QuizFeedbackComponent";
 import { ToolIndicator } from "./ToolIndicator";
-import { ChatSuggestions } from "./ChatSuggestions";
+import { ChatStarters } from "./ChatStarters";
+import { AnswerActions, AnswerTransforms } from "./AnswerToolbelt";
 import { ChatCard } from "./cards/ChatCard";
+import { brandConfettiColors } from "./brand-colors";
 import { visibleStreamText } from "./stream-text";
 import { getMessageRating, type ChatMessage, type QuizFeedbackData } from "./types";
 
@@ -40,7 +43,11 @@ const AssistantBlock: React.FC<{ children: React.ReactNode }> = ({ children }) =
   </div>
 );
 
-const MessageRow: React.FC<{ msg: ChatMessage; isGreeting?: boolean }> = ({ msg, isGreeting = false }) => {
+const MessageRow: React.FC<{ msg: ChatMessage; isGreeting?: boolean; isLatestReply?: boolean }> = ({
+  msg,
+  isGreeting = false,
+  isLatestReply = false,
+}) => {
   const { submitQuiz, isSessionClosed, setFeedback } = useChatbotContext();
 
   if (msg.role === "quiz" && msg.metadata?.quiz_data) {
@@ -84,7 +91,28 @@ const MessageRow: React.FC<{ msg: ChatMessage; isGreeting?: boolean }> = ({ msg,
       stopped={!!msg.metadata?.stopped}
       rating={getMessageRating(msg)}
       onRate={canRate ? (rating) => void setFeedback(msg.id, rating) : undefined}
+      // The full toolbelt sits under the latest reply; older ones stay compact.
+      extraActions={canRate ? <AnswerActions msg={msg} compact={!isLatestReply} /> : undefined}
+      belowActions={canRate && isLatestReply && !isSessionClosed ? <AnswerTransforms /> : undefined}
     />
+  );
+};
+
+/**
+ * A soft rise + fade for content that arrives while the learner watches; the
+ * history replayed when a chat is opened appears without motion.
+ */
+const Entrance: React.FC<{ animate: boolean; children: React.ReactNode }> = ({ animate, children }) => {
+  const reduceMotion = useReducedMotion();
+  if (!animate || reduceMotion) return <>{children}</>;
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.24, ease: "easeOut" }}
+    >
+      {children}
+    </motion.div>
   );
 };
 
@@ -136,15 +164,12 @@ const EmptyState: React.FC = () => {
   const { t } = useTranslation("chatFeatureB");
   const { chatbotSettings } = useChatbotContext();
   return (
-    <div className="flex flex-col items-center gap-2 px-4 py-8 text-center">
+    <div className="flex flex-col items-center gap-2 px-4 pt-8 pb-2 text-center">
       <AssistantAvatar className="h-10 w-10" />
       <p className="text-sm font-semibold text-foreground">
         {t("messageList.emptyTitle", { assistantName: chatbotSettings.assistant_name })}
       </p>
       <p className="text-caption text-muted-foreground">{t("messageList.emptySubtitle")}</p>
-      <div className="mt-2 w-full">
-        <ChatSuggestions centered />
-      </div>
     </div>
   );
 };
@@ -214,7 +239,19 @@ export const ChatMessageList: React.FC<{ className?: string }> = ({ className })
   // The greeting (a server reply before any question) is not rated.
   const greetingId =
     messages[0]?.role === "assistant" && messages[0].fromServer ? messages[0].id : undefined;
+  const hasLearnerMessage = messages.some((m) => m.role === "user");
+  // The latest reply the learner can act on gets the full answer toolbelt.
+  const latestReplyId = (() => {
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      const m = messages[i];
+      if (m?.role === "user") return undefined;
+      if (m?.role === "assistant") return m.fromServer && m.id !== greetingId ? m.id : undefined;
+    }
+    return undefined;
+  })();
+  // Before the first question the starters stand in for follow-up chips.
   const followUps =
+    hasLearnerMessage &&
     lastMessage?.role === "assistant" &&
     !showThinking &&
     !isStreaming &&
@@ -256,6 +293,30 @@ export const ChatMessageList: React.FC<{ className?: string }> = ({ className })
   }, [lastMessage, chatbotSettings.assistant_name]);
 
   const isEmpty = messages.length === 0 && !isInitializing && !isStreaming && !hasError && !isCreditsExhausted;
+  // Messages already on screen when the list mounted (panel reopened) do not animate again.
+  const initialIdsRef = useRef<Set<number> | null>(null);
+  if (initialIdsRef.current === null) initialIdsRef.current = new Set(messages.map((m) => m.id));
+  const isFresh = (msg: ChatMessage) => !msg.replayed && !initialIdsRef.current?.has(msg.id);
+
+  // Not under a notice made in this tab (e.g. a usage limit that refused the chat).
+  const showStarters =
+    !hasLearnerMessage &&
+    !isStreaming &&
+    !hasError &&
+    !isCreditsExhausted &&
+    !isSessionClosed &&
+    !messages.some((m) => m.role === "assistant" && !m.fromServer);
+
+  // One burst when a quiz comes back passed — live, not when history replays.
+  const celebratedRef = useRef(new Set<number>());
+  useEffect(() => {
+    if (!lastMessage || lastMessage.role !== "quiz_feedback" || !isFresh(lastMessage)) return;
+    if (celebratedRef.current.has(lastMessage.id)) return;
+    celebratedRef.current.add(lastMessage.id);
+    if ((lastMessage.metadata?.feedback as QuizFeedbackData | undefined)?.passed === true) {
+      celebrateCompletion(brandConfettiColors());
+    }
+  }, [lastMessage]);
 
   return (
     <div ref={rootRef} className={cn("flex-1 min-h-0 overflow-hidden", className)}>
@@ -280,8 +341,12 @@ export const ChatMessageList: React.FC<{ className?: string }> = ({ className })
           {isEmpty && <EmptyState />}
 
           {messages.map((msg) => (
-            <MessageRow key={msg.id} msg={msg} isGreeting={msg.id === greetingId} />
+            <Entrance key={msg.id} animate={isFresh(msg)}>
+              <MessageRow msg={msg} isGreeting={msg.id === greetingId} isLatestReply={msg.id === latestReplyId} />
+            </Entrance>
           ))}
+
+          {showStarters && <ChatStarters />}
 
           {followUps.length > 0 && <FollowUpChips suggestions={followUps} />}
 

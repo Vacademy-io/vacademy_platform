@@ -87,6 +87,8 @@ export interface MessageEvent {
     card?: object;
     suggestions?: string[];
     stopped?: boolean;
+    /** Set when the learner saved (bookmarked) this reply. */
+    saved_at?: string | null;
   };
   created_at: string;
 }
@@ -168,6 +170,58 @@ export interface UpdateContextResponse {
   session_id: string;
   context_type: ContextType;
   status: "success" | "error";
+}
+
+/** Icon of a personal starter (GET /chat-agent/starters). */
+export type StarterIcon =
+  | "explain"
+  | "quiz"
+  | "course"
+  | "live"
+  | "task"
+  | "resume"
+  | "test"
+  | "plan"
+  | "results"
+  | "doubt";
+
+/** A one-tap starter: `prompt` is a complete request, sent as the learner's message. */
+export interface ChatStarter {
+  icon: StarterIcon | string;
+  label: string;
+  sublabel?: string | null;
+  prompt: string;
+}
+
+/** A time-sensitive nudge shown beside the closed launcher. */
+export interface ChatPeek {
+  text: string;
+  prompt: string;
+}
+
+export interface ChatStartersResponse {
+  starters: ChatStarter[];
+  peek: ChatPeek | null;
+  try_saying: string[];
+}
+
+/** One saved (bookmarked) tutor reply (GET /chat-agent/saved). */
+export interface SavedAnswer {
+  message_id: number;
+  session_id: string;
+  type: string;
+  content: string;
+  metadata?: Record<string, unknown> | null;
+  /** ISO timestamp in UTC (may lack the trailing "Z"). */
+  saved_at: string | null;
+  /** The learner's question this reply answered, when known. */
+  question: string | null;
+}
+
+/** One spoken piece of a reply; play them in order. */
+export interface ReplySpeechSegment {
+  audio_base64: string;
+  mime: string;
 }
 
 class ChatbotAPIService {
@@ -400,6 +454,79 @@ class ChatbotAPIService {
       { rating, ...(comment ? { comment } : {}) },
     );
     return response.data;
+  }
+
+  /** Explicit institute header for endpoints scoped to the learner's institute. */
+  private async instituteHeaders(): Promise<Record<string, string>> {
+    const instituteId = await this.getInstituteId();
+    return instituteId ? { clientId: instituteId } : {};
+  }
+
+  /**
+   * Personal starters for the empty chat and the launcher peek. Works before a
+   * chat exists. Labels come back in the learner's language (Accept-Language).
+   */
+  async getStarters(contextType?: ContextType, lesson?: string): Promise<ChatStartersResponse> {
+    const response = await authenticatedAxiosInstance.get<Partial<ChatStartersResponse>>(
+      `${this.baseUrl}/chat-agent/starters`,
+      {
+        params: {
+          ...(contextType && { context_type: contextType }),
+          ...(lesson && { lesson: lesson.slice(0, 300) }),
+        },
+        headers: await this.instituteHeaders(),
+        timeout: 15000,
+      },
+    );
+    const data = response.data ?? {};
+    const starters = Array.isArray(data.starters)
+      ? data.starters.filter(
+          (s): s is ChatStarter =>
+            !!s && typeof s.label === "string" && typeof s.prompt === "string" && !!s.prompt.trim(),
+        )
+      : [];
+    const peek =
+      data.peek && typeof data.peek.text === "string" && typeof data.peek.prompt === "string"
+        ? data.peek
+        : null;
+    const trySaying = Array.isArray(data.try_saying)
+      ? data.try_saying.filter((x): x is string => typeof x === "string" && !!x.trim())
+      : [];
+    return { starters, peek, try_saying: trySaying };
+  }
+
+  /** Save (bookmark) or unsave a tutor reply. */
+  async setSaved(
+    sessionId: string,
+    messageId: number,
+    saved: boolean,
+  ): Promise<{ message_id: number; saved: boolean }> {
+    const response = await authenticatedAxiosInstance.post<{ message_id: number; saved: boolean }>(
+      `${this.baseUrl}/chat-agent/session/${sessionId}/messages/${messageId}/save`,
+      { saved },
+    );
+    return response.data;
+  }
+
+  /** The learner's saved replies across chats, newest first. */
+  async listSaved(limit = 50): Promise<SavedAnswer[]> {
+    const response = await authenticatedAxiosInstance.get<{ saved?: SavedAnswer[] }>(
+      `${this.baseUrl}/chat-agent/saved`,
+      { params: { limit }, headers: await this.instituteHeaders() },
+    );
+    return Array.isArray(response.data?.saved) ? response.data.saved : [];
+  }
+
+  /** A tutor reply as audio segments (base64), to be played in order. */
+  async getReplySpeech(sessionId: string, messageId: number): Promise<ReplySpeechSegment[]> {
+    const response = await authenticatedAxiosInstance.post<{ segments?: ReplySpeechSegment[] }>(
+      `${this.baseUrl}/chat-agent/session/${sessionId}/messages/${messageId}/speech`,
+      undefined,
+      { timeout: 60000 },
+    );
+    return Array.isArray(response.data?.segments)
+      ? response.data.segments.filter((s) => !!s?.audio_base64)
+      : [];
   }
 
   async sendAudioMessage(

@@ -177,17 +177,20 @@ export const useChatbot = () => {
     (state) => state.modulesWithChaptersData,
   );
 
-  // Cleanup on unmount
+  // Cleanup on unmount only. Never on a session change: reopening a chat sets
+  // the id and attaches its stream in the same tick, and a cleanup here would
+  // close that new stream (the reply then waited for the 45 s watchdog).
+  // Switching chats closes the old stream itself.
   useEffect(() => {
     return () => {
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
       }
-      if (sessionId) {
-        chatbotAPI.closeSession(sessionId).catch(console.error);
+      if (sessionIdRef.current) {
+        chatbotAPI.closeSession(sessionIdRef.current).catch(console.error);
       }
     };
-  }, [sessionId]);
+  }, []);
 
   // Flush offline queue when back online
   const flushOfflineQueue = useCallback(async () => {
@@ -828,10 +831,6 @@ export const useChatbot = () => {
       setSessionId(response.session_id);
       setAiStatus(response.status);
       void writeLastSession(response.session_id);
-
-      // Add small delay before establishing SSE connection
-      // to ensure backend is ready
-      await new Promise((resolve) => setTimeout(resolve, 500));
 
       console.log("Setting up SSE connection...");
 

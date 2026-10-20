@@ -71,6 +71,8 @@ export interface ChatbotContextType {
   loadStarters: () => Promise<ChatStartersResponse | null>;
   /** Open the chat and send `prompt` once the chat is ready. */
   openAndSend: (prompt: string) => void;
+  /** A tapped prompt still waiting for the chat to open; shown as sent. */
+  queuedPrompt: string | null;
   /** The reply being read aloud / whose audio is loading. */
   speakingMessageId: number | null;
   speechLoadingId: number | null;

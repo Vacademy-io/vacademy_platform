@@ -158,6 +158,9 @@ export const useChatbot = () => {
   /** A request to send once the chat is ready (launcher peek tapped while closed). */
   const pendingPromptRef = useRef<string | null>(null);
   const [pendingPromptTick, setPendingPromptTick] = useState(0);
+  // The tapped prompt, shown at once while the chat opens (or replays) and
+  // the real send has to wait.
+  const [queuedPrompt, setQueuedPrompt] = useState<string | null>(null);
 
   // Subscribe to stores for reactive context
   const activeSlide = useContentStore((state) => state.activeItem);
@@ -1116,6 +1119,8 @@ export const useChatbot = () => {
     closeStream();
 
     // Reset state
+    pendingPromptRef.current = null;
+    setQueuedPrompt(null);
     setSessionId(null);
     setMessages([]);
     setInputValue("");
@@ -1258,6 +1263,8 @@ export const useChatbot = () => {
     closeStream();
 
     // Reset state
+    pendingPromptRef.current = null;
+    setQueuedPrompt(null);
     setSessionId(null);
     setMessages([]);
     setInputValue("");
@@ -1497,9 +1504,17 @@ export const useChatbot = () => {
   const openAndSend = useCallback((prompt: string) => {
     if (!prompt.trim()) return;
     pendingPromptRef.current = prompt;
+    setQueuedPrompt(prompt);
     setIsOpen(true);
     setPendingPromptTick((n) => n + 1);
   }, []);
+
+  // A chat that could not open drops the waiting prompt with it.
+  useEffect(() => {
+    if (!hasError && !isUsageLimited) return;
+    pendingPromptRef.current = null;
+    setQueuedPrompt(null);
+  }, [hasError, isUsageLimited]);
 
   const sendMessageRef = useRef(sendMessage);
   sendMessageRef.current = sendMessage;
@@ -1515,6 +1530,8 @@ export const useChatbot = () => {
       }
       const prompt = pendingPromptRef.current;
       pendingPromptRef.current = null;
+      // Same render as the real bubble, so the hand-over does not flicker.
+      setQueuedPrompt(null);
       if (prompt) void sendMessageRef.current(prompt);
     };
     trySend(0);
@@ -1572,6 +1589,7 @@ export const useChatbot = () => {
     startersState,
     loadStarters,
     openAndSend,
+    queuedPrompt,
     speakingMessageId,
     speechLoadingId,
     toggleReadAloud,

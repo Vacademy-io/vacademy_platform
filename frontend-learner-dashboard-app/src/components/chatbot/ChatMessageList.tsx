@@ -202,6 +202,7 @@ export const ChatMessageList: React.FC<{ className?: string }> = ({ className })
     reconnectStream,
     startNewChat,
     chatbotSettings,
+    queuedPrompt,
   } = useChatbotContext();
 
   const rootRef = useRef<HTMLDivElement>(null);
@@ -239,13 +240,16 @@ export const ChatMessageList: React.FC<{ className?: string }> = ({ className })
   }, []);
 
   const lastMessage = messages[messages.length - 1];
+  // A tapped starter waits for the chat to open (or replay); show it as sent
+  // straight away, with the dots, instead of a screen that does not react.
+  const showQueued = !!queuedPrompt && !hasError && !isCreditsExhausted;
   const showThinking =
-    !isStreaming && (isLoading || aiStatus === "thinking" || aiStatus === "generating_quiz");
+    !isStreaming && (showQueued || isLoading || aiStatus === "thinking" || aiStatus === "generating_quiz");
   const visibleStreaming = isStreaming ? visibleStreamText(streamingContent) : "";
   // The greeting (a server reply before any question) is not rated.
   const greetingId =
     messages[0]?.role === "assistant" && messages[0].fromServer ? messages[0].id : undefined;
-  const hasLearnerMessage = messages.some((m) => m.role === "user");
+  const hasLearnerMessage = showQueued || messages.some((m) => m.role === "user");
   // The latest reply the learner can act on gets the full answer toolbelt.
   const latestReplyId = (() => {
     for (let i = messages.length - 1; i >= 0; i -= 1) {
@@ -298,7 +302,7 @@ export const ChatMessageList: React.FC<{ className?: string }> = ({ className })
     if (text) setAnnouncement(`${chatbotSettings.assistant_name}: ${text}`);
   }, [lastMessage, chatbotSettings.assistant_name]);
 
-  const isEmpty = messages.length === 0 && !isInitializing && !isStreaming && !hasError && !isCreditsExhausted;
+  const isEmpty = messages.length === 0 && !showQueued && !isInitializing && !isStreaming && !hasError && !isCreditsExhausted;
   // Messages already on screen when the list mounted (panel reopened) do not animate again.
   const initialIdsRef = useRef<Set<number> | null>(null);
   if (initialIdsRef.current === null) initialIdsRef.current = new Set(messages.map((m) => m.id));
@@ -341,7 +345,7 @@ export const ChatMessageList: React.FC<{ className?: string }> = ({ className })
             </div>
           )}
 
-          {isInitializing && messages.length === 0 && (
+          {isInitializing && messages.length === 0 && !showQueued && (
             <div className="w-full rounded-lg border border-border/50 bg-muted/40 px-3 py-2 text-center">
               <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
                 <div className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" aria-hidden="true" />
@@ -357,6 +361,12 @@ export const ChatMessageList: React.FC<{ className?: string }> = ({ className })
               <MessageRow msg={msg} isGreeting={msg.id === greetingId} isLatestReply={msg.id === latestReplyId} />
             </Entrance>
           ))}
+
+          {showQueued && (
+            <Entrance animate>
+              <MessageBubble role="user" content={queuedPrompt ?? ""} />
+            </Entrance>
+          )}
 
           {showStarters && <ChatStarters />}
 

@@ -611,10 +611,21 @@
           }
         },
         {
+          "id": "site-assistant",
+          "label": "Site Assistant",
+          "route": "/manage-pages/site-assistant",
+          "order": 6,
+          "admin_only": false,
+          "default_visible": {
+            "ADMIN": true,
+            "TEACHER": true
+          }
+        },
+        {
           "id": "blog",
           "label": "Blog",
           "route": "/manage-pages/blog",
-          "order": 6,
+          "order": 7,
           "admin_only": false,
           "default_visible": {
             "ADMIN": false,

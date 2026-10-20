@@ -25,7 +25,6 @@ import { Route as PlanningIndexRouteImport } from "./routes/planning/index"
 import { Route as PaymentDashboardIndexRouteImport } from "./routes/payment-dashboard/index"
 import { Route as MembershipStatsIndexRouteImport } from "./routes/membership-stats/index"
 import { Route as MembershipExpiryIndexRouteImport } from "./routes/membership-expiry/index"
-import { Route as AccessPassesIndexRouteImport } from "./routes/access-passes/index"
 import { Route as ManageSuborgTeamsIndexRouteImport } from "./routes/manage-suborg-teams/index"
 import { Route as ManageStudentsIndexRouteImport } from "./routes/manage-students/index"
 import { Route as ManagePaymentsIndexRouteImport } from "./routes/manage-payments/index"
@@ -57,6 +56,7 @@ import { Route as AiCenterIndexRouteImport } from "./routes/ai-center/index"
 import { Route as AdmissionsIndexRouteImport } from "./routes/admissions/index"
 import { Route as AdminPackageManagementIndexRouteImport } from "./routes/admin-package-management/index"
 import { Route as AdminActivityLogsIndexRouteImport } from "./routes/admin-activity-logs/index"
+import { Route as AccessPassesIndexRouteImport } from "./routes/access-passes/index"
 import { Route as VimWaitlistRouteImport } from "./routes/vim/waitlist"
 import { Route as VimLoginRouteImport } from "./routes/vim/login"
 import { Route as VimDashboardRouteImport } from "./routes/vim/dashboard"
@@ -100,6 +100,7 @@ import { Route as MeetingsDashboardIndexRouteImport } from "./routes/meetings/da
 import { Route as ManageStudentsStudentsListIndexRouteImport } from "./routes/manage-students/students-list/index"
 import { Route as ManageStudentsInviteIndexRouteImport } from "./routes/manage-students/invite/index"
 import { Route as ManageStudentsEnrollRequestsIndexRouteImport } from "./routes/manage-students/enroll-requests/index"
+import { Route as ManagePagesSiteAssistantIndexRouteImport } from "./routes/manage-pages/site-assistant/index"
 import { Route as ManagePagesProductPagesIndexRouteImport } from "./routes/manage-pages/product-pages/index"
 import { Route as ManagePagesBlogIndexRouteImport } from "./routes/manage-pages/blog/index"
 import { Route as ManageInstituteTeamsIndexRouteImport } from "./routes/manage-institute/teams/index"
@@ -362,13 +363,6 @@ const MembershipExpiryIndexRoute = MembershipExpiryIndexRouteImport.update({
 } as any).lazy(() =>
   import("./routes/membership-expiry/index.lazy").then((d) => d.Route),
 )
-const AccessPassesIndexRoute = AccessPassesIndexRouteImport.update({
-  id: "/access-passes/",
-  path: "/access-passes/",
-  getParentRoute: () => rootRouteImport,
-} as any).lazy(() =>
-  import("./routes/access-passes/index.lazy").then((d) => d.Route),
-)
 const ManageSuborgTeamsIndexRoute = ManageSuborgTeamsIndexRouteImport.update({
   id: "/manage-suborg-teams/",
   path: "/manage-suborg-teams/",
@@ -585,6 +579,13 @@ const AdminActivityLogsIndexRoute = AdminActivityLogsIndexRouteImport.update({
   getParentRoute: () => rootRouteImport,
 } as any).lazy(() =>
   import("./routes/admin-activity-logs/index.lazy").then((d) => d.Route),
+)
+const AccessPassesIndexRoute = AccessPassesIndexRouteImport.update({
+  id: "/access-passes/",
+  path: "/access-passes/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/access-passes/index.lazy").then((d) => d.Route),
 )
 const VimWaitlistRoute = VimWaitlistRouteImport.update({
   id: "/vim/waitlist",
@@ -898,6 +899,16 @@ const ManageStudentsEnrollRequestsIndexRoute =
     getParentRoute: () => rootRouteImport,
   } as any).lazy(() =>
     import("./routes/manage-students/enroll-requests/index.lazy").then(
+      (d) => d.Route,
+    ),
+  )
+const ManagePagesSiteAssistantIndexRoute =
+  ManagePagesSiteAssistantIndexRouteImport.update({
+    id: "/manage-pages/site-assistant/",
+    path: "/manage-pages/site-assistant/",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/manage-pages/site-assistant/index.lazy").then(
       (d) => d.Route,
     ),
   )
@@ -2171,6 +2182,7 @@ export interface FileRoutesByFullPath {
   "/vim/dashboard": typeof VimDashboardRoute
   "/vim/login": typeof VimLoginRoute
   "/vim/waitlist": typeof VimWaitlistRoute
+  "/access-passes/": typeof AccessPassesIndexRoute
   "/admin-activity-logs/": typeof AdminActivityLogsIndexRoute
   "/admin-package-management/": typeof AdminPackageManagementIndexRoute
   "/admissions/": typeof AdmissionsIndexRoute
@@ -2203,7 +2215,6 @@ export interface FileRoutesByFullPath {
   "/manage-students/": typeof ManageStudentsIndexRoute
   "/manage-suborg-teams/": typeof ManageSuborgTeamsIndexRoute
   "/membership-expiry/": typeof MembershipExpiryIndexRoute
-  "/access-passes/": typeof AccessPassesIndexRoute
   "/membership-stats/": typeof MembershipStatsIndexRoute
   "/payment-dashboard/": typeof PaymentDashboardIndexRoute
   "/planning/": typeof PlanningIndexRoute
@@ -2292,6 +2303,7 @@ export interface FileRoutesByFullPath {
   "/manage-institute/teams/": typeof ManageInstituteTeamsIndexRoute
   "/manage-pages/blog/": typeof ManagePagesBlogIndexRoute
   "/manage-pages/product-pages/": typeof ManagePagesProductPagesIndexRoute
+  "/manage-pages/site-assistant/": typeof ManagePagesSiteAssistantIndexRoute
   "/manage-students/enroll-requests/": typeof ManageStudentsEnrollRequestsIndexRoute
   "/manage-students/invite/": typeof ManageStudentsInviteIndexRoute
   "/manage-students/students-list/": typeof ManageStudentsStudentsListIndexRoute
@@ -2417,6 +2429,7 @@ export interface FileRoutesByTo {
   "/vim/dashboard": typeof VimDashboardRoute
   "/vim/login": typeof VimLoginRoute
   "/vim/waitlist": typeof VimWaitlistRoute
+  "/access-passes": typeof AccessPassesIndexRoute
   "/admin-activity-logs": typeof AdminActivityLogsIndexRoute
   "/admin-package-management": typeof AdminPackageManagementIndexRoute
   "/admissions": typeof AdmissionsIndexRoute
@@ -2449,7 +2462,6 @@ export interface FileRoutesByTo {
   "/manage-students": typeof ManageStudentsIndexRoute
   "/manage-suborg-teams": typeof ManageSuborgTeamsIndexRoute
   "/membership-expiry": typeof MembershipExpiryIndexRoute
-  "/access-passes": typeof AccessPassesIndexRoute
   "/membership-stats": typeof MembershipStatsIndexRoute
   "/payment-dashboard": typeof PaymentDashboardIndexRoute
   "/planning": typeof PlanningIndexRoute
@@ -2538,6 +2550,7 @@ export interface FileRoutesByTo {
   "/manage-institute/teams": typeof ManageInstituteTeamsIndexRoute
   "/manage-pages/blog": typeof ManagePagesBlogIndexRoute
   "/manage-pages/product-pages": typeof ManagePagesProductPagesIndexRoute
+  "/manage-pages/site-assistant": typeof ManagePagesSiteAssistantIndexRoute
   "/manage-students/enroll-requests": typeof ManageStudentsEnrollRequestsIndexRoute
   "/manage-students/invite": typeof ManageStudentsInviteIndexRoute
   "/manage-students/students-list": typeof ManageStudentsStudentsListIndexRoute
@@ -2665,6 +2678,7 @@ export interface FileRoutesById {
   "/vim/dashboard": typeof VimDashboardRoute
   "/vim/login": typeof VimLoginRoute
   "/vim/waitlist": typeof VimWaitlistRoute
+  "/access-passes/": typeof AccessPassesIndexRoute
   "/admin-activity-logs/": typeof AdminActivityLogsIndexRoute
   "/admin-package-management/": typeof AdminPackageManagementIndexRoute
   "/admissions/": typeof AdmissionsIndexRoute
@@ -2697,7 +2711,6 @@ export interface FileRoutesById {
   "/manage-students/": typeof ManageStudentsIndexRoute
   "/manage-suborg-teams/": typeof ManageSuborgTeamsIndexRoute
   "/membership-expiry/": typeof MembershipExpiryIndexRoute
-  "/access-passes/": typeof AccessPassesIndexRoute
   "/membership-stats/": typeof MembershipStatsIndexRoute
   "/payment-dashboard/": typeof PaymentDashboardIndexRoute
   "/planning/": typeof PlanningIndexRoute
@@ -2786,6 +2799,7 @@ export interface FileRoutesById {
   "/manage-institute/teams/": typeof ManageInstituteTeamsIndexRoute
   "/manage-pages/blog/": typeof ManagePagesBlogIndexRoute
   "/manage-pages/product-pages/": typeof ManagePagesProductPagesIndexRoute
+  "/manage-pages/site-assistant/": typeof ManagePagesSiteAssistantIndexRoute
   "/manage-students/enroll-requests/": typeof ManageStudentsEnrollRequestsIndexRoute
   "/manage-students/invite/": typeof ManageStudentsInviteIndexRoute
   "/manage-students/students-list/": typeof ManageStudentsStudentsListIndexRoute
@@ -2914,6 +2928,7 @@ export interface FileRouteTypes {
     | "/vim/dashboard"
     | "/vim/login"
     | "/vim/waitlist"
+    | "/access-passes/"
     | "/admin-activity-logs/"
     | "/admin-package-management/"
     | "/admissions/"
@@ -2946,7 +2961,6 @@ export interface FileRouteTypes {
     | "/manage-students/"
     | "/manage-suborg-teams/"
     | "/membership-expiry/"
-    | "/access-passes/"
     | "/membership-stats/"
     | "/payment-dashboard/"
     | "/planning/"
@@ -3035,6 +3049,7 @@ export interface FileRouteTypes {
     | "/manage-institute/teams/"
     | "/manage-pages/blog/"
     | "/manage-pages/product-pages/"
+    | "/manage-pages/site-assistant/"
     | "/manage-students/enroll-requests/"
     | "/manage-students/invite/"
     | "/manage-students/students-list/"
@@ -3160,6 +3175,7 @@ export interface FileRouteTypes {
     | "/vim/dashboard"
     | "/vim/login"
     | "/vim/waitlist"
+    | "/access-passes"
     | "/admin-activity-logs"
     | "/admin-package-management"
     | "/admissions"
@@ -3192,7 +3208,6 @@ export interface FileRouteTypes {
     | "/manage-students"
     | "/manage-suborg-teams"
     | "/membership-expiry"
-    | "/access-passes"
     | "/membership-stats"
     | "/payment-dashboard"
     | "/planning"
@@ -3281,6 +3296,7 @@ export interface FileRouteTypes {
     | "/manage-institute/teams"
     | "/manage-pages/blog"
     | "/manage-pages/product-pages"
+    | "/manage-pages/site-assistant"
     | "/manage-students/enroll-requests"
     | "/manage-students/invite"
     | "/manage-students/students-list"
@@ -3407,6 +3423,7 @@ export interface FileRouteTypes {
     | "/vim/dashboard"
     | "/vim/login"
     | "/vim/waitlist"
+    | "/access-passes/"
     | "/admin-activity-logs/"
     | "/admin-package-management/"
     | "/admissions/"
@@ -3439,7 +3456,6 @@ export interface FileRouteTypes {
     | "/manage-students/"
     | "/manage-suborg-teams/"
     | "/membership-expiry/"
-    | "/access-passes/"
     | "/membership-stats/"
     | "/payment-dashboard/"
     | "/planning/"
@@ -3528,6 +3544,7 @@ export interface FileRouteTypes {
     | "/manage-institute/teams/"
     | "/manage-pages/blog/"
     | "/manage-pages/product-pages/"
+    | "/manage-pages/site-assistant/"
     | "/manage-students/enroll-requests/"
     | "/manage-students/invite/"
     | "/manage-students/students-list/"
@@ -3655,6 +3672,7 @@ export interface RootRouteChildren {
   VimDashboardRoute: typeof VimDashboardRoute
   VimLoginRoute: typeof VimLoginRoute
   VimWaitlistRoute: typeof VimWaitlistRoute
+  AccessPassesIndexRoute: typeof AccessPassesIndexRoute
   AdminActivityLogsIndexRoute: typeof AdminActivityLogsIndexRoute
   AdminPackageManagementIndexRoute: typeof AdminPackageManagementIndexRoute
   AdmissionsIndexRoute: typeof AdmissionsIndexRoute
@@ -3686,7 +3704,6 @@ export interface RootRouteChildren {
   ManageStudentsIndexRoute: typeof ManageStudentsIndexRoute
   ManageSuborgTeamsIndexRoute: typeof ManageSuborgTeamsIndexRoute
   MembershipExpiryIndexRoute: typeof MembershipExpiryIndexRoute
-  AccessPassesIndexRoute: typeof AccessPassesIndexRoute
   MembershipStatsIndexRoute: typeof MembershipStatsIndexRoute
   PaymentDashboardIndexRoute: typeof PaymentDashboardIndexRoute
   PlanningIndexRoute: typeof PlanningIndexRoute
@@ -3775,6 +3792,7 @@ export interface RootRouteChildren {
   ManageInstituteTeamsIndexRoute: typeof ManageInstituteTeamsIndexRoute
   ManagePagesBlogIndexRoute: typeof ManagePagesBlogIndexRoute
   ManagePagesProductPagesIndexRoute: typeof ManagePagesProductPagesIndexRoute
+  ManagePagesSiteAssistantIndexRoute: typeof ManagePagesSiteAssistantIndexRoute
   ManageStudentsEnrollRequestsIndexRoute: typeof ManageStudentsEnrollRequestsIndexRoute
   ManageStudentsInviteIndexRoute: typeof ManageStudentsInviteIndexRoute
   ManageStudentsStudentsListIndexRoute: typeof ManageStudentsStudentsListIndexRoute
@@ -4013,13 +4031,6 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof MembershipExpiryIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    "/access-passes/": {
-      id: "/access-passes/"
-      path: "/access-passes"
-      fullPath: "/access-passes/"
-      preLoaderRoute: typeof AccessPassesIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     "/manage-suborg-teams/": {
       id: "/manage-suborg-teams/"
       path: "/manage-suborg-teams"
@@ -4235,6 +4246,13 @@ declare module "@tanstack/react-router" {
       path: "/admin-activity-logs"
       fullPath: "/admin-activity-logs/"
       preLoaderRoute: typeof AdminActivityLogsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/access-passes/": {
+      id: "/access-passes/"
+      path: "/access-passes"
+      fullPath: "/access-passes/"
+      preLoaderRoute: typeof AccessPassesIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/vim/waitlist": {
@@ -4536,6 +4554,13 @@ declare module "@tanstack/react-router" {
       path: "/manage-students/enroll-requests"
       fullPath: "/manage-students/enroll-requests/"
       preLoaderRoute: typeof ManageStudentsEnrollRequestsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/manage-pages/site-assistant/": {
+      id: "/manage-pages/site-assistant/"
+      path: "/manage-pages/site-assistant"
+      fullPath: "/manage-pages/site-assistant/"
+      preLoaderRoute: typeof ManagePagesSiteAssistantIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/manage-pages/product-pages/": {
@@ -5633,6 +5658,7 @@ const rootRouteChildren: RootRouteChildren = {
   VimDashboardRoute: VimDashboardRoute,
   VimLoginRoute: VimLoginRoute,
   VimWaitlistRoute: VimWaitlistRoute,
+  AccessPassesIndexRoute: AccessPassesIndexRoute,
   AdminActivityLogsIndexRoute: AdminActivityLogsIndexRoute,
   AdminPackageManagementIndexRoute: AdminPackageManagementIndexRoute,
   AdmissionsIndexRoute: AdmissionsIndexRoute,
@@ -5664,7 +5690,6 @@ const rootRouteChildren: RootRouteChildren = {
   ManageStudentsIndexRoute: ManageStudentsIndexRoute,
   ManageSuborgTeamsIndexRoute: ManageSuborgTeamsIndexRoute,
   MembershipExpiryIndexRoute: MembershipExpiryIndexRoute,
-  AccessPassesIndexRoute: AccessPassesIndexRoute,
   MembershipStatsIndexRoute: MembershipStatsIndexRoute,
   PaymentDashboardIndexRoute: PaymentDashboardIndexRoute,
   PlanningIndexRoute: PlanningIndexRoute,
@@ -5766,6 +5791,7 @@ const rootRouteChildren: RootRouteChildren = {
   ManageInstituteTeamsIndexRoute: ManageInstituteTeamsIndexRoute,
   ManagePagesBlogIndexRoute: ManagePagesBlogIndexRoute,
   ManagePagesProductPagesIndexRoute: ManagePagesProductPagesIndexRoute,
+  ManagePagesSiteAssistantIndexRoute: ManagePagesSiteAssistantIndexRoute,
   ManageStudentsEnrollRequestsIndexRoute:
     ManageStudentsEnrollRequestsIndexRoute,
   ManageStudentsInviteIndexRoute: ManageStudentsInviteIndexRoute,

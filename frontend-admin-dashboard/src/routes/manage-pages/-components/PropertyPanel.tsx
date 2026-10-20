@@ -85,6 +85,7 @@ import { CourseFormatsCard } from './settings/CourseFormatsCard';
 import { CoursePageSettingsCard } from './settings/CoursePageSettingsCard';
 import { SitePaletteCard } from './settings/SitePaletteCard';
 import { SiteCartSettingsCard } from './settings/SiteCartSettingsCard';
+import { SiteAssistantSettingsCard } from './settings/SiteAssistantSettingsCard';
 import { SectionJsonDialog } from './SectionJsonDialog';
 import { describeKeptSettings, mergeSectionVersion } from '../-utils/section-edits';
 import type { ComponentStyle } from '../-types/editor-types';
@@ -1819,6 +1820,11 @@ const GlobalSettingsEditor = ({
                 onChange={(next) => updateField('courseDetails', next)}
             />
             <SiteCartSettingsCard value={gs.siteCart} onChange={(next) => updateField('siteCart', next)} />
+            <SiteAssistantSettingsCard
+                value={gs.siteAssistant}
+                onChange={(next) => updateField('siteAssistant', next)}
+                config={config}
+            />
 
             {/* Enquiry */}
             <div className="space-y-3 rounded-lg border bg-gray-50 p-4">

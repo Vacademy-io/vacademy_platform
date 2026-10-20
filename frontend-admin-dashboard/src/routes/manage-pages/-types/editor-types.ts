@@ -170,6 +170,54 @@ export interface GlobalSettings {
      * -utils/site-cart.ts. On only when enabled AND a store page is chosen.
      */
     siteCart?: SiteCartSettings;
+    /**
+     * The site's AI assistant (Site Assistant SPEC §1). Edited under Global
+     * Settings → Site Assistant; read from the PUBLISHED catalogue by
+     * ai_service and the learner widget. Missing keys = the engine defaults.
+     */
+    siteAssistant?: SiteAssistantSettings;
+}
+
+export type SiteAssistantPersona = 'warm' | 'formal' | 'friendly' | 'concise';
+export type SiteAssistantPlacementMode = 'all' | 'catalogue_and_courses' | 'routes';
+export type SiteAssistantPosition = 'bottom-right' | 'bottom-left';
+
+/** globalSettings.siteAssistant — public by nature (served with the site): nothing secret here. */
+export interface SiteAssistantSettings {
+    enabled?: boolean;
+    name?: string;
+    avatarUrl?: string | null;
+    greeting?: string;
+    persona?: SiteAssistantPersona;
+    suggestions?: string[];
+    placement?: { mode?: SiteAssistantPlacementMode; routes?: string[] };
+    position?: SiteAssistantPosition;
+    /** null = the site's primary colour. */
+    accentColor?: string | null;
+    knowledge?: {
+        pages?: boolean;
+        courses?: boolean;
+        faqs?: boolean;
+        notices?: boolean;
+        liveClasses?: boolean;
+        linkedKbIds?: string[];
+    };
+    leads?: {
+        /** null = the institute's default website-leads list. */
+        campaignId?: string | null;
+        /** Stream slug → campaign id, for streams whose enquiries go elsewhere. */
+        streamCampaigns?: Record<string, string>;
+        consentText?: string | null;
+    };
+    support?: {
+        email?: string | null;
+        phone?: string | null;
+        whatsapp?: string | null;
+        loginUrl?: string | null;
+    };
+    limits?: { dailyAnswers?: number };
+    /** Allow the embed snippet on the institute's verified websites. */
+    embed?: { enabled?: boolean };
 }
 
 /** One language a course can be offered in (mirrors the learner CourseLanguageOption). */

@@ -572,6 +572,11 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
                 subItemId: 'product-pages',
             },
             {
+                subItem: sidebarT('sidebar:siteAssistant'),
+                subItemLink: '/manage-pages/site-assistant',
+                subItemId: 'site-assistant',
+            },
+            {
                 subItem: sidebarT('sidebar:blog'),
                 subItemLink: '/manage-pages/blog',
                 subItemId: 'blog',

@@ -35,6 +35,8 @@ const SLIDE_TYPE_LABEL_KEYS: Record<string, string> = {
     DOCUMENT_CODE: 'slideTypes.documentCode',
     ASSIGNMENT: 'slideTypes.assignment',
     VIDEO: 'slideTypes.video',
+    DOCUMENT_DOC: 'slideTypes.documentDoc',
+    AUDIO: 'slideTypes.audio',
 };
 
 /**

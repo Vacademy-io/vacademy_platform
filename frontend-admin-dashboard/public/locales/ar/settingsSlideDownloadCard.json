@@ -8,7 +8,9 @@
         "documentPdfPrint": "PDF — طباعة",
         "documentCode": "الكود",
         "assignment": "الواجب",
-        "video": "الفيديو"
+        "video": "الفيديو",
+        "documentDoc": "مستند (Docs) — تنزيل",
+        "audio": "صوت — تنزيل"
     },
     "footer": {
         "saving": "جارٍ الحفظ…",

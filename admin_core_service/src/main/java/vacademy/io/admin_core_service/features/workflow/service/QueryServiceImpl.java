@@ -251,9 +251,27 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                 daysAhead = Integer.parseInt(s.trim());
             }
 
+            // Optional trial/member split. A trial's upcoming charge is its FIRST charge
+            // ("your free trial ends tomorrow"); a member's is a renewal ("your plan renews
+            // tomorrow"). Both land in this one audience, so without this filter a single
+            // workflow had to greet both groups with the same wording — and SuchBliss was
+            // telling paying members their free trial was ending. Absent/blank = both, so
+            // every existing workflow keeps its current audience unchanged.
+            Boolean trialOnly = null;
+            Object rawTrial = params.get("trialOnly");
+            if (rawTrial instanceof Boolean b) {
+                trialOnly = b;
+            } else if (rawTrial instanceof String s && !s.isBlank()) {
+                trialOnly = Boolean.parseBoolean(s.trim());
+            }
+
             List<Object[]> rows = ssigmRepo.findUpcomingAutopayCharges(packageSessionIds, daysAhead);
             List<Map<String, Object>> autopayDueList = new ArrayList<>();
             for (Object[] row : rows) {
+                boolean isTrial = row[8] != null && Boolean.parseBoolean(String.valueOf(row[8]));
+                if (trialOnly != null && trialOnly != isTrial) {
+                    continue;
+                }
                 Map<String, Object> item = new HashMap<>();
                 item.put("userPlanId", String.valueOf(row[0]));
                 item.put("userId", String.valueOf(row[1]));
@@ -263,6 +281,7 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                 item.put("nextChargeAt", row[5]);
                 item.put("endDate", row[6]);
                 item.put("chargeDate", row[7] != null ? String.valueOf(row[7]) : "");
+                item.put("isTrial", isTrial);
                 autopayDueList.add(item);
             }
             return Map.of("autopayDueList", autopayDueList, "autopayDueCount", autopayDueList.size());

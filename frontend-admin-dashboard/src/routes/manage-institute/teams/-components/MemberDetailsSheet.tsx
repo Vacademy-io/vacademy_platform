@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
+    ArrowClockwise,
     Buildings,
     Camera,
     Check,
@@ -38,6 +39,7 @@ import {
 } from '@/routes/manage-custom-teams/-services/custom-team-services';
 import {
     formatPhoneForDisplay,
+    hasNeverSignedIn,
     instituteRolesOf,
     toPhoneInputValue,
     type TeamMember,
@@ -93,7 +95,7 @@ interface MemberDetailsSheetProps {
     /** roleId -> sub-org ids that role grants (Display Settings → role → partners). */
     roleGrantMap: Map<string, string[]>;
     subOrgTerm: string;
-    onRequestStatus: (kind: 'disable' | 'enable' | 'delete', member: TeamMember) => void;
+    onRequestStatus: (kind: 'disable' | 'enable' | 'delete' | 'resend', member: TeamMember) => void;
     onCopyLogin: (member: TeamMember) => void;
 }
 
@@ -782,6 +784,26 @@ export function MemberDetailsSheet({
                                 <Key size={14} />
                                 {t('login.copyDetails')}
                             </MyButton>
+                        )}
+                        {!isDisabled && hasNeverSignedIn(member) && (
+                            <div className="mt-4 flex items-start justify-between gap-4 rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3">
+                                <div className="min-w-0">
+                                    <div className="text-body font-semibold text-neutral-900">
+                                        {t('status.notSignedIn')}
+                                    </div>
+                                    <p className="text-caption text-neutral-500">
+                                        {t('member.notSignedInHint', { name: firstName })}
+                                    </p>
+                                </div>
+                                <MyButton
+                                    buttonType="secondary"
+                                    scale="small"
+                                    onClick={() => onRequestStatus('resend', member)}
+                                >
+                                    <ArrowClockwise size={14} />
+                                    {t('actions.resendShort')}
+                                </MyButton>
+                            </div>
                         )}
                     </section>
 

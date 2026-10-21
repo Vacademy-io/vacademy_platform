@@ -25,11 +25,17 @@ export interface InviteTeamMemberInput {
 /** What the invite endpoint echoes back; the teacher path answers with a plain string. */
 export interface InvitedUserResponse {
     username?: string;
-    password?: string;
+    password?: string | null;
+    /**
+     * The email already had an account: the roles were added to it (active at once) and no
+     * password was sent or returned — they sign in with their current login.
+     */
+    existing_account?: boolean;
 }
 
 /**
- * Invites one team member. Both endpoints take the same user payload with a roles
+ * Adds one team member — active at once; a new account is emailed its login details. Both
+ * endpoints take the same user payload with a roles
  * LIST, so any mix of built-in and custom roles works — Teacher only switches to the
  * faculty endpoint so the batch/subject assignment is written in the same call.
  */
@@ -67,8 +73,8 @@ export async function inviteTeamMember(
 }
 
 /**
- * Updates a pending invite's name, email and roles. The auth service re-sends the
- * invitation email as part of this call.
+ * Updates an invite's name, email and roles. Roles are applied as a diff (kept roles keep
+ * their status, new ones are active), and the auth service emails the login details again.
  */
 export async function updateTeamInvite(
     instituteId: string,

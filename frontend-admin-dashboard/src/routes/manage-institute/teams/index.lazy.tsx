@@ -62,10 +62,17 @@ import { MemberDetailsSheet, type MemberSection } from './-components/MemberDeta
 import { TeamConfirmDialog, type TeamConfirmKind } from './-components/TeamConfirmDialog';
 import { InviteRowActions, MemberRowActions } from './-components/TeamRowActions';
 import { TeamTable, type TeamColumn } from './-components/TeamTable';
-import { MemberAvatar, MemberStatusPill, RoleChip, TONE_TILE } from './-components/team-ui';
+import {
+    MemberAvatar,
+    MemberStatusPill,
+    NotSignedInTag,
+    RoleChip,
+    TONE_TILE,
+} from './-components/team-ui';
 import {
     buildRoleOptions,
     formatPhoneForDisplay,
+    hasNeverSignedIn,
     instituteRolesOf,
     memberStatusOf,
     type RoleTone,
@@ -315,7 +322,7 @@ function RouteComponent() {
 
     const confirmMutation = useMutation({
         mutationFn: async ({ kind, member }: { kind: TeamConfirmKind; member: TeamMember }) => {
-            if (kind === 'resend') return handleResendUserInvitation(member.id);
+            if (kind === 'resend') return handleResendUserInvitation(member.id, instituteId);
             const status =
                 kind === 'disable'
                     ? 'DISABLED'
@@ -574,8 +581,13 @@ function RouteComponent() {
         {
             id: 'status',
             header: t('columns.status'),
-            className: 'w-28',
-            cell: (row) => <MemberStatusPill status={row.status} />,
+            className: 'w-36',
+            cell: (row) => (
+                <div className="flex flex-col items-start gap-1">
+                    <MemberStatusPill status={row.status} />
+                    {row.status !== 'DISABLED' && hasNeverSignedIn(row) && <NotSignedInTag />}
+                </div>
+            ),
         },
         {
             id: 'actions',
@@ -1012,7 +1024,7 @@ function RouteComponent() {
                     invite={inviteDialog.invite}
                     roleOptions={roleOptions}
                     instituteId={instituteId}
-                    onViewInvites={() => changeTab('invites')}
+                    onViewTeam={() => changeTab('members')}
                 />
             )}
 

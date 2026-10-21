@@ -2,7 +2,7 @@
     "navHeading": "Teams",
     "header": {
         "title": "Team members",
-        "subtitle": "Everyone who can sign in to your admin dashboard — their roles, login details and pending invites.",
+        "subtitle": "Everyone who can sign in to your admin dashboard — their roles and login details. People you add can sign in straight away.",
         "invite": "Invite member",
         "import": "Import",
         "export": "Export"
@@ -15,7 +15,7 @@
         "disabled": "Disabled",
         "disabledCaption": "Access paused",
         "invites": "Pending invites",
-        "invitesCaption": "Not signed in yet"
+        "invitesCaption": "Older invites not yet accepted"
     },
     "tabs": {
         "members": "Members",
@@ -58,7 +58,9 @@
     "status": {
         "active": "Active",
         "disabled": "Disabled",
-        "invited": "Invite pending"
+        "invited": "Invite pending",
+        "notSignedIn": "Not signed in yet",
+        "notSignedInHint": "Already has access — just hasn't signed in for the first time yet."
     },
     "subOrgColumn": {
         "assignedTooltip": "Assigned to this person",
@@ -74,7 +76,7 @@
         "noMembersTitle": "No team members yet",
         "noMembersBody": "Invite your first team member — they'll get an email with their login details.",
         "invitesTitle": "No pending invites",
-        "invitesBody": "Everyone you invited has signed in. New invites show up here until the person signs in for the first time."
+        "invitesBody": "People you add are active straight away and show under Members. Only invites sent before that change wait here until the person signs in."
     },
     "error": {
         "body": "We couldn't load your team. Check your connection and try again.",
@@ -95,7 +97,7 @@
         "delete": "Delete member",
         "deleteShort": "Delete",
         "editInvite": "Edit invite",
-        "resend": "Resend invite",
+        "resend": "Resend login details",
         "resendShort": "Resend",
         "cancelInvite": "Cancel invite"
     },
@@ -132,8 +134,8 @@
     "invite": {
         "heading": "Invite a team member",
         "editHeading": "Edit invite",
-        "subtitle": "We'll create their account and email them a username and password.",
-        "editSubtitle": "Changes apply to this pending invite. Saving sends them a fresh invite email.",
+        "subtitle": "They can sign in straight away. New people get a username and password by email; anyone who already has an account keeps their current login.",
+        "editSubtitle": "Roles you keep stay as they are and new roles work straight away. Saving emails them their login details again.",
         "steps": {
             "details": {
                 "title": "Who are you inviting?",
@@ -167,7 +169,7 @@
         },
         "footer": {
             "ready": "Login details go to {{email}}",
-            "editReady": "Saving re-sends the invite email"
+            "editReady": "Saving emails their login details again"
         },
         "submit": "Send invite",
         "submitEdit": "Save changes",
@@ -185,16 +187,18 @@
             "failed": "Couldn't send the invite. Please try again."
         },
         "sent": {
-            "heading": "Invite sent",
-            "title": "Invite sent to {{name}}",
-            "body": "{{firstName}} will get an email at {{email}} with a username and password. The invite stays under Invites until they sign in for the first time.",
+            "heading": "Member added",
+            "title": "{{name}} is on the team",
+            "body": "{{firstName}} can sign in now. We've emailed {{email}} how to sign in.",
+            "existingBody": "{{firstName}} can sign in now with their current login. We've emailed {{email}} to say they've been added.",
+            "existingTag": "Existing account — they sign in with their current login",
             "rolesLabel_one": "Role",
             "rolesLabel_other": "Roles",
             "mobileLabel": "Mobile",
             "loginLabel": "Login",
             "loginHint": "Email not arriving? Share these directly.",
             "inviteAnother": "Invite another",
-            "viewInvites": "View invites"
+            "viewTeam": "View team"
         }
     },
     "member": {
@@ -233,6 +237,7 @@
         "viaRole": "via {{role}} role",
         "viaRoleHelp": "Access granted by a role is changed on the role, in Settings → Display Settings.",
         "loginHint": "Share these only with the member.",
+        "notSignedInHint": "{{name}} already has access. Email the login details again if they haven't received them.",
         "accountHint": "Pause or remove {{name}}'s access.",
         "accessOn": "Access is on",
         "accessOnHint": "{{name}} can sign in to the admin dashboard.",
@@ -279,10 +284,10 @@
             "toast": "{{name}} removed from the team"
         },
         "resend": {
-            "title": "Resend invite to {{name}}?",
+            "title": "Resend login details to {{name}}?",
             "body": "We'll email their login details again to",
-            "action": "Resend invite",
-            "toast": "Invite resent to {{email}}"
+            "action": "Resend login details",
+            "toast": "Login details sent to {{email}}"
         },
         "cancel": {
             "title": "Cancel {{name}}'s invite?",
@@ -331,8 +336,8 @@
         "readyTitle": "Will be invited",
         "fileLevel": "File",
         "rowLabel": "Row {{row}}",
-        "emailNote_one": "{{count}} person will get an invite email with their login details.",
-        "emailNote_other": "{{count}} people will each get an invite email with their login details.",
+        "emailNote_one": "{{count}} person will be added — active straight away — and emailed how to sign in.",
+        "emailNote_other": "{{count}} people will be added — active straight away — and each emailed how to sign in.",
         "chooseAnother": "Choose another file",
         "send_one": "Send {{count}} invite",
         "send_other": "Send {{count}} invites",
@@ -341,7 +346,7 @@
         "keepOpen": "Keep this window open until it finishes.",
         "doneTitle_one": "{{count}} person invited",
         "doneTitle_other": "{{count}} people invited",
-        "doneBody": "They now show under Invites until they sign in for the first time.",
+        "doneBody": "They're active now and show under Members.",
         "failedBody_one": "{{count}} row could not be invited — see below or download the results.",
         "failedBody_other": "{{count}} rows could not be invited — see below or download the results.",
         "stoppedBody": "Stopped after {{done}} of {{total}}. Download the results to see who was invited.",

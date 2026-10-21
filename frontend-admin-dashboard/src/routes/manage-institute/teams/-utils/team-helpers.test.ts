@@ -10,6 +10,7 @@ vi.mock('@/utils/roleUtils', () => ({
 import {
     buildRoleOptions,
     formatPhoneForDisplay,
+    hasNeverSignedIn,
     memberStatusOf,
     sortRoleNames,
     toPhoneInputValue,
@@ -132,5 +133,17 @@ describe('memberStatusOf', () => {
         expect(
             memberStatusOf(member([{ role_name: 'ADMIN', institute_id: 'other' }]), INSTITUTE)
         ).toBe('DISABLED');
+    });
+});
+
+describe('hasNeverSignedIn', () => {
+    it('is true only for an explicit null from the backend', () => {
+        expect(hasNeverSignedIn({ last_login_time: null })).toBe(true);
+        expect(hasNeverSignedIn({ last_login_time: 1760000000000 })).toBe(false);
+        expect(hasNeverSignedIn({ last_login_time: '2026-10-20T10:00:00Z' })).toBe(false);
+    });
+
+    it('treats a missing field (older backend) as unknown, not as never signed in', () => {
+        expect(hasNeverSignedIn({})).toBe(false);
     });
 });

@@ -317,12 +317,20 @@ export const handleUpdateUserInvitation = async (
     return response.data;
 };
 
-export const handleResendUserInvitation = async (userId: string) => {
+/**
+ * Emails a member their login details again, branded as and listing the roles of
+ * `instituteId` (the institute the caller must be staff of).
+ */
+export const handleResendUserInvitation = async (
+    userId: string,
+    instituteId: string | undefined = getInstituteId()
+) => {
     const response = await authenticatedAxiosInstance({
         method: 'POST',
         url: RESEND_INVITATION_URL,
         params: {
             userId,
+            instituteId,
         },
     });
     return response.data;

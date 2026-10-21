@@ -77,6 +77,8 @@ interface SentSummary {
     roles: string[];
     username?: string;
     password?: string;
+    /** The email already had an account; they keep signing in with it. */
+    existingAccount: boolean;
 }
 
 interface InviteMemberDialogProps {
@@ -87,7 +89,8 @@ interface InviteMemberDialogProps {
     invite?: TeamMember | null;
     roleOptions: TeamRoleOption[];
     instituteId: string;
-    onViewInvites?: () => void;
+    /** Members are active once added, so "done" leads to the Members tab. */
+    onViewTeam?: () => void;
 }
 
 const serverMessage = (error: unknown): string | undefined => {
@@ -103,7 +106,7 @@ export function InviteMemberDialog({
     invite,
     roleOptions,
     instituteId,
-    onViewInvites,
+    onViewTeam,
 }: InviteMemberDialogProps) {
     const { t } = useTranslation('manageInstituteTeamsIndexLazy');
     const queryClient = useQueryClient();
@@ -223,10 +226,16 @@ export function InviteMemberDialog({
                 email: values.email.trim(),
                 phone: isBlankPhone(values.mobile) ? null : values.mobile ?? null,
                 roles: values.roleType,
+                existingAccount: response?.existing_account === true,
                 username: response?.username,
-                // An email that already had an account comes back with the stored hash, not a
-                // new password — never show that as login details.
-                password: isShareablePassword(response?.password) ? response?.password : undefined,
+                // An existing account comes back without a password (older backends sent the
+                // stored hash) — never show that as login details.
+                password:
+                    response?.existing_account !== true &&
+                    response?.password &&
+                    isShareablePassword(response.password)
+                        ? response.password
+                        : undefined,
             });
         },
         onError: (error) => {
@@ -279,10 +288,10 @@ export function InviteMemberDialog({
                             buttonType="primary"
                             onClick={() => {
                                 onOpenChange(false);
-                                onViewInvites?.();
+                                onViewTeam?.();
                             }}
                         >
-                            {t('invite.sent.viewInvites')}
+                            {t('invite.sent.viewTeam')}
                         </MyButton>
                     </>
                 }
@@ -295,11 +304,17 @@ export function InviteMemberDialog({
                         {t('invite.sent.title', { name: sent.name })}
                     </h3>
                     <p className="mt-1 max-w-sm text-body text-neutral-500">
-                        {t('invite.sent.body', {
+                        {t(sent.existingAccount ? 'invite.sent.existingBody' : 'invite.sent.body', {
                             firstName: sent.name.split(/\s+/)[0],
                             email: sent.email,
                         })}
                     </p>
+                    {sent.existingAccount && (
+                        <span className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-info-50 px-2.5 py-1 text-caption font-semibold text-info-700">
+                            <Info size={14} />
+                            {t('invite.sent.existingTag')}
+                        </span>
+                    )}
                 </div>
                 <dl className="mt-6 divide-y divide-neutral-100 overflow-hidden rounded-lg border border-neutral-200 text-left">
                     <div className="flex gap-4 px-4 py-3">

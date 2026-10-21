@@ -25,6 +25,9 @@ export interface TeamMember {
     // Present only on the authenticated users-of-status response and only when the
     // institute has opted in; used by the gated Login column.
     password?: string | null;
+    // Last sign-in (users.last_login_time) on the Teams listing: null = never signed in,
+    // absent = an older backend that doesn't send it.
+    last_login_time?: string | number | null;
 }
 
 export interface PaginatedTeamResponse {
@@ -157,6 +160,13 @@ export const memberStatusOf = (
     instituteRolesOf(member, instituteId).some((role) => role.role_name !== 'STUDENT')
         ? 'ACTIVE'
         : 'DISABLED';
+
+/**
+ * True only when the backend says this member has never signed in (an explicit null).
+ * A missing field (older backend) is "unknown", never "not signed in".
+ */
+export const hasNeverSignedIn = (member: Pick<TeamMember, 'last_login_time'>): boolean =>
+    member.last_login_time === null;
 
 export const initialsOf = (name: string | null | undefined): string =>
     (name || '?')

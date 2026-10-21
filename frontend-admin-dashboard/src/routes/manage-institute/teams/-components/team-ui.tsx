@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Check, Clock } from '@phosphor-icons/react';
+import { Check, Clock, SignIn } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { mapRoleToCustomName } from '@/utils/roleUtils';
 import {
@@ -122,6 +122,23 @@ export function MemberStatusPill({ status }: { status: string | null | undefined
         >
             <span aria-hidden className="size-1.5 rounded-full bg-current" />
             {active ? t('status.active') : t('status.disabled')}
+        </span>
+    );
+}
+
+/**
+ * Small tag for an active member who has never signed in. They already have access (members
+ * are active as soon as they're added); this only tells the admin the login hasn't been used.
+ */
+export function NotSignedInTag() {
+    const { t } = useTranslation('manageInstituteTeamsIndexLazy');
+    return (
+        <span
+            title={t('status.notSignedInHint')}
+            className="inline-flex h-5 items-center gap-1 whitespace-nowrap rounded-full bg-neutral-100 px-2 text-caption text-neutral-600"
+        >
+            <SignIn size={12} />
+            {t('status.notSignedIn')}
         </span>
     );
 }

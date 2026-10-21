@@ -19,7 +19,7 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { MyButton } from '@/components/design-system/button';
-import type { TeamMember } from '../-utils/team-helpers';
+import { hasNeverSignedIn, type TeamMember } from '../-utils/team-helpers';
 import type { MemberSection } from './MemberDetailsSheet';
 
 const itemClass = 'cursor-pointer gap-2.5 py-2 text-body';
@@ -41,10 +41,13 @@ export function MemberRowActions({
     canCopyLogin: boolean;
     onEdit: (member: TeamMember, section?: MemberSection) => void;
     onCopyLogin: (member: TeamMember) => void;
-    onStatus: (kind: 'disable' | 'enable' | 'delete', member: TeamMember) => void;
+    onStatus: (kind: 'disable' | 'enable' | 'delete' | 'resend', member: TeamMember) => void;
 }) {
     const { t } = useTranslation('manageInstituteTeamsIndexLazy');
     const disabled = member.status === 'DISABLED';
+    // Members are active as soon as they're added; until they first sign in the admin can
+    // email the login details again.
+    const canResendLogin = !disabled && hasNeverSignedIn(member);
     return (
         <div className="flex items-center justify-end gap-1">
             <MyButton
@@ -96,6 +99,15 @@ export function MemberRowActions({
                             {t('login.copyDetails')}
                         </DropdownMenuItem>
                     )}
+                    {canResendLogin && (
+                        <DropdownMenuItem
+                            className={itemClass}
+                            onClick={() => onStatus('resend', member)}
+                        >
+                            <ArrowClockwise size={16} className="text-neutral-500" />
+                            {t('actions.resend')}
+                        </DropdownMenuItem>
+                    )}
                     <DropdownMenuSeparator />
                     {disabled ? (
                         <DropdownMenuItem
@@ -127,7 +139,7 @@ export function MemberRowActions({
     );
 }
 
-/** Resend + overflow menu for a pending invite. */
+/** Resend + overflow menu for a pending invite (left over from before members were active on creation). */
 export function InviteRowActions({
     invite,
     canCopyLogin,

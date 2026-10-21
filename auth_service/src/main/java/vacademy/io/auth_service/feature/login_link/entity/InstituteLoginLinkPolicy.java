@@ -30,9 +30,28 @@ public class InstituteLoginLinkPolicy {
     @Column(name = "require_login_code", nullable = false)
     private boolean requireLoginCode;
 
+    /**
+     * Comma-separated {@link vacademy.io.auth_service.feature.login_link.enums.LoginLinkRoute}
+     * names that may still sign in without a code while {@link #requireLoginCode} is on.
+     */
+    @Column(name = "code_free_routes")
+    private String codeFreeRoutes;
+
     @Column(name = "updated_by")
     private String updatedBy;
 
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
+
+    /** The exempt routes, unknown names dropped. */
+    public java.util.Set<vacademy.io.auth_service.feature.login_link.enums.LoginLinkRoute> codeFreeRouteSet() {
+        java.util.Set<vacademy.io.auth_service.feature.login_link.enums.LoginLinkRoute> out =
+                java.util.EnumSet.noneOf(vacademy.io.auth_service.feature.login_link.enums.LoginLinkRoute.class);
+        if (codeFreeRoutes != null) {
+            for (String part : codeFreeRoutes.split(",")) {
+                vacademy.io.auth_service.feature.login_link.enums.LoginLinkRoute.parse(part).ifPresent(out::add);
+            }
+        }
+        return out;
+    }
 }

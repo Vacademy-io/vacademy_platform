@@ -112,6 +112,7 @@ function RouteComponent() {
               locked those learners out of their own link. The username in the
               path is globally unique, which is enough to look the learner up. */}
           <SessionLoginForm
+            linkRoute="GO"
             username={username}
             instituteId={domainRouting.instituteId ?? undefined}
             onLoginSuccess={() => setAuthState("authenticated")}

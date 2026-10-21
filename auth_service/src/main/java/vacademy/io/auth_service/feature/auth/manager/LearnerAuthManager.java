@@ -744,9 +744,18 @@ public class LearnerAuthManager {
          */
         public JwtResponseDto loginByUsernameTrusted(String username, String instituteId, String code,
                         String requestIP) {
+                return loginByUsernameTrusted(username, instituteId, code, null, requestIP);
+        }
+
+        /**
+         * @param route the landing route the learner app reports (LoginLinkRoute name, optional).
+         *              An institute requiring codes may exempt it; see institute_login_link_policy.
+         */
+        public JwtResponseDto loginByUsernameTrusted(String username, String instituteId, String code,
+                        String route, String requestIP) {
                 // Log all attempts for security audit
-                log.warn("TRUSTED_LOGIN_ATTEMPT: username={}, instituteId={}, withCode={}, IP={}",
-                                username, instituteId, code != null && !code.isBlank(), requestIP);
+                log.warn("TRUSTED_LOGIN_ATTEMPT: username={}, instituteId={}, withCode={}, route={}, IP={}",
+                                username, instituteId, code != null && !code.isBlank(), route, requestIP);
 
                 boolean codeEnforced = code != null && !code.isBlank()
                                 && loginCodeService.instituteOf(code).map(loginCodeService::requiresCode).orElse(false);
@@ -797,9 +806,10 @@ public class LearnerAuthManager {
                                         });
                 }
 
-                if (loginCodeService.anyInstituteRequiresCode(user.getId(), instituteId)) {
-                        log.warn("TRUSTED_LOGIN_DENIED: login code required. username={}, instituteId={}, IP={}",
-                                        username, instituteId, requestIP);
+                if (loginCodeService.anyInstituteRequiresCode(user.getId(), instituteId,
+                                vacademy.io.auth_service.feature.login_link.enums.LoginLinkRoute.parse(route).orElse(null))) {
+                        log.warn("TRUSTED_LOGIN_DENIED: login code required. username={}, instituteId={}, route={}, IP={}",
+                                        username, instituteId, route, requestIP);
                         throw new VacademyException(HttpStatus.UNAUTHORIZED,
                                         "This login link is invalid or has expired.");
                 }

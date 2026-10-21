@@ -5,6 +5,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.auth_service.feature.login_link.entity.InstituteLoginLinkPolicy;
+import vacademy.io.auth_service.feature.login_link.enums.LoginLinkRoute;
 import vacademy.io.auth_service.feature.login_link.entity.LearnerLoginCode;
 import vacademy.io.auth_service.feature.login_link.repository.InstituteLoginLinkPolicyRepository;
 import vacademy.io.auth_service.feature.login_link.repository.LearnerLoginCodeRepository;
@@ -209,11 +210,28 @@ public class LoginCodeService {
      */
     @Transactional(readOnly = true)
     public boolean anyInstituteRequiresCode(String userId, String requestedInstituteId) {
+        return anyInstituteRequiresCode(userId, requestedInstituteId, null);
+    }
+
+    /**
+     * As {@link #anyInstituteRequiresCode(String, String)}, for a login from {@code route}: an
+     * institute that lists the route in {@code code_free_routes} does not require a code for it.
+     * Every institute requiring a code must exempt the route, or a code is still needed.
+     */
+    @Transactional(readOnly = true)
+    public boolean anyInstituteRequiresCode(String userId, String requestedInstituteId, LoginLinkRoute route) {
         List<String> instituteIds = new java.util.ArrayList<>(userRoleRepository.findDistinctInstituteIdsByUserId(userId));
         if (!isBlank(requestedInstituteId)) {
             instituteIds.add(requestedInstituteId.trim());
         }
-        return !instituteIds.isEmpty() && policyRepository.anyRequiresLoginCode(instituteIds);
+        if (instituteIds.isEmpty()) {
+            return false;
+        }
+        if (route == null) {
+            return policyRepository.anyRequiresLoginCode(instituteIds);
+        }
+        return policyRepository.findByRequireLoginCodeTrueAndInstituteIdIn(instituteIds).stream()
+                .anyMatch(policy -> !policy.codeFreeRouteSet().contains(route));
     }
 
     @Transactional(readOnly = true)
@@ -230,6 +248,29 @@ public class LoginCodeService {
         policy.setUpdatedAt(clock.instant());
         InstituteLoginLinkPolicy saved = policyRepository.save(policy);
         log.warn("login-code: institute={} require_login_code={} by={}", instituteId, require, actorUserId);
+        return saved;
+    }
+
+    /** Replaces the routes that may sign in without a code (null = leave unchanged). */
+    @Transactional
+    public InstituteLoginLinkPolicy savePolicy(String instituteId, Boolean require,
+                                               java.util.Collection<LoginLinkRoute> codeFreeRoutes, String actorUserId) {
+        InstituteLoginLinkPolicy policy = policyRepository.findById(instituteId)
+                .orElse(InstituteLoginLinkPolicy.builder().instituteId(instituteId).build());
+        if (require != null) {
+            policy.setRequireLoginCode(require);
+        }
+        if (codeFreeRoutes != null) {
+            java.util.Set<LoginLinkRoute> sorted = java.util.EnumSet.noneOf(LoginLinkRoute.class);
+            sorted.addAll(codeFreeRoutes);
+            policy.setCodeFreeRoutes(sorted.isEmpty() ? null
+                    : sorted.stream().map(Enum::name).collect(java.util.stream.Collectors.joining(",")));
+        }
+        policy.setUpdatedBy(actorUserId);
+        policy.setUpdatedAt(clock.instant());
+        InstituteLoginLinkPolicy saved = policyRepository.save(policy);
+        log.warn("login-code: institute={} require_login_code={} code_free_routes={} by={}",
+                instituteId, saved.isRequireLoginCode(), saved.getCodeFreeRoutes(), actorUserId);
         return saved;
     }
 

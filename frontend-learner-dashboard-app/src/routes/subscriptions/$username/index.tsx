@@ -232,6 +232,7 @@ function RouteComponent() {
             )
           ) : domainRouting.instituteId ? (
             <SessionLoginForm
+              linkRoute="SUBSCRIPTIONS"
               username={username}
               instituteId={domainRouting.instituteId}
               onLoginSuccess={() => setAuthState("authenticated")}

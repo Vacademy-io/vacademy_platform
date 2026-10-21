@@ -21,7 +21,11 @@ import {
 import { AuthPageBranding } from "@/components/common/institute-branding";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
-import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
+import {
+  getCurrentUsername,
+  getTokenFromStorage,
+  removeTokensAndLogout,
+} from "@/lib/auth/sessionUtility";
 import { TokenKey } from "@/constants/auth/tokens";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils";
 import { MyButton } from "@/components/design-system/button";
@@ -118,6 +122,21 @@ const formatDate = (value?: string | null): string | null => {
   });
 };
 
+/** True when the signed-in user is not the one the link was sent to. */
+const isDifferentUser = (sessionUsername: string | null, linkUsername: string): boolean => {
+  const normalize = (value: string) => {
+    try {
+      return decodeURIComponent(value).trim().toLowerCase();
+    } catch {
+      return value.trim().toLowerCase();
+    }
+  };
+  if (!linkUsername) return false;
+  // A token without a username can't be matched to the link, so treat it as someone else.
+  if (!sessionUsername) return true;
+  return normalize(sessionUsername) !== normalize(linkUsername);
+};
+
 function RouteComponent() {
   const { t } = useTranslation("miscRoutesB");
   const params = Route.useParams();
@@ -133,6 +152,7 @@ function RouteComponent() {
     }
   }
 
+  const queryClient = useQueryClient();
   const [authState, setAuthState] = useState<
     "loading" | "authenticated" | "unauthenticated"
   >("loading");
@@ -150,6 +170,16 @@ function RouteComponent() {
           !isNullOrEmptyOrUndefined(studentDetails.value) &&
           !isNullOrEmptyOrUndefined(instituteDetails.value)
         ) {
+          // The link names the member it is for. A session left on this device by
+          // someone else (an admin testing links, a shared family computer) must not
+          // show that person's membership: drop it and sign in the member in the link.
+          const sessionUsername = await getCurrentUsername();
+          if (isDifferentUser(sessionUsername, username)) {
+            await removeTokensAndLogout();
+            queryClient.clear();
+            setAuthState("unauthenticated");
+            return;
+          }
           setAuthState("authenticated");
         } else {
           setAuthState("unauthenticated");
@@ -162,7 +192,7 @@ function RouteComponent() {
     if (!domainRouting.isLoading) {
       checkAuth();
     }
-  }, [domainRouting.isLoading, domainRouting]);
+  }, [domainRouting.isLoading, domainRouting, username, queryClient]);
 
   if (domainRouting.isLoading || authState === "loading") {
     return <DashboardLoader />;

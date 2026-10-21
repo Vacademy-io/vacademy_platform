@@ -41,6 +41,7 @@ from ..kb.chunking import CHUNK_SIZE, build_chunks
 from ..kb.parsing import ParsedPage
 from . import billing, budget, embedding, flags, settings_store, store, tree
 from .extract import cache, describe, registry
+from .extract.media import collapse_repeats
 from .extract.types import Extraction, PaidPermit, Segment, SlideRef
 from .queue import MAX_ATTEMPTS, ClaimedRow, enqueue_slides, give_back_attempt
 from .settings_store import CourseKnowledgeSetting
@@ -55,6 +56,7 @@ STORAGE_LIMIT_NOTE = "storage limit"
 MONTH_BUDGET_NOTE = "Monthly AI budget reached"
 RUN_BUDGET_NOTE = "Over the approved amount"
 EMBED_RETRY_NOTE = "Embedding failed; the lesson will be retried"
+_SPOKEN_KINDS = frozenset({"captions", "transcript", "script"})
 PAID_RETRY_NOTE = "The transcription or reading service is busy: retrying automatically (nothing charged yet)"
 # A paid provider that is busy, out of credit or briefly down: worth retrying later,
 # unlike a file it cannot read. Matched on the extractor's note (registry wraps the error).
@@ -715,6 +717,10 @@ async def _index(claimed: ClaimedRow, keep: Dict[str, Any]) -> Outcome:
         keep.clear()
         return "FAILED", None, ext.note or "Could not read this lesson"
 
+    if ext.text_kind in _SPOKEN_KINDS:
+        # Cached transcripts predate the loop clean-up in media.time_windows.
+        for seg in ext.segments:
+            seg.text = collapse_repeats(seg.text)
     chunks, truncated = build_slide_chunks(ext.segments, title=ref.title, text_kind=ext.text_kind,
                                            slide_id=ref.slide_id)
     if truncated:

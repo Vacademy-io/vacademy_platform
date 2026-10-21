@@ -33,6 +33,7 @@ import asyncio
 import json
 import logging
 import math
+import re
 import time
 from typing import Any, Iterable, List, Optional, Sequence, Tuple
 
@@ -82,8 +83,17 @@ def time_windows(items: Iterable[Tuple[float, float, str]], window_s: float, joi
     cur: List[str] = []
     start: Optional[float] = None
     end = 0.0
+    last_norm, last_end = None, None
     for s, e, t in sorted(((float(a), float(b), str(c)) for a, b, c in items if str(c or "").strip()),
                           key=lambda x: x[0]):
+        norm = _norm_piece(t)
+        if norm and norm == last_norm and last_end is not None and s - last_end <= LOOP_GAP_S:
+            # Speech-to-text stuck in a loop (chanting, music) repeats the same piece
+            # back to back; a refrain said again later is kept.
+            end = max(end, e, s)
+            last_end = max(last_end, e, s)
+            continue
+        last_norm, last_end = norm, max(e, s)
         if start is not None and s - start >= window_s and cur:
             out.append(_window(start, end, cur, joiner))
             cur, start = [], None
@@ -96,8 +106,27 @@ def time_windows(items: Iterable[Tuple[float, float, str]], window_s: float, joi
     return out
 
 
+def _norm_piece(text: str) -> str:
+    return " ".join(re.sub(r"[^\w\s]", " ", text or "").lower().split())
+
+
+# A phrase (6-160 chars) said 3+ times in a row: keep it once. Transcribers loop on
+# chanting and music ("tasya sanjanayan harsham ..." x40 on a pilot shloka video).
+LOOP_GAP_S = 3.0   # identical pieces closer than this are one transcriber loop
+_REPEAT_RUN_RE = re.compile(r"(\S.{5,159}?)(?:[\s,.;:!?।|-]+\1){2,}", re.DOTALL)
+
+
+def collapse_repeats(text: str) -> str:
+    """Collapse runs of the same phrase repeated 3+ times into one occurrence."""
+    prev = None
+    out = text or ""
+    while prev != out:            # nested runs collapse in a few passes
+        prev, out = out, _REPEAT_RUN_RE.sub(r"\1", out)
+    return out
+
+
 def _window(start: float, end: float, parts: List[str], joiner: str) -> Segment:
-    return Segment(text=joiner.join(parts).strip(), anchor="time", t_start_ms=int(round(start * 1000)),
+    return Segment(text=collapse_repeats(joiner.join(parts).strip()), anchor="time", t_start_ms=int(round(start * 1000)),
                    t_end_ms=int(round(max(end, start) * 1000)), label=_clock(start))
 
 
@@ -215,7 +244,7 @@ def _need(ref: SlideRef, minutes: int, approx: bool) -> PaidNeed:
 def _transcript_segments(pieces: Sequence[dict], body: str) -> List[Segment]:
     segs = time_windows(((p.get("start") or 0.0, p.get("end") or p.get("start") or 0.0, p.get("text") or "")
                          for p in pieces if isinstance(p, dict)), TRANSCRIPT_WINDOW_S)
-    return segs or ([Segment(text=body.strip())] if body.strip() else [])
+    return segs or ([Segment(text=collapse_repeats(body.strip()))] if body.strip() else [])
 
 
 async def extract_upload(ref: SlideRef, permit: Optional[PaidPermit] = None) -> Extraction:

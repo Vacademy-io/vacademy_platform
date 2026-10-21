@@ -1058,3 +1058,23 @@ def test_scorm_lessons_hash_and_cache_carry_the_scorm_extractor_version():
     before = describe.content_hash(ref)
     ref.extras["extractor"] = "scorm-v1"
     assert describe.content_hash(ref) != before
+
+
+# ── transcript loops (pilot 2026-10-21: a chanted shloka came back as one line x40) ──
+
+def test_collapse_repeats_keeps_one_copy_of_a_looped_phrase():
+    from app.services.course_knowledge.extract.media import collapse_repeats
+
+    looped = "तस्य संजनयं हर्षं कुरु व्रिद्ध तितामकत " * 12 + "। He blew his conch loudly."
+    assert collapse_repeats(looped) == "तस्य संजनयं हर्षं कुरु व्रिद्ध तितामकत । He blew his conch loudly."
+    assert collapse_repeats("This is normal text. This is normal text. Twice stays.") == \
+        "This is normal text. This is normal text. Twice stays."
+    assert collapse_repeats("Ram Ram Ram Ram is chanted.") == "Ram Ram Ram Ram is chanted."
+
+
+def test_time_windows_drop_consecutive_identical_pieces():
+    from app.services.course_knowledge.extract.media import time_windows
+
+    segs = time_windows([(i, i + 1, "तस्य संजनयं हर्षं") for i in range(30)] + [(31, 32, "next line")], 60)
+    assert [s.text for s in segs] == ["तस्य संजनयं हर्षं next line"]
+    assert segs[0].t_end_ms == 32000

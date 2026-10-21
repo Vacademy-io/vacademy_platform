@@ -557,8 +557,13 @@ public class InvoiceService {
                 // Enrollment invoice — reuse the same builder path generateInvoice uses.
                 invoiceData = buildInvoiceDataFromMultiplePaymentLogs(
                         paymentLogs, invoice.getInstituteId());
-                // Preserve the original invoice number; this is a PDF refresh, not a new bill.
+                // Preserve the original invoice number and date; this is a PDF refresh, not a new
+                // bill. The builder stamps "now", so a receipt regenerated days later showed the
+                // regeneration day as its receipt date.
                 invoiceData.setInvoiceNumber(invoice.getInvoiceNumber());
+                if (invoice.getInvoiceDate() != null) {
+                    invoiceData.setInvoiceDate(invoice.getInvoiceDate());
+                }
                 // Carry forward any admin overrides / notes stored for this invoice.
                 applyStoredOverrides(invoice, invoiceData);
             }

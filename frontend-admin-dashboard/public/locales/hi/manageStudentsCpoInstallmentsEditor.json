@@ -3,7 +3,8 @@
         "paid": "भुगतान हो गया",
         "partialPaid": "आंशिक भुगतान",
         "overdue": "अतिदेय",
-        "waived": "माफ किया गया"
+        "waived": "माफ किया गया",
+        "cancelled": "रद्द"
     },
     "row": {
         "updateSuccessToast": "किस्त अपडेट हो गई",

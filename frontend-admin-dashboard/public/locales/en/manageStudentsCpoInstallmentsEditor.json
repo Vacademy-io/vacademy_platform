@@ -3,7 +3,8 @@
         "paid": "Paid",
         "partialPaid": "Partially Paid",
         "overdue": "Overdue",
-        "waived": "Waived"
+        "waived": "Waived",
+        "cancelled": "Cancelled"
     },
     "row": {
         "updateSuccessToast": "Installment updated",

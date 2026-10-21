@@ -3,7 +3,8 @@
         "paid": "مدفوع",
         "partialPaid": "مدفوع جزئيًا",
         "overdue": "متأخر",
-        "waived": "معفى"
+        "waived": "معفى",
+        "cancelled": "ملغى"
     },
     "row": {
         "updateSuccessToast": "تم تحديث القسط",

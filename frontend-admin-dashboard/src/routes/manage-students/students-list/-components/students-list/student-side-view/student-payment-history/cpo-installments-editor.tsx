@@ -60,7 +60,7 @@ const statusPill = (status: string, t: TFunction) => {
               ? 'bg-blue-100 text-blue-700'
               : status === 'OVERDUE'
                 ? 'bg-red-100 text-red-700'
-                : status === 'WAIVED'
+                : status === 'WAIVED' || status === 'CANCELLED'
                   ? 'bg-neutral-100 text-neutral-500'
                   : 'bg-orange-100 text-orange-700';
     const statusLabels: Record<string, string> = {
@@ -68,6 +68,7 @@ const statusPill = (status: string, t: TFunction) => {
         PARTIAL_PAID: t('status.partialPaid'),
         OVERDUE: t('status.overdue'),
         WAIVED: t('status.waived'),
+        CANCELLED: t('status.cancelled'),
     };
     const label = statusLabels[status] ?? status;
     return (
@@ -641,13 +642,16 @@ const InstallmentItem = ({ rows, index, userPlanId, userId, currency }: ItemProp
                                 {t('item.recordPayment')}
                             </button>
                         )}
-                        <button
-                            type="button"
-                            onClick={() => toggle('edit')}
-                            className={actionButton}
-                        >
-                            {t('item.edit')}
-                        </button>
+                        {/* A bill cancelled with its course is closed; nothing to edit. */}
+                        {row.status !== 'CANCELLED' && (
+                            <button
+                                type="button"
+                                onClick={() => toggle('edit')}
+                                className={actionButton}
+                            >
+                                {t('item.edit')}
+                            </button>
+                        )}
                         {canSplit && (
                             <button
                                 type="button"

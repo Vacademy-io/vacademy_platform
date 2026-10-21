@@ -3,7 +3,8 @@
         "paid": "Payé",
         "partialPaid": "Partiellement payé",
         "overdue": "En retard",
-        "waived": "Exonéré"
+        "waived": "Exonéré",
+        "cancelled": "Annulée"
     },
     "row": {
         "updateSuccessToast": "Échéance mise à jour",

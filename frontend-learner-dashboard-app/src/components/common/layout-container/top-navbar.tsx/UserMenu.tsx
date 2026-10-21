@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { SignOut, UserSwitch } from "@phosphor-icons/react";
+import { Check, Globe, Question, SignOut, UserSwitch } from "@phosphor-icons/react";
 import { Preferences } from "@capacitor/preferences";
 import {
   DropdownMenu,
@@ -21,6 +21,9 @@ import { isOnboardingEnabled } from "@/services/onboarding-settings";
 import { cn, isNullOrEmptyOrUndefined } from "@/lib/utils";
 import { Student } from "@/types/user/user-detail";
 import { RoleTerms, SystemTerms } from "@/types/naming-settings";
+import { useLanguageStore } from "@/stores/localization/useLanguageStore";
+import { getEnabledLocales } from "@/services/language-settings";
+import { LOCALE_LABELS } from "@/i18n/locales";
 import {
   getHamBurgerSidebarItemsData,
   stripOfflineEntries,
@@ -32,9 +35,30 @@ import {
  * Navbar avatar + account dropdown: THE identity surface of the shell.
  * Reuses the hamburger menu's permission-filtered items and the existing
  * /logout route flow (the route performs all token clearing).
+ *
+ * On phones the top bar has room for little more than the bell and this
+ * avatar, so the language switcher and "Raise a query" move in here below
+ * `sm` (the navbar hides its own copies at the same breakpoint).
  */
-export const UserMenu = ({ className }: { className?: string }) => {
+export const UserMenu = ({
+  className,
+  showLanguage = false,
+  onRaiseQuery,
+}: {
+  className?: string;
+  /** The institute enabled more than one language. */
+  showLanguage?: boolean;
+  /** Set when the institute shows the raise-a-query icon in the top bar. */
+  onRaiseQuery?: () => void;
+}) => {
   const { t } = useTranslation("layoutCommonA");
+  const locale = useLanguageStore((state) => state.locale);
+  const setLocale = useLanguageStore((state) => state.setLocale);
+  const languageOptions = useMemo(
+    () => (showLanguage ? getEnabledLocales(locale) : []),
+    [showLanguage, locale],
+  );
+  const showMobileExtras = Boolean(onRaiseQuery) || languageOptions.length > 1;
   const navigate = useNavigate();
   const { permissions } = useStudentPermissions();
   // Any student may hop to the parent perspective when Guardian Settings allow
@@ -205,6 +229,41 @@ export const UserMenu = ({ className }: { className?: string }) => {
             {menuLabelOverrides[item.to ?? ""] ?? item.title}
           </DropdownMenuItem>
         ))}
+
+        {showMobileExtras && (
+          <div className="sm:hidden">
+            <DropdownMenuSeparator />
+            {onRaiseQuery && (
+              <DropdownMenuItem
+                // Deferred one tick so the menu finishes closing (and hands
+                // focus back) before the query dialog takes it.
+                onSelect={() => window.setTimeout(onRaiseQuery, 0)}
+              >
+                <Question />
+                {t("navbar.raiseQuery")}
+              </DropdownMenuItem>
+            )}
+            {languageOptions.length > 1 && (
+              <>
+                <DropdownMenuLabel className="flex items-center gap-2 text-caption font-medium text-muted-foreground">
+                  <Globe className="size-4" />
+                  {t("userMenu.language")}
+                </DropdownMenuLabel>
+                {languageOptions.map((option) => (
+                  <DropdownMenuItem
+                    key={option}
+                    onSelect={() => setLocale(option)}
+                  >
+                    <span lang={option} className="flex-1">
+                      {LOCALE_LABELS[option]}
+                    </span>
+                    {locale === option && <Check className="text-primary-500" />}
+                  </DropdownMenuItem>
+                ))}
+              </>
+            )}
+          </div>
+        )}
 
         {parentPortalTarget && (
           <>

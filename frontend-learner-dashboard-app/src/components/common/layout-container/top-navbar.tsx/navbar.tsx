@@ -403,10 +403,10 @@ export function Navbar() {
 
         {/* Right Section */}
         <div className="flex shrink-0 items-center gap-1">
-          {showLanguageSwitcher && <LanguageDropdown className="relative" />}
+          {showLanguageSwitcher && <LanguageDropdown className="relative hidden sm:block" />}
           <TutorialsHelpButton className="h-9 w-9" />
           <NotificationsBell className="h-9 w-9" />
-          <UserMenu />
+          <UserMenu showLanguage={showLanguageSwitcher} />
         </div>
       </div>
     );
@@ -490,13 +490,14 @@ export function Navbar() {
                 </div>
               )}
             </div>
-            <div className="w-px h-7 md:h-8 shrink-0 bg-primary-200/60 dark:bg-neutral-700"></div>
+            <div className="hidden w-px h-7 md:h-8 shrink-0 bg-primary-200/60 dark:bg-neutral-700 sm:block"></div>
           </div>
         )}
 
-        {/* Always-on page title: identity + location on every viewport */}
+        {/* Page title: identity + location. Dropped on phones on the dashboard,
+            where the greeting already says where you are and the bar is full. */}
         {navHeading ? (
-          <h1 className="min-w-0 truncate text-sm md:text-base font-semibold leading-tight text-neutral-900 dark:text-neutral-100 [.ui-play_&]:font-bold">
+          <h1 className={`min-w-0 truncate text-sm md:text-base font-semibold leading-tight text-neutral-900 dark:text-neutral-100 [.ui-play_&]:font-bold${isDashboard ? " hidden sm:block" : ""}`}>
             {navHeading}
           </h1>
         ) : null}
@@ -532,7 +533,7 @@ export function Navbar() {
         {/* Achievements — badge count + points, opens the achievements popup */}
         <AchievementsPill className="hidden xs:flex" />
         {/* Language switcher — only when the institute enabled >1 language */}
-        {showLanguageSwitcher && <LanguageDropdown className="relative" />}
+        {showLanguageSwitcher && <LanguageDropdown className="relative hidden sm:block" />}
         {/* Help & tutorials */}
         <TutorialsHelpButton className="h-9 w-9" />
         {/* Notifications */}
@@ -545,7 +546,7 @@ export function Navbar() {
                 type="button"
                 aria-label={t("navbar.raiseQuery")}
                 onClick={() => openQueryDialog()}
-                className="flex h-9 w-9 items-center justify-center rounded-md text-primary-600 transition-colors duration-200 hover:bg-primary-50 hover:text-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 dark:text-primary-400 dark:hover:bg-neutral-700 dark:hover:text-primary-300 [.ui-play_&]:rounded-full [.ui-play_&]:border [.ui-play_&]:border-border [.ui-play_&]:bg-primary/10"
+                className="hidden h-9 w-9 items-center justify-center rounded-md text-primary-600 transition-colors sm:flex duration-200 hover:bg-primary-50 hover:text-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 dark:text-primary-400 dark:hover:bg-neutral-700 dark:hover:text-primary-300 [.ui-play_&]:rounded-full [.ui-play_&]:border [.ui-play_&]:border-border [.ui-play_&]:bg-primary/10"
               >
                 <Question className="h-4 w-4 md:h-5 md:w-5" />
               </button>
@@ -556,8 +557,11 @@ export function Navbar() {
           </Tooltip>
         )}
 
-        {/* Avatar + account dropdown */}
-        <UserMenu />
+        {/* Avatar + account dropdown (also holds language + raise-a-query on phones) */}
+        <UserMenu
+          showLanguage={showLanguageSwitcher}
+          onRaiseQuery={showTopbarIcon ? () => openQueryDialog() : undefined}
+        />
       </div>
 
       {/* Global query dialog — opened from this icon and the dashboard card */}

@@ -66,7 +66,8 @@
     "userMenu": {
         "profileLabel": "Profil",
         "openAccountMenu": "Ouvrir le menu du compte",
-        "switchToParentPortal": "Passer au portail parent"
+        "switchToParentPortal": "Passer au portail parent",
+        "language": "Langue"
     },
     "notificationsBell": {
         "ariaLabelWithCount_one": "{{count}} nouvelle notification",

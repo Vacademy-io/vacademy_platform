@@ -29,6 +29,7 @@ from .routers.ai_models import router as ai_models_router
 from .routers.super_admin import router as super_admin_router
 from .routers.super_admin_models import router as super_admin_models_router
 from .routers.super_admin_ai_video_policy import router as super_admin_ai_video_policy_router
+from .routers.youtube_captions_admin import router as youtube_captions_admin_router
 from .routers.internal_llm import router as internal_llm_router
 from .routers.llm_keys_admin import router as llm_keys_admin_router
 from .routers.credits_v2 import router as credits_v2_router
@@ -382,6 +383,8 @@ def create_app() -> FastAPI:
     app.include_router(super_admin_models_router, prefix=settings.api_base_path)
     # Per-institute AI video policy (/super-admin/v1/institutes/{id}/ai-video-policy), platform staff only.
     app.include_router(super_admin_ai_video_policy_router, prefix=settings.api_base_path)
+    # Shared YouTube caption service: health / probe / requeue (/super-admin/v1/youtube-captions/*), platform staff only.
+    app.include_router(youtube_captions_admin_router, prefix=settings.api_base_path)
     # Service-to-service chat completion by use case (assessment / community services).
     app.include_router(internal_llm_router, prefix=settings.api_base_path)
     # Vendor API keys for direct LLM gateways (/super-admin/v1/llm/keys), platform staff only.

@@ -4,7 +4,10 @@ One asyncio task per ai_service replica (started from the app lifespan,
 idempotent like start_call_intelligence_poller). Each tick:
   1. with course_knowledge.enabled off: sleep, touching nothing but the
      platform-settings cache (no queue or setting query at all);
-  2. every 30 minutes, the drift sweep (advisory-locked, one replica at a time);
+  2. every 30 minutes, the drift sweep (advisory-locked, one replica at a time),
+     preceded by the YouTube caption canary (a network check made with no DB
+     session open; its result decides whether the sweep re-queues caption
+     lessons);
   3. claim up to course_knowledge.worker_batch rows (FOR UPDATE SKIP LOCKED, so
      replicas never share a lesson), index them concurrently and finalize each
      with the generation it claimed.
@@ -17,7 +20,7 @@ import logging
 import time
 from typing import List, Tuple
 
-from . import flags, indexer, queue, sweep
+from . import caption_requeue, flags, indexer, queue, sweep
 
 logger = logging.getLogger(__name__)
 
@@ -66,8 +69,13 @@ async def _maybe_sweep(last_sweep: float) -> float:
     now = time.monotonic()
     if last_sweep and now - last_sweep < SWEEP_EVERY_S:
         return last_sweep
+    captions_ok = False
     try:
-        await asyncio.to_thread(sweep.run_once)
+        captions_ok = await caption_requeue.captions_ok_for_sweep()
+    except Exception:  # noqa: BLE001 - a canary failure only skips the caption requeue
+        logger.warning("course knowledge: caption canary failed", exc_info=True)
+    try:
+        await asyncio.to_thread(sweep.run_once, captions_ok=captions_ok)
     except Exception:  # noqa: BLE001 - the sweep is a safety net; draining goes on
         logger.exception("course knowledge: drift sweep failed")
     return now

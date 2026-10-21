@@ -506,7 +506,7 @@ def test_sweep_skips_when_another_replica_holds_the_lock(Session):
         assert holder.execute(text("SELECT pg_try_advisory_xact_lock(hashtext(:k))"),
                               {"k": sweep.LOCK_KEY}).scalar()
         assert sweep.run_once() == {"locked": False, "institutes": 0, "drift": 0, "gone": 0, "charges": 0,
-                                    "runs_closed": 0, "purged": 0, "errors": 0}
+                                    "captions": 0, "runs_closed": 0, "purged": 0, "errors": 0}
         holder.rollback()
 
 

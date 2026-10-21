@@ -21,7 +21,13 @@ platform:
   b) enqueues sources whose lesson is no longer visible, so the worker
      tombstones them;
   c) re-drives charges that were delivered but never landed in the ledger,
-     with the same idempotency key (a no-op when the charge exists).
+     with the same idempotency key (a no-op when the charge exists);
+  f) re-queues YouTube lessons marked "no captions" while YouTube was blocking
+     us (caption_requeue.py; reason YT_CAPTIONS_RETRY, at most
+     youtube_captions.requeue_per_sweep per sweep), only when the worker's
+     caption canary passed just before the sweep (run_once(captions_ok=True));
+     the canary is the sweep's only network call and runs BEFORE the holder
+     session is opened.
 Then, platform-wide:
   d) closes RUNNING runs with no PENDING / PROCESSING rows left (DONE, or
      PARTIAL when a lesson FAILED or still needs processing), shrinks the run
@@ -46,7 +52,7 @@ from sqlalchemy.orm import Session
 
 from ... import db as app_db
 from ...db import db_session
-from . import billing, budget, flags, store
+from . import billing, budget, caption_requeue, flags, store
 from .extract.types import PaidDelivered
 from .queue import enqueue_slides
 from .tree import _VISIBLE_CHAIN
@@ -305,13 +311,18 @@ def _redrive_charges(db: Session, institute_id: str, kb_id: str) -> int:
     return fixed
 
 
-def _sweep_institute(db: Session, institute_id: str, enabled_at: Any) -> Dict[str, int]:
+def _sweep_institute(db: Session, institute_id: str, enabled_at: Any, captions_limit: int = 0) -> Dict[str, int]:
     kb = store.get_course_kb(db, institute_id)
     kb_id = kb.id if kb is not None else None
-    out = {"drift": _drift(db, institute_id, kb_id, enabled_at), "gone": 0, "charges": 0}
+    out = {"drift": _drift(db, institute_id, kb_id, enabled_at), "gone": 0, "charges": 0, "captions": 0,
+           "captions_selected": 0}
     if kb_id is not None:
         out["gone"] = _gone(db, institute_id, kb_id)
         out["charges"] = _redrive_charges(db, institute_id, kb_id)
+        if captions_limit > 0:
+            got = caption_requeue.requeue_youtube_caption_lessons(
+                db, institute_id=institute_id, limit=captions_limit, kb_id=kb_id)
+            out["captions"], out["captions_selected"] = got["queued"], got["selected"]
     return out
 
 
@@ -370,15 +381,19 @@ def _sweep_lock() -> Iterator[bool]:
             db.close()
 
 
-def run_once() -> Dict[str, Any]:
+def run_once(captions_ok: bool = False) -> Dict[str, Any]:
     """One sweep. Returns a summary; {"locked": False} when another replica
-    holds the sweep lock. Blocking: call it via asyncio.to_thread."""
+    holds the sweep lock. Blocking: call it via asyncio.to_thread.
+
+    captions_ok: the caption canary passed just before this sweep (the worker
+    runs it before calling here); without it step f) is skipped."""
     summary: Dict[str, Any] = {"locked": False, "institutes": 0, "drift": 0, "gone": 0, "charges": 0,
-                               "runs_closed": 0, "purged": 0, "errors": 0}
+                               "captions": 0, "runs_closed": 0, "purged": 0, "errors": 0}
     with _sweep_lock() as locked:
         if not locked:
             return summary
         summary["locked"] = True
+        captions_left = caption_requeue.sweep_limit(captions_ok)
         with _step() as db:
             institutes: List = db.execute(_ENABLED_SQL).fetchall()
         for institute_id, enabled_at in institutes:
@@ -389,9 +404,10 @@ def run_once() -> Dict[str, Any]:
                 # Its own transaction: committed (and its locks dropped) before
                 # the next institute starts; a timeout rolls back only this one.
                 with _step() as db:
-                    got = _sweep_institute(db, institute_id, enabled_at)
-                for key in ("drift", "gone", "charges"):
+                    got = _sweep_institute(db, institute_id, enabled_at, captions_left)
+                for key in ("drift", "gone", "charges", "captions"):
                     summary[key] += got[key]
+                captions_left = max(0, captions_left - got["captions_selected"])
             except Exception:  # noqa: BLE001 - one institute never stops the sweep
                 summary["errors"] += 1
                 logger.exception("course knowledge sweep: institute %s failed", institute_id)
@@ -402,7 +418,10 @@ def run_once() -> Dict[str, Any]:
             except Exception:  # noqa: BLE001
                 summary["errors"] += 1
                 logger.exception("course knowledge sweep: %s failed", key)
-    if summary["drift"] or summary["gone"] or summary["runs_closed"] or summary["errors"]:
+        # Supadata usage rows older than a week (the daily cap reads only today's).
+        from ..youtube_captions import cache as caption_cache
+        caption_cache.purge_usage()
+    if summary["drift"] or summary["gone"] or summary["captions"] or summary["runs_closed"] or summary["errors"]:
         logger.info("course knowledge sweep: %s", summary)
     return summary
 

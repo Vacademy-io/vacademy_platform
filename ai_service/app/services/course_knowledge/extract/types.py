@@ -154,6 +154,9 @@ class Extraction:
     note: Optional[str] = None
     anchor_kind: str = "none"
     content_hash: str = ""
+    # Extra facts merged into knowledge_base_source.meta_json by the indexer
+    # (YouTube: caption_outcome / caption_route / caption_transient).
+    detail: Dict[str, Any] = field(default_factory=dict)
 
     @property
     def text_chars(self) -> int:

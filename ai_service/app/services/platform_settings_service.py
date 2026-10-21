@@ -845,11 +845,122 @@ SETTING_SPECS["kb.stable_topic_ids"] = SettingSpec(
     default=lambda: False,
 )
 
+# YouTube captions (app/services/youtube_captions): the shared caption service
+# behind KB ingest, the AI tutor and course knowledge. No secrets here: proxy
+# credentials and the Supadata key are env / k8s secret only.
+_YTC_PER_POD = " Per pod: multiply by the ai_service replica count (2 today) for the platform total."
+SETTING_SPECS["youtube_captions.enabled"] = SettingSpec(
+    key="youtube_captions.enabled", group="youtube_captions",
+    label="YouTube captions: fetch from YouTube",
+    description="On (default) = captions are fetched through the fallback chain. Off = cache only: a video "
+                "not cached yet reports 'try again later' and nothing calls YouTube, the proxy or Supadata.",
+    type="bool", default=lambda: True,
+)
+SETTING_SPECS["youtube_captions.direct_enabled"] = SettingSpec(
+    key="youtube_captions.direct_enabled", group="youtube_captions",
+    label="YouTube captions: try direct (no proxy) first",
+    description="On (default) = one free direct request first, behind a breaker that pauses direct for 6 h "
+                "after 2 blocks in 10 min (so a blocked server IP costs one request per 6 h). With no proxy "
+                "and no Supadata configured the breaker is not used: every request tries direct.",
+    type="bool", default=lambda: True,
+)
+SETTING_SPECS["youtube_captions.proxy_enabled"] = SettingSpec(
+    key="youtube_captions.proxy_enabled", group="youtube_captions",
+    label="YouTube captions: use the proxy",
+    description="On (default) = use the rotating residential proxy. Takes effect only when the proxy "
+                "credentials are set in the server environment (YT_CAPTIONS_PROXY + WEBSHARE_PROXY_*).",
+    type="bool", default=lambda: True,
+)
+SETTING_SPECS["youtube_captions.proxy_countries"] = SettingSpec(
+    key="youtube_captions.proxy_countries", group="youtube_captions",
+    label="YouTube captions: proxy countries",
+    description="Comma list of country codes the proxy IPs come from (Webshare location filter). Blank = any.",
+    type="string", default=lambda: "in,us", max_length=100,
+)
+SETTING_SPECS["youtube_captions.proxy_retries_when_blocked"] = SettingSpec(
+    key="youtube_captions.proxy_retries_when_blocked", group="youtube_captions",
+    label="YouTube captions: proxy retries when blocked",
+    description="How many times the library re-lists a blocked video on a new proxy IP.",
+    type="number", default=lambda: 4, min_value=0, max_value=10,
+)
+SETTING_SPECS["youtube_captions.outer_retries"] = SettingSpec(
+    key="youtube_captions.outer_retries", group="youtube_captions",
+    label="YouTube captions: extra proxy attempts",
+    description="Extra attempts with a fresh proxy client after a blocked / timed-out / empty fetch "
+                "(the library never retries the caption download itself). Backoff 1 s then 3 s.",
+    type="number", default=lambda: 2, min_value=0, max_value=3,
+)
+SETTING_SPECS["youtube_captions.proxy_daily_mb"] = SettingSpec(
+    key="youtube_captions.proxy_daily_mb", group="youtube_captions",
+    label="YouTube captions: proxy MB per day (platform)",
+    description="Platform-wide daily budget of proxy traffic in MB (UTC day, counted in the database across "
+                "replicas; each pod re-reads the total every minute). About 0.5 MB per video. At the budget the "
+                "proxy is skipped until tomorrow (Supadata may still run). 0 = no proxy traffic.",
+    type="number", default=lambda: 1024, min_value=0, max_value=1000000,
+)
+SETTING_SPECS["youtube_captions.supadata_enabled"] = SettingSpec(
+    key="youtube_captions.supadata_enabled", group="youtube_captions",
+    label="YouTube captions: use Supadata as a fallback",
+    description="Off (default). Turn on after SUPADATA_API_KEY is set and the live probe passes. Supadata is "
+                "called only when the proxy is blocked / unusable or the track needs a token, never for a "
+                "video YouTube says has no captions, and only in native-caption mode (no paid AI transcription).",
+    type="bool", default=lambda: False,
+)
+SETTING_SPECS["youtube_captions.supadata_daily_cap"] = SettingSpec(
+    key="youtube_captions.supadata_daily_cap", group="youtube_captions",
+    label="YouTube captions: Supadata credits per day (platform)",
+    description="Platform-wide daily cap on Supadata credits (UTC day, counted in the database, so it holds "
+                "across replicas). At the cap Supadata is skipped until tomorrow.",
+    type="number", default=lambda: 300, min_value=0, max_value=1000000,
+)
+SETTING_SPECS["youtube_captions.max_concurrent_batch"] = SettingSpec(
+    key="youtube_captions.max_concurrent_batch", group="youtube_captions",
+    label="YouTube captions: concurrent course scans",
+    description="Caption fetches at once for course knowledge (batch)." + _YTC_PER_POD,
+    type="number", default=lambda: 3, min_value=1, max_value=8,
+)
+SETTING_SPECS["youtube_captions.max_concurrent_interactive"] = SettingSpec(
+    key="youtube_captions.max_concurrent_interactive", group="youtube_captions",
+    label="YouTube captions: concurrent interactive fetches",
+    description="Caption fetches at once for the AI tutor, KB ingest and probes; a separate pool from course "
+                "scans so a re-scan never starves the tutor." + _YTC_PER_POD,
+    type="number", default=lambda: 2, min_value=1, max_value=4,
+)
+SETTING_SPECS["youtube_captions.max_per_minute"] = SettingSpec(
+    key="youtube_captions.max_per_minute", group="youtube_captions",
+    label="YouTube captions: network attempts per minute",
+    description="Token bucket on network attempts (cache hits are free)." + _YTC_PER_POD,
+    type="number", default=lambda: 30, min_value=1, max_value=600,
+)
+SETTING_SPECS["youtube_captions.canary_video_ids"] = SettingSpec(
+    key="youtube_captions.canary_video_ids", group="youtube_captions",
+    label="YouTube captions: canary video ids",
+    description="Comma list of 3-5 public video ids the live probe verified (an English manual-caption video, "
+                "a Hindi auto-caption-only video, a long lecture). Each requeue sweep first checks that at least "
+                "half of them come back OK through the proxy / Supadata. Blank (default) = the requeue never runs.",
+    type="string", default=lambda: "", max_length=200,
+)
+SETTING_SPECS["youtube_captions.requeue_enabled"] = SettingSpec(
+    key="youtube_captions.requeue_enabled", group="youtube_captions",
+    label="YouTube captions: re-try lessons that had no captions",
+    description="On (default) = the course-knowledge sweep re-queues YouTube lessons marked 'no captions' "
+                "before this service existed (or blocked since) when the canary passes: at most 6 times per "
+                "lesson, 1, 2, 4, 8 and 16 days apart.",
+    type="bool", default=lambda: True,
+)
+SETTING_SPECS["youtube_captions.requeue_per_sweep"] = SettingSpec(
+    key="youtube_captions.requeue_per_sweep", group="youtube_captions",
+    label="YouTube captions: lessons re-queued per sweep",
+    description="At most this many lessons per 30-minute sweep (platform-wide).",
+    type="number", default=lambda: 300, min_value=0, max_value=2000,
+)
+
 GROUP_LABELS = {
     "chatbot": "Student chatbot",
     "site_assistant": "Website assistant",
     "course_knowledge": "Course knowledge",
     "kb": "Knowledge base",
+    "youtube_captions": "YouTube captions",
     "voice": "Voice call",
     "tutor": "Live AI Tutor",
     "images": "Image generation",

@@ -702,7 +702,7 @@ def youtube_video_id(url: str) -> Optional[str]:
 
 
 async def parse_youtube(
-    url: str, language_hint: Optional[str] = None, keep_timing: bool = False,
+    url: str, language_hint: Optional[str] = None, keep_timing: bool = False, *, purpose: str = "kb_ingest",
 ) -> ParsedDocument:
     """Fetch a YouTube transcript as a single-page document.
 
@@ -710,86 +710,17 @@ async def parse_youtube(
     ``doc.caption_timing`` (course knowledge cites the video second). The page
     text is the same either way.
 
-    Uses youtube-transcript-api, which reads the caption tracks YouTube already
-    publishes — free and instant, but only for videos that HAVE captions.
-    (`YouTubeService` in this package is a search/verify client and has no
-    transcript capability, so it is deliberately not used here.)
-
-    OPERATIONAL RISK, KNOWN AND UNRESOLVED: YouTube rate-limits and sometimes
-    blocks caption requests from datacenter IP ranges, which includes our Hetzner
-    nodes. When that starts happening the fix is either an egress proxy or
-    routing audio through the in-house Whisper transcription that already exists
-    at /transcription/v1/* — the latter costs per audio-minute but cannot be
-    IP-blocked. Not built yet; this path fails loudly rather than silently so the
-    switch-over is diagnosable.
+    A thin wrapper over the shared caption service (services/youtube_captions):
+    cache, direct, rotating proxy and Supadata fallbacks, with per-pod limits
+    and circuit breakers. Raises ValueError (a CaptionsError whose text is the
+    user-facing note) when there are no usable captions.
     """
-    video_id = youtube_video_id(url)
-    if not video_id:
+    if not youtube_video_id(url):
         raise ValueError("That does not look like a YouTube video URL")
 
-    try:
-        from youtube_transcript_api import YouTubeTranscriptApi
-    except ImportError as exc:  # pragma: no cover - dependency guard
-        raise ValueError(
-            "YouTube ingestion needs the youtube-transcript-api package, which is "
-            "not installed on this server"
-        ) from exc
-
-    def _fetch() -> Tuple[str, List[Dict[str, Any]]]:
-        preferred = [language_hint] if language_hint else []
-        preferred += ["en", "hi"]
-        try:
-            # youtube-transcript-api 1.x: instance API; older: static list_transcripts.
-            if hasattr(YouTubeTranscriptApi, "list_transcripts"):
-                listing = YouTubeTranscriptApi.list_transcripts(video_id)
-            else:
-                listing = YouTubeTranscriptApi().list(video_id)
-        except Exception as exc:  # noqa: BLE001
-            name = type(exc).__name__
-            if "block" in name.lower() or "block" in str(exc).lower():
-                raise ValueError("YouTube blocks caption requests from this server's IP") from exc
-            raise ValueError(f"Could not read captions for that video: {str(exc)[:200]}") from exc
-
-        transcript = None
-        try:
-            transcript = listing.find_manually_created_transcript(preferred)
-        except Exception:  # noqa: BLE001
-            try:
-                transcript = listing.find_transcript(preferred)
-            except Exception:  # noqa: BLE001
-                # Any track at all beats nothing — a Tamil auto-caption is still
-                # usable content for a Tamil knowledge base.
-                for candidate in listing:
-                    transcript = candidate
-                    break
-        if transcript is None:
-            raise ValueError("That video has no captions, so there is no transcript to ingest")
-
-        def _text(seg: Any) -> str:
-            # 1.x yields FetchedTranscriptSnippet objects; older versions dicts.
-            return str((seg.get("text") if isinstance(seg, dict) else getattr(seg, "text", "")) or "").strip()
-
-        def _num(seg: Any, key: str) -> float:
-            raw = seg.get(key) if isinstance(seg, dict) else getattr(seg, key, None)
-            try:
-                return float(raw or 0.0)
-            except (TypeError, ValueError):
-                return 0.0
-
-        texts: List[str] = []
-        timing: List[Dict[str, Any]] = []
-        for seg in transcript.fetch():
-            t = _text(seg)
-            if not t:
-                continue
-            texts.append(t)
-            if keep_timing:
-                timing.append({"start": _num(seg, "start"), "duration": _num(seg, "duration"), "text": t})
-        return " ".join(texts), timing
-
-    # The library is synchronous and does network I/O — keep it off the event loop.
-    joined, timing = await asyncio.to_thread(_fetch)
-    text_out = joined.strip()
+    from ..youtube_captions import service as yt_service
+    result = await yt_service.require_captions(url, language=language_hint, purpose=purpose)
+    text_out = result.text.strip()
     if not text_out:
         raise ValueError("That video's transcript came back empty")
 
@@ -799,7 +730,10 @@ async def parse_youtube(
     )
     doc.languages = detect_languages(text_out)
     if keep_timing:
-        doc.caption_timing = timing
+        doc.caption_timing = [
+            {"start": s.start_ms / 1000.0, "duration": max(0, s.end_ms - s.start_ms) / 1000.0, "text": s.text}
+            for s in result.segments
+        ]
     return doc
 
 

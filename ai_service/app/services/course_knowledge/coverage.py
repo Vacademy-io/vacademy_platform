@@ -359,7 +359,8 @@ def _media_needs(db: Session, lessons: List[LessonCoverage]) -> None:
     for lesson in media:
         ref = refs.get(lesson.slide_id)
         if ref is None or ref.pointer_kind != "file" or not ref.pointer_key:
-            continue                        # YouTube captions, a transcript, an external link: free or unreadable
+            continue                        # YouTube captions (shared caption service, free to the institute),
+                                            # a transcript, an external link: free or unreadable
         minutes, approx = needed_minutes(ref.length_ms)
         lesson.kind, lesson.tool_key = KIND_TRANSCRIBE, TOOL_TRANSCRIBE_MINUTE
         lesson.units, lesson.approx = int(minutes), bool(approx)

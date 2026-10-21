@@ -26,6 +26,7 @@ import asyncio
 import json
 import logging
 import math
+import re
 import weakref
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -54,6 +55,14 @@ STORAGE_LIMIT_NOTE = "storage limit"
 MONTH_BUDGET_NOTE = "Monthly AI budget reached"
 RUN_BUDGET_NOTE = "Over the approved amount"
 EMBED_RETRY_NOTE = "Embedding failed; the lesson will be retried"
+PAID_RETRY_NOTE = "The transcription or reading service is busy: retrying automatically (nothing charged yet)"
+# A paid provider that is busy, out of credit or briefly down: worth retrying later,
+# unlike a file it cannot read. Matched on the extractor's note (registry wraps the error).
+_TRANSIENT_PAID_RE = re.compile(
+    r"\b(?:402|408|429|5\d\d)\b|at capacity|timed? ?out|timeout|temporar|connection|"
+    r"unavailable|overloaded|rate.?limit|try again",
+    re.IGNORECASE,
+)
 
 SHARED_FILE_REASON = "SHARED_FILE_READY"
 MAX_SIBLINGS = 500                     # lessons re-queued when a shared file's paid text lands
@@ -387,7 +396,13 @@ async def _paid_step(
         if delivered is None:
             if paid.status == "FAILED":
                 # Keep the free pass (a PDF's text pages); the paid part is still owed.
-                ext.note = paid.note or ext.note
+                if _TRANSIENT_PAID_RE.search(paid.note or "") and claimed.attempts < MAX_ATTEMPTS:
+                    logger.info("course knowledge: paid step for slide %s will retry: %s",
+                                claimed.slide_id, paid.note)
+                    ext.note = PAID_RETRY_NOTE
+                    ext.detail["_paid_transient"] = True
+                else:
+                    ext.note = paid.note or ext.note
                 return ext, _need_meta(need), None
             meta = _need_meta(paid.paid_need) if paid.paid_need is not None else None
             return paid, meta, None
@@ -679,9 +694,12 @@ async def _index(claimed: ClaimedRow, keep: Dict[str, Any]) -> Outcome:
         if isinstance(old, dict) and old.get("delivered_at") and ext.status == "READY":
             paid_meta = old
 
+    paid_transient = bool(ext.detail.pop("_paid_transient", False)) if ext.detail else False
     meta: Dict[str, Any] = {
         "text_kind": ext.text_kind, "anchor_kind": ext.anchor_kind, "note": ext.note, "paid": paid_meta,
     }
+    if ext.detail:
+        meta.update({k: v for k, v in ext.detail.items() if k not in meta})
 
     if ext.status == "PENDING":
         await asyncio.to_thread(_mark_pending, claimed, snap, meta)
@@ -728,6 +746,9 @@ async def _index(claimed: ClaimedRow, keep: Dict[str, Any]) -> Outcome:
         await asyncio.to_thread(_requeue_siblings, claimed, snap, paid_meta)
     if failed:
         return retry_outcome(claimed, ext.note or "Could not read this lesson")
+    if paid_transient:
+        # Indexed with what the free pass gave; the queue row comes back for the paid part.
+        return retry_outcome(claimed, PAID_RETRY_NOTE)
     return "DONE", None, None
 
 
@@ -751,6 +772,6 @@ async def index_slide(claimed: ClaimedRow) -> Outcome:
 
 __all__ = [
     "Outcome", "index_slide", "retry_outcome", "build_slide_chunks", "centroid_of",
-    "LONG_LESSON_NOTE", "STORAGE_LIMIT_NOTE", "MONTH_BUDGET_NOTE", "RUN_BUDGET_NOTE",
+    "LONG_LESSON_NOTE", "STORAGE_LIMIT_NOTE", "MONTH_BUDGET_NOTE", "RUN_BUDGET_NOTE", "PAID_RETRY_NOTE",
     "PENDING_RECHECK_S", "OCR_CONCURRENCY", "TRANSCRIBE_CONCURRENCY", "SHARED_FILE_REASON",
 ]

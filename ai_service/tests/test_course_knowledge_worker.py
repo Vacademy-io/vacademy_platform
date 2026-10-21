@@ -527,6 +527,38 @@ def test_paid_without_delivery_releases_and_failed_paid_keeps_free_text(world):
     assert any("Page 1" in c.content_text for c in w["chunks"])
 
 
+@pytest.mark.parametrize("note", [
+    "Could not read this lesson: Transcription server at capacity (429)",
+    "Could not read this lesson: chunk 1/1 failed: OpenRouter transcription HTTP 402: needs balance",
+    "Could not read this lesson: Read timed out",
+])
+def test_transient_paid_failure_keeps_free_text_and_retries_without_charge(world, note):
+    # Pilot 2026-10-21: a busy transcription server left lessons NEEDS_PROCESSING with no retry.
+    world.paid_enabled = True
+    world.setting = CourseKnowledgeSetting(enabled=True, auto_paid_enabled=True, monthly_auto_cap_credits=50)
+    world.free = ready(segments=page_segs(1), status="NEEDS_PAID", paid_need=OCR_NEED)
+    world.paid = Extraction(SLIDE, "pdf", segments=[title_seg()], status="FAILED", paid_need=OCR_NEED, note=note)
+    status, delay, error = run(indexer.index_slide(claimed()))
+    assert status == "PENDING" and delay == 120.0 and error == indexer.PAID_RETRY_NOTE
+    assert world.calls["release"] and "settle" not in world.calls and "charge" not in world.calls
+    w = world.written()
+    assert w["index_state"] == "NEEDS_PROCESSING" and w["meta"]["note"] == indexer.PAID_RETRY_NOTE
+    assert "_paid_transient" not in w["meta"]
+    assert any("Page 1" in c.content_text for c in w["chunks"])
+
+
+def test_transient_paid_failure_gives_up_after_the_last_attempt(world):
+    world.paid_enabled = True
+    world.setting = CourseKnowledgeSetting(enabled=True, auto_paid_enabled=True, monthly_auto_cap_credits=50)
+    world.free = ready(segments=page_segs(1), status="NEEDS_PAID", paid_need=OCR_NEED)
+    world.paid = Extraction(SLIDE, "pdf", segments=[title_seg()], status="FAILED", paid_need=OCR_NEED,
+                            note="Could not read this lesson: Transcription server at capacity (429)")
+    row = claimed()
+    row = type(row)(**{**row.__dict__, "attempts": indexer.MAX_ATTEMPTS})
+    assert run(indexer.index_slide(row))[0] == "DONE"
+    assert world.written()["meta"]["note"].endswith("(429)")
+
+
 def test_paid_extract_error_releases_the_reservation(world):
     world.paid_enabled = True
     world.setting = CourseKnowledgeSetting(enabled=True, auto_paid_enabled=True, monthly_auto_cap_credits=50)
@@ -835,14 +867,31 @@ def test_enabled_worker_sweeps_then_drains(monkeypatch):
 
     monkeypatch.setattr(flags, "platform_enabled", lambda: True)
     monkeypatch.setattr(flags, "worker_batch", lambda: 4)
-    monkeypatch.setattr(sweep, "run_once", lambda: events.append(("sweep",)))
+    async def fake_canary():
+        events.append(("canary",))
+        return True
+
+    monkeypatch.setattr(worker.caption_requeue, "captions_ok_for_sweep", fake_canary)
+    monkeypatch.setattr(sweep, "run_once", lambda captions_ok=False: events.append(("sweep", captions_ok)))
     monkeypatch.setattr(queue, "claim", lambda n: events.append(("claim", n)) or [])
     monkeypatch.setattr(worker.asyncio, "sleep", fake_sleep)
     with pytest.raises(asyncio.CancelledError):
         run(worker._loop())
-    # one sweep (the next is 30 min away), two claims, idle sleeps after short batches
-    assert events == [("sweep",), ("claim", 4), ("sleep", worker.IDLE_SLEEP_S),
+    # one caption canary then one sweep (the next is 30 min away), two claims, idle
+    # sleeps after short batches
+    assert events == [("canary",), ("sweep", True), ("claim", 4), ("sleep", worker.IDLE_SLEEP_S),
                       ("claim", 4), ("sleep", worker.IDLE_SLEEP_S)]
+
+
+def test_caption_canary_failure_still_sweeps_without_requeue(monkeypatch):
+    events = []
+
+    async def broken_canary():
+        raise RuntimeError("proxy down")
+
+    monkeypatch.setattr(worker.caption_requeue, "captions_ok_for_sweep", broken_canary)
+    monkeypatch.setattr(sweep, "run_once", lambda captions_ok=False: events.append(("sweep", captions_ok)))
+    assert run(worker._maybe_sweep(0.0)) > 0 and events == [("sweep", False)]
 
 
 def test_start_is_idempotent(monkeypatch):

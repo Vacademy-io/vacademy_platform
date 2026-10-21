@@ -318,6 +318,18 @@ def coverage_rows(db: Session, kb_id: str, slide_ids: Sequence[str]) -> Dict[str
     return {r[1]: _source_row(r) for r in rows}
 
 
+# meta_json keys a re-index must not drop while the lesson is still unread:
+# the caption requeue's throttle (caption_requeue.py). The new meta replaces
+# the stored one, except that these keys are carried over unless the new
+# state is READY (a successful read starts the requeue history afresh).
+STICKY_META_KEYS = ("caption_requeued_at", "caption_requeues")
+_STICKY_META_SQL = (
+    "CASE WHEN EXCLUDED.index_state = 'READY' THEN EXCLUDED.meta_json"
+    " ELSE COALESCE(EXCLUDED.meta_json, CAST('{}' AS jsonb)) || jsonb_strip_nulls(jsonb_build_object("
+    + ", ".join(f"'{k}', knowledge_base_source.meta_json -> '{k}'" for k in STICKY_META_KEYS)
+    + ")) END"
+)
+
 # Upsert of the lesson's source row. Shared by write_slide_index (which also
 # sets the chunk-derived columns) and set_source_state (which leaves them).
 _UPSERT_SOURCE_SQL = text(
@@ -343,7 +355,7 @@ _UPSERT_SOURCE_SQL = text(
         content_hash    = EXCLUDED.content_hash,
         status          = EXCLUDED.status,
         index_state     = EXCLUDED.index_state,
-        meta_json       = EXCLUDED.meta_json,
+        meta_json       = """ + _STICKY_META_SQL + """,
         centroid_768    = EXCLUDED.centroid_768,
         error_message   = NULL,
         is_active       = TRUE,
@@ -366,7 +378,7 @@ _UPSERT_STATE_SQL = text(
         content_hash = COALESCE(EXCLUDED.content_hash, knowledge_base_source.content_hash),
         status       = EXCLUDED.status,
         index_state  = EXCLUDED.index_state,
-        meta_json    = EXCLUDED.meta_json,
+        meta_json    = """ + _STICKY_META_SQL + """,
         is_active    = TRUE,
         updated_at   = now()
     RETURNING id

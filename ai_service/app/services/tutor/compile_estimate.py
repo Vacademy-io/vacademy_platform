@@ -126,7 +126,7 @@ def estimate_compile(
             else:
                 row["note"] = "PDF text (free)" if probe else "PDF text (free; a scanned PDF is read with OCR per page)"
         elif kind in ("youtube", "ai_video"):
-            row["note"] = {"youtube": "Captions (free; YouTube may refuse our servers)", "ai_video": "Narration script (free)"}[kind]
+            row["note"] = {"youtube": "Captions (free)", "ai_video": "Narration script (free)"}[kind]
         elif kind == "video_link":
             if not description:
                 row["action"] = "needs_details"; row["compile"] = 0.0; row["text"] = None

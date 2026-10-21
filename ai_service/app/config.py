@@ -187,6 +187,16 @@ class Settings(BaseSettings):
     # YouTube API Configuration
     youtube_api_key: Optional[str] = None
 
+    # YouTube captions through a proxy (services/youtube_captions). Secrets: set
+    # only in the k8s secret (vacademy-secrets), never in code or platform settings.
+    # YT_CAPTIONS_PROXY = webshare | generic | off (default off).
+    yt_captions_proxy: Optional[str] = None
+    webshare_proxy_username: Optional[str] = None        # Webshare Rotating Residential
+    webshare_proxy_password: Optional[str] = None
+    yt_captions_proxy_http_url: Optional[str] = None     # generic mode; URLs carry credentials
+    yt_captions_proxy_https_url: Optional[str] = None
+    supadata_api_key: Optional[str] = None               # secondary caption provider
+
     # Sarvam AI Configuration (for Indian-language STT/TTS)
     sarvam_api_key: str = ""
 

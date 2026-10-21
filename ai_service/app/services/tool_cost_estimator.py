@@ -370,7 +370,9 @@ DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
         "params": {},
     },
     # One web page or YouTube transcript — scrape/fetch + embed, no OCR, so page
-    # count is meaningless and this is flat.
+    # count is meaningless and this is flat. (YouTube captions come from the
+    # shared caption service, services/youtube_captions; its proxy / Supadata
+    # cost is a platform cost and is not passed through here.)
     "kb_ingest_url": {
         "request_type": "knowledge_base",
         "flat_base_credits": Decimal("2"),

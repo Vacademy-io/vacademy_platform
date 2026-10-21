@@ -31,6 +31,10 @@ from app.services.course_knowledge.extract import cache, deck, describe, documen
 from app.services.course_knowledge.extract.types import PaidNeed  # noqa: E402
 from app.services.kb import parsing  # noqa: E402
 from app.services.tutor import source_text  # noqa: E402
+from app.services.youtube_captions import service as yt_service  # noqa: E402
+from app.services.youtube_captions.types import (  # noqa: E402
+    NOTES, CaptionResult, CaptionSegment, CaptionsError, Outcome, note_for,
+)
 
 INST = "inst-ck05"
 
@@ -407,61 +411,136 @@ def test_render_worker_job_runs_past_budget_is_pending(fc, upload_env, monkeypat
 
 # ── YouTube, AI video ────────────────────────────────────────────────────────
 
+def _fake_service(monkeypatch, result_or_fn):
+    """Replace the shared caption service with a fake; records each call."""
+    calls = []
+
+    async def fake_get(video, **kw):
+        calls.append((video, kw))
+        return result_or_fn(video, **kw) if callable(result_or_fn) else result_or_fn
+
+    monkeypatch.setattr(yt_service, "get_captions", fake_get)
+    return calls
+
+
+def _ok(vid, segs, **kw):
+    return CaptionResult(video_id=vid, outcome=Outcome.OK, segments=tuple(segs), language=kw.get("language", "en"),
+                         kind=kw.get("kind", "manual"), route=kw.get("route", "proxy"))
+
+
 def test_youtube_time_windows(fc, monkeypatch):
-    seen = {}
-
-    async def fake_parse(url, language_hint=None, keep_timing=False):
-        seen["keep_timing"] = keep_timing
-        doc = parsing.ParsedDocument(parser="youtube")
-        timing = [{"start": float(t), "duration": 5.0, "text": f"line {t}"} for t in range(0, 150, 10)]
-        doc.pages.append(parsing.ParsedPage(page_number=1, text=" ".join(x["text"] for x in timing), parser="youtube"))
-        doc.caption_timing = timing
-        return doc
-
-    monkeypatch.setattr(parsing, "parse_youtube", fake_parse)
+    segs = [CaptionSegment(start_ms=t * 1000, end_ms=t * 1000 + 5000, text=f"line {t}") for t in range(0, 150, 10)]
+    calls = _fake_service(monkeypatch, _ok("dQw4w9WgXcQ", segs))
     ref = ref_of(source_type="VIDEO", doc_type=None, pointer_kind="youtube", pointer_key="dQw4w9WgXcQ",
                  extras={"url": "https://youtu.be/dQw4w9WgXcQ"})
     ext = run(extract(ref))
-    assert seen["keep_timing"] is True and ext.status == "READY"
+    assert ext.status == "READY" and calls[0][1]["purpose"] == "course_knowledge"
     wins = content(ext)
     assert [(w.t_start_ms, w.t_end_ms) for w in wins] == [(0, 55_000), (60_000, 115_000), (120_000, 145_000)]
     assert wins[0].text.startswith("line 0 line 10") and wins[1].label == "1:00"
-    assert ("youtube", "dQw4w9WgXcQ", "FREE") in fc.rows
+    assert ext.detail["caption_outcome"] == "OK" and ext.detail["caption_route"] == "proxy"
+    # The service owns the caption cache now: the extractor writes no 'youtube' row.
+    assert ("youtube", "dQw4w9WgXcQ", "FREE") not in fc.rows
 
 
-def test_youtube_without_captions_is_empty(fc, monkeypatch):
-    async def fake_parse(url, language_hint=None, keep_timing=False):
-        raise ValueError("YouTube blocks caption requests from this server's IP")
+def test_youtube_legacy_course_row_is_still_read(fc, monkeypatch):
+    fc.rows[("youtube", "abcdefghijk", "FREE")] = ([Segment(text="cached", anchor="time", t_start_ms=0, t_end_ms=1)], {})
+    calls = _fake_service(monkeypatch, lambda v, **k: pytest.fail("service must not be called on a legacy hit"))
+    ext = run(extract(ref_of(source_type="VIDEO", doc_type=None, pointer_kind="youtube", pointer_key="abcdefghijk")))
+    assert ext.status == "READY" and content(ext)[0].text == "cached" and calls == []
 
-    monkeypatch.setattr(parsing, "parse_youtube", fake_parse)
+
+def test_youtube_definitive_no_captions_is_empty(fc, monkeypatch):
+    _fake_service(monkeypatch, CaptionResult(video_id="abcdefghijk", outcome=Outcome.NO_CAPTIONS, route="proxy",
+                                             note=NOTES[Outcome.NO_CAPTIONS]))
     ext = run(extract(ref_of(source_type="VIDEO", doc_type=None, pointer_kind="youtube", pointer_key="abcdefghijk")))
     assert ext.status == "EMPTY" and ext.note == media.NO_CAPTIONS_NOTE and len(ext.segments) == 1
+    assert ext.detail == {"caption_outcome": "NO_CAPTIONS", "caption_route": "proxy"}
+    assert media.NO_CAPTIONS_NOTE != media.LEGACY_NO_CAPTIONS_NOTE
+
+
+def test_youtube_private_is_empty_with_its_own_note(fc, monkeypatch):
+    _fake_service(monkeypatch, CaptionResult(video_id="abcdefghijk", outcome=Outcome.PRIVATE, route="proxy",
+                                             note=NOTES[Outcome.PRIVATE]))
+    ext = run(extract(ref_of(source_type="VIDEO", doc_type=None, pointer_kind="youtube", pointer_key="abcdefghijk")))
+    assert ext.status == "EMPTY" and "private" in ext.note and ext.detail["caption_outcome"] == "PRIVATE"
+
+
+def test_youtube_blocked_is_failed_for_retry(fc, monkeypatch):
+    note = note_for(Outcome.BLOCKED, "course_knowledge")
+    _fake_service(monkeypatch, CaptionResult(video_id="abcdefghijk", outcome=Outcome.BLOCKED, transient=True,
+                                             route="proxy", note=note))
+    ext = run(extract(ref_of(source_type="VIDEO", doc_type=None, pointer_kind="youtube", pointer_key="abcdefghijk")))
+    assert ext.status == "FAILED" and ext.note == note and "try again automatically" in ext.note
+    assert ext.detail["caption_outcome"] == "BLOCKED" and ext.detail["caption_transient"] is True
+
+
+def test_youtube_blocked_without_any_fallback_is_empty_for_the_requeue(fc, monkeypatch):
+    # No proxy / Supadata configured: retrying from the blocked server IP within minutes
+    # does not help, so the lesson is EMPTY (as before the service), marked for the requeue.
+    _fake_service(monkeypatch, CaptionResult(video_id="abcdefghijk", outcome=Outcome.BLOCKED, transient=True,
+                                             route="direct", fallback_configured=False,
+                                             note=note_for(Outcome.BLOCKED, "course_knowledge")))
+    ext = run(extract(ref_of(source_type="VIDEO", doc_type=None, pointer_kind="youtube", pointer_key="abcdefghijk")))
+    assert ext.status == "EMPTY" and ext.note == media.NO_FALLBACK_NOTE
+    assert ext.detail["caption_transient"] is True and ext.detail["caption_outcome"] == "BLOCKED"
+
+
+def test_youtube_busy_without_fallback_still_retries(fc, monkeypatch):
+    _fake_service(monkeypatch, CaptionResult(video_id="abcdefghijk", outcome=Outcome.BUSY, transient=True,
+                                             fallback_configured=False, note=note_for(Outcome.BUSY, "course_knowledge")))
+    ext = run(extract(ref_of(source_type="VIDEO", doc_type=None, pointer_kind="youtube", pointer_key="abcdefghijk")))
+    assert ext.status == "FAILED"
+
+
+def test_youtube_unconfirmed_no_captions_is_empty_and_marked(fc, monkeypatch):
+    _fake_service(monkeypatch, CaptionResult(video_id="abcdefghijk", outcome=Outcome.NO_CAPTIONS, route="direct",
+                                             confirmed=False, fallback_configured=False,
+                                             note=NOTES[Outcome.NO_CAPTIONS]))
+    ext = run(extract(ref_of(source_type="VIDEO", doc_type=None, pointer_kind="youtube", pointer_key="abcdefghijk")))
+    assert ext.status == "EMPTY" and ext.note == media.NO_CAPTIONS_NOTE
+    assert ext.detail["caption_unconfirmed"] is True
+
+
+def test_youtube_blocked_with_tutor_copy_is_ready(fc, monkeypatch):
+    fc.tutor[("captions", "abcdefghijk")] = "the tutor's copy of the captions"
+    _fake_service(monkeypatch, CaptionResult(video_id="abcdefghijk", outcome=Outcome.BLOCKED, transient=True))
+    ext = run(extract(ref_of(source_type="VIDEO", doc_type=None, pointer_kind="youtube", pointer_key="abcdefghijk")))
+    assert ext.status == "READY" and content(ext)[0].text == "the tutor's copy of the captions"
+    assert ext.note == "Read from the AI tutor's copy of the captions"
 
 
 def test_parse_youtube_default_output_unchanged(monkeypatch):
-    class Snip:
-        def __init__(self, t, s):
-            self.text, self.start, self.duration = t, s, 2.0
+    segs = [CaptionSegment(0, 2000, "hello"), CaptionSegment(3500, 5500, "world")]
+    seen = []
 
-    class Track:
-        def fetch(self):
-            return [Snip("hello", 0.0), Snip("", 1.0), Snip("world", 3.5)]
+    async def fake_require(video, **kw):
+        seen.append(kw)
+        return _ok("dQw4w9WgXcQ", segs)
 
-    class Listing:
-        def find_manually_created_transcript(self, langs):
-            return Track()
-
-    class Api:
-        def list(self, vid):
-            return Listing()
-
-    monkeypatch.setitem(sys.modules, "youtube_transcript_api", SimpleNamespace(YouTubeTranscriptApi=Api))
+    monkeypatch.setattr(yt_service, "require_captions", fake_require)
     doc = run(parsing.parse_youtube("https://youtu.be/dQw4w9WgXcQ"))
     assert doc.pages[0].text == "hello world" and doc.caption_timing is None and doc.parser == "youtube"
+    assert seen[0] == {"language": None, "purpose": "kb_ingest"}
     timed = run(parsing.parse_youtube("https://youtu.be/dQw4w9WgXcQ", keep_timing=True))
     assert timed.pages[0].text == "hello world"
     assert timed.caption_timing == [{"start": 0.0, "duration": 2.0, "text": "hello"},
                                     {"start": 3.5, "duration": 2.0, "text": "world"}]
+
+
+def test_parse_youtube_raises_the_user_note(monkeypatch):
+    res = CaptionResult(video_id="dQw4w9WgXcQ", outcome=Outcome.BLOCKED, transient=True,
+                        note=note_for(Outcome.BLOCKED, "kb_ingest"))
+
+    async def fake_require(video, **kw):
+        raise CaptionsError(res)
+
+    monkeypatch.setattr(yt_service, "require_captions", fake_require)
+    with pytest.raises(ValueError) as err:
+        run(parsing.parse_youtube("https://youtu.be/dQw4w9WgXcQ"))
+    assert str(err.value) == res.note and "block" in str(err.value)
+    with pytest.raises(ValueError, match="does not look like a YouTube"):
+        run(parsing.parse_youtube("https://example.com/video"))
 
 
 def test_ai_video_words_give_45_second_windows(fc, monkeypatch):

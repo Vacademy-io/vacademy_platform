@@ -1,6 +1,19 @@
 """Timed media: YouTube captions (free), AI-video narration (free), and
 uploaded video / audio files (paid transcription) — spec §6.5.
 
+YouTube: the legacy course cache row first, then the shared caption service
+(services/youtube_captions), which owns its own cache. A transient caption
+failure (blocked, busy, timeout) is FAILED, so the indexer retries with
+backoff and keeps the last good index; only a definitive answer about the
+video (no captions, private, removed, age-restricted) is EMPTY.
+
+With NO fallback route configured (no proxy, no Supadata), a transient
+result from YouTube is EMPTY instead (as before the service: retrying from a
+blocked server IP within minutes does not help), marked caption_transient so
+the caption requeue re-reads it once a fallback works (BUSY, our own
+capacity, stays FAILED). A definitive answer nothing could confirm is EMPTY
+and marked caption_unconfirmed for the same re-read.
+
 Every text comes back in roughly fixed time windows (Segment anchor time) so
 a citation can open the player at that second. Nothing here holds a DB
 session across a network call: cache reads and writes open their own short
@@ -26,8 +39,9 @@ from typing import Any, Iterable, List, Optional, Sequence, Tuple
 from sqlalchemy import text as sql_text
 
 from ....db import db_session
-from ...kb import parsing
 from ...tutor import source_text
+from ...youtube_captions import NOTES, Outcome
+from ...youtube_captions import service as yt_service
 from . import cache
 from .types import Extraction, PaidDelivered, PaidNeed, PaidPermit, Segment, SlideRef, TOOL_TRANSCRIBE_MINUTE
 
@@ -42,8 +56,13 @@ MAX_WORDS_BYTES = 5 * 1024 * 1024
 # handing the lesson back as PENDING (the job keeps running and is resumed).
 RENDER_WAIT_SECONDS = 90
 
-NO_CAPTIONS_NOTE = "YouTube did not share captions: add a description or upload the video"
+# The pre-service note: blocked and caption-less videos both got it, so the
+# caption requeue (caption_requeue.py) selects lessons still carrying it.
+LEGACY_NO_CAPTIONS_NOTE = "YouTube did not share captions: add a description or upload the video"
+NO_CAPTIONS_NOTE = NOTES[Outcome.NO_CAPTIONS]
 NO_SPEECH_NOTE = "The recording has no clear speech (music or silence): add what this lesson teaches"
+NO_FALLBACK_NOTE = ("YouTube didn't give us the captions (it is blocking our server). Add what this lesson "
+                    "teaches or upload the video; the captions are read again once access is restored.")
 OVER_APPROVED_NOTE = "Over the approved amount"
 
 
@@ -86,29 +105,38 @@ def _window(start: float, end: float, parts: List[str], joiner: str) -> Segment:
 
 async def extract_youtube(ref: SlideRef) -> Extraction:
     vid = ref.pointer_key or ""
-    hit = await asyncio.to_thread(cache.get, "youtube", vid)
+    hit = await asyncio.to_thread(cache.get, "youtube", vid)      # legacy course row
     if hit is not None and hit.segments:
         return Extraction(ref.slide_id, "captions", segments=hit.segments, status="READY")
     url = str(ref.extras.get("url") or f"https://www.youtube.com/watch?v={vid}")
-    try:
-        doc = await parsing.parse_youtube(url, keep_timing=True)
-    except ValueError as exc:
-        tutor = await asyncio.to_thread(cache.tutor_youtube_captions, vid)
-        if tutor:
-            return Extraction(ref.slide_id, "captions", segments=[Segment(text=tutor)], status="READY",
-                              note="Read from the AI tutor's copy of the captions")
-        logger.info("course knowledge: no captions for %s: %s", vid, exc)
-        return Extraction(ref.slide_id, "captions", status="EMPTY", note=NO_CAPTIONS_NOTE)
-    timing = doc.caption_timing or []
-    segs = time_windows(((t.get("start") or 0.0, (t.get("start") or 0.0) + (t.get("duration") or 0.0), t.get("text") or "")
-                         for t in timing), YOUTUBE_WINDOW_S)
-    if not segs:
-        body = "\n\n".join((p.text or "").strip() for p in doc.pages if (p.text or "").strip())
-        segs = [Segment(text=body)] if body else []
-    if not segs:
-        return Extraction(ref.slide_id, "captions", status="EMPTY", note=NO_CAPTIONS_NOTE)
-    await asyncio.to_thread(cache.put, "youtube", vid, "FREE", segs, {"snippets": len(timing)})
-    return Extraction(ref.slide_id, "captions", segments=segs, status="READY")
+    result = await yt_service.get_captions(vid or url, purpose="course_knowledge")
+    detail = {"caption_outcome": result.outcome.value, "caption_route": result.route}
+    if result.outcome is Outcome.OK:
+        segs = time_windows(((s.start_ms / 1000.0, s.end_ms / 1000.0, s.text) for s in result.segments),
+                            YOUTUBE_WINDOW_S)
+        if segs:
+            detail.update(caption_language=result.language, caption_kind=result.kind)
+            return Extraction(ref.slide_id, "captions", segments=segs, status="READY", detail=detail)
+        return Extraction(ref.slide_id, "captions", status="EMPTY", note=NO_CAPTIONS_NOTE,
+                          detail={"caption_outcome": Outcome.NO_CAPTIONS.value})
+    tutor = await asyncio.to_thread(cache.tutor_youtube_captions, vid)
+    if tutor:
+        return Extraction(ref.slide_id, "captions", segments=[Segment(text=tutor)], status="READY",
+                          note="Read from the AI tutor's copy of the captions", detail=detail)
+    if result.transient:
+        detail["caption_transient"] = True
+        if not result.fallback_configured and result.outcome is not Outcome.BUSY:
+            logger.info("course knowledge: captions for %s not available (%s) and no caption fallback is "
+                        "configured; EMPTY until the caption requeue", vid, result.outcome.value)
+            return Extraction(ref.slide_id, "captions", status="EMPTY", note=NO_FALLBACK_NOTE, detail=detail)
+        logger.info("course knowledge: captions for %s not available right now (%s); will retry",
+                    vid, result.outcome.value)
+        return Extraction(ref.slide_id, "captions", status="FAILED", note=result.note, detail=detail)
+    if not result.confirmed:
+        detail["caption_unconfirmed"] = True
+    logger.info("course knowledge: no captions for %s (%s)", vid, result.outcome.value)
+    return Extraction(ref.slide_id, "captions", status="EMPTY", note=result.note or NO_CAPTIONS_NOTE,
+                      detail=detail)
 
 
 # ── AI video (HTML_VIDEO) ────────────────────────────────────────────────────
@@ -361,6 +389,6 @@ async def _via_render(ref: SlideRef, permit: PaidPermit, limit: int, need: PaidN
 
 
 __all__ = [
-    "extract_youtube", "extract_ai_video", "extract_upload", "time_windows", "needed_minutes",
-    "NO_CAPTIONS_NOTE", "NO_SPEECH_NOTE",
+    "extract_youtube", "extract_ai_video", "LEGACY_NO_CAPTIONS_NOTE", "extract_upload", "time_windows", "needed_minutes",
+    "NO_CAPTIONS_NOTE", "NO_SPEECH_NOTE", "NO_FALLBACK_NOTE",
 ]

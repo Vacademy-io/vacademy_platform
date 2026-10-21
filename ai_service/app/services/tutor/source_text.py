@@ -2,14 +2,16 @@
 
 Where the words come from, cheapest first:
 - HTML_VIDEO (AI video): the narration script the copilot wrote (S3, free).
-- YouTube video: the caption track (youtube-transcript-api, free; fails when
-  the video has no captions or YouTube blocks the datacenter IP).
+- YouTube video: the caption track through the shared caption service
+  (services/youtube_captions: its own cache, direct, rotating proxy, Supadata;
+  free to the institute). Older captions cached here under
+  tutor_youtube_captions are still read first; new ones are not written here.
 - Uploaded video: Whisper on the render worker (`transcription` tool, per
   audio-minute) — the only paid path, run once per file and cached.
 - PDF: PyMuPDF text layer (free; a scanned PDF has none — no OCR here).
 
-Every result is cached in `file_conversion` under a tutor vendor key, so a
-recompile never re-fetches or re-pays. Nothing here holds a DB session across
+Every other result is cached in `file_conversion` under a tutor vendor key, so
+a recompile never re-fetches or re-pays. Nothing here holds a DB session across
 a network call.
 """
 from __future__ import annotations
@@ -192,18 +194,30 @@ async def _ai_video_script(video_id: str) -> Optional[str]:
 
 
 async def _youtube_captions(url: str) -> Optional[str]:
-    from ..kb.parsing import parse_youtube, youtube_video_id
+    """The video's caption text. Raises CaptionsError (a ValueError carrying
+    the service result) when there are none to read right now."""
+    from ..kb.parsing import youtube_video_id
+    from ..youtube_captions import service as yt_service
     vid = youtube_video_id(url)
     if not vid:
         return None
-    cached = _cached(VENDOR_CAPTIONS, vid)
+    cached = _cached(VENDOR_CAPTIONS, vid)        # legacy rows: still read, no longer written
     if cached:
         return cached
-    doc = await parse_youtube(url)          # raises ValueError when there are no captions
-    body = "\n\n".join((p.text or "").strip() for p in doc.pages if (p.text or "").strip())
-    if body:
-        _store(VENDOR_CAPTIONS, vid, body, file_type="captions")
-    return body or None
+    result = await yt_service.require_captions(vid, purpose="tutor")
+    return result.text.strip() or None
+
+
+def youtube_note(result: Any) -> str:
+    """What the tutor tells the teacher when a YouTube video's captions could
+    not be read, chosen from the service outcome (not from message text)."""
+    from ..youtube_captions import NOTES, Outcome, note_for
+    outcome = getattr(result, "outcome", None)
+    if not isinstance(outcome, Outcome):
+        return note_for(Outcome.NETWORK, "tutor")
+    if getattr(result, "transient", False):
+        return note_for(outcome, "tutor", transient=True)
+    return NOTES.get(outcome) or note_for(outcome, "tutor")
 
 
 def pdf_probe(db: Session, file_id: str) -> Optional[dict]:
@@ -298,14 +312,12 @@ async def resolve_free_text(src: SlideSource) -> None:
                 _set_text(src, script, "script"); return
             src.text_note = "The AI video's script could not be read"
         elif kind == "youtube" and src.media_url:
+            from ..youtube_captions import CaptionsError
             try:
                 captions = await _youtube_captions(src.media_url)
-            except ValueError as exc:
+            except CaptionsError as exc:
                 captions = None
-                msg = str(exc)
-                src.text_note = ("YouTube blocks caption requests from our servers: add what the video teaches, "
-                                 "or upload the video file so it can be transcribed"
-                                 if "block" in msg.lower() else msg[:200])
+                src.text_note = youtube_note(exc.result)
             if captions:
                 _set_text(src, captions, "captions"); return
             src.text_note = src.text_note or "This video has no captions"

@@ -40,6 +40,7 @@ import AssessmentParticipantsTab from './-components/AssessmentParticipantsTab';
 import AssessmentAccessControlTab from './-components/AssessmentAccessControlTab';
 import { SurveyMainOverviewTab } from './-components/survey/SurveyMainOverviewTab';
 import { SurveyIndividualRespondentsTab } from './-components/survey/SurveyIndividualRespondentsTab';
+import { OmrTab } from './-components/omr/OmrTab';
 
 export const Route = createLazyFileRoute(
     '/assessment/assessment-list/assessment-details/$assessmentId/$examType/$assesssmentType/$assessmentTab/'
@@ -235,6 +236,8 @@ const AssessmentDetailsComponent = () => {
     );
 
     const navigate = useNavigate();
+    // Pen-and-paper MCQ exams get an extra tab for their sets, sheets and scans.
+    const isOmrMode = assessmentDetails[0]?.saved_data?.omr_mode === true;
     // Honor the details tab requested in the route (e.g. the slide's "View
     // Submissions" deep-links with assessmentTab='submissions'). List-page entry
     // points pass a list-tab name (liveTests/upcomingTests/…) which isn't a
@@ -246,6 +249,7 @@ const AssessmentDetailsComponent = () => {
         'questions',
         'participants',
         'accessControl',
+        ...(isOmrMode ? ['omr'] : []),
     ];
     const [selectedTab, setSelectedTab] = useState(
         detailsTabs.includes(assessmentTab) ? assessmentTab : 'overview'
@@ -345,6 +349,11 @@ const AssessmentDetailsComponent = () => {
                             >
                                 {t('tabs.accessControl')}
                             </TabsTrigger>
+                            {isOmrMode && (
+                                <TabsTrigger value="omr" className={mainTabClass('omr')}>
+                                    {t('tabs.omr')}
+                                </TabsTrigger>
+                            )}
                             <TabsTrigger
                                 value="reattemptRequests"
                                 className={`${mainTabClass('reattemptRequests')} gap-1.5`}
@@ -359,7 +368,10 @@ const AssessmentDetailsComponent = () => {
                                 )}
                             </TabsTrigger>
                         </TabsList>
-                        {canEdit && selectedTab !== 'overview' && selectedTab !== 'submissions' && (
+                        {canEdit &&
+                            selectedTab !== 'overview' &&
+                            selectedTab !== 'submissions' &&
+                            selectedTab !== 'omr' && (
                             <Tooltip>
                                 <TooltipTrigger asChild>
                                     <MyButton
@@ -441,6 +453,14 @@ const AssessmentDetailsComponent = () => {
                         <TabsContent value="accessControl">
                             <AssessmentAccessControlTab />
                         </TabsContent>
+                        {isOmrMode && (
+                            <TabsContent value="omr">
+                                <OmrTab
+                                    assessmentId={assessmentId}
+                                    instituteId={instituteDetails?.id ?? ''}
+                                />
+                            </TabsContent>
+                        )}
                         <TabsContent value="reattemptRequests">
                             <ReattemptRequestsTab />
                         </TabsContent>

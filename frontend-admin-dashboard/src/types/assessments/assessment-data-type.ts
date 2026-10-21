@@ -61,7 +61,8 @@ export interface SavedData {
     assessment_visibility: string;
     expected_participants: string | null;
     duration_distribution: 'ASSESSMENT' | 'QUESTION' | 'SECTION';
-    omr_mode: string | null;
+    /** OMR sheet (pen & paper) mode; the backend sends a Boolean (null on older assessments). */
+    omr_mode: boolean | null;
     boundation_end_date: string;
     assessment_url: string;
     duration: number;

@@ -11,6 +11,7 @@ interface BasicInfoState {
     evaluationType?: string;
     resultType?: string;
     aiEvaluationEnabled?: boolean;
+    omrMode?: boolean;
     proctoring?: ProctoringConfigForm;
     raiseReattemptRequest?: boolean;
     raiseTimeIncreaseRequest?: boolean;
@@ -39,6 +40,7 @@ const initialState: Omit<BasicInfoState, 'setBasicInfo' | 'getBasicInfo' | 'rese
     evaluationType: undefined,
     resultType: undefined,
     aiEvaluationEnabled: undefined,
+    omrMode: undefined,
     proctoring: undefined,
     raiseReattemptRequest: undefined,
     raiseTimeIncreaseRequest: undefined,

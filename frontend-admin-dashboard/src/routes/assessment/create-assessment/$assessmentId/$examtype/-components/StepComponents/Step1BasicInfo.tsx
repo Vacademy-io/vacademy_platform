@@ -1,7 +1,15 @@
 import { MyButton } from '@/components/design-system/button';
 import { Separator } from '@/components/ui/separator';
 import { Card, CardContent } from '@/components/ui/card';
-import { Info, CalendarBlank, Gear, Eye, ArrowsLeftRight, Sparkle } from '@phosphor-icons/react';
+import {
+    Info,
+    CalendarBlank,
+    Gear,
+    Eye,
+    ArrowsLeftRight,
+    Sparkle,
+    ListChecks,
+} from '@phosphor-icons/react';
 import { StepContentProps } from '@/types/assessments/step-content-props';
 import { zodResolver } from '@hookform/resolvers/zod';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -633,6 +641,8 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
             // `??` not `||`: a stored `false` must survive a remount. Off by default
             // because AI evaluation charges institute credits per graded question.
             aiEvaluationEnabled: storeDataStep1.aiEvaluationEnabled ?? false,
+            // `??` for the same reason: a stored `false` must stay off.
+            omrMode: storeDataStep1.omrMode ?? false,
             proctoring: storeDataStep1.proctoring ?? DEFAULT_PROCTORING_FORM,
             switchSections: storeDataStep1.switchSections || true, // Default to false
             raiseReattemptRequest: storeDataStep1.raiseReattemptRequest || true, // Default to true
@@ -875,6 +885,7 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
             durationDistribution: savedData?.duration_distribution || '',
             evaluationType: savedData?.evaluation_type || '',
             aiEvaluationEnabled: savedData?.ai_evaluation_enabled ?? false,
+            omrMode: savedData?.omr_mode === true,
             proctoring: proctoringFormFromWire(savedData?.proctoring_config),
             // 27 older exams carry no result_type; they are all AUTO-evaluated,
             // and preselecting MANUAL for them (the old fallback) flipped a working
@@ -1326,6 +1337,40 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
                                 </FormItem>
                             )}
                         />
+                        {/*
+                          * OMR sheet (pen & paper) mode: learners answer on a printed
+                          * bubble sheet that is scanned and graded here. Surveys are not
+                          * graded, so they never get it.
+                          */}
+                        {examType !== 'SURVEY' && (
+                            <FormField
+                                control={form.control}
+                                name="omrMode"
+                                render={({ field }) => (
+                                    <FormItem className="flex items-start justify-between gap-4 space-y-0 rounded-lg border border-slate-200 bg-white p-4 transition-colors hover:border-primary-200 hover:bg-primary-50/20">
+                                        <div className="flex items-start gap-3">
+                                            <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary-50 text-primary-500">
+                                                <ListChecks className="size-4" />
+                                            </div>
+                                            <div className="flex flex-col">
+                                                <FormLabel className="text-sm font-semibold text-slate-900">
+                                                    {t('attemptSettingsSection.omrMode.label')}
+                                                </FormLabel>
+                                                <span className="text-xs text-slate-500">
+                                                    {t('attemptSettingsSection.omrMode.description')}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <FormControl>
+                                            <Switch
+                                                checked={field.value}
+                                                onCheckedChange={field.onChange}
+                                            />
+                                        </FormControl>
+                                    </FormItem>
+                                )}
+                            />
+                        )}
                         {/* Surveys have nothing to cheat on. */}
                         {examType !== 'SURVEY' && <ProctoringSettingsCard control={form.control} />}
                         {getStepKey({

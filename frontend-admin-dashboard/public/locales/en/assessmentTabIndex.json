@@ -22,6 +22,7 @@
         "participants": "Participants",
         "accessControl": "Access Control",
         "reattemptRequests": "Reattempt Requests",
+        "omr": "OMR & Sets",
         "settings": "Settings"
     }
 }

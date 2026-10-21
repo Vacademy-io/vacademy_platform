@@ -10,6 +10,8 @@ import vacademy.io.admin_core_service.features.learner.service.LearnerService;
 import vacademy.io.admin_core_service.features.institute_learner.dto.batch_enrollment.BatchEnrolledLearnerDto;
 import vacademy.io.admin_core_service.features.institute_learner.dto.batch_enrollment.BatchEnrollmentRowDto;
 import vacademy.io.admin_core_service.features.institute_learner.dto.batch_enrollment.EnrolledLearnersRequest;
+import vacademy.io.admin_core_service.features.institute_learner.dto.batch_enrollment.EnrollmentNumberRowDto;
+import vacademy.io.admin_core_service.features.institute_learner.dto.batch_enrollment.EnrollmentNumbersRequest;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
 import vacademy.io.common.auth.dto.UserDTO;
 
@@ -112,6 +114,31 @@ public class InternalLearnerDetailController {
                 : request.getStatuses();
         return ResponseEntity.ok(studentSessionRepository.findEnrollmentRowsByPackageSessions(
                 request.getPackageSessionIds(), request.getInstituteId(), statuses));
+    }
+
+    /** OMR sheets cap a paper at one A4 page per student; no real class needs more. */
+    private static final int MAX_ENROLLMENT_NUMBER_USERS = 5000;
+
+    /**
+     * The institute enrollment number on each of these learners' enrolments, one row per
+     * (learner, batch). assessment_service prints it as the roll-number grid on OMR sheets
+     * and matches every scanned sheet back to its learner by it.
+     */
+    @PostMapping("/enrollment-numbers")
+    public ResponseEntity<List<EnrollmentNumberRowDto>> getEnrollmentNumbers(
+            @RequestBody EnrollmentNumbersRequest request) {
+        if (request == null || request.getInstituteId() == null || request.getInstituteId().isBlank()
+                || request.getUserIds() == null || request.getUserIds().isEmpty()) {
+            return ResponseEntity.ok(List.of());
+        }
+        if (request.getUserIds().size() > MAX_ENROLLMENT_NUMBER_USERS) {
+            return ResponseEntity.badRequest().build();
+        }
+        List<String> statuses = (request.getStatuses() == null || request.getStatuses().isEmpty())
+                ? DEFAULT_ENROLLED_STATUSES
+                : request.getStatuses();
+        return ResponseEntity.ok(studentSessionRepository.findEnrollmentNumbersForUsers(
+                request.getUserIds(), request.getInstituteId(), statuses));
     }
 
     /**

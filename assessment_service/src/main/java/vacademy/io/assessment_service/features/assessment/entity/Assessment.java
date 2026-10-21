@@ -90,6 +90,16 @@ public class Assessment {
     @Column(name = "proctoring_config", columnDefinition = "jsonb")
     private String proctoringConfig;
 
+    /**
+     * OMR sheet settings as JSON (V60); see
+     * {@link vacademy.io.assessment_service.features.assessment.omr.dto.OmrConfig}.
+     * Only meaningful while {@link #omrMode} is on. Read and written only through
+     * OmrSetService.
+     */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "omr_config", columnDefinition = "jsonb")
+    private String omrConfig;
+
     @Column(name = "submission_type", nullable = false)
     private String submissionType;
 

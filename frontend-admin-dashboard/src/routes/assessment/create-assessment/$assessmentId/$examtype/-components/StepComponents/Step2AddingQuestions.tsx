@@ -3,7 +3,7 @@ import { z } from 'zod';
 import sectionDetailsSchema from '../../-utils/section-details-schema';
 import { FormProvider, useFieldArray, useForm } from 'react-hook-form';
 import { MyButton } from '@/components/design-system/button';
-import { Plus, Clock, ListPlus, Timer, ArrowRight } from '@phosphor-icons/react';
+import { Plus, Clock, ListPlus, Timer, ArrowRight, WarningCircle } from '@phosphor-icons/react';
 import { Accordion } from '@/components/ui/accordion';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
@@ -19,6 +19,7 @@ import { toast } from 'sonner';
 import { reportApiError } from '@/lib/report-api-error';
 import { getFieldOptions, getStepKey, syncStep2DataWithStore } from '../../-utils/helper';
 import { useSectionDetailsStore } from '../../-utils/zustand-global-states/step2-add-questions';
+import { useBasicInfoStore } from '../../-utils/zustand-global-states/step1-basic-info';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { useParams } from '@tanstack/react-router';
 import { useTestAccessStore } from '../../-utils/zustand-global-states/step3-adding-participants';
@@ -196,6 +197,23 @@ const Step2AddingQuestions: React.FC<StepContentProps> = ({
     const isAssessWiseCheck = watch('testDuration.entireTestDuration.checked');
     const isSectionWiseCheck = watch('testDuration.sectionWiseDuration');
     const isQuestionWiseCheck = watch('testDuration.questionWiseDuration');
+
+    // OMR sheet mode (Step 1): only single-correct MCQs fit on a bubble sheet, and
+    // publish refuses anything else. Warned here, never blocked. The Step 1 store
+    // wins (it holds an unsaved toggle); the saved value covers a direct open of Step 2.
+    const omrModeFromStep1 = useBasicInfoStore((state) => state.omrMode);
+    const isOmrMode = omrModeFromStep1 ?? assessmentDetails[0]?.saved_data?.omr_mode === true;
+    const watchedSections = watch('section');
+    const nonMcqsCount = isOmrMode
+        ? (watchedSections ?? []).reduce(
+              (count, section) =>
+                  count +
+                  (section.adaptive_marking_for_each_question ?? []).filter(
+                      (question) => question.questionType !== 'MCQS'
+                  ).length,
+              0
+          )
+        : 0;
 
     // Only when the backend lists a duration field for this step — the same test the
     // duration inputs below render on. A Manual Upload Exam has none (learners solve on
@@ -462,6 +480,18 @@ const Step2AddingQuestions: React.FC<StepContentProps> = ({
                                 />
                             </MyButton>
                         </div>
+                        {nonMcqsCount > 0 && (
+                            <div
+                                role="alert"
+                                className="flex items-start gap-2 rounded-md border border-warning-200 bg-warning-50 p-3 text-sm text-warning-700"
+                            >
+                                <WarningCircle size={18} className="mt-px shrink-0" />
+                                <div>
+                                    <p className="font-semibold">{t('omrWarning.title')}</p>
+                                    <p>{t('omrWarning.body', { count: nonMcqsCount })}</p>
+                                </div>
+                            </div>
+                        )}
                         {(examType === 'EXAM' || examType === 'MOCK') && (
                             <Card className="border-neutral-200/80 shadow-sm">
                                 <CardHeader className="flex flex-row items-start gap-3 space-y-0 pb-4">

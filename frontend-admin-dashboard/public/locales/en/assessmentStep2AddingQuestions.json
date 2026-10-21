@@ -6,6 +6,11 @@
         "next": "Next"
     },
     "sectionDefaultName": "Section {{number}}",
+    "omrWarning": {
+        "title": "OMR sheet mode is on",
+        "body_one": "{{count}} question is not a single-correct MCQ. Publishing will be refused until every question is a single-correct MCQ with 2–5 options.",
+        "body_other": "{{count}} questions are not single-correct MCQs. Publishing will be refused until every question is a single-correct MCQ with 2–5 options."
+    },
     "durationSettings": {
         "title": "Duration Settings",
         "description": "Choose how time is distributed across your assessment.",

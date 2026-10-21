@@ -104,6 +104,28 @@ public interface StudentSessionInstituteGroupMappingRepository
                                           @Param("instituteId") String instituteId,
                                           @Param("statuses") List<String> statuses);
 
+  /**
+   * The institute enrollment number on each of these learners' enrolments, one row per
+   * (learner, batch). Used by assessment_service's OMR roll-number pre-check and scan
+   * matching. The DISTINCT ON only drops duplicate mapping rows for the same pair,
+   * keeping the most recently enrolled one.
+   */
+  @Query(value = """
+      SELECT DISTINCT ON (ssigm.user_id, ssigm.package_session_id)
+             ssigm.user_id AS userId,
+             ssigm.package_session_id AS packageSessionId,
+             ssigm.institute_enrollment_number AS instituteEnrollmentNumber
+      FROM student_session_institute_group_mapping ssigm
+      WHERE ssigm.user_id IN (:userIds)
+        AND ssigm.institute_id = :instituteId
+        AND ssigm.status IN (:statuses)
+      ORDER BY ssigm.user_id, ssigm.package_session_id, ssigm.enrolled_date DESC NULLS LAST
+      """, nativeQuery = true)
+  List<vacademy.io.admin_core_service.features.institute_learner.dto.batch_enrollment.EnrollmentNumberRowDto>
+      findEnrollmentNumbersForUsers(@Param("userIds") List<String> userIds,
+                                    @Param("instituteId") String instituteId,
+                                    @Param("statuses") List<String> statuses);
+
   @Query(value = """
       SELECT
           ssigm.id AS mapping_id,                 -- Index 0

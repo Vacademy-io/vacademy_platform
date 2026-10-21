@@ -65,6 +65,7 @@ from .routers.engagement_plan import router as engagement_plan_router
 from .routers.page_builder import router as page_builder_router
 from .routers.course_assist import router as course_assist_router
 from .routers.copy_check import router as copy_check_router
+from .routers.omr import router as omr_router
 from .routers.lecture import router as lecture_router
 from .routers.ai_task_status import router as ai_task_status_router
 from .routers.presentation import router as presentation_router
@@ -409,6 +410,9 @@ def create_app() -> FastAPI:
     #   {api_base_path}/course/assist/v1/text  |  /v1/image
     app.include_router(course_assist_router, prefix=settings.api_base_path)
     app.include_router(copy_check_router, prefix=settings.api_base_path)
+    # OMR sheet reading (vendored OMRChecker) for assessment_service:
+    #   {api_base_path}/omr/v1/read
+    app.include_router(omr_router, prefix=settings.api_base_path)
     # Migrated from media_service: AI lecture planner (kick-off) + the
     # task-status polling mirror. Final paths:
     #   {api_base_path}/ai/lecture/generate-plan

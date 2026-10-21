@@ -215,7 +215,10 @@
       "contentHeading": "कोर्स सामग्री शीर्षक",
       "contentHeadingHint": "कोर्स संरचना के ऊपर की \"Course Content (Modules & Slides)\" पंक्ति। संरचना वैसी ही रहती है।",
       "series": "लर्निंग पाथ का हिस्सा",
-      "seriesHint": "\"Part of …\" चिप्स, जो कोर्स के लर्निंग पाथ के बाकी स्टेप दिखाते हैं, और \"Next in the series\" कार्ड।"
+      "seriesHint": "\"Part of …\" चिप्स, जो कोर्स के लर्निंग पाथ के बाकी स्टेप दिखाते हैं, और \"Next in the series\" कार्ड।",
+      "seriesLimit": "अधिकतम \"Part of\" चिप्स",
+      "seriesLimitAll": "सभी",
+      "seriesLimitHint": "मौजूदा कोर्स के आस-पास इतने स्टेप दिखेंगे, हर एक अपने पाथ नंबर के साथ। सभी स्टेप दिखाने के लिए खाली छोड़ें।"
     },
     "courseFormats": {
       "fromTags": {

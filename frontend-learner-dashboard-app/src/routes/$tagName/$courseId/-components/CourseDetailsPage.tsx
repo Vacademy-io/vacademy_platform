@@ -1430,11 +1430,11 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
     [standardLayout, catalogueData?.pages, catalogStreamsConfig],
   );
   // globalSettings.courseDetails (Manage Pages → Course page): series = false leaves the
-  // "Part of <path>" chips off, content = false the Course content (modules & slides) tab,
+  // "Part of <path>" chips off (seriesLimit = how many of them show), content = false the Course content (modules & slides) tab,
   // contentHeading = false only the "Course Content (Modules & Slides)" line above the structure.
   const courseDetailsSettings = (
     catalogueData?.globalSettings as
-      | { courseDetails?: { series?: unknown; content?: unknown; contentHeading?: unknown } }
+      | { courseDetails?: { series?: unknown; seriesLimit?: unknown; content?: unknown; contentHeading?: unknown } }
       | undefined
   )?.courseDetails;
   const seriesOn = courseDetailsSettings?.series !== false;
@@ -2206,6 +2206,7 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
               )
             }
             series={courseSeries}
+            seriesLimit={courseDetailsSettings?.seriesLimit}
             formatStepPrice={(step) =>
               step.price === null
                 ? ""

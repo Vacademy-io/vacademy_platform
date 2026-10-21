@@ -32,4 +32,26 @@ describe('CoursePageSettingsCard', () => {
         fireEvent.click(switches()[2]!);
         expect(onChange).toHaveBeenCalledWith({ content: false, layout: 'standard' });
     });
+
+    it('stores seriesLimit as a number and drops it when emptied', () => {
+        const onChange = vi.fn();
+        render(<CoursePageSettingsCard value={{ series: true, layout: 'standard' }} onChange={onChange} />);
+        const input = screen.getByLabelText('global.coursePage.seriesLimit');
+        fireEvent.change(input, { target: { value: '3' } });
+        expect(onChange).toHaveBeenLastCalledWith({ series: true, layout: 'standard', seriesLimit: 3 });
+        fireEvent.change(input, { target: { value: '' } });
+        expect(onChange).toHaveBeenLastCalledWith({ series: true, layout: 'standard' });
+        fireEvent.change(input, { target: { value: '0' } });
+        expect(onChange).toHaveBeenLastCalledWith({ series: true, layout: 'standard' });
+    });
+
+    it('shows the stored limit, and no limit field while the chips are off', () => {
+        const { unmount } = render(
+            <CoursePageSettingsCard value={{ seriesLimit: 3 }} onChange={vi.fn()} />
+        );
+        expect(screen.getByLabelText('global.coursePage.seriesLimit')).toHaveValue('3');
+        unmount();
+        render(<CoursePageSettingsCard value={{ series: false }} onChange={vi.fn()} />);
+        expect(screen.queryByLabelText('global.coursePage.seriesLimit')).toBeNull();
+    });
 });

@@ -10,7 +10,7 @@ import { useSiteT } from "../../-utils/catalogue-locale";
 import type { CourseAuthor } from "../../-utils/course-authors";
 import type { CoursePageContext } from "../-utils/course-page-context";
 import { coursePageTrail, plainText } from "../-utils/course-page-context";
-import { embedUrlOf, type CourseFaq, type PreviewVideo } from "../-utils/course-page-content";
+import { embedUrlOf, seriesWindow, type CourseFaq, type PreviewVideo } from "../-utils/course-page-content";
 import type { CourseSeries, SeriesStep } from "../-hooks/use-course-series";
 import { AuthorAvatar } from "./AuthorAvatar";
 
@@ -242,6 +242,8 @@ export interface CourseDetailsViewProps {
   /** The hero price box's action(s), when they lay out differently there (cart buttons side by side). */
   heroActions?: React.ReactNode;
   series: CourseSeries | null;
+  /** At most this many "Part of" chips, around the current course (globalSettings.courseDetails.seriesLimit). Default: all. */
+  seriesLimit?: unknown;
   /** A series step's price ("₹551", "Free"), or "". */
   formatStepPrice: (step: SeriesStep) => string;
   /** A series step's format label ("E-Learning"), or "". */
@@ -292,6 +294,7 @@ export const CourseDetailsView: React.FC<CourseDetailsViewProps> = (props) => {
     actions,
     heroActions,
     series,
+    seriesLimit,
     formatStepPrice,
     stepFormat,
     outline,
@@ -567,13 +570,13 @@ export const CourseDetailsView: React.FC<CourseDetailsViewProps> = (props) => {
                       {t("courseDetails.page.partOf", { name: siteT(series.name), defaultValue: "Part of {{name}}" })}
                     </p>
                     <ol className="flex flex-wrap gap-2">
-                      {series.steps.map((step, i) => {
+                      {seriesWindow(series.steps, seriesLimit).map(({ step, number }) => {
                         const href = stepHref(tagName, step);
                         return (
                           <li key={step.key}>
                             {step.current ? (
                               <span aria-current="step" className={cn(CHIP, "inline-block bg-palette-primary font-bold text-white")}>
-                                {i + 1}&nbsp;&nbsp;{siteT(step.label)}
+                                {number}&nbsp;&nbsp;{siteT(step.label)}
                               </span>
                             ) : (
                               <a
@@ -585,7 +588,7 @@ export const CourseDetailsView: React.FC<CourseDetailsViewProps> = (props) => {
                                   "inline-block border border-palette-outline bg-white font-medium text-palette-text hover:border-palette-primary hover:text-palette-primary",
                                 )}
                               >
-                                {i + 1}&nbsp;&nbsp;{siteT(step.label)}
+                                {number}&nbsp;&nbsp;{siteT(step.label)}
                               </a>
                             )}
                           </li>

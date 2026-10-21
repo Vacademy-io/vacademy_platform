@@ -8,6 +8,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 import vacademy.io.notification_service.features.announcements.service.EmailConfigurationService;
+import vacademy.io.notification_service.features.email_inbox.dto.EmailAttachmentDTO;
 import vacademy.io.notification_service.features.email_inbox.dto.EmailConversationDTO;
 import vacademy.io.notification_service.features.email_inbox.dto.EmailMessageDTO;
 import vacademy.io.notification_service.features.email_inbox.dto.EmailReplyRequest;
@@ -78,9 +79,10 @@ public class EmailInboxService {
 
         Map<String, Long> unread = batchUnread(latest);
         Map<String, String> names = batchInboundNames(instituteId, latest);
+        Set<String> withFiles = batchWithAttachments(instituteId, latest);
 
         return latest.stream()
-                .map(nl -> toConversation(nl, unread, names))
+                .map(nl -> toConversation(nl, unread, names, withFiles))
                 .collect(Collectors.toList());
     }
 
@@ -100,7 +102,8 @@ public class EmailInboxService {
                 .searchEmailConversations(instituteId, senderFilter, types, safe, safeLimit, safeOffset);
         Map<String, Long> unread = batchUnread(rows);
         Map<String, String> names = batchInboundNames(instituteId, rows);
-        return rows.stream().map(nl -> toConversation(nl, unread, names)).collect(Collectors.toList());
+        Set<String> withFiles = batchWithAttachments(instituteId, rows);
+        return rows.stream().map(nl -> toConversation(nl, unread, names, withFiles)).collect(Collectors.toList());
     }
 
     private Map<String, Long> batchUnread(List<NotificationLog> rows) {
@@ -146,8 +149,24 @@ public class EmailInboxService {
         return result;
     }
 
+    /** Counterparties on this page who sent at least one email with a real attachment. */
+    private Set<String> batchWithAttachments(String instituteId, List<NotificationLog> rows) {
+        List<String> emails = rows.stream()
+                .map(NotificationLog::getChannelId)
+                .filter(e -> e != null && !e.isBlank())
+                .distinct()
+                .collect(Collectors.toList());
+        if (emails.isEmpty()) return Set.of();
+        try {
+            return new HashSet<>(notificationLogRepository.findInboundCounterpartiesWithAttachments(instituteId, emails));
+        } catch (Exception e) {
+            log.warn("[EMAIL-INBOX] Failed to fetch attachment flags: {}", e.getMessage());
+            return Set.of();
+        }
+    }
+
     private EmailConversationDTO toConversation(NotificationLog nl, Map<String, Long> unread,
-                                                Map<String, String> inboundNames) {
+                                                Map<String, String> inboundNames, Set<String> withFiles) {
         boolean inbound = INBOUND_TYPE.equals(nl.getNotificationType());
         Optional<JsonNode> payload = parsePayload(nl);
         String subject = payload.map(p -> textOrNull(p, EmailService.SUBJECT_PAYLOAD_KEY)).orElse(null);
@@ -179,6 +198,7 @@ public class EmailInboxService {
                 .lastMessageTime(nl.getNotificationDate())
                 .unreadCount(unread.getOrDefault(nl.getChannelId(), 0L))
                 .system(EmailTextUtils.isSystemSender(nl.getChannelId(), inbound ? subject : null))
+                .hasAttachments(withFiles.contains(nl.getChannelId()))
                 .build();
     }
 
@@ -340,7 +360,41 @@ public class EmailInboxService {
                 // provider failure must not read as a delivered email.
                 .deliveryStatus(inbound ? null : blankToNull(nl.getDeliveryStatus()))
                 .deliveryErrorMessage(inbound ? null : blankToNull(nl.getDeliveryErrorMessage()))
+                .attachments(inbound ? attachmentsOf(payload) : List.of())
+                .hasHtml(inbound && payload.map(p -> p.path(InboundMimeParts.HAS_HTML_KEY).asBoolean(false)).orElse(false))
                 .build();
+    }
+
+    /** The attachment index ingest wrote into an inbound row's payload; empty when absent. */
+    static List<EmailAttachmentDTO> attachmentsOf(Optional<JsonNode> payload) {
+        JsonNode list = payload.map(p -> p.get(InboundMimeParts.ATTACHMENTS_KEY)).orElse(null);
+        if (list == null || !list.isArray()) return List.of();
+        List<EmailAttachmentDTO> out = new ArrayList<>();
+        for (JsonNode a : list) {
+            String id = a.path("id").asText(null);
+            if (id == null || id.isBlank()) continue;
+            out.add(EmailAttachmentDTO.builder()
+                    .id(id)
+                    .filename(a.path("filename").asText("attachment"))
+                    .contentType(a.path("contentType").asText("application/octet-stream"))
+                    .size(a.path("size").asLong(-1))
+                    .inline(a.path("inline").asBoolean(false))
+                    .build());
+        }
+        return out;
+    }
+
+    /**
+     * An INBOUND_EMAIL row of this institute, for serving its attachments / HTML. Empty for any
+     * other row — an id from another institute is indistinguishable from a missing one.
+     */
+    public Optional<NotificationLog> findInboundEmail(String instituteId, String messageId) {
+        if (instituteId == null || instituteId.isBlank() || messageId == null || messageId.isBlank()) {
+            return Optional.empty();
+        }
+        return notificationLogRepository.findById(messageId)
+                .filter(nl -> INBOUND_TYPE.equals(nl.getNotificationType()))
+                .filter(nl -> instituteId.equals(nl.getInstituteId()));
     }
 
     /** OUTGOING origin per the inbox contract. */

@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.Instant;
+import java.util.List;
 
 @Data
 @Builder
@@ -53,4 +54,8 @@ public class EmailMessageDTO {
     private String deliveryStatus;
     /** Human-readable reason when {@link #deliveryStatus} is a failure; null otherwise. */
     private String deliveryErrorMessage;
+    /** INCOMING only: the email's files. Empty when it has none or was never indexed. */
+    private List<EmailAttachmentDTO> attachments;
+    /** INCOMING only: the original HTML body can be fetched from the html endpoint. */
+    private boolean hasHtml;
 }

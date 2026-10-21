@@ -1036,6 +1036,38 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
             @Param("emails") List<String> emails);
 
     /**
+     * Counterparties (of the given page) that sent this institute at least one email with a
+     * real (non-inline) attachment — the inbox list's paperclip. Reads the attachment index
+     * InboundEmailService / InboundEmailContentService write into message_payload.
+     */
+    @Query(value = """
+            SELECT DISTINCT nl.channel_id
+            FROM notification_log nl
+            WHERE nl.institute_id = :instituteId
+              AND nl.channel_id IN (:emails)
+              AND nl.notification_type = 'INBOUND_EMAIL'
+              AND nl.message_payload LIKE '%"inline":false%'
+            """, nativeQuery = true)
+    List<String> findInboundCounterpartiesWithAttachments(
+            @Param("instituteId") String instituteId,
+            @Param("emails") List<String> emails);
+
+    /**
+     * Inbound rows whose raw email location is known (s3Key) but whose parts were never indexed
+     * (no "attachments" key) — rows stored before ingest indexed attachments, once backfilled
+     * with their S3 key. Newest first so recent threads gain attachments first.
+     */
+    @Query(value = """
+            SELECT * FROM notification_log nl
+            WHERE nl.notification_type = 'INBOUND_EMAIL'
+              AND nl.message_payload LIKE '%"s3Key"%'
+              AND nl.message_payload NOT LIKE '%"attachments"%'
+            ORDER BY nl.notification_date DESC
+            LIMIT :limit
+            """, nativeQuery = true)
+    List<NotificationLog> findInboundEmailsToIndex(@Param("limit") int limit);
+
+    /**
      * The WhatsApp profile name the provider reported on this number's latest inbound message
      * to the institute. Used to name a lead created by a chatbot flow. Empty list when none.
      */

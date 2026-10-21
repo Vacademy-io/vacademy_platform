@@ -77,7 +77,10 @@ public class WebSecurityConfig {
             "/notification-service/v1/send-email",
             // Sending controls: per-institute quota status and the opt-out list (email addresses)
             // plus add/remove — admin data, must not sit under the broad v1 permitAll.
-            "/notification-service/v1/email-sending/**"
+            "/notification-service/v1/email-sending/**",
+            // Email inbox: every email the institute sent/received (attachments included) and
+            // reply-as-the-institute. The controller further requires institute staff.
+            "/notification-service/v1/email-inbox/**"
     };
 
     @Autowired

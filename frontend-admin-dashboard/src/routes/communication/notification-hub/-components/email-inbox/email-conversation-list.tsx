@@ -1,28 +1,18 @@
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
-import {
-    MagnifyingGlass,
-    ArrowFatDown,
-    PaperPlaneTilt,
-    EnvelopeSimple,
-    Warning,
-} from '@phosphor-icons/react';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { EnvelopeSimple, Paperclip, PaperPlaneTilt, Warning } from '@phosphor-icons/react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import type { EmailConversation } from '../../-services/email-inbox-api';
 import { isSystemSender } from '../../-utils/email-text';
+import { EmailAvatar } from './email-avatar';
 
 interface Props {
     conversations: EmailConversation[];
     selectedEmail: string | null;
     onSelect: (email: string) => void;
-    searchQuery: string;
-    onSearchChange: (q: string) => void;
     loading: boolean;
     /** True when there are more pages to load. Hides the sentinel + "Loading more" footer when false. */
     hasMore: boolean;
@@ -30,18 +20,20 @@ interface Props {
     onLoadMore: () => void;
     /** True while a load-more request is in flight (renders a footer skeleton). */
     loadingMore: boolean;
+    /** True while a search is active — the empty state then says "no matches". */
+    searching?: boolean;
 }
 
+/** The message list, laid out like Gmail's: sender, subject, time; bold while unread. */
 export function EmailConversationList({
     conversations,
     selectedEmail,
     onSelect,
-    searchQuery,
-    onSearchChange,
     loading,
     hasMore,
     onLoadMore,
     loadingMore,
+    searching = false,
 }: Props) {
     const { t, i18n } = useTranslation('communicationEmailConversationList');
     const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -69,38 +61,22 @@ export function EmailConversationList({
     return (
         <aside
             className={cn(
-                'w-full shrink-0 flex-col border-r border-neutral-200 bg-neutral-50 md:w-80',
+                'w-full shrink-0 flex-col border-e border-neutral-200 bg-white md:w-96',
                 selectedEmail ? 'hidden md:flex' : 'flex'
             )}
         >
-            <div className="border-b border-neutral-200 bg-white p-3">
-                <div className="relative">
-                    <MagnifyingGlass
-                        size={14}
-                        className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
-                    />
-                    <Input
-                        type="search"
-                        value={searchQuery}
-                        onChange={(e) => onSearchChange(e.target.value)}
-                        placeholder={t('searchPlaceholder')}
-                        className="pl-8 h-9"
-                    />
-                </div>
-            </div>
-
             <ScrollArea className="flex-1">
                 {loading && conversations.length === 0 ? (
-                    <div className="p-3 space-y-2">
-                        {Array.from({ length: 6 }).map((_, i) => (
-                            <Skeleton key={i} className="h-16 rounded-md" />
+                    <div className="space-y-px">
+                        {Array.from({ length: 8 }).map((_, i) => (
+                            <RowSkeleton key={i} />
                         ))}
                     </div>
                 ) : conversations.length === 0 ? (
-                    <EmptyState />
+                    <EmptyState searching={searching} />
                 ) : (
                     <>
-                        <ul className="divide-y divide-border contain-inline-size">
+                        <ul className="divide-y divide-neutral-100 contain-inline-size">
                             {conversations.map((c) => (
                                 <ConversationRow
                                     key={c.email}
@@ -115,15 +91,11 @@ export function EmailConversationList({
 
                         {/* Infinite-scroll sentinel + loading footer */}
                         {hasMore && (
-                            <div
-                                ref={sentinelRef}
-                                className="p-3"
-                                aria-hidden
-                            >
+                            <div ref={sentinelRef} aria-hidden>
                                 {loadingMore ? (
-                                    <div className="space-y-2">
+                                    <div className="space-y-px">
                                         {Array.from({ length: 3 }).map((_, i) => (
-                                            <Skeleton key={i} className="h-14 rounded-md" />
+                                            <RowSkeleton key={i} />
                                         ))}
                                     </div>
                                 ) : (
@@ -157,84 +129,93 @@ function ConversationRow({
     locale: string;
 }) {
     const display = c.name || c.email;
-    const initials = getInitials(display);
-    const unread = c.unreadCount ?? 0;
+    const unread = (c.unreadCount ?? 0) > 0;
     const isOutgoing = c.lastMessageDirection === 'OUTGOING';
     // The backend's verdict when it sent one; the same sender rule locally when it predates the field.
     const system = c.system ?? isSystemSender(c.email, c.lastMessageSubject);
-    // Subject first (what a mail client shows), then the clean snippet; "You:" marks our own last
-    // message the way WhatsApp does, so direction is readable without the icon.
-    const previewText = c.lastMessageSubject || c.lastMessagePreview || t('noSubject');
-    const preview = isOutgoing ? `${t('you')}: ${previewText}` : previewText;
+    const subject = c.lastMessageSubject || c.lastMessagePreview || t('noSubject');
 
     return (
         <li>
             <button
+                type="button"
                 onClick={onClick}
+                aria-current={selected ? 'true' : undefined}
                 className={cn(
-                    'w-full text-left px-3 py-3 flex items-start gap-3 transition-colors',
+                    'flex w-full items-start gap-3 border-s-4 px-3 py-2.5 text-start transition-colors focus:outline-none focus-visible:bg-neutral-50',
                     selected
-                        ? 'border-l-2 border-l-primary-500 bg-primary-50'
-                        : 'border-l-2 border-l-transparent bg-white hover:bg-neutral-50'
+                        ? 'border-s-primary-500 bg-primary-50'
+                        : 'border-s-transparent hover:bg-neutral-50 hover:shadow-sm'
                 )}
             >
-                <Avatar className="h-9 w-9 shrink-0">
-                    <AvatarFallback className="text-xs font-medium bg-muted text-muted-foreground">
-                        {initials}
-                    </AvatarFallback>
-                </Avatar>
+                <EmailAvatar seed={c.email} label={display} size="md" />
 
-                <div className="min-w-0 flex-1 space-y-1">
-                    <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline gap-2">
                         <p
                             className={cn(
-                                'text-sm truncate',
-                                unread > 0 ? 'font-semibold text-foreground' : 'font-medium text-foreground'
+                                'min-w-0 flex-1 truncate text-sm',
+                                unread
+                                    ? 'font-bold text-neutral-900'
+                                    : 'font-medium text-neutral-800'
                             )}
                         >
                             {display}
                         </p>
-                        <span className="shrink-0 whitespace-nowrap text-caption text-neutral-400">
+                        {c.hasAttachments && (
+                            <Paperclip
+                                size={14}
+                                className="shrink-0 self-center text-neutral-500"
+                                aria-label={t('hasAttachments')}
+                            />
+                        )}
+                        <span
+                            className={cn(
+                                'shrink-0 whitespace-nowrap text-xs',
+                                unread ? 'font-bold text-neutral-900' : 'text-neutral-500'
+                            )}
+                        >
                             {c.lastMessageTime ? formatTime(c.lastMessageTime, t, locale) : ''}
                         </span>
                     </div>
 
-                    {system && (
-                        <p className="flex items-center gap-1 truncate text-xs font-medium text-warning-700">
-                            <Warning size={12} weight="fill" className="shrink-0" />
-                            {t('deliveryFailed')}
-                        </p>
-                    )}
+                    {c.name && <p className="truncate text-xs text-neutral-500">{c.email}</p>}
 
-                    {c.name && (
-                        <p className="text-xs text-muted-foreground truncate">{c.email}</p>
-                    )}
-
-                    <div className="flex items-center justify-between gap-2">
+                    <div className="mt-0.5 flex items-center gap-2">
                         <p
                             className={cn(
-                                'text-xs truncate flex items-center gap-1.5 min-w-0',
-                                unread > 0 ? 'text-foreground' : 'text-muted-foreground'
+                                'flex min-w-0 flex-1 items-center gap-1 truncate text-sm',
+                                system
+                                    ? 'text-warning-700'
+                                    : unread
+                                      ? 'font-semibold text-neutral-900'
+                                      : 'text-neutral-600'
                             )}
                         >
                             {system ? (
                                 <Warning
-                                    size={12}
-                                    className="shrink-0 text-warning-600"
+                                    size={13}
                                     weight="fill"
+                                    className="shrink-0 text-warning-600"
                                 />
                             ) : (
-                                <DirectionIcon outgoing={isOutgoing} />
+                                isOutgoing && (
+                                    <PaperPlaneTilt
+                                        size={12}
+                                        weight="fill"
+                                        className="shrink-0 text-neutral-400"
+                                        aria-label={t('you')}
+                                    />
+                                )
                             )}
-                            <span className="truncate">{preview}</span>
+                            <span className="truncate">
+                                {system ? t('deliveryFailed') : subject}
+                            </span>
                         </p>
-                        {unread > 0 && (
-                            <Badge
-                                variant="default"
-                                className="flex h-5 min-w-5 items-center justify-center px-1.5 text-2xs"
-                            >
-                                {unread > 99 ? '99+' : unread}
-                            </Badge>
+                        {unread && (
+                            <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-primary-500 px-1.5 text-2xs font-semibold text-white">
+                                {(c.unreadCount ?? 0) > 99 ? '99+' : c.unreadCount}
+                            </span>
                         )}
                     </div>
                 </div>
@@ -243,49 +224,48 @@ function ConversationRow({
     );
 }
 
-function DirectionIcon({ outgoing }: { outgoing: boolean }) {
-    return outgoing ? (
-        <PaperPlaneTilt size={12} className="shrink-0 text-primary-500" weight="fill" />
-    ) : (
-        <ArrowFatDown size={12} className="shrink-0 text-success-600" weight="fill" />
-    );
-}
-
-function EmptyState() {
-    const { t } = useTranslation('communicationEmailConversationList');
+function RowSkeleton() {
     return (
-        <div className="h-full flex items-center justify-center py-12 px-6">
-            <div className="text-center text-muted-foreground">
-                <EnvelopeSimple size={36} className="mx-auto mb-2 opacity-40" />
-                <p className="text-sm">{t('noConversations')}</p>
-                <p className="text-xs mt-1 opacity-70">
-                    {t('noConversationsHint')}
-                </p>
+        <div className="flex items-start gap-3 px-4 py-3">
+            <Skeleton className="size-10 rounded-full" />
+            <div className="flex-1 space-y-2 pt-1">
+                <Skeleton className="h-3 w-2/5" />
+                <Skeleton className="h-3 w-4/5" />
             </div>
         </div>
     );
 }
 
-function getInitials(s: string): string {
-    if (!s) return '?';
-    const parts = s.split(/[\s@.]+/).filter(Boolean);
-    if (parts.length === 0) return s.charAt(0).toUpperCase();
-    if (parts.length === 1) return (parts[0] ?? '').slice(0, 2).toUpperCase();
-    return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase();
+function EmptyState({ searching }: { searching: boolean }) {
+    const { t } = useTranslation('communicationEmailConversationList');
+    return (
+        <div className="flex h-full items-center justify-center px-6 py-12">
+            <div className="text-center text-neutral-500">
+                <EnvelopeSimple size={36} className="mx-auto mb-2 opacity-40" />
+                <p className="text-sm">{searching ? t('noMatches') : t('noConversations')}</p>
+                {!searching && (
+                    <p className="mt-1 text-xs opacity-70">{t('noConversationsHint')}</p>
+                )}
+            </div>
+        </div>
+    );
 }
 
 function formatTime(timestamp: string, t: TFunction, locale: string): string {
     try {
         const d = new Date(timestamp);
         const now = new Date();
-        const isToday = d.toDateString() === now.toDateString();
-        if (isToday) {
-            return d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
+        if (d.toDateString() === now.toDateString()) {
+            return d.toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' });
         }
         const yesterday = new Date(now);
         yesterday.setDate(yesterday.getDate() - 1);
         if (d.toDateString() === yesterday.toDateString()) return t('yesterday');
-        return d.toLocaleDateString(locale, { month: 'short', day: 'numeric' });
+        return d.toLocaleDateString(locale, {
+            month: 'short',
+            day: 'numeric',
+            year: d.getFullYear() === now.getFullYear() ? undefined : 'numeric',
+        });
     } catch {
         return '';
     }

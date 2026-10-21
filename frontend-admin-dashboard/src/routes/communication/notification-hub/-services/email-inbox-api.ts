@@ -18,6 +18,20 @@ export interface EmailConversation {
     /** The counterparty is a mail-system sender (mailer-daemon / postmaster / no-reply-aws). */
     system?: boolean;
     lastMessageSubject?: string;
+    /** The counterparty sent at least one email with a real (non-inline) attachment. */
+    hasAttachments?: boolean;
+}
+
+/** One file on an inbound email. Bytes come from getEmailAttachmentBlob(). */
+export interface EmailAttachment {
+    /** MIME part id ("2", "1.2") — pass back to the attachment endpoint. */
+    id: string;
+    filename: string;
+    contentType: string;
+    /** Decoded bytes; -1 when unknown. */
+    size: number;
+    /** An image the HTML body shows in place (cid:), not a file attached to the email. */
+    inline: boolean;
 }
 
 export interface EmailMessage {
@@ -46,6 +60,16 @@ export interface EmailMessage {
     system?: boolean;
     /** INCOMING only: the outbound notification_log id this replies to. */
     inReplyToId?: string;
+    /**
+     * OUTGOING only: FAILED / BOUNCED / DEFERRED / SENT when recorded. Absent = treat as sent.
+     */
+    deliveryStatus?: string;
+    /** Why a FAILED / BOUNCED send did not go out. */
+    deliveryErrorMessage?: string;
+    /** INCOMING only: files on the email (empty when none / not yet indexed). */
+    attachments?: EmailAttachment[];
+    /** INCOMING only: the original HTML body is available from getInboundEmailHtml(). */
+    hasHtml?: boolean;
 }
 
 export interface EmailInboxStatus {
@@ -124,10 +148,9 @@ export async function searchEmailConversations(
 
 /** Institute's configured sender addresses, for populating the dropdown. */
 export async function getInstituteSenders(instituteId: string): Promise<string[]> {
-    const { data } = await authenticatedAxiosInstance.get<string[]>(
-        `${EMAIL_INBOX_BASE}/senders`,
-        { params: { instituteId } }
-    );
+    const { data } = await authenticatedAxiosInstance.get<string[]>(`${EMAIL_INBOX_BASE}/senders`, {
+        params: { instituteId },
+    });
     return data;
 }
 
@@ -147,4 +170,29 @@ export async function getEmailInboxStatus(instituteId: string): Promise<EmailInb
         params: { instituteId },
     });
     return data;
+}
+
+/** The bytes of one attachment of an inbound email (always a download on the API side). */
+export async function getEmailAttachmentBlob(
+    messageId: string,
+    instituteId: string,
+    part: string
+): Promise<Blob> {
+    const { data } = await authenticatedAxiosInstance.get<Blob>(
+        `${EMAIL_INBOX_BASE}/messages/${encodeURIComponent(messageId)}/attachment`,
+        { params: { instituteId, part }, responseType: 'blob' }
+    );
+    return data;
+}
+
+/** The inbound email's original HTML (cid: images inlined); null when it had none. */
+export async function getInboundEmailHtml(
+    messageId: string,
+    instituteId: string
+): Promise<string | null> {
+    const { data } = await authenticatedAxiosInstance.get<{ html: string | null }>(
+        `${EMAIL_INBOX_BASE}/messages/${encodeURIComponent(messageId)}/html`,
+        { params: { instituteId } }
+    );
+    return data?.html ?? null;
 }

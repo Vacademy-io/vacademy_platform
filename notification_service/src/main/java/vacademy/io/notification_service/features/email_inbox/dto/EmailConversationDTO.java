@@ -31,4 +31,6 @@ public class EmailConversationDTO {
     private long unreadCount;
     /** True when the counterparty is a mail-system sender (mailer-daemon / postmaster / no-reply-aws). */
     private boolean system;
+    /** True when this counterparty sent at least one email with a (non-inline) attachment. */
+    private boolean hasAttachments;
 }

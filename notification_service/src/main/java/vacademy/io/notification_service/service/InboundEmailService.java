@@ -18,6 +18,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
+import vacademy.io.notification_service.features.email_inbox.service.InboundMimeParts;
 import vacademy.io.notification_service.features.notification_log.entity.EmailAddressMapping;
 import vacademy.io.notification_service.features.notification_log.entity.NotificationLog;
 import vacademy.io.notification_service.features.notification_log.repository.EmailAddressMappingRepository;
@@ -159,6 +160,16 @@ public class InboundEmailService {
             payloadMap.put("to", toAddress);
             payloadMap.put("body", truncatedBody);
             payloadMap.put("instituteId", instituteId);
+            // Where the raw email lives, plus its attachment index: the inbox lists attachments
+            // from this and streams a file from S3 only when an admin opens it.
+            payloadMap.put(InboundMimeParts.S3_BUCKET_KEY, bucket);
+            payloadMap.put(InboundMimeParts.S3_KEY_KEY, key);
+            try {
+                payloadMap.putAll(InboundMimeParts.indexFields(mimeMessage));
+            } catch (Exception e) {
+                // Left unindexed: InboundEmailContentService.indexPending() retries it.
+                log.warn("Could not index attachments of inbound {}/{}: {}", bucket, key, e.getMessage());
+            }
             String messagePayload = objectMapper.writeValueAsString(payloadMap);
 
             // 9. Persist

@@ -4,7 +4,8 @@ import {
     ArrowClockwise,
     PaperPlaneTilt,
     ArrowFatDown,
-    Tray,
+    MagnifyingGlass,
+    X,
 } from '@phosphor-icons/react';
 import {
     Select,
@@ -13,6 +14,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
 import { MyButton } from '@/components/design-system/button';
 import { cn } from '@/lib/utils';
 import { getInstituteId } from '@/constants/helper';
@@ -53,13 +55,22 @@ export function EmailInboxPanel() {
 
     const [selectedEmail, setSelectedEmail] = useState<string | null>(null);
     const [messages, setMessages] = useState<EmailMessage[]>([]);
+    // What the admin is typing, and the (debounced) query actually sent to the backend.
+    const [searchInput, setSearchInput] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
     const [loadingMessages, setLoadingMessages] = useState(false);
     const [hasMoreMessages, setHasMoreMessages] = useState(false);
 
-    // Reply dialog is hidden by default. Opened explicitly via the Reply button in the thread
-    // header so the composer never covers the email body the admin is reading.
+    // The inline reply composer (Gmail-style, under the thread). Closed by default and on every
+    // conversation switch, so a draft never carries over to another recipient.
     const [replyOpen, setReplyOpen] = useState(false);
+    useEffect(() => setReplyOpen(false), [selectedEmail]);
+
+    // One request per pause in typing, not per keystroke.
+    useEffect(() => {
+        const handle = setTimeout(() => setSearchQuery(searchInput.trim()), 300);
+        return () => clearTimeout(handle);
+    }, [searchInput]);
 
     const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -235,6 +246,8 @@ export function EmailInboxPanel() {
     return (
         <div className="flex h-full flex-col gap-3 p-3 sm:p-4">
             <HeaderBar
+                search={searchInput}
+                onSearchChange={setSearchInput}
                 senders={senders}
                 senderFilter={senderFilter}
                 onSenderChange={(v) => {
@@ -252,8 +265,7 @@ export function EmailInboxPanel() {
                     conversations={conversations}
                     selectedEmail={selectedEmail}
                     onSelect={setSelectedEmail}
-                    searchQuery={searchQuery}
-                    onSearchChange={setSearchQuery}
+                    searching={!!searchQuery}
                     loading={loadingConversations}
                     hasMore={hasMore}
                     onLoadMore={loadMore}
@@ -261,13 +273,14 @@ export function EmailInboxPanel() {
                 />
                 <div
                     className={cn(
-                        'flex-col flex-1 min-h-0 min-w-0',
+                        'min-h-0 min-w-0 flex-1 flex-col',
                         selectedEmail ? 'flex' : 'hidden md:flex'
                     )}
                 >
                     <EmailThread
                         selectedEmail={selectedEmail}
                         counterpartyName={selectedConvo?.name}
+                        instituteId={instituteId}
                         messages={messages}
                         loading={loadingMessages}
                         hasMore={hasMoreMessages}
@@ -279,23 +292,26 @@ export function EmailInboxPanel() {
                         }
                         onBack={() => setSelectedEmail(null)}
                         system={selectedIsSystem}
+                        composer={
+                            replyOpen && selectedEmail && !selectedIsSystem ? (
+                                // Subject prefilled as "Re: <the subject they last wrote in>".
+                                <EmailReplyComposer
+                                    instituteId={instituteId}
+                                    toEmail={selectedEmail}
+                                    toName={selectedConvo?.name}
+                                    defaultSubject={buildReplySubject(messages)}
+                                    onDiscard={() => setReplyOpen(false)}
+                                    onSent={(msg) => {
+                                        setMessages((prev) => [...prev, msg]);
+                                        setReplyOpen(false);
+                                        refreshFirstPageIntoExisting();
+                                    }}
+                                />
+                            ) : undefined
+                        }
                     />
                 </div>
             </div>
-
-            {/* Reply dialog — rendered once, controlled by replyOpen. Prefills subject as
-                "Re: <subject of the latest inbound or outbound message>" when available. */}
-            <EmailReplyComposer
-                open={replyOpen}
-                onOpenChange={setReplyOpen}
-                instituteId={instituteId}
-                toEmail={selectedEmail}
-                defaultSubject={buildReplySubject(messages)}
-                onSent={(msg) => {
-                    setMessages((prev) => [...prev, msg]);
-                    refreshFirstPageIntoExisting();
-                }}
-            />
         </div>
     );
 }
@@ -326,6 +342,8 @@ function buildReplySubject(messages: EmailMessage[]): string {
 }
 
 function HeaderBar({
+    search,
+    onSearchChange,
     senders,
     senderFilter,
     onSenderChange,
@@ -333,6 +351,8 @@ function HeaderBar({
     onDirectionChange,
     onRefresh,
 }: {
+    search: string;
+    onSearchChange: (q: string) => void;
     senders: string[];
     senderFilter: string;
     onSenderChange: (v: string) => void;
@@ -343,24 +363,50 @@ function HeaderBar({
     const { t } = useTranslation('communicationEmailInboxPanel');
     return (
         <header className="flex shrink-0 flex-wrap items-center gap-3">
+            <SearchPill value={search} onChange={onSearchChange} />
             <SenderSelect senders={senders} value={senderFilter} onChange={onSenderChange} />
             <DirectionFilter value={directionFilter} onChange={onDirectionChange} />
-            <p className="hidden min-w-0 flex-1 items-center gap-1.5 truncate text-caption text-neutral-500 lg:flex">
-                <Tray size={14} className="shrink-0 text-neutral-400" />
-                <span className="truncate">{t('subtitle')}</span>
-            </p>
             <MyButton
-                buttonType="secondary"
+                buttonType="text"
                 scale="medium"
                 layoutVariant="icon"
                 onClick={onRefresh}
-                className="ml-auto shrink-0 lg:ml-0"
+                className="shrink-0"
                 title={t('refresh')}
                 aria-label={t('refresh')}
             >
-                <ArrowClockwise size={16} />
+                <ArrowClockwise size={18} />
             </MyButton>
         </header>
+    );
+}
+
+/** Gmail's search bar: a wide rounded field at the top of the inbox. */
+function SearchPill({ value, onChange }: { value: string; onChange: (q: string) => void }) {
+    const { t } = useTranslation('communicationEmailInboxPanel');
+    return (
+        <label className="flex h-11 min-w-0 flex-1 basis-full items-center gap-3 rounded-full bg-neutral-100 px-4 transition-colors focus-within:bg-white focus-within:shadow-md md:basis-80">
+            <MagnifyingGlass size={18} className="shrink-0 text-neutral-500" />
+            <Input
+                type="search"
+                value={value}
+                onChange={(e) => onChange(e.target.value)}
+                placeholder={t('searchPlaceholder')}
+                aria-label={t('searchPlaceholder')}
+                className="h-auto min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-neutral-900 shadow-none placeholder:text-neutral-500 focus-visible:ring-0 focus-visible:ring-offset-0 [&::-webkit-search-cancel-button]:hidden"
+            />
+            {value && (
+                <button
+                    type="button"
+                    onClick={() => onChange('')}
+                    className="flex size-7 shrink-0 items-center justify-center rounded-full text-neutral-500 hover:bg-neutral-200"
+                    title={t('clearSearch')}
+                    aria-label={t('clearSearch')}
+                >
+                    <X size={14} weight="bold" />
+                </button>
+            )}
+        </label>
     );
 }
 
@@ -376,15 +422,17 @@ function SenderSelect({
     const { t } = useTranslation('communicationEmailInboxPanel');
     const empty = senders.length === 0;
     return (
-        <div className="flex items-center gap-2 min-w-0 flex-1 sm:flex-none">
+        <div className="flex min-w-0 flex-1 items-center gap-2 sm:flex-none">
             <span className="shrink-0 text-xs font-medium text-neutral-500">{t('inboxFor')}</span>
             <Select value={value} onValueChange={onChange} disabled={empty}>
-                <SelectTrigger className="h-9 w-full bg-white text-xs sm:w-64">
+                <SelectTrigger className="h-9 w-full rounded-full bg-white text-xs sm:w-60">
                     <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                     <SelectItem value={ALL_SENDERS} className="text-xs">
-                        {empty ? t('noSendersConfigured') : t('allSenders', { count: senders.length })}
+                        {empty
+                            ? t('noSendersConfigured')
+                            : t('allSenders', { count: senders.length })}
                     </SelectItem>
                     {senders.map((s) => (
                         <SelectItem key={s} value={s} className="text-xs">
@@ -407,7 +455,11 @@ function DirectionFilter({
     const { t } = useTranslation('communicationEmailInboxPanel');
     const options: { value: EmailDirectionFilter; label: string; icon: React.ReactNode }[] = [
         { value: 'ALL', label: t('direction.all'), icon: null },
-        { value: 'SENT', label: t('direction.sent'), icon: <PaperPlaneTilt size={12} weight="fill" /> },
+        {
+            value: 'SENT',
+            label: t('direction.sent'),
+            icon: <PaperPlaneTilt size={12} weight="fill" />,
+        },
         {
             value: 'RECEIVED',
             label: t('direction.received'),
@@ -415,7 +467,7 @@ function DirectionFilter({
         },
     ];
     return (
-        <div className="inline-flex rounded-lg border border-neutral-200 bg-white p-0.5">
+        <div className="inline-flex rounded-full border border-neutral-200 bg-white p-0.5">
             {options.map((o) => (
                 <button
                     key={o.value}
@@ -423,9 +475,9 @@ function DirectionFilter({
                     type="button"
                     aria-pressed={value === o.value}
                     className={cn(
-                        'flex h-7 items-center gap-1 rounded-md px-2.5 text-xs font-medium transition',
+                        'flex h-8 items-center gap-1 rounded-full px-3 text-xs font-medium transition',
                         value === o.value
-                            ? 'bg-primary-500 text-white'
+                            ? 'bg-primary-100 text-primary-600'
                             : 'text-neutral-600 hover:bg-neutral-100'
                     )}
                 >

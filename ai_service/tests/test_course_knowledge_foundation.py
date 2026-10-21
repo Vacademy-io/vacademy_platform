@@ -575,3 +575,19 @@ def test_schema_check_on_postgres(PgSession):
         assert schema_check.check_course_knowledge_schema(db) is True
     finally:
         db.close()
+
+
+def test_ck_staff_accepts_custom_institute_role_without_manage(monkeypatch):
+    # A custom role ("Academic Coordinator") is staff, as in Tutor Mode; spending stays admin-only.
+    _principal(monkeypatch, ["Academic Coordinator"], is_root=True)
+    staff = asyncio.run(auth.ck_staff(_request()))
+    assert staff.can_manage is False
+    with pytest.raises(HTTPException):
+        auth.require_manage(staff)
+
+
+def test_ck_staff_rejects_learner_holding_a_custom_role(monkeypatch):
+    _principal(monkeypatch, ["STUDENT", "Academic Coordinator"], is_root=True)
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(auth.ck_staff(_request()))
+    assert exc.value.status_code == 403

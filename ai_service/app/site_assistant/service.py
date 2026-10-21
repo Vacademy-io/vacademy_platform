@@ -28,6 +28,7 @@ from fastapi import HTTPException, Request, status
 from sqlalchemy import text as sql
 
 from ..db import db_session
+from ..services.tutor.roles import is_staff
 from . import caps
 from . import internal_client as ac
 from . import knowledge as K
@@ -126,7 +127,8 @@ async def staff_from_request(request: Request) -> Staff:
     client_id = request.headers.get("clientId") or request.headers.get("client_id")
     principal = await resolve_pinned_principal(token=token, client_id=client_id, settings=get_settings())
     roles = frozenset(str(r).strip().upper().replace("-", "_").replace(" ", "_") for r in principal.roles or [])
-    if not roles & STAFF_ROLES:
+    # Custom institute roles count as staff (the Tutor Mode rule); admin-only actions still use ADMIN_ROLES.
+    if not is_staff(roles):
         raise _deny(status.HTTP_403_FORBIDDEN, "forbidden", "Only the institute's staff can do this.")
     return Staff(user_id=principal.user_id, institute_id=principal.institute_id, roles=roles)
 

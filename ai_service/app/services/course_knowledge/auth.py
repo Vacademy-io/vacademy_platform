@@ -2,7 +2,8 @@
 
 The caller is resolved from the verified JWT pinned to the clientId institute
 (resolve_pinned_principal, the same trust boundary as the site assistant), and
-is staff by ROLES ONLY. principal.is_root_user is never read: it is set for
+is staff by ROLES ONLY (built-in staff roles or a custom institute role, the
+Tutor Mode rule in tutor.roles). principal.is_root_user is never read: it is set for
 ordinary learners too (about 185k of 189k prod users, most of them students),
 so a root shortcut would let learners spend the institute's credits on paid
 processing and read lesson coverage.
@@ -16,6 +17,7 @@ from fastapi import HTTPException, Request, status
 
 from ...config import get_settings
 from ...core.security import resolve_pinned_principal
+from ..tutor.roles import is_staff
 
 STAFF_ROLES: FrozenSet[str] = frozenset({
     "ADMIN", "ADMIN_NON_ROOT", "SUPER_ADMIN", "TEACHER", "CONTENT_CREATOR", "COURSE_CREATOR",
@@ -55,7 +57,8 @@ async def ck_staff(request: Request) -> CkStaff:
     client_id = request.headers.get("clientId") or request.headers.get("client_id")
     principal = await resolve_pinned_principal(token=token, client_id=client_id, settings=get_settings())
     roles = normalize_roles(principal.roles)
-    if not roles & STAFF_ROLES:
+    # Custom institute roles count as staff (tutor.roles.is_staff); spending stays MANAGE_ROLES only.
+    if not is_staff(roles):
         raise _deny(status.HTTP_403_FORBIDDEN, "forbidden", "Only the institute's staff can do this.")
     return CkStaff(
         user_id=principal.user_id,

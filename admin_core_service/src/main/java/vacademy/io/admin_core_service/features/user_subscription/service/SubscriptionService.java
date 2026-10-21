@@ -139,6 +139,17 @@ public class SubscriptionService {
                 institutePaymentGatewayMappingService.getAllVendorsForInstitute(instituteId));
     }
 
+    /** The plan the next renewal charges (a booked plan change's target, else the current one) has a price. */
+    private boolean hasPayablePrice(UserPlan plan) {
+        var pendingTarget = planChangeService.pendingTargetPlan(plan);
+        return isPayable(pendingTarget != null ? pendingTarget : plan.getPaymentPlan());
+    }
+
+    private static boolean isPayable(
+            vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan payablePlan) {
+        return payablePlan != null && payablePlan.getActualPrice() > 0;
+    }
+
     private SubscriptionDTO toDto(UserPlan plan, String userId, String instituteId,
             List<VendorInfo> activeGateways) {
         String vendor = resolveVendor(plan);
@@ -196,7 +207,12 @@ public class SubscriptionService {
         // 2026-10-04 a learner paid Rs 7,200 against such a row and ended up enrolled in
         // nothing. A renewal extends an existing membership, so require one to exist.
         boolean unfinishedSignup = isUnfinishedSignup(plan);
-        boolean canRenewManually = !unfinishedSignup && renewalDue && renewalGateway != null;
+        // ...and only when there is a price to pay. A free or unpriced plan (e.g. an imported
+        // course with no payment plan) used to show "Pay to continue", and pressing it came back
+        // 510 "Subscription has no payable plan price" -- the same check initiateRenewalPayment
+        // makes, applied here so the button is never offered for a payment that cannot start.
+        boolean canRenewManually = !unfinishedSignup && renewalDue && renewalGateway != null
+                && hasPayablePrice(plan);
         String currency = RegionalPriceLock
                 .currency(plan, mandate != null && mandate.getCurrency() != null
                         ? mandate.getCurrency()
@@ -434,7 +450,7 @@ public class SubscriptionService {
         // money for a plan they will not be on the moment the payment lands.
         var pendingTarget = planChangeService.pendingTargetPlan(plan);
         var payablePlan = pendingTarget != null ? pendingTarget : plan.getPaymentPlan();
-        if (payablePlan == null || payablePlan.getActualPrice() <= 0) {
+        if (!isPayable(payablePlan)) {
             throw new VacademyException("Subscription has no payable plan price");
         }
         if (withAutopay && !isAutopayAvailable(plan)) {

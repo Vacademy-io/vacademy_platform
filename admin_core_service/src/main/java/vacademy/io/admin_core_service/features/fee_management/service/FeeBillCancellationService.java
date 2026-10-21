@@ -22,9 +22,10 @@ import java.util.Set;
  *
  * <p>Each open bill becomes {@link #CANCELLED} with {@code amount_expected} cut to what was
  * actually paid on it, so money already received stays on record and nothing is left to collect.
- * The ledger gets the matching entry: each bill's ledger total is brought to its new amount
- * (normally a reversal of what was cancelled, under {@link #LEDGER_SOURCE_TYPE}), which also
- * keeps a bill whose ledger rows are missing from going negative. Paid, waived and
+ * The ledger gets the matching reversal (under {@link #LEDGER_SOURCE_TYPE}) bringing the bill's
+ * ledger total down to that amount. It only ever reverses: a bill whose ledger rows are missing
+ * or short (plans from before the ledger existed) gets nothing, rather than a new charge for
+ * money that was in fact paid. Paid, waived and
  * already-cancelled bills are left alone. A soft cancel (access until the plan ends) does not
  * call this: the learner still owes for the time they keep.
  */
@@ -66,9 +67,6 @@ public class FeeBillCancellationService {
             if (delta.signum() < 0) {
                 userAccountLedgerService.recordDebitReversal(bill.getUserId(), bill.getInstituteId(),
                         delta.negate(), "INR", due, LEDGER_SOURCE_TYPE, bill.getId(), null, remark);
-            } else if (delta.signum() > 0) {
-                userAccountLedgerService.recordDebitAccrual(bill.getUserId(), bill.getInstituteId(),
-                        delta, "INR", due, LEDGER_SOURCE_TYPE, bill.getId(), null, remark);
             }
         }
         if (cancelled > 0) {

@@ -45,14 +45,16 @@ class FeeBillCancellationServiceTest {
         StudentFeePayment partial = bill("b2", "23334", "20000", "PARTIAL_PAID");
         StudentFeePayment open = bill("b3", "22500", "0", "PENDING");
         StudentFeePayment noLedger = bill("b4", "1000", "0", "OVERDUE");
-        when(sfps.findByUserPlanId("plan")).thenReturn(List.of(paid, partial, open, noLedger));
+        StudentFeePayment preLedger = bill("b5", "6668", "5000", "PARTIAL_PAID");
+        when(sfps.findByUserPlanId("plan")).thenReturn(List.of(paid, partial, open, noLedger, preLedger));
         when(ledgerRepo.debitNetBySourceId("b2")).thenReturn(new BigDecimal("23334"));
         when(ledgerRepo.debitNetBySourceId("b3")).thenReturn(new BigDecimal("22500"));
         when(ledgerRepo.debitNetBySourceId("b4")).thenReturn(BigDecimal.ZERO);
+        when(ledgerRepo.debitNetBySourceId("b5")).thenReturn(BigDecimal.ZERO);
 
         int n = new FeeBillCancellationService(sfps, ledger, ledgerRepo).cancelOpenBills("plan", null);
 
-        assertEquals(3, n);
+        assertEquals(4, n);
         assertEquals("PAID", paid.getStatus());
         assertEquals("CANCELLED", partial.getStatus());
         assertEquals(0, partial.getAmountExpected().compareTo(new BigDecimal("20000")));
@@ -63,6 +65,8 @@ class FeeBillCancellationServiceTest {
                 eq("PLAN_CANCELLED"), eq("b3"), any(), anyString());
         // A bill whose ledger rows are missing gets nothing posted, rather than going negative.
         verify(ledger, never()).recordDebitReversal(any(), any(), any(), any(), any(), any(), eq("b4"), any(), any());
-        verify(ledger, never()).recordDebitAccrual(any(), any(), any(), any(), any(), any(), eq("b4"), any(), any());
+        // Nor does one with less on the ledger than was paid get a new charge.
+        verify(ledger, never()).recordDebitAccrual(any(), any(), any(), any(), any(), any(), any(), any(), any());
+        assertEquals("CANCELLED", preLedger.getStatus());
     }
 }

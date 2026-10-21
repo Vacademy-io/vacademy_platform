@@ -634,7 +634,9 @@ public class CpoDiscountService {
     }
 
     private void recomputeAndPersist(UserPlan plan, UserPlanDiscountJson snapshot, String ledgerRemark) {
-        List<StudentFeePayment> sfps = studentFeePaymentRepository.findByUserPlanId(plan.getId());
+        List<StudentFeePayment> sfps = new ArrayList<>(studentFeePaymentRepository.findByUserPlanId(plan.getId()));
+        // A bill cancelled with its course stays as it was cancelled (see FeeBillCancellationService).
+        sfps.removeIf(s -> FeeBillCancellationService.CANCELLED.equalsIgnoreCase(s.getStatus()));
         if (sfps.isEmpty()) {
             persistSnapshot(plan, snapshot);
             return;

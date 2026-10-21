@@ -4493,6 +4493,12 @@ public class InvoiceService {
 
             BigDecimal expected = sfp.getAmountExpected() != null ? sfp.getAmountExpected() : BigDecimal.ZERO;
             BigDecimal paid = sfp.getAmountPaid() != null ? sfp.getAmountPaid() : BigDecimal.ZERO;
+            // Cancelled with its course: nothing is due. An unpaid one drops out of the list; one
+            // with money on it stays, as the receipt for that money.
+            if ("CANCELLED".equalsIgnoreCase(status)) {
+                if (paid.signum() <= 0) continue;
+                status = "PAID";
+            }
             BigDecimal outstanding = expected.subtract(paid);
 
             // Amount column meaning differs by status — admins reading the row

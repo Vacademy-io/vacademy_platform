@@ -29,6 +29,7 @@ public interface StudentFeePaymentRepository extends JpaRepository<StudentFeePay
      * database picked either, and a payment meant for installment 1 could land on 2.
      */
     @Query("SELECT s FROM StudentFeePayment s WHERE s.userPlanId = :userPlanId AND s.status <> :status "
+            + "AND s.status <> 'CANCELLED' "
             + "ORDER BY s.dueDate ASC NULLS LAST, s.installmentNumber ASC NULLS LAST, s.createdAt ASC, s.id ASC")
     List<StudentFeePayment> findByUserPlanIdAndStatusNotOrderByDueDateAsc(@Param("userPlanId") String userPlanId,
                                                                          @Param("status") String status);

@@ -63,6 +63,9 @@ public class UserPlanService {
     private static final Logger logger = LoggerFactory.getLogger(UserPlanService.class);
 
     @Autowired
+    private vacademy.io.admin_core_service.features.fee_management.service.FeeBillCancellationService feeBillCancellationService;
+
+    @Autowired
     private UserPlanRepository userPlanRepository;
 
     @Autowired
@@ -1633,6 +1636,10 @@ public class UserPlanService {
         }
 
         logger.info("UserPlan ID: {} marked as TERMINATED", userPlanId);
+
+        // The course is gone, so nothing more is owed on it: cancel its open installments
+        // (money already paid stays on record). They used to stay due in the payment history.
+        feeBillCancellationService.cancelOpenBills(userPlanId, "Course removed: installment cancelled");
 
         List<StudentSessionInstituteGroupMapping> mappings = studentSessionRepository.findAllByUserPlanIdAndStatusIn(
                 userPlanId,

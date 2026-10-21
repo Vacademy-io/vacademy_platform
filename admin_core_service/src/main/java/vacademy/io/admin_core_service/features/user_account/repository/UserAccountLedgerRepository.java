@@ -113,4 +113,13 @@ public interface UserAccountLedgerRepository extends JpaRepository<UserAccountLe
     BigDecimal sumBySourceAndEventType(@Param("sourceType") String sourceType,
                                       @Param("sourceId") String sourceId,
                                       @Param("eventType") String eventType);
+
+    /**
+     * What one fee bill currently stands at on the ledger: accruals minus reversals, over every
+     * source type that posts against it (the bill itself, discounts, splits, cancellation).
+     */
+    @Query("SELECT COALESCE(SUM(CASE WHEN l.eventType = 'DEBIT_ACCRUAL' THEN l.amount "
+            + "WHEN l.eventType = 'DEBIT_REVERSAL' THEN -l.amount ELSE 0 END), 0) "
+            + "FROM UserAccountLedger l WHERE l.sourceId = :sourceId")
+    BigDecimal debitNetBySourceId(@Param("sourceId") String sourceId);
 }

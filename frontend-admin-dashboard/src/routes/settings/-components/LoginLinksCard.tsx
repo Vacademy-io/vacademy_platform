@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { Check, CircleNotch, Copy, LinkSimple, Plus, Warning } from '@phosphor-icons/react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
     AlertDialog,
     AlertDialogAction,
@@ -36,6 +37,7 @@ import {
     fetchLoginLinkPolicy,
     issueLoginLinkKey,
     loginCodeCurlExample,
+    saveLoginLinkCodeFreeRoutes,
     saveLoginLinkPolicy,
     type IssueLoginLinkKeyInput,
     type IssuedLoginLinkKey,
@@ -98,13 +100,37 @@ export function LoginLinksCard() {
             setConfirmEnable(false);
             queryClient.setQueryData([LOGIN_LINK_POLICY_QUERY_KEY, instituteId], policy);
             toast.success(
-                t(policy.requireLoginCode ? 'loginLinks.requireOnToast' : 'loginLinks.requireOffToast')
+                t(
+                    policy.requireLoginCode
+                        ? 'loginLinks.requireOnToast'
+                        : 'loginLinks.requireOffToast'
+                )
             );
         },
         onError: (err: unknown) => {
             toast.error(apiKeyErrorMessage(err) ?? t('loginLinks.policySaveFailed'));
         },
     });
+
+    const routesMutation = useMutation({
+        mutationFn: (routes: string[]) => saveLoginLinkCodeFreeRoutes(instituteId, routes),
+        onSuccess: (policy) => {
+            queryClient.setQueryData([LOGIN_LINK_POLICY_QUERY_KEY, instituteId], policy);
+            toast.success(t('loginLinks.routes.savedToast'));
+        },
+        onError: (err: unknown) => {
+            toast.error(apiKeyErrorMessage(err) ?? t('loginLinks.policySaveFailed'));
+        },
+    });
+
+    const codeFreeRoutes = policyQuery.data?.codeFreeRoutes ?? [];
+    const availableRoutes = policyQuery.data?.availableRoutes ?? [];
+    const toggleRoute = (route: string, codeFree: boolean) => {
+        const next = codeFree
+            ? Array.from(new Set([...codeFreeRoutes, route]))
+            : codeFreeRoutes.filter((r) => r !== route);
+        routesMutation.mutate(next);
+    };
 
     const issueMutation = useMutation({
         mutationFn: (input: IssueLoginLinkKeyInput) => issueLoginLinkKey(instituteId, input),
@@ -191,7 +217,9 @@ export function LoginLinksCard() {
                         >
                             {t('loginLinks.requireLabel')}
                         </label>
-                        <p className="text-caption text-neutral-500">{t('loginLinks.requireHint')}</p>
+                        <p className="text-caption text-neutral-500">
+                            {t('loginLinks.requireHint')}
+                        </p>
                         {policyQuery.error && (
                             <p className="mt-1 text-caption text-warning-700">
                                 {t('loginLinks.policyLoadError')}
@@ -209,6 +237,58 @@ export function LoginLinksCard() {
                         />
                     )}
                 </div>
+
+                {/* ── Routes that keep working without a code ── */}
+                {requireLoginCode && availableRoutes.length > 0 && (
+                    <div className="flex flex-col gap-3 rounded-lg border border-neutral-200 p-4">
+                        <div>
+                            <p className="text-sm font-medium text-neutral-800">
+                                {t('loginLinks.routes.title')}
+                            </p>
+                            <p className="text-caption text-neutral-500">
+                                {t('loginLinks.routes.hint')}
+                            </p>
+                        </div>
+                        <div className="flex flex-col gap-2">
+                            {availableRoutes.map((route) => {
+                                const id = `login-links-route-${route}`;
+                                return (
+                                    <label
+                                        key={route}
+                                        htmlFor={id}
+                                        className="flex items-start gap-2 text-sm text-neutral-700"
+                                    >
+                                        <Checkbox
+                                            id={id}
+                                            className="mt-0.5"
+                                            checked={codeFreeRoutes.includes(route)}
+                                            disabled={routesMutation.isPending}
+                                            onCheckedChange={(v) => toggleRoute(route, v === true)}
+                                        />
+                                        <span>
+                                            <span className="font-medium">
+                                                {t(`loginLinks.routes.names.${route}`, {
+                                                    defaultValue: route,
+                                                })}
+                                            </span>
+                                            <span className="block text-caption text-neutral-500">
+                                                {t(`loginLinks.routes.paths.${route}`, {
+                                                    defaultValue: '',
+                                                })}
+                                            </span>
+                                        </span>
+                                    </label>
+                                );
+                            })}
+                        </div>
+                        {codeFreeRoutes.length > 0 && (
+                            <div className="flex items-start gap-2 rounded-md bg-warning-50 p-3 text-caption text-warning-700">
+                                <Warning className="mt-0.5 size-4 shrink-0" />
+                                <span>{t('loginLinks.routes.warning')}</span>
+                            </div>
+                        )}
+                    </div>
+                )}
 
                 {/* ── Keys ── */}
                 <div className="flex flex-col gap-3">
@@ -245,7 +325,9 @@ export function LoginLinksCard() {
                         </div>
                     ) : keysQuery.error ? (
                         <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-warning-100 bg-warning-50 p-3 text-sm text-warning-700">
-                            <span>{apiKeyErrorMessage(keysQuery.error) ?? t('apiKeys.loadError')}</span>
+                            <span>
+                                {apiKeyErrorMessage(keysQuery.error) ?? t('apiKeys.loadError')}
+                            </span>
                             <MyButton
                                 type="button"
                                 buttonType="secondary"
@@ -278,7 +360,10 @@ export function LoginLinksCard() {
                                         return (
                                             <tr key={k.id} className="border-b last:border-0">
                                                 <td className="max-w-xs px-4 py-2.5">
-                                                    <div className="truncate font-medium" title={k.name}>
+                                                    <div
+                                                        className="truncate font-medium"
+                                                        title={k.name}
+                                                    >
                                                         {k.name}
                                                     </div>
                                                     {k.expiresAt && (
@@ -304,7 +389,9 @@ export function LoginLinksCard() {
                                                     <span
                                                         className={cn(
                                                             'text-xs font-medium',
-                                                            isActive ? 'text-success-600' : 'text-neutral-500'
+                                                            isActive
+                                                                ? 'text-success-600'
+                                                                : 'text-neutral-500'
                                                         )}
                                                     >
                                                         {t(STATUS_LABEL_KEYS[status])}
@@ -343,7 +430,9 @@ export function LoginLinksCard() {
                 <AlertDialogContent>
                     <AlertDialogHeader>
                         <AlertDialogTitle>{t('loginLinks.confirmTitle')}</AlertDialogTitle>
-                        <AlertDialogDescription>{t('loginLinks.confirmDescription')}</AlertDialogDescription>
+                        <AlertDialogDescription>
+                            {t('loginLinks.confirmDescription')}
+                        </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                         <AlertDialogCancel disabled={policyMutation.isPending}>
@@ -356,7 +445,9 @@ export function LoginLinksCard() {
                                 policyMutation.mutate(true);
                             }}
                         >
-                            {policyMutation.isPending && <CircleNotch className="me-2 size-4 animate-spin" />}
+                            {policyMutation.isPending && (
+                                <CircleNotch className="me-2 size-4 animate-spin" />
+                            )}
                             {t('loginLinks.confirmAction')}
                         </AlertDialogAction>
                     </AlertDialogFooter>
@@ -389,7 +480,9 @@ export function LoginLinksCard() {
                             disable={issueMutation.isPending}
                             onClick={submitForm}
                         >
-                            {issueMutation.isPending && <CircleNotch className="size-4 animate-spin" />}
+                            {issueMutation.isPending && (
+                                <CircleNotch className="size-4 animate-spin" />
+                            )}
                             {t('apiKeys.form.submit')}
                         </MyButton>
                     </div>
@@ -410,7 +503,9 @@ export function LoginLinksCard() {
                         label={t('apiKeys.form.expiryLabel')}
                         input={form.expiryDate}
                         className="sm:w-full"
-                        onChangeFunction={(e) => setForm((p) => ({ ...p, expiryDate: e.target.value }))}
+                        onChangeFunction={(e) =>
+                            setForm((p) => ({ ...p, expiryDate: e.target.value }))
+                        }
                     />
                     <p className="text-caption text-neutral-500">{t('loginLinks.formHint')}</p>
                     {formError && (
@@ -433,7 +528,12 @@ export function LoginLinksCard() {
                 dialogWidth="max-w-lg"
                 footer={
                     <div className="flex justify-end">
-                        <MyButton type="button" buttonType="primary" scale="medium" onClick={closeIssuedDialog}>
+                        <MyButton
+                            type="button"
+                            buttonType="primary"
+                            scale="medium"
+                            onClick={closeIssuedDialog}
+                        >
                             {t('apiKeys.issued.done')}
                         </MyButton>
                     </div>
@@ -446,7 +546,9 @@ export function LoginLinksCard() {
                             <span>{t('apiKeys.issued.warning')}</span>
                         </div>
                         <div>
-                            <p className="mb-1 text-xs font-medium text-neutral-600">{issuedKey.name}</p>
+                            <p className="mb-1 text-xs font-medium text-neutral-600">
+                                {issuedKey.name}
+                            </p>
                             <div className="flex items-center gap-2 rounded-md border border-neutral-200 bg-neutral-50 p-2">
                                 <code className="min-w-0 flex-1 break-all font-mono text-xs text-neutral-800">
                                     {issuedKey.key}
@@ -458,17 +560,27 @@ export function LoginLinksCard() {
                                     onClick={() => void copyIssuedKey()}
                                     aria-label={t('apiKeys.issued.copy')}
                                 >
-                                    {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
-                                    {copied ? t('apiKeys.issued.copiedShort') : t('apiKeys.issued.copy')}
+                                    {copied ? (
+                                        <Check className="size-3.5" />
+                                    ) : (
+                                        <Copy className="size-3.5" />
+                                    )}
+                                    {copied
+                                        ? t('apiKeys.issued.copiedShort')
+                                        : t('apiKeys.issued.copy')}
                                 </MyButton>
                             </div>
                         </div>
                         <div>
-                            <p className="mb-1 text-caption text-neutral-500">{t('loginLinks.issuedUsage')}</p>
+                            <p className="mb-1 text-caption text-neutral-500">
+                                {t('loginLinks.issuedUsage')}
+                            </p>
                             <pre className="overflow-x-auto rounded-md bg-neutral-900 p-3 font-mono text-caption text-neutral-100">
                                 {loginCodeCurlExample('<your key>')}
                             </pre>
-                            <p className="mt-1 text-caption text-neutral-500">{t('loginLinks.issuedThen')}</p>
+                            <p className="mt-1 text-caption text-neutral-500">
+                                {t('loginLinks.issuedThen')}
+                            </p>
                         </div>
                         {closeAttempted && !copied && (
                             <p role="alert" className="text-sm font-medium text-danger-600">
@@ -505,7 +617,9 @@ export function LoginLinksCard() {
                             }}
                             className="bg-danger-600 hover:bg-danger-700"
                         >
-                            {revokeMutation.isPending && <CircleNotch className="me-2 size-4 animate-spin" />}
+                            {revokeMutation.isPending && (
+                                <CircleNotch className="me-2 size-4 animate-spin" />
+                            )}
                             {t('apiKeys.revoke.confirm')}
                         </AlertDialogAction>
                     </AlertDialogFooter>

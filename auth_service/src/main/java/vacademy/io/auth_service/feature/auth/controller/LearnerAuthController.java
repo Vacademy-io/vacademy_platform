@@ -104,6 +104,7 @@ public class LearnerAuthController {
                 request.getUsername(),
                 request.getInstituteId(),
                 request.getCode(),
+                request.getRoute(),
                 clientIP);
     }
 

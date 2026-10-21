@@ -91,7 +91,15 @@ interface SessionLoginFormProps {
   onNavigate?: () => void;
   /** Success-toast subtitle; defaults to the live-session wording. */
   successToastDescription?: string;
+  /**
+   * Which passwordless landing route hosts the form (GO, LIVE_CLASS, SUBSCRIPTIONS,
+   * SUB_ORG_LEARNERS, PROFILE_EDIT). Sent with the trusted login so an institute that
+   * requires login codes can let chosen routes keep working from the username alone.
+   */
+  linkRoute?: LoginLinkRoute;
 }
+
+export type LoginLinkRoute = "GO" | "LIVE_CLASS" | "SUBSCRIPTIONS" | "SUB_ORG_LEARNERS" | "PROFILE_EDIT";
 
 export const SessionLoginForm: React.FC<SessionLoginFormProps> = ({
   username: urlUsername,
@@ -99,6 +107,7 @@ export const SessionLoginForm: React.FC<SessionLoginFormProps> = ({
   onLoginSuccess,
   onNavigate,
   successToastDescription,
+  linkRoute = "LIVE_CLASS",
 }) => {
   const { t } = useTranslation("study");
   const liveSession = getTerminology(ContentTerms.LiveSession, SystemTerms.LiveSession);
@@ -146,6 +155,7 @@ export const SessionLoginForm: React.FC<SessionLoginFormProps> = ({
           const response = await axios.post(LOGIN_BY_USERNAME_TRUSTED, {
             username: data.username,
             institute_id: instituteId,
+            route: linkRoute,
           });
 
           if (response.data.accessToken) {

@@ -116,6 +116,7 @@ function RouteComponent() {
               domain has no domain-routing row and the username alone is enough
               to look the user up. */}
           <SessionLoginForm
+            linkRoute="PROFILE_EDIT"
             username={username}
             instituteId={domainRouting.instituteId ?? undefined}
             onLoginSuccess={() => setAuthState("authenticated")}

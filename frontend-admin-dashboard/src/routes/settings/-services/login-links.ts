@@ -22,7 +22,7 @@ import {
  *   POST /auth-service/open/v1/login-codes  (X-API-Key)  {username, expires_in_days}
  *
  * The switch, auth_service, ACTIVE ADMIN of the institute:
- *   GET/PUT /auth-service/v1/institutes/{id}/login-link-policy  {require_login_code}
+ *   GET/PUT /auth-service/v1/institutes/{id}/login-link-policy  {require_login_code, code_free_routes}
  */
 export const LOGIN_LINK_KEYS_QUERY_KEY = 'LOGIN_LINK_KEYS';
 export const LOGIN_LINK_POLICY_QUERY_KEY = 'LOGIN_LINK_POLICY';
@@ -38,6 +38,10 @@ export type IssuedLoginLinkKey = IssuedEvaluationApiKey;
 
 export interface LoginLinkPolicy {
     requireLoginCode: boolean;
+    /** Landing routes that still sign in from the username alone while codes are required. */
+    codeFreeRoutes: string[];
+    /** Every route the switch can exempt (GO, LIVE_CLASS, SUBSCRIPTIONS, ...). */
+    availableRoutes: string[];
     updatedAt: string | null;
     maxExpiresInDays: number;
 }
@@ -95,8 +99,15 @@ const toPolicy = (data: unknown): LoginLinkPolicy => {
     const row = (data && typeof data === 'object' ? data : {}) as Record<string, unknown>;
     return {
         requireLoginCode: row.require_login_code === true,
+        codeFreeRoutes: Array.isArray(row.code_free_routes)
+            ? row.code_free_routes.filter((v): v is string => typeof v === 'string')
+            : [],
+        availableRoutes: Array.isArray(row.available_routes)
+            ? row.available_routes.filter((v): v is string => typeof v === 'string')
+            : [],
         updatedAt: typeof row.updated_at === 'string' ? row.updated_at : null,
-        maxExpiresInDays: typeof row.max_expires_in_days === 'number' ? row.max_expires_in_days : 30,
+        maxExpiresInDays:
+            typeof row.max_expires_in_days === 'number' ? row.max_expires_in_days : 30,
     };
 };
 
@@ -111,6 +122,17 @@ export const saveLoginLinkPolicy = async (
 ): Promise<LoginLinkPolicy> => {
     const response = await authenticatedAxiosInstance.put(loginLinkPolicyUrl(instituteId), {
         require_login_code: requireLoginCode,
+    });
+    return toPolicy(response.data);
+};
+
+/** Replaces the routes that keep working without a code. Leaves the switch as it is. */
+export const saveLoginLinkCodeFreeRoutes = async (
+    instituteId: string,
+    codeFreeRoutes: string[]
+): Promise<LoginLinkPolicy> => {
+    const response = await authenticatedAxiosInstance.put(loginLinkPolicyUrl(instituteId), {
+        code_free_routes: codeFreeRoutes,
     });
     return toPolicy(response.data);
 };

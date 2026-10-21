@@ -11,4 +11,6 @@ public interface InstituteLoginLinkPolicyRepository extends JpaRepository<Instit
 
     @Query("SELECT COUNT(p) > 0 FROM InstituteLoginLinkPolicy p WHERE p.requireLoginCode = true AND p.instituteId IN :instituteIds")
     boolean anyRequiresLoginCode(@Param("instituteIds") Collection<String> instituteIds);
+
+    java.util.List<InstituteLoginLinkPolicy> findByRequireLoginCodeTrueAndInstituteIdIn(Collection<String> instituteIds);
 }

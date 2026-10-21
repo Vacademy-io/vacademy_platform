@@ -88,11 +88,12 @@ public class InviteUserEmailBody {
         String roleText = formatRoles(roles);
         String hi = "Hi " + escape(firstName(name)) + ", ";
         String asRoles = "<strong style=\"color:#111827;\">" + roleText + "</strong>";
+        String forgot = " If you don't remember your password, use <strong style=\"color:#111827;\">Forgot password</strong> on the sign-in page.";
         String intro = justAdded
                 ? hi + institute + " has added you to its team as " + asRoles + ". "
-                        + "Sign in with the login you already use — your username and password haven't changed."
+                        + "Sign in with the login you already use — your username and password haven't changed." + forgot
                 : hi + "you're on the " + institute + " team as " + asRoles + ". "
-                        + "Sign in with the username and password you already use.";
+                        + "Sign in with the username and password you already use." + forgot;
         return render(
                 justAdded
                         ? "You've been added to " + institute + " — sign in with your existing login."

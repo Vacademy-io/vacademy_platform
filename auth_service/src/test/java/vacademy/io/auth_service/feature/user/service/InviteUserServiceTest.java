@@ -3,6 +3,7 @@ package vacademy.io.auth_service.feature.user.service;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.http.HttpStatus;
 import org.springframework.test.util.ReflectionTestUtils;
 import vacademy.io.auth_service.feature.institute.InstituteInfoDTO;
 import vacademy.io.auth_service.feature.institute.InstituteInternalService;
@@ -19,6 +20,8 @@ import vacademy.io.common.auth.service.UserService;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.notification.dto.GenericEmailRequest;
 
+import java.sql.Timestamp;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -204,6 +207,7 @@ class InviteUserServiceTest {
         InvitedUserDTO response = service.inviteUser(request("old@example.com", "COUNSELLOR"), A);
 
         assertTrue(response.isExistingAccount());
+        assertFalse(response.isAlreadyMember());
         assertEquals("old", response.getId());
         assertNull(response.getPassword(), "the inviter never sees the stored password");
         verify(userService, never()).createNewUserFromUserDto(any());
@@ -227,8 +231,42 @@ class InviteUserServiceTest {
         InvitedUserDTO response = service.inviteUser(request("old@example.com", "COUNSELLOR"), A);
 
         assertTrue(response.isExistingAccount());
+        assertTrue(response.isAlreadyMember());
         assertTrue(savedRows.isEmpty());
         assertTrue(sentEmails().isEmpty());
+    }
+
+    @Test
+    void reInvitingSomeoneDisabledHereIsA409AndWritesNothing() {
+        User existing = user("old", "secret", new Date());
+        row(existing, counsellor, A, "DISABLED");
+        when(userService.findExistingUserByEmail(anyString())).thenReturn(Optional.of(existing));
+
+        VacademyException sameRole = assertThrows(VacademyException.class,
+                () -> service.inviteUser(request("old@example.com", "COUNSELLOR"), A));
+        assertEquals(HttpStatus.CONFLICT, sameRole.getStatus());
+        assertTrue(sameRole.getMessage().contains("use Enable on the Members tab"));
+
+        // A different role must not sneak a disabled member back in either.
+        VacademyException otherRole = assertThrows(VacademyException.class,
+                () -> service.inviteUser(request("old@example.com", "TEACHER"), A));
+        assertEquals(HttpStatus.CONFLICT, otherRole.getStatus());
+
+        assertTrue(savedRows.isEmpty());
+        assertTrue(sentEmails().isEmpty());
+        assertEquals("DISABLED", rowOf("old", A, "COUNSELLOR").getStatus());
+    }
+
+    @Test
+    void aPausedRoleRequestedAgainIsRefusedEvenWhileAnotherRoleIsLive() {
+        User existing = user("old", "secret", new Date());
+        row(existing, teacher, A, "ACTIVE");
+        row(existing, counsellor, A, "DISABLED");
+        when(userService.findExistingUserByEmail(anyString())).thenReturn(Optional.of(existing));
+
+        assertThrows(VacademyException.class,
+                () -> service.inviteUser(request("old@example.com", "COUNSELLOR", "EVALUATOR"), A));
+        assertTrue(savedRows.isEmpty());
     }
 
     // ---- edit invite ---------------------------------------------------------------------
@@ -273,10 +311,10 @@ class InviteUserServiceTest {
     // ---- resend login details ------------------------------------------------------------
 
     @Test
-    void resendForSomeoneWhoNeverSignedInCarriesLoginDetailsForThisInstituteOnly() {
+    void resendForAnAccountThisInstituteCreatedAndNobodyUsedCarriesItsLoginDetails() {
         User member = user("m", "pw-123", null);
-        row(member, counsellor, A, "ACTIVE");
-        row(member, admin, B, "ACTIVE");
+        member.setCreatedAt(Timestamp.valueOf(LocalDateTime.of(2026, 10, 1, 9, 0, 0)));
+        row(member, counsellor, A, "ACTIVE").setCreatedAt(LocalDateTime.of(2026, 10, 1, 9, 0, 1));
         when(userService.getUserById("m")).thenReturn(member);
 
         assertEquals("Login details sent", service.resendInvitation("m", A, null));
@@ -287,9 +325,37 @@ class InviteUserServiceTest {
         assertEquals("Your login details for Acme Academy", mail.getSubject());
         assertTrue(mail.getBody().contains("pw-123"));
         assertTrue(mail.getBody().contains("Counsellor"));
+        verify(notificationService).sendGenericHtmlMailViaUnified(any(), eq(A));
+    }
+
+    @Test
+    void anAccountSharedWithAnotherInstituteNeverGetsItsPasswordResent() {
+        User member = user("m", "pw-123", null);
+        row(member, counsellor, A, "ACTIVE");
+        // Any status counts — even a removed row means another institute knows this account.
+        row(member, admin, B, "DELETED");
+        when(userService.getUserById("m")).thenReturn(member);
+
+        assertEquals("Sign-in reminder sent", service.resendInvitation("m", A, null));
+
+        GenericEmailRequest mail = sentEmails().get(0);
+        assertFalse(mail.getBody().contains("pw-123"));
+        assertTrue(mail.getBody().contains("Forgot password"));
+        assertTrue(mail.getBody().contains("Counsellor"));
         assertFalse(mail.getBody().contains("Admin"), "roles from another institute are not listed");
         assertFalse(mail.getBody().contains("Other School"));
         verify(notificationService).sendGenericHtmlMailViaUnified(any(), eq(A));
+    }
+
+    @Test
+    void anAccountThatExistedBeforeThisInstituteAddedItNeverGetsItsPasswordResent() {
+        User member = user("m", "pw-123", null);
+        member.setCreatedAt(Timestamp.valueOf(LocalDateTime.of(2025, 1, 1, 9, 0)));
+        row(member, counsellor, A, "ACTIVE").setCreatedAt(LocalDateTime.of(2026, 10, 1, 9, 0));
+        when(userService.getUserById("m")).thenReturn(member);
+
+        assertEquals("Sign-in reminder sent", service.resendInvitation("m", A, null));
+        assertFalse(sentEmails().get(0).getBody().contains("pw-123"));
     }
 
     @Test
@@ -302,6 +368,7 @@ class InviteUserServiceTest {
 
         GenericEmailRequest mail = sentEmails().get(0);
         assertFalse(mail.getBody().contains("their-own-secret"));
+        assertTrue(mail.getBody().contains("Forgot password"));
         assertEquals("Sign in to Acme Academy", mail.getSubject());
     }
 

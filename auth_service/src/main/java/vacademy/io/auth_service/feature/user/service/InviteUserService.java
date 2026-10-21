@@ -46,6 +46,17 @@ import java.util.Set;
 public class InviteUserService {
     private static final String DEFAULT_ADMIN_LOGIN_URL = "https://dash.vacademy.io/login";
 
+    static final String DISABLED_HERE_MESSAGE =
+            "This person is disabled in your institute — use Enable on the Members tab";
+
+    private static final Set<String> PAUSED_STATUSES = Set.of(UserRoleStatus.DISABLED.name(), "INACTIVE");
+
+    /**
+     * An account created within this long of its first role row here counts as created by this
+     * institute's invite (the user row and the role row are written by the same request).
+     */
+    private static final java.time.Duration CREATED_HERE_TOLERANCE = java.time.Duration.ofMinutes(10);
+
     /** Rows that still hold a role in an institute (paused ones included); everything else was removed. */
     private static final Set<String> LIVE_STATUSES = Set.of(UserRoleStatus.ACTIVE.name(),
             UserRoleStatus.INVITED.name(), UserRoleStatus.DISABLED.name(), "INACTIVE");
@@ -83,6 +94,7 @@ public class InviteUserService {
      * have. The response never carries their stored password.
      */
     private InvitedUserDTO addExistingAccount(User user, UserDTO request, String instituteId) {
+        refuseIfDisabledHere(user, request.getRoles(), instituteId);
         RoleService.RoleGrant grant = roleService.grantActiveRoles(user, instituteId, request.getRoles());
         logUnusualGrant(grant, user.getId(), instituteId);
         if (grant.changed()) {
@@ -97,7 +109,39 @@ public class InviteUserService {
         response.setRoles(request.getRoles());
         response.setRootUser(user.isRootUser());
         response.setPassword(null);
-        return InvitedUserDTO.of(response, true);
+        InvitedUserDTO invited = InvitedUserDTO.of(response, true);
+        // Nothing to add: every requested role was already active here, and no email went out.
+        invited.setAlreadyMember(!grant.changed() && !grant.alreadyActive().isEmpty());
+        return invited;
+    }
+
+    /**
+     * An invite must not quietly bring back someone an admin switched off here: if the member
+     * is disabled in this institute (paused rows and no live one), or any requested role is
+     * paused here, nothing is written and the dashboard gets a 409 it can show. Turning them
+     * back on is "Enable access" on the Members tab.
+     */
+    private void refuseIfDisabledHere(User user, List<String> requestedRoles, String instituteId) {
+        Set<String> requested = new LinkedHashSet<>(distinct(requestedRoles));
+        boolean live = false;
+        boolean paused = false;
+        boolean requestedRolePaused = false;
+        for (UserRole ur : userRoleRepository.findByUser(user)) {
+            if (!instituteId.equals(ur.getInstituteId()) || ur.getRole() == null) {
+                continue;
+            }
+            if (UserRoleService.grantsAccess(ur)) {
+                live = true;
+            } else if (PAUSED_STATUSES.contains(ur.getStatus())) {
+                paused = true;
+                if (requested.contains(ur.getRole().getName())) {
+                    requestedRolePaused = true;
+                }
+            }
+        }
+        if (requestedRolePaused || (paused && !live)) {
+            throw new VacademyException(HttpStatus.CONFLICT, DISABLED_HERE_MESSAGE);
+        }
     }
 
     /**
@@ -177,9 +221,7 @@ public class InviteUserService {
 
     /** @return true when the email carried the username and password */
     private boolean sendLoginDetails(User user, List<String> roles, String instituteId) {
-        // Only a member who has never signed in gets the password: after a first sign-in it may
-        // be one they chose, and it is not ours to mail around.
-        if (user.getLastLoginTime() == null && StringUtils.hasText(user.getPassword())) {
+        if (mayResendGeneratedCredentials(user, instituteId)) {
             InstituteBranding branding = resolveBranding(instituteId, "login details", user.getId());
             GenericEmailRequest emailRequest = createEmailRequest(
                     user.getEmail(), InviteUserEmailBody.reminderSubject(branding.name()),
@@ -192,6 +234,37 @@ public class InviteUserService {
         }
         sendExistingAccountEmail(user, roles, instituteId, false);
         return false;
+    }
+
+    /**
+     * The stored password is mailed again only for an account THIS institute created whose
+     * generated credentials have never been used. Which institute created an account is not
+     * recorded, so: it has never signed in, it holds no role row (any status) in any other
+     * institute, and it was created together with its first role row here (not earlier — an
+     * older account existed before this institute added it). Anything else — a shared account,
+     * one that signed in (the password may be its own now), one that predates this institute —
+     * gets the sign-in reminder without the password.
+     */
+    boolean mayResendGeneratedCredentials(User user, String instituteId) {
+        if (user.getLastLoginTime() != null || !StringUtils.hasText(user.getPassword())) {
+            return false;
+        }
+        java.time.LocalDateTime firstRowHere = null;
+        for (UserRole ur : userRoleRepository.findByUser(user)) {
+            if (!instituteId.equals(ur.getInstituteId())) {
+                return false; // shared with another institute (or a legacy global row)
+            }
+            if (ur.getCreatedAt() != null && (firstRowHere == null || ur.getCreatedAt().isBefore(firstRowHere))) {
+                firstRowHere = ur.getCreatedAt();
+            }
+        }
+        if (user.getCreatedAt() != null && firstRowHere != null) {
+            java.time.LocalDateTime accountCreated = user.getCreatedAt().toLocalDateTime();
+            if (accountCreated.isBefore(firstRowHere.minus(CREATED_HERE_TOLERANCE))) {
+                return false; // the account existed before this institute added it
+            }
+        }
+        return true;
     }
 
     private void sendWelcomeEmail(UserDTO userDTO, List<String> roles, String instituteId) {

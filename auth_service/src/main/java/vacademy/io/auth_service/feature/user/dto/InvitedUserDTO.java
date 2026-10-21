@@ -26,6 +26,12 @@ public class InvitedUserDTO extends UserDTO {
     /** The email already had an account: roles were added to it, no credentials were sent. */
     private boolean existingAccount;
 
+    /**
+     * Existing account that already held every requested role ACTIVE here: nothing changed and
+     * no email was sent. The dashboard says they're already a member.
+     */
+    private boolean alreadyMember;
+
     public static InvitedUserDTO of(UserDTO source, boolean existingAccount) {
         InvitedUserDTO dto = new InvitedUserDTO();
         BeanUtils.copyProperties(source, dto);

@@ -62,6 +62,17 @@ public class InvoiceDTO {
      * becomes a numbered invoice when it is paid.
      */
     private Boolean proforma;
+    /**
+     * Per-installment rows only: what has been paid on the installment so far. Set on an
+     * installment still owing money, whose row shows the balance as its amount.
+     */
+    private BigDecimal amountPaid;
+    /**
+     * Per-installment rows only: the latest receipt for money paid on an installment that
+     * still owes some. The row keeps its own (DUE/PARTIAL) label — under the receipt's number
+     * its balance read as if it were the receipt's amount.
+     */
+    private String receiptNumber;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private List<InvoiceLineItemDTO> lineItems;

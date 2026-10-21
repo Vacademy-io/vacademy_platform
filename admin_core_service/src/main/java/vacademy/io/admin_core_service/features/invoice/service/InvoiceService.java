@@ -4533,11 +4533,19 @@ public class InvoiceService {
             // against the paper receipt had nothing to match on. Only an installment with no
             // invoice behind it (anything still due) keeps the status-prefixed placeholder.
             String realInvoiceNumber = pdfInfo != null && pdfInfo.length > 4 ? pdfInfo[4] : null;
+            // Only a SETTLED installment takes its receipt's number. One still owing money shows
+            // its balance as the amount, and "RCPT-… · PARTIAL · ₹8,020.25" read as a receipt for
+            // ₹8,020.25 when the receipt was for the ₹5,000 paid (I2CAN, 2026-10-19). It keeps its
+            // own label and carries the receipt and the amount paid alongside.
+            boolean settled = "PAID".equalsIgnoreCase(status) || "WAIVED".equalsIgnoreCase(status);
+            boolean labelWithReceipt = settled && StringUtils.hasText(realInvoiceNumber);
             dtos.add(InvoiceDTO.builder()
                     .id(dtoId)
-                    .invoiceNumber(StringUtils.hasText(realInvoiceNumber)
+                    .invoiceNumber(labelWithReceipt
                             ? realInvoiceNumber
                             : (prefix + "-" + sfp.getId()))
+                    .receiptNumber(!settled && StringUtils.hasText(realInvoiceNumber) ? realInvoiceNumber : null)
+                    .amountPaid(!settled && paid.signum() > 0 ? paid : null)
                     .userId(sfp.getUserId())
                     .userPlanId(sfp.getUserPlanId())
                     .instituteId(sfp.getInstituteId())

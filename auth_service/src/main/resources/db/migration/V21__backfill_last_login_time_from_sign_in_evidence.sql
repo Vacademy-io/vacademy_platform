@@ -4,7 +4,10 @@
 --   refresh_token  one row per user, written by every login (created_on / created_at)
 --   user_session   one row per learner-portal session (login_time)
 --
--- Only NULL stamps are filled, and only where evidence exists, with the latest evidence.
+-- Only NULL stamps are filled, only where evidence exists, with the latest evidence, and only
+-- for STAFF (a role here other than STUDENT/PARENT, any status). Learners are left alone on
+-- purpose: UserRepository.findUsersInactiveOnDate falls back to created_at for a NULL stamp,
+-- so filling theirs would start "inactive for N days" messages that never fired before.
 -- Re-running changes nothing (no NULL row with evidence is left). No schema change; nothing
 -- but last_login_time is set by this statement (the existing BEFORE UPDATE trigger on users
 -- may still refresh updated_at, exactly as any application update does). Needs only UPDATE
@@ -26,4 +29,9 @@ FROM (
     GROUP BY e.user_id
 ) ev
 WHERE u.id = ev.user_id
-  AND u.last_login_time IS NULL;
+  AND u.last_login_time IS NULL
+  AND EXISTS (SELECT 1
+                FROM public.user_role ur
+                JOIN public.roles r ON r.id = ur.role_id
+               WHERE ur.user_id = u.id
+                 AND upper(r.role_name) NOT IN ('STUDENT', 'PARENT'));

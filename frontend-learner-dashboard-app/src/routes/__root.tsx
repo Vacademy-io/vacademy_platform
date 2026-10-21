@@ -1,4 +1,5 @@
 import { QueryClient } from "@tanstack/react-query";
+import { LOGIN_CODE_USER_KEY } from "@/lib/auth/login-code-session";
 import {
   createRootRouteWithContext,
   Outlet,
@@ -1018,6 +1019,14 @@ export const Route = createRootRouteWithContext<{
               key: "selectedInstituteId",
               value: instituteId,
             });
+            // The code itself says who the link is for. Username pages that check the
+            // session against the URL read this once, so a code-made session is never
+            // mistaken for someone else's (the URL may carry an email, the token a username).
+            try {
+              if (decoded?.user) sessionStorage.setItem(LOGIN_CODE_USER_KEY, decoded.user);
+            } catch {
+              /* storage unavailable */
+            }
             console.log("[__root] Login code accepted, reloading:", cleanPath);
             window.location.replace(`${window.location.origin}${cleanPath}`);
             throw redirect({ to: cleanUrl.pathname as never });

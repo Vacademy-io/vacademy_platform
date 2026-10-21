@@ -22,11 +22,12 @@ import { AuthPageBranding } from "@/components/common/institute-branding";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import {
-  getCurrentUsername,
+  getDecodedAccessTokenFromStorage,
   getTokenFromStorage,
   removeTokensAndLogout,
 } from "@/lib/auth/sessionUtility";
 import { TokenKey } from "@/constants/auth/tokens";
+import { LOGIN_CODE_USER_KEY } from "@/lib/auth/login-code-session";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils";
 import { MyButton } from "@/components/design-system/button";
 import {
@@ -122,19 +123,40 @@ const formatDate = (value?: string | null): string | null => {
   });
 };
 
-/** True when the signed-in user is not the one the link was sent to. */
-const isDifferentUser = (sessionUsername: string | null, linkUsername: string): boolean => {
-  const normalize = (value: string) => {
-    try {
-      return decodeURIComponent(value).trim().toLowerCase();
-    } catch {
-      return value.trim().toLowerCase();
-    }
-  };
+const normalizeIdentifier = (value: string) => {
+  try {
+    return decodeURIComponent(value).trim().toLowerCase();
+  } catch {
+    return value.trim().toLowerCase();
+  }
+};
+
+/**
+ * True when the signed-in user is not the one the link was sent to. The link may carry
+ * the username or the email (they differ for many imported accounts), so either matches.
+ */
+const isDifferentUser = (
+  session: { username?: string | null; email?: string | null } | null,
+  linkUsername: string
+): boolean => {
   if (!linkUsername) return false;
-  // A token without a username can't be matched to the link, so treat it as someone else.
-  if (!sessionUsername) return true;
-  return normalize(sessionUsername) !== normalize(linkUsername);
+  const wanted = normalizeIdentifier(linkUsername);
+  const known = [session?.username, session?.email].filter(
+    (v): v is string => typeof v === "string" && v.trim() !== ""
+  );
+  // A token with neither can't be matched to the link, so treat it as someone else.
+  return !known.some((v) => normalizeIdentifier(v) === wanted);
+};
+
+/** The user a ?lc= login code just signed in on this page load (consumed on read). */
+const takeLoginCodeUser = (): string | null => {
+  try {
+    const id = sessionStorage.getItem(LOGIN_CODE_USER_KEY);
+    sessionStorage.removeItem(LOGIN_CODE_USER_KEY);
+    return id;
+  } catch {
+    return null;
+  }
 };
 
 function RouteComponent() {
@@ -173,8 +195,12 @@ function RouteComponent() {
           // The link names the member it is for. A session left on this device by
           // someone else (an admin testing links, a shared family computer) must not
           // show that person's membership: drop it and sign in the member in the link.
-          const sessionUsername = await getCurrentUsername();
-          if (isDifferentUser(sessionUsername, username)) {
+          // A session a login code just created is the link's own: the code is bound to
+          // its member, so it is trusted even when the URL identifier differs.
+          const decoded = await getDecodedAccessTokenFromStorage();
+          const fromLoginCode = takeLoginCodeUser();
+          const madeByCode = Boolean(fromLoginCode) && fromLoginCode === decoded?.user;
+          if (!madeByCode && isDifferentUser(decoded, username)) {
             await removeTokensAndLogout();
             queryClient.clear();
             setAuthState("unauthenticated");

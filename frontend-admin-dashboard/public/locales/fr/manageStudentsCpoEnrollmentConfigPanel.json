@@ -99,6 +99,7 @@
         "toPay": "À payer",
         "discountFor": "Remise sur l’échéance {{n}}",
         "toPayFor": "À payer pour l’échéance {{n}}",
-        "toPayHint": "{{gross}} − {{off}} de remise = {{net}} à payer. Saisissez ce que l’apprenant paie dans « À payer » ; le montant suit et la remise reste."
+        "toPayHint": "{{gross}} − {{off}} de remise = {{net}} à payer. Saisissez ce que l’apprenant paie dans « À payer » ; le montant suit et la remise reste.",
+        "sameDayWarning": "Les échéances {{a}} et {{b}} tombent le même jour. Un paiement va d’abord à l’échéance {{a}}."
     }
 }

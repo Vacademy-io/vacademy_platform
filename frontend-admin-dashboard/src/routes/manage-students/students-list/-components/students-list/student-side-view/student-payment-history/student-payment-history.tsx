@@ -419,9 +419,18 @@ const InvoicesList = ({
                         // Only a real invoice row: the list also carries synthetic per-installment
                         // rows ("DUE-…", "PAID-…", ids "sfp:…") that are not invoices at all, and a
                         // live-class invoice is tied to its registration.
+                        // A part-paid installment keeps its own label but carries its receipt's
+                        // id, so view/download still open that receipt.
+                        const placeholderLabel = /^(PAID|PARTIAL|DUE|OVERDUE|WAIVED)-/i.test(
+                            inv.invoice_number || ''
+                        );
                         const isSyntheticRow =
                             String(inv.id || '').startsWith('sfp:') ||
-                            /^(PAID|PARTIAL|DUE|OVERDUE|WAIVED)-/i.test(inv.invoice_number || '');
+                            (placeholderLabel && !inv.receipt_number);
+                        const amountText = formatCurrency(inv.total_amount, inv.currency);
+                        const paidText = inv.amount_paid
+                            ? formatCurrency(inv.amount_paid, inv.currency)
+                            : null;
                         // A paid invoice has a live payment behind it; the server refuses those, so the
                         // button is not offered (delete or void the payment first).
                         // A real invoice can always be rendered: /invoices/{id}/download
@@ -468,8 +477,25 @@ const InvoicesList = ({
                                             <span>{formatDate(inv.due_date || inv.invoice_date)}</span>
                                             <span aria-hidden>·</span>
                                             <span className="font-medium text-neutral-700">
-                                                {formatCurrency(inv.total_amount, inv.currency)}
+                                                {paidText
+                                                    ? t('invoicesList.left', { amount: amountText })
+                                                    : amountText}
                                             </span>
+                                            {paidText && (
+                                                <>
+                                                    <span aria-hidden>·</span>
+                                                    <span className="text-success-700">
+                                                        {inv.receipt_number
+                                                            ? t('invoicesList.paidWithReceipt', {
+                                                                  amount: paidText,
+                                                                  receipt: inv.receipt_number,
+                                                              })
+                                                            : t('invoicesList.paidSoFar', {
+                                                                  amount: paidText,
+                                                              })}
+                                                    </span>
+                                                </>
+                                            )}
                                             {hasDiscount && (
                                                 <span className="text-success-700">
                                                     −{formatCurrency(inv.discount_amount, inv.currency)}

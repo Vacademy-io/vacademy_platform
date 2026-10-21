@@ -99,6 +99,7 @@
         "toPay": "To pay",
         "discountFor": "Discount on installment {{n}}",
         "toPayFor": "To pay for installment {{n}}",
-        "toPayHint": "{{gross}} − {{off}} discount = {{net}} to pay. Type what the learner pays in To pay; the amount follows and the discount stays."
+        "toPayHint": "{{gross}} − {{off}} discount = {{net}} to pay. Type what the learner pays in To pay; the amount follows and the discount stays.",
+        "sameDayWarning": "Installments {{a}} and {{b}} are due on the same day. A payment goes to installment {{a}} first."
     }
 }

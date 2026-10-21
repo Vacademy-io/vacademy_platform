@@ -69,6 +69,10 @@ export interface InvoiceDTO {
     discount_granted_by_user_id?: string | null;
     /** That admin's internal reason for the discount. Admin views only. */
     discount_reason?: string | null;
+    /** Installment rows still owing money: what has been paid on it so far. */
+    amount_paid?: number | null;
+    /** Installment rows still owing money: the latest receipt for what was paid (view/download open it). */
+    receipt_number?: string | null;
 }
 
 export interface UserAccountLedgerEntryDTO {

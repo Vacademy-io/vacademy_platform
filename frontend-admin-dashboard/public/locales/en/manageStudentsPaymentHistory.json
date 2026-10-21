@@ -61,7 +61,10 @@
             "description": "This voids the invoice permanently — the payment link stops working and it can never be marked paid. This cannot be undone. To correct a mistake, raise a new invoice afterwards.",
             "keep": "Keep Invoice",
             "confirm": "Cancel Invoice"
-        }
+        },
+        "left": "{{amount}} left",
+        "paidWithReceipt": "{{amount}} paid · receipt {{receipt}}",
+        "paidSoFar": "{{amount}} paid"
     },
     "invoiceStatus": {
         "generated": "Generated",

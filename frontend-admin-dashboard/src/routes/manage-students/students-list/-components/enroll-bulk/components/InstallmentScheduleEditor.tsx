@@ -114,6 +114,16 @@ export const InstallmentScheduleEditor = ({
     const discountOf = (k: number) => rows[k]?.discount ?? 0;
     const toPayOf = (k: number) => Math.round((grossOf(k) - discountOf(k)) * 100) / 100;
 
+    // Two installments on one day: allowed, but worth a word — the payment taken at
+    // enrollment goes to the lower-numbered one.
+    const sameDay = (() => {
+        for (let k = 1; k < rows.length; k++) {
+            if (rows[k]?.due_date && rows[k]!.due_date === rows[k - 1]?.due_date)
+                return { a: k, b: k + 1 };
+        }
+        return null;
+    })();
+
     const unit: InstallmentIntervalUnit = schedule.interval?.unit ?? 'MONTHS';
     const value = schedule.interval?.value ?? 1;
 
@@ -369,6 +379,11 @@ export const InstallmentScheduleEditor = ({
                             .map((p) => `${p.feeTypeName} ${formatInr(p.total)}`)
                             .join(', '),
                     })}
+                </p>
+            )}
+            {sameDay && !error && (
+                <p className="mt-2 text-2xs font-medium text-warning-700">
+                    {t('schedule.sameDayWarning', sameDay)}
                 </p>
             )}
             {error && (

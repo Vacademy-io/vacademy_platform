@@ -62,7 +62,10 @@
             "description": "Cela annule définitivement la facture — le lien de paiement cessera de fonctionner et elle ne pourra plus jamais être marquée comme payée. Cette action est irréversible. Pour corriger une erreur, créez une nouvelle facture par la suite.",
             "keep": "Conserver la facture",
             "confirm": "Annuler la facture"
-        }
+        },
+        "left": "reste {{amount}}",
+        "paidWithReceipt": "{{amount}} payé · reçu {{receipt}}",
+        "paidSoFar": "{{amount}} payé"
     },
     "invoiceStatus": {
         "generated": "Générée",

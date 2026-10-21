@@ -182,6 +182,8 @@
         "leadFormLabel": "Formulaire de génération de prospects",
         "loadingForms": "Chargement des formulaires...",
         "selectFormPlaceholder": "Sélectionner un formulaire...",
+        "searchFormsPlaceholder": "Rechercher un formulaire par nom ou ID...",
+        "noFormsMatch": "Aucun formulaire ne correspond à votre recherche.",
         "pasteFormIdPlaceholder": "Collez l'identifiant de votre formulaire de prospects",
         "selectPageFirstPlaceholder": "Sélectionnez d'abord une Page",
         "cantAutoListForms": "Impossible de lister automatiquement les formulaires de cette Page. Collez l'identifiant du formulaire de prospects — vous le trouverez dans Meta Business Suite → Tous les outils → Formulaires instantanés (ou dans votre annonce liée au formulaire). La capture de prospects fonctionne dès que la correspondance est faite.",

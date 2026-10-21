@@ -8,6 +8,7 @@ import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { MyButton } from '@/components/design-system/button';
+import { SearchableSelect, prefixFirstFilter } from '@/components/design-system/searchable-select';
 import { toast } from 'sonner';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { formatDateTime } from '@/lib/formatters';
@@ -1890,18 +1891,19 @@ function AddMetaForm({
                                     {t('meta.loadingForms')}
                                 </div>
                             ) : forms.length > 0 ? (
-                                <select
-                                    className="w-full rounded-md border bg-white px-3 py-2 text-sm"
+                                <SearchableSelect
+                                    options={forms.map((f) => ({
+                                        label: `${f.name} (${f.id})`,
+                                        value: f.id,
+                                    }))}
                                     value={formId}
-                                    onChange={(e) => selectForm(e.target.value)}
-                                >
-                                    <option value="">{t('meta.selectFormPlaceholder')}</option>
-                                    {forms.map((f) => (
-                                        <option key={f.id} value={f.id}>
-                                            {f.name} ({f.id})
-                                        </option>
-                                    ))}
-                                </select>
+                                    onChange={selectForm}
+                                    placeholder={t('meta.selectFormPlaceholder')}
+                                    searchPlaceholder={t('meta.searchFormsPlaceholder')}
+                                    emptyText={t('meta.noFormsMatch')}
+                                    filter={prefixFirstFilter}
+                                    triggerClassName="text-sm"
+                                />
                             ) : (
                                 <>
                                     <Input

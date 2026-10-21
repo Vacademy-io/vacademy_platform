@@ -182,6 +182,8 @@
         "leadFormLabel": "Lead Gen Form",
         "loadingForms": "Loading forms...",
         "selectFormPlaceholder": "Select a form...",
+        "searchFormsPlaceholder": "Search forms by name or ID...",
+        "noFormsMatch": "No forms match your search.",
         "pasteFormIdPlaceholder": "Paste your Lead Form ID",
         "selectPageFirstPlaceholder": "Select a page first",
         "cantAutoListForms": "Can't auto-list this Page's forms. Paste the Lead Form ID — find it in Meta Business Suite → All tools → Instant Forms (or your ad's lead form). Lead capture still works once mapped.",

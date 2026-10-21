@@ -182,6 +182,8 @@
         "leadFormLabel": "लीड जनरेशन फ़ॉर्म",
         "loadingForms": "फ़ॉर्म लोड हो रहे हैं...",
         "selectFormPlaceholder": "एक फ़ॉर्म चुनें...",
+        "searchFormsPlaceholder": "नाम या ID से फ़ॉर्म खोजें...",
+        "noFormsMatch": "आपकी खोज से कोई फ़ॉर्म मेल नहीं खाता।",
         "pasteFormIdPlaceholder": "अपनी लीड फ़ॉर्म ID पेस्ट करें",
         "selectPageFirstPlaceholder": "पहले एक Page चुनें",
         "cantAutoListForms": "इस Page के फ़ॉर्म अपने आप सूचीबद्ध नहीं हो सकते। लीड फ़ॉर्म ID पेस्ट करें — यह Meta Business Suite → All tools → Instant Forms में (या अपने विज्ञापन के लीड फ़ॉर्म में) मिलेगी। मैपिंग होते ही लीड कैप्चर काम करने लगेगा।",

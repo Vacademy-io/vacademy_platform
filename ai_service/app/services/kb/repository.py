@@ -15,6 +15,9 @@ from __future__ import annotations
 
 import json
 import logging
+import re
+import unicodedata
+import uuid
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence
 
@@ -36,6 +39,13 @@ VECTOR_COLUMN_BY_DIM: Dict[int, str] = {768: "embedding_768"}
 # NCERT and other curriculum books: they are platform-owned library content,
 # not per-institute features or paid catalogue products.
 CURRICULUM_COLLECTION = "CURRICULUM"
+
+# The hidden per-institute course store (app/services/course_knowledge) and its
+# one-source-per-lesson rows. The generic knowledge-base code below must never
+# read them: lessons are gated per learner (drip, enrolment, status) and only
+# the course-knowledge gateway applies those rules.
+COURSE_CONTENT_PURPOSE = "course_content"
+SLIDE_SOURCE_KIND = "SLIDE"
 
 _FREE_LIBRARY_ACCESS_SQL = f"""
     EXISTS (
@@ -80,6 +90,203 @@ _KB_SELECT = f"""
       FROM knowledge_base kb
       LEFT JOIN knowledge_base_listing l ON l.knowledge_base_id = kb.id
 """
+
+
+# ── Stable topic ids (platform setting kb.stable_topic_ids) ─────────────────
+# Off: replace_topic_tree deletes the whole topic tree and re-inserts it, so
+# every LLM-derived topic gets a fresh id on every rebuild. On: nodes are
+# matched to the existing rows and keep their ids, so chunks (kb_chunk.node_id),
+# companions and course links that point at a topic survive a rebuild.
+STABLE_TOPIC_IDS_SETTING = "kb.stable_topic_ids"
+
+# Keyword overlap at which a renamed node of an LLM tree keeps its old id.
+TOPIC_KEYWORD_JACCARD_MIN = 0.5
+
+# "1.2 ", "3) ", "Chapter 3: ", "Unit IV - ". Roman numerals only after a
+# keyword, so a title that merely starts with "Did" or "Mix" is left alone.
+_LEADING_NUMBERING_RE = re.compile(
+    r"^(?:(?:chapter|unit|part|section|lesson|module)\s+(?:\d+(?:\.\d+)*|[ivxlcdm]+)\b"
+    r"|\d+(?:\.\d+)*\.?(?=[\s:)\-\u2013\u2014]|$))"
+    r"\s*[.:)\-\u2013\u2014]*\s*"
+)
+
+
+def stable_topic_ids_enabled() -> bool:
+    """kb.stable_topic_ids. Never raises: a settings outage reads as off, the
+    old (delete and re-insert) behaviour."""
+    try:
+        from ..platform_settings_service import get_platform_setting
+        value = get_platform_setting(STABLE_TOPIC_IDS_SETTING, default=False)
+    except Exception:  # noqa: BLE001
+        return False
+    if isinstance(value, str):
+        return value.strip().lower() in ("1", "true", "yes", "on")
+    return bool(value)
+
+
+def normalize_topic_title(title: Optional[str]) -> str:
+    """Matching form of a topic title: NFKC, lowercase, leading numbering
+    ("1.2", "Chapter 3:") and punctuation removed, spaces collapsed. A title
+    that is nothing but numbering keeps its folded text, so "1.2" is not
+    the same node as "1.3"."""
+    folded = " ".join(unicodedata.normalize("NFKC", title or "").casefold().split())
+    s = _LEADING_NUMBERING_RE.sub("", folded, count=1)
+    s = "".join(" " if unicodedata.category(ch).startswith("P") else ch for ch in s)
+    return " ".join(s.split()) or folded
+
+
+def topic_node_id(*parts: str) -> str:
+    """Deterministic topic node id, the same scheme as topics._node_id."""
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, "vacademy-kb-node:" + "|".join(parts)))
+
+
+def _topic_key(level: str, source_id: Optional[str], parent_title: Optional[str],
+               title: Optional[str]) -> tuple:
+    return (
+        level,
+        source_id or "",
+        normalize_topic_title(parent_title) if level == "subtopic" else "",
+        normalize_topic_title(title),
+    )
+
+
+def _keyword_set(keywords: Optional[Sequence[Any]]) -> set:
+    return {k for k in (normalize_topic_title(str(x)) for x in (keywords or [])) if k}
+
+
+@dataclass
+class _ExistingTopicNode:
+    """A topic/subtopic row as stored before the rebuild."""
+    id: str
+    parent_id: Optional[str]
+    level: str
+    source_id: Optional[str]
+    title: Optional[str]
+    keywords: List[str]
+
+
+@dataclass
+class _PlannedTopicNode:
+    """One node of the new tree with the id it will be written under."""
+    node: Any
+    level: str
+    source_id: Optional[str]
+    ordinal: int
+    parent: Optional["_PlannedTopicNode"] = None
+    children: List["_PlannedTopicNode"] = field(default_factory=list)
+    id: Optional[str] = None
+
+
+def plan_topic_node_ids(
+    kb_id: str, existing: Sequence[_ExistingTopicNode], topics: Sequence[Any]
+) -> List[_PlannedTopicNode]:
+    """Give every node of a new topic tree its id, reusing stored ids.
+
+    Per node, the first rule that applies wins:
+      1. it carries an id (AUTHORED trees) that is already stored: keep it;
+      2. exact key match (level, source, normalised parent title for
+         subtopics, normalised title): reuse that row's id;
+      3. LLM trees only (no node carries an id): a stored node with the same
+         level, source and (reused) parent whose keywords overlap by Jaccard
+         >= 0.5 lends its id, so a lightly renamed topic keeps it;
+      4. otherwise its carried id, or a uuid5 of its normalised path.
+    No stored id is ever given to two nodes. Topics resolve before subtopics,
+    because a subtopic's key and its parent match depend on its topic.
+    """
+    old_by_id = {n.id: n for n in existing}
+    old_by_key: Dict[tuple, List[str]] = {}
+    for n in existing:
+        parent = old_by_id.get(n.parent_id) if n.parent_id else None
+        key = _topic_key(n.level, n.source_id, parent.title if parent else "", n.title)
+        old_by_key.setdefault(key, []).append(n.id)
+
+    planned: List[_PlannedTopicNode] = []
+    for t_ordinal, topic in enumerate(topics, start=1):
+        tp = _PlannedTopicNode(
+            node=topic, level="topic", source_id=getattr(topic, "source_id", None),
+            ordinal=t_ordinal,
+        )
+        for s_ordinal, sub in enumerate(getattr(topic, "subtopics", None) or [], start=1):
+            tp.children.append(
+                _PlannedTopicNode(
+                    node=sub, level="subtopic",
+                    source_id=getattr(sub, "source_id", None) or tp.source_id,
+                    ordinal=s_ordinal, parent=tp,
+                )
+            )
+        planned.append(tp)
+    subtopics = [c for tp in planned for c in tp.children]
+    authored = any(getattr(p.node, "id", None) for p in [*planned, *subtopics])
+    taken: set = set()
+
+    def assign(p: _PlannedTopicNode, node_id: str) -> None:
+        p.id = node_id
+        taken.add(node_id)
+
+    # Rule 1 runs for the whole tree first, so no other node's key match can
+    # take an id its own node still carries.
+    for p in [*planned, *subtopics]:
+        carried = getattr(p.node, "id", None)
+        if carried and carried in old_by_id and carried not in taken:
+            assign(p, carried)
+
+    def parent_title(p: _PlannedTopicNode) -> str:
+        return p.parent.node.title if p.parent is not None else ""
+
+    def resolve(level_nodes: List[_PlannedTopicNode]) -> None:
+        # Exact keys before any fuzzy match: a renamed node must not take the
+        # id an unchanged node further down the list matches exactly.
+        for p in level_nodes:
+            if p.id:
+                continue
+            key = _topic_key(p.level, p.source_id, parent_title(p), p.node.title)
+            match = next((i for i in old_by_key.get(key, []) if i not in taken), None)
+            if match:
+                assign(p, match)
+        if not authored:
+            for p in level_nodes:
+                if p.id:
+                    continue
+                mine = _keyword_set(getattr(p.node, "keywords", None))
+                if not mine:
+                    continue
+                want_parent = p.parent.id if p.parent is not None else None
+                best, best_score = None, 0.0
+                for old in existing:
+                    if (old.id in taken or old.level != p.level
+                            or (old.source_id or "") != (p.source_id or "")
+                            or old.parent_id != want_parent):
+                        continue
+                    theirs = _keyword_set(old.keywords)
+                    if not theirs:
+                        continue
+                    score = len(mine & theirs) / len(mine | theirs)
+                    if score > best_score:
+                        best, best_score = old.id, score
+                if best and best_score >= TOPIC_KEYWORD_JACCARD_MIN:
+                    assign(p, best)
+        for p in level_nodes:
+            if p.id:
+                continue
+            carried = getattr(p.node, "id", None)
+            if carried and carried not in taken:
+                assign(p, carried)
+                continue
+            path = normalize_topic_title(p.node.title)
+            if p.level == "subtopic":
+                path = normalize_topic_title(parent_title(p)) + "/" + path
+            node_id = topic_node_id(kb_id, p.level, p.source_id or "", path)
+            occurrence = 1
+            while node_id in taken:
+                occurrence += 1
+                node_id = topic_node_id(
+                    kb_id, p.level, p.source_id or "", f"{path}#{occurrence}"
+                )
+            assign(p, node_id)
+
+    resolve(planned)
+    resolve(subtopics)
+    return planned
 
 
 @dataclass
@@ -225,6 +432,9 @@ class KbRepository:
         so anything in it is offered as ready to use.
 
         Curriculum metadata is retained for grouping in authoring pickers.
+
+        The per-institute course store (purpose course_content) is never listed:
+        it is not a library anyone picks, and get_kb hides it the same way.
         """
         status_clause = "" if include_archived else "AND kb.status = 'ACTIVE'"
         rows = self.db.execute(
@@ -240,6 +450,7 @@ class KbRepository:
                         )
                         OR {_FREE_LIBRARY_ACCESS_SQL}
                       )
+                  AND kb.purpose <> '{COURSE_CONTENT_PURPOSE}'
                 {status_clause}
                 ORDER BY (kb.owner_type = 'PLATFORM'),
                          -- curriculum last (NULL collection must read as FALSE,
@@ -265,6 +476,9 @@ class KbRepository:
         A PLATFORM-owned KB is readable by any institute; an INSTITUTE-owned one
         only by its owner. Scoping here (rather than in the caller) is what makes
         every endpoint tenant-safe by construction.
+
+        The course store (purpose course_content) reads as not found, so every
+        /knowledge-base and /kb-companion route 404s for it.
         """
         row = self.db.execute(
             text(
@@ -272,6 +486,7 @@ class KbRepository:
                 {_KB_SELECT}
                 WHERE kb.id = :kb_id
                   AND (kb.institute_id = :institute_id OR kb.owner_type = 'PLATFORM')
+                  AND kb.purpose <> '{COURSE_CONTENT_PURPOSE}'
                 """
             ),
             {"kb_id": kb_id, "institute_id": institute_id},
@@ -519,9 +734,11 @@ class KbRepository:
         return [self._source_row(r) for r in rows]
 
     def get_source(self, source_id: str, institute_id: str) -> Optional[Dict[str, Any]]:
+        # A SLIDE source is one lesson of the course store: never served,
+        # edited or re-ingested through the knowledge-base routes.
         row = self.db.execute(
             text(
-                """
+                f"""
                 SELECT id, knowledge_base_id, institute_id, source_kind, title,
                        file_id, source_url, status, progress, stage, is_active,
                        page_count, pages_low_confidence, chunk_count, figure_count,
@@ -530,6 +747,7 @@ class KbRepository:
                        raw_text
                 FROM knowledge_base_source
                 WHERE id = :source_id AND institute_id = :institute_id
+                  AND source_kind <> '{SLIDE_SOURCE_KIND}'
                 """
             ),
             {"source_id": source_id, "institute_id": institute_id},
@@ -767,7 +985,12 @@ class KbRepository:
         subtopic's page span against the RIGHT source — every chapter PDF starts
         at page 1, so a KB-wide (source_id NULL) subtopic spanning pages 3-7
         would otherwise claim page 3-7 of every chapter in the book.
+
+        With kb.stable_topic_ids on, the tree is matched and pruned instead of
+        replaced, so unchanged nodes keep their ids (_replace_topic_tree_stable).
         """
+        if stable_topic_ids_enabled():
+            return self._replace_topic_tree_stable(kb_id, institute_id, topics)
         self.db.execute(
             text(
                 "DELETE FROM knowledge_base_node "
@@ -828,6 +1051,105 @@ class KbRepository:
                 )
                 written += 1
         self.db.commit()
+        return written
+
+    _UPSERT_TOPIC_NODE_SQL = """
+        INSERT INTO knowledge_base_node
+            (id, knowledge_base_id, source_id, institute_id, parent_id, level,
+             title, summary, keywords, page_start, page_end, ordinal)
+        VALUES
+            (:id, :kb_id, :source_id, :institute_id, :parent_id, :level,
+             :title, :summary, :keywords, :page_start, :page_end, :ordinal)
+        ON CONFLICT (id) DO UPDATE SET
+            parent_id = EXCLUDED.parent_id,
+            level = EXCLUDED.level,
+            source_id = EXCLUDED.source_id,
+            title = EXCLUDED.title,
+            summary = EXCLUDED.summary,
+            keywords = EXCLUDED.keywords,
+            page_start = EXCLUDED.page_start,
+            page_end = EXCLUDED.page_end,
+            ordinal = EXCLUDED.ordinal
+        WHERE knowledge_base_node.knowledge_base_id = EXCLUDED.knowledge_base_id
+          AND knowledge_base_node.level IN ('topic', 'subtopic')
+        RETURNING id
+    """
+
+    def _replace_topic_tree_stable(
+        self, kb_id: str, institute_id: str, topics: Sequence[Any]
+    ) -> int:
+        """Match, upsert, then prune, in ONE transaction (kb.stable_topic_ids).
+
+        Ids come from plan_topic_node_ids. Topics are written before subtopics
+        so a re-parented subtopic already points at its new parent when the old
+        one goes. Pruning deletes subtopics before topics: the parent foreign
+        key cascades, and a topic deleted first would take with it a child the
+        new tree still has. kb_chunk.node_id (ON DELETE SET NULL) therefore
+        survives for every node that is kept.
+        """
+        try:
+            # Serialises rebuilds of one KB: two concurrent ingests finishing
+            # together would otherwise each prune only the rows they loaded and
+            # leave the other's new nodes behind as duplicates.
+            self.db.execute(
+                text("SELECT id FROM knowledge_base WHERE id = :kb_id FOR UPDATE"),
+                {"kb_id": kb_id},
+            )
+            rows = self.db.execute(
+                text(
+                    """
+                    SELECT id, parent_id, level, source_id, title, keywords
+                    FROM knowledge_base_node
+                    WHERE knowledge_base_id = :kb_id AND level IN ('topic', 'subtopic')
+                    ORDER BY ordinal, id
+                    """
+                ),
+                {"kb_id": kb_id},
+            ).fetchall()
+            existing = [
+                _ExistingTopicNode(
+                    id=str(r[0]), parent_id=str(r[1]) if r[1] else None, level=r[2],
+                    source_id=r[3], title=r[4], keywords=list(r[5] or []),
+                )
+                for r in rows
+            ]
+            planned = plan_topic_node_ids(kb_id, existing, topics)
+
+            written = 0
+            for p in [*planned, *(c for tp in planned for c in tp.children)]:
+                node = p.node
+                row = self.db.execute(
+                    text(self._UPSERT_TOPIC_NODE_SQL),
+                    {
+                        "id": p.id, "kb_id": kb_id, "institute_id": institute_id,
+                        "source_id": p.source_id,
+                        "parent_id": p.parent.id if p.parent is not None else None,
+                        "level": p.level, "title": node.title, "summary": node.summary,
+                        "keywords": list(node.keywords or []),
+                        "page_start": node.page_start, "page_end": node.page_end,
+                        "ordinal": p.ordinal,
+                    },
+                ).fetchone()
+                if row is None:
+                    # The id belongs to a row outside this KB's topic tree.
+                    raise RuntimeError(f"Topic node id {p.id} is held by another node")
+                written += 1
+
+            kept = {p.id for tp in planned for p in [tp, *tp.children]}
+            for level in ("subtopic", "topic"):
+                stale = [n.id for n in existing if n.level == level and n.id not in kept]
+                if stale:
+                    self.db.execute(
+                        text(
+                            "DELETE FROM knowledge_base_node "
+                            "WHERE knowledge_base_id = :kb_id AND id = ANY(:ids)"
+                        ),
+                        {"kb_id": kb_id, "ids": stale},
+                    )
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
         return written
 
     def get_topic_tree(self, kb_id: str) -> List[Dict[str, Any]]:
@@ -1356,6 +1678,10 @@ class KbRepository:
         Backs the existing chatbot/assistant readers, which have a question but
         no particular knowledge base in mind. ``purposes`` narrows to e.g.
         ['institute_info'] so a policy question isn't answered out of a textbook.
+
+        The course store is never searched here, whatever ``purposes`` says: its
+        lessons are drip-, enrolment- and status-gated per learner, and only the
+        course-knowledge retrieval gateway applies those rules.
         """
         col = self.vector_column_for_dim(embedding_dim)
         purpose_clause = "AND kb.purpose = ANY(:purposes)" if purposes else ""
@@ -1384,6 +1710,7 @@ class KbRepository:
                   AND c.{col} IS NOT NULL
                   AND s.is_active = TRUE
                   AND kb.status = 'ACTIVE'
+                  AND kb.purpose <> '{COURSE_CONTENT_PURPOSE}'
                   {purpose_clause}
                   AND 1 - (c.{col} <=> CAST(:query_vec AS vector)) > :threshold
                 ORDER BY c.{col} <=> CAST(:query_vec AS vector)

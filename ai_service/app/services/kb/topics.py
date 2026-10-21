@@ -27,7 +27,7 @@ from sqlalchemy.orm import Session
 
 from ..llm_json import generate_json
 from ..model_selection import resolve_models
-from .repository import KbRepository
+from .repository import KbRepository, normalize_topic_title, stable_topic_ids_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -478,6 +478,10 @@ async def build_authored_tree(
         ),
         key=_chapter_sort_key,
     )
+    # kb.stable_topic_ids: a NEW subtopic id is keyed on the heading text, not
+    # its position, so inserting a heading does not shift every id after it.
+    # Ids already stored keep matching through replace_topic_tree's key match.
+    stable_ids = stable_topic_ids_enabled()
     topics: List[TopicNode] = []
     for source in sources:
         meta = source.get("meta") or {}
@@ -510,15 +514,29 @@ async def build_authored_tree(
         # and the last one runs to the end of the chapter. A heading with no
         # page (hand-supplied, not found in the text) becomes a subtopic with
         # no span: pickable, retrieved by similarity, owning no chunks.
+        seen_headings: Dict[str, int] = {}
         for i, h in enumerate(majors):
             page = h.get("page")
             end = None
             if page:
                 nxt = next((m["page"] for m in majors[i + 1:] if m.get("page")), None)
                 end = max(int(page), int(nxt) if nxt else (page_count or int(page)))
+            heading = str(h.get("title") or "")
+            if stable_ids:
+                # Occurrence suffix only when two headings share a title.
+                key = normalize_topic_title(heading)
+                seen_headings[key] = seen_headings.get(key, 0) + 1
+                occurrence = seen_headings[key]
+                sub_id = (
+                    _node_id(kb["id"], source["id"], "heading", key)
+                    if occurrence == 1
+                    else _node_id(kb["id"], source["id"], "heading", key, str(occurrence))
+                )
+            else:
+                sub_id = _node_id(kb["id"], source["id"], str(i), heading)
             topic.subtopics.append(
                 TopicNode(
-                    id=_node_id(kb["id"], source["id"], str(i), str(h.get("title") or "")),
+                    id=sub_id,
                     title=str(h.get("title") or "")[:300],
                     page_start=int(page) if page else None,
                     page_end=end,

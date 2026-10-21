@@ -3,6 +3,7 @@ Voice session service — orchestrates voice conversation turns (STT transcript 
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import Dict, Any, List, Optional
@@ -16,6 +17,7 @@ from ..services.chat_llm_client import ChatLLMClient
 from ..services.institute_settings_service import InstituteSettingsService
 from ..services.token_usage_service import TokenUsageService
 from ..models.ai_token_usage import ApiProvider, RequestType
+from .course_knowledge import learner_tool, retrieval, settings_store
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +45,18 @@ VOICE_TOOLS_RULE = (
     "plain speech (no lists, no links, no markdown), e.g. 'You have Physics today at 7:30 PM'; "
     "they can see the details in the app. Never guess times, marks or ranks."
 )
+
+# search_my_course joins the voice tools only for a verified caller (token user
+# = session user, session institute in the token's authorities) on a doubt /
+# tutoring call, and only while the institute's course-knowledge gate is on.
+VOICE_COURSE_RULE = (
+    "\n\nFor questions about this student's course content, call search_my_course and answer "
+    "in one or two spoken sentences, mentioning the lesson name. For a locked lesson, say when "
+    "it unlocks and do not explain it. Never read out links."
+)
+# Hints the course search may use from the session's context; access.py ignores
+# any that point outside the learner's open lessons.
+_COURSE_HINT_KEYS = ("slide_id", "chapter_id", "package_session_id", "tz")
 
 
 class VoiceSessionService:
@@ -115,7 +129,8 @@ class VoiceSessionService:
         user_id: str,
         institute_id: str,
     ) -> tuple:
-        """Resolve everything a turn needs: (session_mode, system_prompt, temperature)."""
+        """Resolve everything a turn needs:
+        (session_mode, system_prompt, temperature, user_name, context_meta)."""
         session = self.session_repo.get_session_by_id(session_id)
         if not session:
             raise ValueError(f"Session {session_id} not found")
@@ -136,7 +151,13 @@ class VoiceSessionService:
             institute_id=institute_id,
         )
         user_name = (context.get("user_details", {}) or {}).get("name") or ""
-        return session_mode, system_prompt, self.institute_settings.get_temperature(ai_settings), user_name
+        return (
+            session_mode,
+            system_prompt,
+            self.institute_settings.get_temperature(ai_settings),
+            user_name,
+            dict(session.context_meta) if isinstance(session.context_meta, dict) else {},
+        )
 
     async def generate_opening_turn(
         self,
@@ -155,7 +176,7 @@ class VoiceSessionService:
         if self.message_repo.get_conversation_history(session_id, limit=1):
             return None
 
-        session_mode, system_prompt, temperature, user_name = await self._prepare_turn(
+        session_mode, system_prompt, temperature, user_name, _context_meta = await self._prepare_turn(
             session_id, user_id, institute_id
         )
 
@@ -220,9 +241,14 @@ class VoiceSessionService:
         user_id: str,
         institute_id: str,
         model: Optional[str] = None,
+        course_verified: bool = False,
     ) -> dict:
         """
         Process a single voice conversation turn.
+
+        course_verified: the socket proved the caller is the session's user and
+        a member of its institute. Only then may a doubt call search the
+        learner's course (and only while the institute's gate is on).
 
         1. Save user message (transcript) to DB
         2. Get session to read session_mode and context
@@ -242,12 +268,17 @@ class VoiceSessionService:
         )
 
         # 2-4. Session mode, resolved context and the mode-specific prompt
-        session_mode, system_prompt, temperature, _user_name = await self._prepare_turn(
+        session_mode, system_prompt, temperature, _user_name, context_meta = await self._prepare_turn(
             session_id, user_id, institute_id
         )
         tools = VOICE_LEARNER_TOOLS if session_mode not in TOOL_FREE_VOICE_MODES else None
         if tools:
             system_prompt += VOICE_TOOLS_RULE
+        course_tool = await self._course_tool_allowed(course_verified, session_mode, institute_id)
+        if course_tool:
+            # A new list: VOICE_LEARNER_TOOLS is shared by every call.
+            tools = [*(tools or []), learner_tool.SEARCH_MY_COURSE_TOOL]
+            system_prompt += VOICE_COURSE_RULE
 
         # 5. Conversation history (last 10 messages)
         history = self.message_repo.get_conversation_history(session_id, limit=10)
@@ -274,7 +305,9 @@ class VoiceSessionService:
             if not tools or not tool_calls:
                 break
             for call in tool_calls:
-                result = await self._run_voice_tool(call, user_id, institute_id)
+                result = await self._run_voice_tool(
+                    call, user_id, institute_id, course_tool=course_tool, context_meta=context_meta
+                )
                 messages.append({"role": "assistant", "content": None, "tool_calls": [call]})
                 messages.append({
                     "role": "tool",
@@ -308,13 +341,46 @@ class VoiceSessionService:
             "metadata": metadata,
         }
 
-    async def _run_voice_tool(self, call: Dict[str, Any], user_id: str, institute_id: str) -> str:
+    async def _course_tool_allowed(self, course_verified: bool, session_mode: str, institute_id: str) -> bool:
+        """search_my_course is offered only to a verified caller on a tutoring /
+        doubt call while the institute's gate is active in mode 'on'. The gate
+        reads platform settings and a cached row on its own short session, in a
+        worker thread — never self.db."""
+        if not course_verified or session_mode in TOOL_FREE_VOICE_MODES or not institute_id:
+            return False
+        try:
+            gate = await asyncio.to_thread(settings_store.learner_gate, institute_id)
+        except Exception:  # noqa: BLE001 - an unreadable gate is an off gate
+            logger.warning(f"Course knowledge gate unreadable for institute {institute_id}", exc_info=True)
+            return False
+        return bool(gate.active and gate.mode == "on")
+
+    async def _run_voice_tool(
+        self,
+        call: Dict[str, Any],
+        user_id: str,
+        institute_id: str,
+        course_tool: bool = False,
+        context_meta: Optional[Dict[str, Any]] = None,
+    ) -> str:
         """Run one learner lookup for a voice turn; the text is all a call can use."""
         from .chat_cards import split_tool_output
         from .tool_manager_service import ToolManagerService
 
         fn = call.get("function") or {}
         name = fn.get("name") or ""
+        if name == learner_tool.TOOL_NAME and course_tool:
+            # Own short sessions inside the tool: self.db lives for the whole
+            # socket and must not be held across the query embedding.
+            hints = {k: (context_meta or {}).get(k) for k in _COURSE_HINT_KEYS}
+            output = await learner_tool.run_search_my_course(
+                user_id=user_id,
+                institute_id=institute_id,
+                args=fn.get("arguments") or "{}",
+                context_meta=hints,
+                mode=retrieval.MODE_VOICE,
+            )
+            return output.text
         if name not in VOICE_LEARNER_TOOL_NAMES:
             return f"Unknown tool: {name}"
         try:

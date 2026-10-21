@@ -44,6 +44,8 @@ from .routers.content_ingestion import router as content_ingestion_router
 from .routers.learning_analytics import router as learning_analytics_router
 from .routers.mathpix import router as mathpix_router
 from .routers.knowledge_base import router as knowledge_base_router
+from .routers.course_knowledge import router as course_knowledge_router
+from .routers.course_knowledge_links import router as course_knowledge_links_router
 from .routers.kb_paper import router as kb_paper_router
 from .routers.kb_companion import router as kb_companion_router
 from .site_assistant.router import router as site_assistant_router
@@ -178,13 +180,32 @@ async def _lifespan(app: FastAPI):
         start_help_corpus_sync()
     except Exception as exc:  # noqa: BLE001
         _logger.warning("help corpus sync startup skipped: %s", exc)
+    # Course knowledge (admin_core V600): tables only admin_core Flyway creates, so
+    # no DDL here, only a check that logs an error naming the migration when one is
+    # missing. Before the MCP early return below so it runs whether or not MCP is on.
+    try:
+        with db_session() as db:
+            from .services.course_knowledge.schema_check import check_course_knowledge_schema
+            check_course_knowledge_schema(db)
+    except Exception as exc:  # noqa: BLE001
+        _logger.error("course knowledge schema check skipped: %s", exc)
+    # Course knowledge indexing worker: drains content_index_queue. It idles while
+    # course_knowledge.enabled is off. Lazy import so a module issue can't block app boot.
+    try:
+        from .services.course_knowledge.worker import start_course_knowledge_worker
+        start_course_knowledge_worker()
+    except Exception as exc:  # noqa: BLE001
+        _logger.warning("course knowledge worker startup skipped: %s", exc)
 
     # MCP: the Streamable HTTP session manager needs a task group alive for the
     # whole app lifetime. Mounting the SDK's ASGI app bypasses its own lifespan,
     # so the host app has to run it or every MCP request fails.
     mcp_server = getattr(app.state, "mcp_server", None)
     if mcp_server is None:
-        yield
+        try:
+            yield
+        finally:
+            await _stop_course_knowledge_worker(_logger)
         return
 
     try:
@@ -216,8 +237,21 @@ async def _lifespan(app: FastAPI):
     except Exception as exc:  # noqa: BLE001
         _logger.warning("design_import purger startup skipped: %s", exc)
 
-    async with mcp_server.session_manager.run():
-        yield
+    try:
+        async with mcp_server.session_manager.run():
+            yield
+    finally:
+        await _stop_course_knowledge_worker(_logger)
+
+
+async def _stop_course_knowledge_worker(logger: logging.Logger) -> None:
+    """Shutdown: cancel the indexing worker so a stopping pod (or a test app) leaves no
+    task claiming queue rows. A crash here must not block shutdown."""
+    try:
+        from .services.course_knowledge.worker import stop_course_knowledge_worker
+        await stop_course_knowledge_worker()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("course knowledge worker shutdown skipped: %s", exc)
 
 
 def create_app() -> FastAPI:
@@ -370,6 +404,10 @@ def create_app() -> FastAPI:
     app.include_router(learning_analytics_router, prefix=settings.api_base_path)
     app.include_router(mathpix_router, prefix=settings.api_base_path)
     app.include_router(knowledge_base_router, prefix=settings.api_base_path)
+    # Course knowledge: Make course AI-ready (admin) and course-to-KB links (V600).
+    # Both routers declare /course-knowledge/v1; every route checks its own flag.
+    app.include_router(course_knowledge_router, prefix=settings.api_base_path)
+    app.include_router(course_knowledge_links_router, prefix=settings.api_base_path)
     # Question papers generated from a knowledge base (V436). Shares the
     # /knowledge-base/v1 prefix and the same Caller auth dependency.
     app.include_router(kb_paper_router, prefix=settings.api_base_path)

@@ -6,6 +6,7 @@
     "sections": {
         "providers": "Providers & Models",
         "courseAi": "Course AI",
+        "courseKnowledge": "Course knowledge",
         "studentAi": "Student AI",
         "learnerInsights": "Learner Insights",
         "knowledgeBase": "Knowledge Base",

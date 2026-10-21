@@ -82,6 +82,7 @@ COVERED_BY: Dict[str, str] = {
 # use_case -> (migration, tool keys that row owns).
 SEEDED_LATER: Dict[str, Tuple[str, Tuple[str, ...]]] = {
     "site_assistant": ("V598__Site_assistant.sql", ("site_assistant_answer",)),
+    "course_knowledge": ("V600__Course_knowledge.sql", ("course_kb_ocr_page", "course_kb_transcribe_minute")),
 }
 SEEDED_LATER_TOOL_KEYS = {k for _m, keys in SEEDED_LATER.values() for k in keys}
 

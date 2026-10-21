@@ -28,7 +28,7 @@ def test_platform_role_names_with_spaces_are_staff():
     assert is_staff(["STUDENT", "TEACHER"])
     assert not is_staff(["STUDENT"])
     assert not is_staff([])
-    assert is_staff([], is_root=True)
+    assert not is_staff([], is_root=True)  # is_root_user never grants staff
     assert normalize_roles(["Content Creator", None, ""]) == {"CONTENT_CREATOR"}
     assert "CONTENT_CREATOR" in STAFF_ROLES
 

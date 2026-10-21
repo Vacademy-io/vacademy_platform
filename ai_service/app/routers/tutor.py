@@ -72,13 +72,15 @@ async def _caller(
 ) -> Caller:
     """JWT + clientId, pinned to one institute, and STAFF ONLY: a learner's
     token is a member of the institute too, and these routes expose quiz
-    answer keys and spend the institute's credits."""
+    answer keys and spend the institute's credits. Roles only, from the
+    clientId institute's authorities entry: is_root_user is set for learners
+    too and never makes a caller staff."""
     if not authorization:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
                             detail="Missing Authorization: Bearer <jwt> (with a clientId header)")
     principal = await get_pinned_principal(request, authorization, settings)
     roles = sorted(normalize_roles(principal.roles))
-    if not is_staff(roles, is_root=bool(principal.is_root_user)):
+    if not is_staff(roles):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                             detail="Teaching plans are managed by institute staff (admin, teacher or content-creator roles)")
     return Caller(principal.institute_id, principal.user_id, roles, bool(principal.is_root_user))
@@ -155,8 +157,7 @@ def _compiler(db: Session, caller: Caller, package_id: str, p: CompileOptions, *
     teacher = p.teacher_name if "teacher_name" in fields else (s.teacher_name or p.teacher_name)
     language = p.language if "language" in fields else s.course_language
     images = p.generate_images if "generate_images" in fields else bool(s.generate_images)
-    kb = p.kb_grounding if "kb_grounding" in fields else (
-        CompileKbGrounding(**s.kb_grounding) if s.kb_grounding else None)
+    kb, chapter_topics = _kb_for_compile(db, caller, package_id, p, s)
     # Prepared voice: the same provider / voice / pace a lesson would use.
     try:
         vp_provider = s.tts_provider or str(get_platform_setting("tutor.voice.provider", default="sarvam", db=db) or "sarvam")
@@ -170,10 +171,46 @@ def _compiler(db: Session, caller: Caller, package_id: str, p: CompileOptions, *
         teacher_name=teacher, force=force, generate_images=images, kb_grounding=kb,
         compile_run_id=p.compile_run_id or str(uuid.uuid4()), model_override=s.compile_model,
         transcribe_videos=p.transcribe_videos, ocr_pdfs=p.ocr_pdfs, voice_prepare=voice_prepare,
+        chapter_topics=chapter_topics,
     )
 
 
-@router.post("/compile", summary="Compile slides of a course into teaching plans (SSE)")
+def _kb_for_compile(db: Session, caller: Caller, package_id: str, p: CompileOptions,
+                    s: TutorSettings) -> tuple:
+    """(kb_grounding, chapter_topics) for a compile.
+
+    Flag off (course_knowledge.links_enabled): the request override, else the
+    Tutor Mode setting's kbGrounding, and no chapter topics — exactly the old
+    behaviour. Flag on: the request override, else the course's first active
+    GROUNDING link used by the tutor, else the legacy setting; chapter topics
+    come from the course's tutor link to whichever KB was picked (its node
+    ids belong to that KB). A links read failure falls back to the flag-off
+    choice."""
+    override = "kb_grounding" in p.model_fields_set
+    legacy = CompileKbGrounding(**s.kb_grounding) if s.kb_grounding else None
+    kb = p.kb_grounding if override else legacy
+    from ..services.course_knowledge import flags as ck_flags
+    if not package_id or not ck_flags.links_enabled():
+        return kb, None
+    try:
+        from ..services.course_knowledge import links as ck_links
+        if not override:
+            link = ck_links.tutor_grounding_link(db, caller.institute_id, package_id)
+            if link:
+                kb = CompileKbGrounding(knowledge_base_id=link["knowledge_base_id"], mode=link["grounding_mode"])
+        chapter_topics = (ck_links.chapter_topics_for_kb(db, caller.institute_id, package_id, kb.knowledge_base_id)
+                          if kb else None)
+        return kb, chapter_topics
+    except Exception:  # noqa: BLE001 — links are an upgrade; never block a compile on them
+        logger.warning("course knowledge links unreadable for package %s", package_id, exc_info=True)
+        try:
+            db.rollback()
+        except Exception:  # noqa: BLE001
+            pass
+        return (p.kb_grounding if override else legacy), None
+
+
+@router.post("/compile",summary="Compile slides of a course into teaching plans (SSE)")
 async def compile_plans(
     payload: CompileRequest,
     caller: Caller = Depends(_caller),

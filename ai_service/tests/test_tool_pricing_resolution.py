@@ -22,6 +22,7 @@ from types import SimpleNamespace
 import pytest
 from jose import jwt
 
+import app.services.credit_service  # noqa: F401 - the tests patch it through sys.modules
 from app.config import get_settings
 from app.services import ai_billing
 from app.services import tool_cost_estimator as tce

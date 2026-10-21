@@ -29,6 +29,7 @@ import {
     Article,
     Gauge,
     SealCheck,
+    Brain,
 } from '@phosphor-icons/react';
 import {
     SettingsPageShell,
@@ -131,6 +132,8 @@ import { useAIModelsList } from '@/hooks/useAiModels';
 import KnowledgeBase from './KnowledgeBase';
 import { StudentAiSettingsSection } from './StudentAiSettingsSection';
 import { AiInsightsSettingsSection } from './AiInsightsSettingsSection';
+import { CourseKnowledgeSettingsSection } from './CourseKnowledgeSettingsSection';
+import { useCourseKnowledgeStatus } from '@/services/course-knowledge-settings';
 import { noAutofillProps } from '@/lib/no-autofill';
 
 const LIMITS_SECTION_ID = 'grp-limits';
@@ -140,6 +143,11 @@ const LIMITS_SECTION_ID = 'grp-limits';
  * Neither = no change here.
  */
 const PLAN_SECTION_ID = 'grp-plan';
+/**
+ * Course knowledge (student AI answers from lessons). Present only when the
+ * platform has made the feature available to this institute.
+ */
+const COURSE_KNOWLEDGE_SECTION_ID = 'grp-course-knowledge';
 
 /** `?aiSection=grp-limits` deep-links a tab (the usage-limit modal links here). */
 const readAiSectionParam = (): string | undefined => {
@@ -154,12 +162,22 @@ const getAiSettingsSections = (
     t: (key: string) => string,
     showLimits: boolean,
     showPlan = false,
-    planLabel?: string
+    planLabel?: string,
+    showCourseKnowledge = false
 ): SettingsSectionGroup[] => [
     {
         sections: [
             { id: 'grp-providers', label: t('sections.providers'), icon: Sparkle },
             { id: 'grp-course-ai', label: t('sections.courseAi'), icon: BookOpen },
+            ...(showCourseKnowledge
+                ? [
+                      {
+                          id: COURSE_KNOWLEDGE_SECTION_ID,
+                          label: t('sections.courseKnowledge'),
+                          icon: Brain,
+                      },
+                  ]
+                : []),
             { id: 'grp-student-ai', label: t('sections.studentAi'), icon: Student },
             { id: 'grp-learner-insights', label: t('sections.learnerInsights'), icon: ChartLineUp },
             { id: 'grp-knowledge', label: t('sections.knowledgeBase'), icon: Books },
@@ -187,11 +205,15 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
     const { t: tPlans } = useTranslation('aiPlans');
     const storefrontVisible = showLimits && !!storefrontQuery.data;
     const showPlan = showLimits && (isPlanInEffect(aiPlanQuery.data) || storefrontVisible);
+    // available=false (the default for every institute) leaves this page unchanged.
+    const courseKnowledgeStatusQuery = useCourseKnowledgeStatus();
+    const showCourseKnowledge = !!courseKnowledgeStatusQuery.data?.available;
     const AI_SETTINGS_SECTIONS = getAiSettingsSections(
         t,
         showLimits,
         showPlan,
-        storefrontVisible ? tPlans('tab') : undefined
+        storefrontVisible ? tPlans('tab') : undefined,
+        showCourseKnowledge
     );
     const [initialSection] = useState(readAiSectionParam);
     const watermarkPositions = buildWatermarkPositions(t);
@@ -647,7 +669,13 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                 // The plan tab appears only after its queries resolve; re-mount once
                 // when it does so a ?aiSection=grp-plan deep link (e.g. the return
                 // from a plan payment) still opens it. Other visits are unaffected.
-                key={initialSection === PLAN_SECTION_ID && showPlan ? 'plan-ready' : 'default'}
+                key={
+                    initialSection === PLAN_SECTION_ID && showPlan
+                        ? 'plan-ready'
+                        : initialSection === COURSE_KNOWLEDGE_SECTION_ID && showCourseKnowledge
+                          ? 'course-knowledge-ready'
+                          : 'default'
+                }
                 groups={AI_SETTINGS_SECTIONS}
                 defaultActiveId={initialSection}
             >
@@ -1167,6 +1195,13 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                         </CardContent>
                     </Card>
                 </section>
+
+                {showCourseKnowledge && (
+                    <section id={COURSE_KNOWLEDGE_SECTION_ID} className="space-y-6">
+                        {/* Course knowledge: student AI answers from lessons */}
+                        <CourseKnowledgeSettingsSection />
+                    </section>
+                )}
 
                 <section id="grp-student-ai" className="space-y-6">
                     {/* Student AI Configuration Card */}

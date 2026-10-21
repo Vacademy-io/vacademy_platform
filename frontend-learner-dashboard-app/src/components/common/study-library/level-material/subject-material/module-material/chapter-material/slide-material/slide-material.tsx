@@ -59,6 +59,39 @@ import { SelectionAsk } from "@/components/chatbot/moments/SelectionAskPill";
 import { VideoStuckChip } from "@/components/chatbot/moments/VideoStuckChip";
 import { useVideoStuckMoment } from "@/components/chatbot/moments/use-video-stuck-moment";
 import { useAvailableTutor } from "@/components/chatbot/moments/tutor-moments";
+import { useMediaRefsStore } from "@/stores/mediaRefsStore";
+
+/**
+ * Where a citation deep link (?page / ?t on the slides route) asks a slide to
+ * open: a PDF page (1-based) or a video / audio second. Only honoured for the
+ * slide it names.
+ */
+export interface SlideStartAt {
+  slideId: string;
+  page?: number;
+  t?: number;
+}
+
+const slideStartKey = (start: SlideStartAt) =>
+  `${start.slideId}|${start.page ?? ""}|${start.t ?? ""}`;
+
+/**
+ * A cited second as a player start in ms, kept a second short of the known
+ * length so a stale citation cannot land on the end (and mark it watched).
+ */
+const clampStartMs = (seconds: number, lengthMs?: number | null): number => {
+  const ms = Math.round(seconds * 1000);
+  return lengthMs && lengthMs > 1000 ? Math.min(ms, lengthMs - 1000) : ms;
+};
+
+// The seek surface the video players expose through their ref. Vimeo answers
+// getDuration with a promise; the HTML5 player answers NaN until metadata.
+type SeekableMedia = {
+  seekTo?: (seconds: number, allowSeekAhead?: boolean) => void;
+  getDuration?: () => number | Promise<number>;
+};
+const SEEK_READY_POLL_MS = 250;
+const SEEK_READY_MAX_ATTEMPTS = 80; // ~20 s for the media to become seekable
 
 export const SlideMaterial = ({
   onNavigateToSlide,
@@ -67,6 +100,8 @@ export const SlideMaterial = ({
   onBeforeFirstSlide,
   manualCompletion = false,
   completionContext,
+  startAt,
+  onStartAtApplied,
 }: {
   // Optional: lets the host route mirror the active slide into the URL so the
   // course-tree sidebar (which highlights by URL slideId) and a browser
@@ -88,6 +123,11 @@ export const SlideMaterial = ({
   // Parent ids the completion write needs so the backend can roll the change
   // up into chapter / module / subject / course progress.
   completionContext?: CompletionContext | undefined;
+  // Citation deep link from the URL. Applied once when its slide is on screen
+  // (on load, or straight away when that slide is already showing), after
+  // which onStartAtApplied lets the host drop the params from the URL.
+  startAt?: SlideStartAt | undefined;
+  onStartAtApplied?: (() => void) | undefined;
 }) => {
   const { t, i18n } = useTranslation("studyContent");
   const { activeItem, items, setActiveItem, slideEvaluations } =
@@ -234,6 +274,90 @@ export const SlideMaterial = ({
   // offer when the learner keeps rewinding to the same part of a video.
   const momentTutor = useAvailableTutor();
   const contentAreaRef = useRef<HTMLDivElement>(null);
+
+  // ── Citation deep links ─────────────────────────────────────────────────
+  // A start is "pending" until it has been applied once. The URL keeps the
+  // params until the host clears them, so the consumed key stops a second
+  // application meanwhile; once the URL is clean the key resets, letting the
+  // same citation be followed again later.
+  const startAtKey = startAt ? slideStartKey(startAt) : null;
+  const consumedStartKeyRef = useRef<string | null>(null);
+  if (!startAtKey) consumedStartKeyRef.current = null;
+  const pendingStartRef = useRef<SlideStartAt | null>(null);
+  pendingStartRef.current =
+    startAt && startAtKey !== consumedStartKeyRef.current ? startAt : null;
+  // The start the current slide's content was built with; a language rebuild
+  // of the same slide keeps it, any other slide drops it.
+  const appliedStartRef = useRef<SlideStartAt | null>(null);
+  const onStartAtAppliedRef = useRef(onStartAtApplied);
+  onStartAtAppliedRef.current = onStartAtApplied;
+  const activeSlideIdRef = useRef(activeItem?.id);
+  activeSlideIdRef.current = activeItem?.id;
+
+  const consumeStart = (start: SlideStartAt) => {
+    consumedStartKeyRef.current = slideStartKey(start);
+    pendingStartRef.current = null;
+    appliedStartRef.current = start;
+    onStartAtAppliedRef.current?.();
+  };
+
+  /** The start to build `slideId`'s content with, consuming a pending one. */
+  const takeStartFor = (slideId: string): SlideStartAt | null => {
+    const pending = pendingStartRef.current;
+    if (pending && pending.slideId === slideId) {
+      consumeStart(pending);
+      return pending;
+    }
+    if (appliedStartRef.current?.slideId !== slideId) {
+      appliedStartRef.current = null;
+    }
+    return appliedStartRef.current;
+  };
+
+  /**
+   * Seeks a player that has no start prop (uploaded video, audio) once it
+   * knows its length, clamped a second short of the end. The first check is
+   * deferred a beat so the previous slide's player has unmounted from the
+   * shared ref; it gives up when the learner leaves the slide.
+   */
+  const seekWhenReady = (
+    slideId: string,
+    seconds: number,
+    kind: "VIDEO" | "AUDIO"
+  ) => {
+    let attempts = 0;
+    const tick = async () => {
+      if (activeSlideIdRef.current !== slideId) return;
+      if (attempts++ >= SEEK_READY_MAX_ATTEMPTS) return;
+      if (kind === "AUDIO") {
+        const audio = contentAreaRef.current?.querySelector("audio");
+        if (
+          audio &&
+          audio.readyState >= 1 &&
+          Number.isFinite(audio.duration) &&
+          audio.duration > 0
+        ) {
+          audio.currentTime = Math.min(seconds, Math.max(0, audio.duration - 1));
+          return;
+        }
+      } else {
+        const player = playerRef.current as unknown as SeekableMedia | null;
+        let duration = 0;
+        try {
+          duration = Number(await player?.getDuration?.()) || 0;
+        } catch {
+          duration = 0;
+        }
+        if (activeSlideIdRef.current !== slideId) return;
+        if (player?.seekTo && Number.isFinite(duration) && duration > 0) {
+          player.seekTo(Math.min(seconds, Math.max(0, duration - 1)), true);
+          return;
+        }
+      }
+      setTimeout(tick, SEEK_READY_POLL_MS);
+    };
+    setTimeout(tick, SEEK_READY_POLL_MS);
+  };
   const isTextDocument =
     activeItem?.source_type === "DOCUMENT" &&
     (activeItem.document_slide?.type === "PDF" ||
@@ -291,6 +415,11 @@ export const SlideMaterial = ({
 
   const loadContent = async (generationId: number) => {
     if (generationId !== loadGenerationRef.current) return;
+    // Captured before any await: the citation start this slide opens at.
+    const start =
+      activeItem && appliedStartRef.current?.slideId === activeItem.id
+        ? appliedStartRef.current
+        : null;
     setError(null);
     setIsLoading(true);
 
@@ -698,6 +827,10 @@ export const SlideMaterial = ({
               : videoSlide?.url) ||
             videoSlide?.published_url ||
             videoSlide?.url;
+          const videoLengthMs =
+            videoSlide?.published_video_length_in_millis ||
+            videoSlide?.video_length_in_millis ||
+            null;
 
           switch (videoSourceType) {
             case "VIMEO": {
@@ -713,7 +846,11 @@ export const SlideMaterial = ({
                       videoId={vimeoId}
                       onTimeUpdate={handleVideoTimeUpdate}
                       ref={playerRef}
-                      ms={activeItem.progress_marker}
+                      ms={
+                        start?.t !== undefined
+                          ? clampStartMs(start.t, videoLengthMs)
+                          : activeItem.progress_marker
+                      }
                       questions={videoSlide?.questions || []}
                       concentrationSettings={concentrationSettings}
                     />
@@ -773,6 +910,11 @@ export const SlideMaterial = ({
                   </div>
                 </div>
               );
+              // The uploaded-video player has no start prop: seek it once it
+              // has loaded its metadata.
+              if (start?.t !== undefined) {
+                seekWhenReady(activeItem.id, start.t, "VIDEO");
+              }
               break;
             }
             default:
@@ -788,7 +930,11 @@ export const SlideMaterial = ({
                       )}
                       onTimeUpdate={handleVideoTimeUpdate}
                       ref={playerRef}
-                      ms={activeItem.progress_marker}
+                      ms={
+                        start?.t !== undefined
+                          ? clampStartMs(start.t, videoLengthMs)
+                          : activeItem.progress_marker
+                      }
                       questions={videoSlide?.questions || []}
                       concentrationSettings={concentrationSettings}
                     />
@@ -989,7 +1135,11 @@ export const SlideMaterial = ({
                   {/* Keyed by slide so moving between two PDF slides mounts a
                       fresh viewer instead of reusing one carrying the previous
                       slide's activity id and page-view buffer. */}
-                  <PDFViewer key={activeItem.id} pdfUrl={url} />
+                  <PDFViewer
+                    key={activeItem.id}
+                    pdfUrl={url}
+                    startPage={start?.page}
+                  />
                 </div>
               </div>
             );
@@ -1164,6 +1314,9 @@ export const SlideMaterial = ({
                 <AudioPlayer audioSlide={audioSlide} />
               </div>
             );
+            if (start?.t !== undefined) {
+              seekWhenReady(activeItem.id, start.t, "AUDIO");
+            }
           } else {
             setContent(
               <div className="flex h-reg-300 flex-col items-center justify-center animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -1252,6 +1405,9 @@ export const SlideMaterial = ({
 
       if (activeItem) {
         setHeading(activeItem.title || "");
+        // Settles which citation start (if any) this build opens at, before
+        // loadContent reads it.
+        takeStartFor(activeItem.id);
         loadContent(currentGeneration);
         prevSlideIdRef.current = activeItem.id;
       } else {
@@ -1275,6 +1431,69 @@ export const SlideMaterial = ({
       setHeading(activeItem.title || "");
     }
   }, [activeItem, t, i18n.language]);
+
+  // The slide on screen when a citation for another slide became pending. The
+  // host may take a render or two to open the cited slide, so a mismatch alone
+  // proves nothing; but once the active slide moves to a third slide (the cited
+  // one was drip-locked or hidden and the host fell back, or the learner picked
+  // another slide) the citation has lost and is dropped, so a later navigation
+  // that keeps its params cannot replay it onto a slide it never named.
+  const pendingBaselineRef = useRef<{
+    key: string;
+    activeId: string;
+  } | null>(null);
+
+  // A citation for the slide already on screen (a chat link to the lesson
+  // being read) does not reload it, so apply the start to the live viewer.
+  // A slide still to load picks its start up in the effect above instead.
+  useEffect(() => {
+    const pending = pendingStartRef.current;
+    if (!pending) {
+      pendingBaselineRef.current = null;
+      return;
+    }
+    if (!activeItem) return;
+    if (pending.slideId !== activeItem.id) {
+      const key = slideStartKey(pending);
+      const baseline = pendingBaselineRef.current;
+      if (!baseline || baseline.key !== key) {
+        pendingBaselineRef.current = { key, activeId: activeItem.id };
+      } else if (baseline.activeId !== activeItem.id) {
+        // Dropped without clearing the URL: the host's clean-up navigation
+        // keeps the URL's slideId and would race the learner's own
+        // navigation to the slide now open.
+        consumedStartKeyRef.current = key;
+        pendingStartRef.current = null;
+        pendingBaselineRef.current = null;
+      }
+      return;
+    }
+    pendingBaselineRef.current = null;
+    if (prevSlideIdRef.current !== activeItem.id) return;
+    consumeStart(pending);
+    if (
+      pending.page !== undefined &&
+      activeItem.source_type === "DOCUMENT" &&
+      activeItem.document_slide?.type === "PDF"
+    ) {
+      const { currentPdfLength, navigateToPdfPage } =
+        useMediaRefsStore.getState();
+      const lastPageIndex = currentPdfLength > 0 ? currentPdfLength - 1 : null;
+      const pageIndex = pending.page - 1;
+      navigateToPdfPage(
+        lastPageIndex !== null ? Math.min(pageIndex, lastPageIndex) : pageIndex
+      );
+    }
+    if (pending.t !== undefined) {
+      if (activeItem.source_type === "VIDEO") {
+        seekWhenReady(activeItem.id, pending.t, "VIDEO");
+      } else if (activeItem.source_type === "AUDIO") {
+        seekWhenReady(activeItem.id, pending.t, "AUDIO");
+      }
+    }
+    // Keyed on the link itself; the helpers read refs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startAtKey, activeItem?.id]);
 
   return (
     <div className="flex h-full w-full flex-col bg-white" ref={selectionRef}>

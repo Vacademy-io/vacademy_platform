@@ -69,6 +69,7 @@ class UC:
     TTS = "tts"
     TRANSCRIPTION = "transcription"
     CALL_INTELLIGENCE = "call_intelligence"
+    COURSE_KNOWLEDGE = "course_knowledge"   # V600 (course_kb_ocr_page, course_kb_transcribe_minute)
 
 
 # The optional CreditDeductRequest metering fields (contract K2), minus

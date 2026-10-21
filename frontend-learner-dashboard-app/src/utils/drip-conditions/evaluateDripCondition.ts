@@ -1,3 +1,8 @@
+/**
+ * A Python twin lives in ai_service/app/services/course_knowledge/drip.py
+ * (the student AI uses it to decide which lessons it may quote). Change both,
+ * and update the shared fixtures in __fixtures__/drip_parity_cases.json.
+ */
 import type {
   DripConditionJson,
   DripConditionRule,

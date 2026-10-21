@@ -345,11 +345,17 @@ def test_every_caller_use_case_is_seeded_in_the_catalog():
     import re
 
     root = pathlib.Path(__file__).resolve().parents[2]
-    migrations = sorted((root / "admin_core_service/src/main/resources/db/migration").glob("V*__ai_usage_metering.sql"))
+    migration_dir = root / "admin_core_service/src/main/resources/db/migration"
+    migrations = sorted(migration_dir.glob("V*__ai_usage_metering.sql"))
     assert migrations, "metering migration missing"
-    sql = migrations[-1].read_text(encoding="utf-8")
-    block = sql.split("INSERT INTO ai_use_case_catalog", 1)[1].split("ON CONFLICT", 1)[0]
-    seeded = set(re.findall(r"^\s*\('([a-z_]+)'", block, re.M))
+    # The base catalog lives in the metering migration; later features (V598 site
+    # assistant, V600 course knowledge, ...) seed their own rows in their own migration.
+    seeded = set()
+    for path in sorted(migration_dir.glob("V*.sql")):
+        sql = path.read_text(encoding="utf-8")
+        for part in sql.split("INSERT INTO ai_use_case_catalog")[1:]:
+            block = part.split("ON CONFLICT", 1)[0]
+            seeded |= set(re.findall(r"^\s*(?:VALUES\s*)?\('([a-z_]+)'", block, re.M))
     keys = {v for k, v in vars(ai_billing.UC).items() if k.isupper()}
     # Literal keys passed outside ai_billing.UC (video, internal_llm, assessment/coding/
     # paper-digitise/question-extract/lecture/translation callers).

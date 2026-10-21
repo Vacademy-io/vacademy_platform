@@ -50,6 +50,22 @@ def _owned_session(service: AiChatAgentService, session_id: str, caller: ChatCal
     return identity
 
 
+def _caller_verified(caller: ChatCaller, identity: dict) -> bool:
+    """A real token naming the session's own learner, in the session's institute.
+
+    chatbot.text.require_auth may still be in shadow mode, which serves a
+    tokenless (or mismatched) caller anyway; that session's user_id came from
+    the client, so nothing private to the learner (their course content) may be
+    served to it. The service stamps this on the message; it is never read from
+    the request body.
+    """
+    return bool(
+        caller.authenticated
+        and str(identity.get("user_id") or "") == caller.user_id
+        and str(identity.get("institute_id") or "") in caller.institute_ids
+    )
+
+
 @router.get(
     "/whoami",
     summary="Who the chatbot thinks is calling",
@@ -260,6 +276,10 @@ async def init_session(
             session_mode=request.session_mode.value if request.session_mode else "text",
             # The learner app's authenticated client sends its UI locale.
             ui_language=http_request.headers.get("accept-language") or caller.locale,
+            # Same rule as send_message, against the identity being created.
+            caller_verified=_caller_verified(
+                caller, {"user_id": request.user_id, "institute_id": request.institute_id}
+            ),
         )
         
         return InitSessionResponse(
@@ -320,6 +340,7 @@ async def send_message(
             quiz_submission=request.quiz_submission,
             idempotency_key=request.idempotency_key,
             attachments=attachments_list,
+            caller_verified=_caller_verified(caller, identity),
         )
         
         return SendMessageResponse(
@@ -593,6 +614,7 @@ async def send_audio_message(
             message_id, ai_status = await service.send_message(
                 session_id=session_id,
                 message=transcript,
+                caller_verified=_caller_verified(caller, identity),
             )
 
         # 4. Return transcript and message id

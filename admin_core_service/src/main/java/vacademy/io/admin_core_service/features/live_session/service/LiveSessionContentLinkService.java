@@ -13,6 +13,7 @@ import vacademy.io.admin_core_service.features.chapter.entity.Chapter;
 import vacademy.io.admin_core_service.features.chapter.entity.ChapterToSlides;
 import vacademy.io.admin_core_service.features.chapter.repository.ChapterRepository;
 import vacademy.io.admin_core_service.features.chapter.repository.ChapterToSlidesRepository;
+import vacademy.io.admin_core_service.features.course_knowledge.service.ContentIndexMarker;
 import vacademy.io.admin_core_service.features.learner_offline.service.OfflineManifestVersionService;
 import vacademy.io.admin_core_service.features.live_session.dto.*;
 import vacademy.io.admin_core_service.features.live_session.entity.LiveSession;
@@ -69,6 +70,7 @@ public class LiveSessionContentLinkService {
     private final OfflineManifestVersionService offlineManifestVersionService;
     private final InstituteAccessValidator instituteAccessValidator;
     private final ObjectMapper objectMapper;
+    private final ContentIndexMarker contentIndexMarker;
 
     @Transactional
     public List<ContentLinkOutcomeDTO> linkContent(LinkContentRequestDTO request, CustomUserDetails user) {
@@ -235,6 +237,7 @@ public class LiveSessionContentLinkService {
         // bump() (not bumpAll) so the call goes through the proxy and gets its own
         // REQUIRES_NEW transaction: a failed bump can never roll back the rename.
         offlineManifestVersionService.bump(link.getPackageSessionId(), "SLIDE_RENAMED");
+        contentIndexMarker.mark(slide.getId(), link.getChapterId(), "SLIDE_RENAMED");
     }
 
     @Transactional

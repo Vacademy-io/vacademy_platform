@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -20,6 +21,7 @@ import vacademy.io.admin_core_service.features.course.dto.restructure.CourseRest
 import vacademy.io.admin_core_service.features.course.dto.restructure.CourseRestructureRequestDTO.SubjectNode;
 import vacademy.io.admin_core_service.features.course.dto.restructure.CourseRestructureResponseDTO;
 import vacademy.io.admin_core_service.features.course.dto.restructure.CourseRestructureResponseDTO.Ref;
+import vacademy.io.admin_core_service.features.course_knowledge.service.ContentIndexMarker;
 import vacademy.io.admin_core_service.features.learner_tracking.service.LearnerTrackingAsyncService;
 import vacademy.io.common.exceptions.VacademyException;
 
@@ -68,6 +70,10 @@ public class CourseRestructureService {
     private final PlatformTransactionManager transactionManager;
     private final LearnerTrackingAsyncService learnerTrackingAsyncService;
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    /** Optional (field-injected) so the plain-JDBC constructor stays as it is; null in tests built by hand. */
+    @Autowired(required = false)
+    private ContentIndexMarker contentIndexMarker;
 
     /** The course as it is now (shared by every batch, checked). */
     private record Current(
@@ -368,7 +374,14 @@ public class CourseRestructureService {
                                     new MapSqlParameterSource().addValue("c", cid).addValue("o", slideOrder)
                                             .addValue("id", cur.slideRow().get(slide)));
                         }
-                        if (moved) out.setSlidesMoved(out.getSlidesMoved() + 1);
+                        if (moved) {
+                            out.setSlidesMoved(out.getSlidesMoved() + 1);
+                            // Re-index under both chapters; queued after commit, so a dry run queues nothing.
+                            if (contentIndexMarker != null) {
+                                contentIndexMarker.mark(slide, cid, "COURSE_RESTRUCTURED");
+                                contentIndexMarker.mark(slide, cur.slideChapter().get(slide), "COURSE_RESTRUCTURED");
+                            }
+                        }
                     }
                 }
             }

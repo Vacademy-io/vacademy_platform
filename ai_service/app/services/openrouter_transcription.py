@@ -21,7 +21,7 @@ import subprocess
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 
@@ -45,6 +45,19 @@ class OpenRouterTranscript:
     chunks: int = 0
     model: str = DEFAULT_MODEL
     generation_ids: List[str] = field(default_factory=list)
+    # Timed pieces of the transcript, [{"start": s, "end": s, "text": str}] in
+    # seconds from the start of the recording (each chunk's verbose_json
+    # segments shifted by its offset). Empty when the provider sent none.
+    segments: List[Dict[str, Any]] = field(default_factory=list)
+
+
+class DurationExceeded(RuntimeError):
+    """The recording is longer than the caller allowed (max_seconds). Raised
+    after probing, before any paid chunk call, so nothing has been spent."""
+
+    def __init__(self, duration: float) -> None:
+        self.duration = float(duration or 0.0)
+        super().__init__(f"The recording is {self.duration:.0f} s long, over the allowed length")
 
 
 def chunk_plan(duration_seconds: float, chunk_seconds: int = CHUNK_SECONDS) -> int:
@@ -56,6 +69,27 @@ def chunk_plan(duration_seconds: float, chunk_seconds: int = CHUNK_SECONDS) -> i
 
 def join_chunk_texts(texts: List[str]) -> str:
     return " ".join(t.strip() for t in texts if t and t.strip()).strip()
+
+
+def offset_segments(results: List[Optional[dict]], chunk_seconds: int = CHUNK_SECONDS) -> List[Dict[str, Any]]:
+    """Every chunk's verbose_json segments on one timeline: chunk i starts at
+    i × chunk_seconds (ffmpeg cuts the audio at exactly those points)."""
+    out: List[Dict[str, Any]] = []
+    for i, body in enumerate(results):
+        offset = float(i * chunk_seconds)
+        for seg in ((body or {}).get("segments") or []):
+            if not isinstance(seg, dict):
+                continue
+            text = str(seg.get("text") or "").strip()
+            if not text:
+                continue
+            try:
+                start = float(seg.get("start") or 0.0)
+                end = float(seg.get("end") or start)
+            except (TypeError, ValueError):
+                continue
+            out.append({"start": round(offset + start, 3), "end": round(offset + max(start, end), 3), "text": text})
+    return out
 
 
 async def _download(url: str, dest: Path) -> int:
@@ -114,8 +148,13 @@ async def _transcribe_chunk(client: httpx.AsyncClient, path: Path, *, key: str, 
 async def transcribe_media(
     source_url: str, *, api_key: str, model: str = DEFAULT_MODEL, language: Optional[str] = None,
     chunk_seconds: int = CHUNK_SECONDS, concurrency: int = CHUNK_CONCURRENCY,
+    max_seconds: Optional[float] = None,
 ) -> OpenRouterTranscript:
-    """Download → ffmpeg chunks → parallel transcription → joined text."""
+    """Download → ffmpeg chunks → parallel transcription → joined text.
+
+    max_seconds (optional): refuse a longer recording with DurationExceeded
+    right after probing, before any paid chunk call. When ffprobe cannot read
+    the length, the chunk count is the check instead (still before any call)."""
     if not api_key:
         raise RuntimeError("No OpenRouter key for transcription")
     if not shutil.which("ffmpeg"):
@@ -125,7 +164,12 @@ async def transcribe_media(
         media = workdir / "media.bin"
         await _download(source_url, media)
         duration = await asyncio.to_thread(_probe_duration, media)
+        if max_seconds is not None and duration and duration > max_seconds:
+            raise DurationExceeded(duration)
         chunks = await asyncio.to_thread(_extract_chunks, media, workdir, chunk_seconds)
+        if max_seconds is not None and not duration and (len(chunks) - 1) * chunk_seconds > max_seconds:
+            # No probed length: every chunk but the last is a full chunk_seconds.
+            raise DurationExceeded(float((len(chunks) - 1) * chunk_seconds))
         try:
             media.unlink()
         except OSError:
@@ -153,6 +197,7 @@ async def transcribe_media(
             text=join_chunk_texts(texts), duration_seconds=float(duration or seconds), cost_usd=cost,
             language=(max(set(langs), key=langs.count) if langs else None), chunks=len(chunks), model=model,
             generation_ids=[str((r or {}).get("_generation_id") or "") for r in results],
+            segments=offset_segments(results, chunk_seconds),
         )
     finally:
         shutil.rmtree(workdir, ignore_errors=True)

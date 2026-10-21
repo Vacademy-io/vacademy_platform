@@ -416,7 +416,11 @@ export function RouteComponent() {
     const { handleConfirmGenerateCourseAssets } = contentGenerationHandlers;
 
     // Course creation hook
-    const courseCreationHandlers = useCourseCreation(courseMetadata, sessionsWithProgress);
+    const courseCreationHandlers = useCourseCreation(
+        courseMetadata,
+        sessionsWithProgress,
+        outlineTodos
+    );
     const { handleCreateCourse, isCreatingCourse, creationProgress } = courseCreationHandlers;
 
     // Keep all sessions always expanded - only run once when slides are first loaded

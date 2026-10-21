@@ -131,6 +131,9 @@ class ParsedDocument:
     ocr_pages: int = 0
     languages: List[str] = field(default_factory=list)
     truncated_at: Optional[int] = None   # set when MAX_PAGES_PER_SOURCE clipped it
+    # YouTube only, and only when parse_youtube(keep_timing=True): the caption
+    # snippets in order, [{"start": s, "duration": s, "text": str}] in seconds.
+    caption_timing: Optional[List[Dict[str, Any]]] = None
 
     @property
     def total_chars(self) -> int:
@@ -698,8 +701,14 @@ def youtube_video_id(url: str) -> Optional[str]:
     return bare if re.fullmatch(r"[A-Za-z0-9_-]{11}", bare) else None
 
 
-async def parse_youtube(url: str, language_hint: Optional[str] = None) -> ParsedDocument:
+async def parse_youtube(
+    url: str, language_hint: Optional[str] = None, keep_timing: bool = False,
+) -> ParsedDocument:
     """Fetch a YouTube transcript as a single-page document.
+
+    keep_timing=True also returns each caption snippet's start and duration in
+    ``doc.caption_timing`` (course knowledge cites the video second). The page
+    text is the same either way.
 
     Uses youtube-transcript-api, which reads the caption tracks YouTube already
     publishes — free and instant, but only for videos that HAVE captions.
@@ -726,7 +735,7 @@ async def parse_youtube(url: str, language_hint: Optional[str] = None) -> Parsed
             "not installed on this server"
         ) from exc
 
-    def _fetch() -> str:
+    def _fetch() -> Tuple[str, List[Dict[str, Any]]]:
         preferred = [language_hint] if language_hint else []
         preferred += ["en", "hi"]
         try:
@@ -760,10 +769,27 @@ async def parse_youtube(url: str, language_hint: Optional[str] = None) -> Parsed
             # 1.x yields FetchedTranscriptSnippet objects; older versions dicts.
             return str((seg.get("text") if isinstance(seg, dict) else getattr(seg, "text", "")) or "").strip()
 
-        return " ".join(t for t in (_text(seg) for seg in transcript.fetch()) if t)
+        def _num(seg: Any, key: str) -> float:
+            raw = seg.get(key) if isinstance(seg, dict) else getattr(seg, key, None)
+            try:
+                return float(raw or 0.0)
+            except (TypeError, ValueError):
+                return 0.0
+
+        texts: List[str] = []
+        timing: List[Dict[str, Any]] = []
+        for seg in transcript.fetch():
+            t = _text(seg)
+            if not t:
+                continue
+            texts.append(t)
+            if keep_timing:
+                timing.append({"start": _num(seg, "start"), "duration": _num(seg, "duration"), "text": t})
+        return " ".join(texts), timing
 
     # The library is synchronous and does network I/O — keep it off the event loop.
-    text_out = (await asyncio.to_thread(_fetch)).strip()
+    joined, timing = await asyncio.to_thread(_fetch)
+    text_out = joined.strip()
     if not text_out:
         raise ValueError("That video's transcript came back empty")
 
@@ -772,6 +798,8 @@ async def parse_youtube(url: str, language_hint: Optional[str] = None) -> Parsed
         ParsedPage(page_number=1, text=text_out, parser="youtube", confidence=1.0)
     )
     doc.languages = detect_languages(text_out)
+    if keep_timing:
+        doc.caption_timing = timing
     return doc
 
 

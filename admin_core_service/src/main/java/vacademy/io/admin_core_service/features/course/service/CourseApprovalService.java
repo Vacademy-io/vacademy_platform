@@ -15,6 +15,7 @@ import vacademy.io.admin_core_service.features.chapter.repository.ChapterReposit
 import vacademy.io.admin_core_service.features.chapter.service.ChapterManager;
 import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 import vacademy.io.admin_core_service.features.course.dto.TeacherCourseDetailDTO;
+import vacademy.io.admin_core_service.features.course_knowledge.service.ContentIndexMarker;
 import vacademy.io.admin_core_service.features.enroll_invite.enums.EnrollInviteTag;
 import vacademy.io.admin_core_service.features.enroll_invite.repository.EnrollInviteRepository;
 import vacademy.io.admin_core_service.features.enroll_invite.service.DefaultEnrollInviteService;
@@ -84,6 +85,7 @@ public class CourseApprovalService {
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final EnrollInviteService enrollInviteService;
     private final PackagePageContentService packagePageContentService;
+    private final ContentIndexMarker contentIndexMarker;
     /**
      * Create a temporary copy of a published course for teacher editing
      */
@@ -906,6 +908,7 @@ public class CourseApprovalService {
         // Update slides with source IDs and save ChapterToSlides
         slideRepository.saveAll(persistedSlides);
         chapterToSlidesRepository.saveAll(newChapterToSlides);
+        contentIndexMarker.markChapter(tempChapter.getId(), "COURSE_EDIT_COPY");
         
         log.info("Copied {} slides from chapter {} to chapter {}", 
                 newSlides.size(), originalChapter.getId(), tempChapter.getId());
@@ -1247,6 +1250,7 @@ public class CourseApprovalService {
                     
                     // Update slide source content based on type
                     mergeSlideSource(tempSlide, originalSlide);
+                    contentIndexMarker.mark(originalSlide.getId(), originalChapter.getId(), "COURSE_APPROVAL_MERGE");
                 }
             } else {
                 // Add new slide to original chapter
@@ -1407,6 +1411,7 @@ public class CourseApprovalService {
 
         // Save ChapterToSlides mappings
         chapterToSlidesRepository.saveAll(newChapterToSlides);
+        contentIndexMarker.markChapter(newChapter.getId(), "COURSE_APPROVAL_NEW_CHAPTER");
         
         log.info("Copied {} slides from temp chapter {} to new chapter {}", 
                 newSlides.size(), tempChapter.getId(), newChapter.getId());
@@ -1454,6 +1459,7 @@ public class CourseApprovalService {
         // Create chapter-to-slides mapping
         ChapterToSlides mapping = new ChapterToSlides(originalChapter, newSlide, null, tempSlide.getStatus());
         chapterToSlidesRepository.save(mapping);
+        contentIndexMarker.mark(newSlide.getId(), originalChapter.getId(), "COURSE_APPROVAL_NEW_SLIDE");
         
         log.info("Added new slide {} to original chapter {}", 
                 newSlide.getTitle(), originalChapter.getId());

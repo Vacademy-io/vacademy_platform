@@ -106,6 +106,9 @@ public class ScormService {
      * repoints launch_url at it. The legacy file is left in place, so reverting
      * a slide is just restoring its old launch_url. Idempotent — an upgraded
      * slide no longer matches the legacy suffix.
+     *
+     * Course knowledge: deliberately not wired to ContentIndexMarker. Only the
+     * player wrapper is replaced; the lesson text is unchanged.
      */
     public Map<String, Object> upgradeLegacyPlayers(boolean dryRun, int limit) {
         List<ScormSlide> legacy = scormSlideRepository.findByLaunchUrlEndingWith("/" + LEGACY_PLAYER_FILE_NAME);

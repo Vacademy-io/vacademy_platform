@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from '@tanstack/react-router';
+import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
@@ -19,6 +20,12 @@ import {
     newCompileRunId,
     type TutorModeSetting,
 } from '@/services/tutor';
+import {
+    COURSE_KB_DEFAULT_USE_IN,
+    courseKbLinksEnabled,
+    putCourseKbLink,
+    type CourseKbChapterTopicsItem,
+} from '@/services/course-knowledge-links';
 
 /**
  * Live AI Tutor: after the copilot persists a course, mark it tutor-enabled and
@@ -90,11 +97,89 @@ async function startTutorPreparation(courseId: string, t: TFunction): Promise<vo
     }
 }
 
+/** The outline todo fields the knowledge-base link needs (course_outline_service). */
+interface OutlineTodoForLink {
+    chapter_name?: string | null;
+    metadata?: { node_id?: string | null } | null;
+}
+
+/**
+ * Chapter → knowledge-base topics, in outline order: the outline stamps the
+ * topic each slide was written from on its todo (metadata.node_id). The
+ * server resolves chapter names to the new course's chapter ids.
+ */
+function chapterTopicsFromTodos(todos: OutlineTodoForLink[]): CourseKbChapterTopicsItem[] {
+    const byChapter = new Map<string, string[]>();
+    todos.forEach((todo) => {
+        const chapter = (todo?.chapter_name ?? '').trim();
+        const nodeId = todo?.metadata?.node_id;
+        if (!chapter || typeof nodeId !== 'string' || !nodeId) return;
+        const nodes = byChapter.get(chapter) ?? [];
+        if (!nodes.includes(nodeId)) nodes.push(nodeId);
+        byChapter.set(chapter, nodes);
+    });
+    return Array.from(byChapter, ([chapter_name, node_ids]) => ({ chapter_name, node_ids }));
+}
+
+/**
+ * Course knowledge links: record that a course built from a knowledge base was
+ * built from it, so the tutor and the student AI keep using that knowledge
+ * base. Runs whether or not tutor mode is on (startTutorPreparation returns
+ * early when it is off). Does nothing unless the platform's `links_enabled`
+ * flag is on and the prompt page chose a knowledge base for THIS outline: a
+ * resumed draft has no outline todos and does not carry the knowledge-base
+ * choice, so a `courseKbGrounding` left in the tab by an earlier course is
+ * never linked to it. Never throws: failures are logged, not shown, because
+ * the course exists either way.
+ */
+async function saveCreatorLink(
+    courseId: string,
+    todos: OutlineTodoForLink[],
+    queryClient: QueryClient
+): Promise<void> {
+    try {
+        let kb: {
+            knowledge_base_id?: string;
+            node_ids?: unknown;
+            mode?: 'STRICT' | 'BLENDED';
+        } | null = null;
+        try {
+            kb = JSON.parse(sessionStorage.getItem('courseKbGrounding') || 'null');
+        } catch {
+            kb = null;
+        }
+        if (!kb?.knowledge_base_id) return;
+        if (!Array.isArray(todos) || todos.length === 0) return;
+        if (!(await courseKbLinksEnabled(queryClient))) return;
+
+        const topicNodeIds = Array.isArray(kb.node_ids)
+            ? kb.node_ids.filter((id): id is string => typeof id === 'string' && !!id)
+            : [];
+        const chapterTopics = chapterTopicsFromTodos(todos);
+        await putCourseKbLink(courseId, {
+            knowledge_base_id: kb.knowledge_base_id,
+            grounding_mode: kb.mode === 'BLENDED' ? 'BLENDED' : 'STRICT',
+            use_in: [...COURSE_KB_DEFAULT_USE_IN],
+            ...(topicNodeIds.length > 0 ? { topic_node_ids: topicNodeIds } : {}),
+            ...(chapterTopics.length > 0 ? { chapter_topics: chapterTopics } : {}),
+            provenance: 'AI_COURSE_CREATOR',
+        });
+    } catch (error) {
+        console.warn('[Course Creation] Saving the knowledge-base link failed:', error);
+    }
+}
+
 /**
  * Custom hook for handling course creation
  */
-export const useCourseCreation = (courseMetadata: any, sessionsWithProgress: SessionProgress[]) => {
+export const useCourseCreation = (
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    courseMetadata: any,
+    sessionsWithProgress: SessionProgress[],
+    outlineTodos: OutlineTodoForLink[] = []
+) => {
     const navigate = useNavigate();
+    const queryClient = useQueryClient();
     const { t } = useTranslation('studyLibraryUseCourseCreation');
     const [isCreatingCourse, setIsCreatingCourse] = useState(false);
     const [creationProgress, setCreationProgress] = useState<string>('');
@@ -195,10 +280,16 @@ export const useCourseCreation = (courseMetadata: any, sessionsWithProgress: Ses
             // Clear saved draft since course is now created
             localStorage.removeItem('aiCourseDraft');
 
-            // Live AI Tutor: enable tutor mode on the new course and compile its
-            // teaching plans in the background. Best-effort — the course exists
-            // either way, and the Tutor Mode tab can prepare it later.
-            void startTutorPreparation(result.courseId, t);
+            // Course knowledge: link the course to the knowledge base it was
+            // built from. Best-effort and independent of tutor mode.
+            // Live AI Tutor: then enable tutor mode on the new course and compile
+            // its teaching plans in the background. Best-effort — the course
+            // exists either way, and the Tutor Mode tab can prepare it later.
+            // Chained so the first compile already sees the link's chapter
+            // topics; neither call throws and course creation waits for neither.
+            void saveCreatorLink(result.courseId, outlineTodos, queryClient).then(() =>
+                startTutorPreparation(result.courseId, t)
+            );
 
             // Navigate to the course details page
             console.log('[Course Creation] Navigating to course:', result.courseId);

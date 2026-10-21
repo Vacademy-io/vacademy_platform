@@ -502,18 +502,29 @@ export const useChatbot = () => {
   /**
    * Page context plus the ids the tutor's tools act on: which lesson (so a
    * doubt sent to a teacher is attached to it and routed to its subject
-   * teacher) and which batch the learner is studying in.
+   * teacher) and which batch the learner is studying in. The chapter and the
+   * learner's IANA time zone are hints for course-material search (which
+   * chapter is current, what "today" is for drip dates); the server
+   * re-derives access and only uses them inside what the learner may read.
    */
   const buildContextMeta = useCallback(async (): Promise<ContextMeta> => {
     const meta = await buildPageContextMeta();
     const context = getContext();
+    let timeZone: string | undefined;
+    try {
+      timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || undefined;
+    } catch {
+      timeZone = undefined;
+    }
     return {
       ...meta,
       ...(context.slideId && { slide_id: context.slideId }),
+      ...(context.chapterId && { chapter_id: context.chapterId }),
       ...(context.subjectId && { subject_id: context.subjectId }),
       ...((context.sessionId || context.packageSessionId) && {
         package_session_id: context.sessionId || context.packageSessionId,
       }),
+      ...(timeZone && { tz: timeZone }),
     };
   }, [buildPageContextMeta, getContext]);
 

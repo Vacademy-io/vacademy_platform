@@ -480,6 +480,26 @@ DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
         "unit_field": "flat",
         "params": {},
     },
+    # ── Course knowledge (V600) ───────────────────────────────────────────
+    # Paid reading of course lessons into the institute's course knowledge
+    # base: scanned pages and image-only slides (OCR, per page); uploaded video
+    # and audio minutes (transcription, per started minute, min 1 credit).
+    # Text content is free. Fixed price: the quote shown before "Process" is
+    # what is charged. Keep in sync with the V600 ai_tool_pricing seed.
+    "course_kb_ocr_page": {
+        "request_type": "knowledge_base",
+        "flat_base_credits": Decimal("0"),
+        "per_unit_credits": Decimal("0.5"),
+        "unit_field": "pages",
+        "params": {"fixed_price": True},
+    },
+    "course_kb_transcribe_minute": {
+        "request_type": "transcription",
+        "flat_base_credits": Decimal("0"),
+        "per_unit_credits": Decimal("0.5"),
+        "unit_field": "audio_minutes",
+        "params": {"fixed_price": True, "min_credits": "1"},
+    },
     # ── Live AI tutor (V494) ──────────────────────────────────────────────
     # One strong-model compile call per slide, charged as max(flat, actual).
     # Reuses request_type 'content' so no ai_token_usage CHECK change is needed.

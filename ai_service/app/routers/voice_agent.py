@@ -75,6 +75,25 @@ def _split_for_speech(text: str) -> list[str]:
     return segments
 
 
+def _course_verified(claims: Optional[dict], user_id, institute_id) -> bool:
+    """
+    Whether the auth message proves who is on the call well enough to search
+    their course: the token names the session's user AND lists the session's
+    institute in its per-institute authorities map. is_root_user is never
+    consulted (it is set for ordinary learners).
+    """
+    if not isinstance(claims, dict) or not user_id or not institute_id:
+        return False
+    token_user = str(claims.get("user") or "")
+    authorities = claims.get("authorities")
+    return (
+        bool(token_user)
+        and token_user == str(user_id)
+        and isinstance(authorities, dict)
+        and str(institute_id) in {str(k) for k in authorities}
+    )
+
+
 def _build_voice_session_service(db_session) -> VoiceSessionService:
     """Build a VoiceSessionService instance manually (no FastAPI Depends)."""
     context_resolver = ContextResolverService(db_session)
@@ -192,6 +211,9 @@ async def voice_session(websocket: WebSocket, session_id: str):
             or get_platform_setting("chatbot.voice.require_auth", default=False, db=db)
         )
         is_authenticated = False
+        # Set by a valid auth message for this user AND this institute; only
+        # then may a doubt call search the learner's course.
+        course_verified = False
 
         async def _send(payload: dict) -> None:
             async with send_lock:
@@ -328,6 +350,7 @@ async def voice_session(websocket: WebSocket, session_id: str):
                         user_id=user_id,
                         institute_id=institute_id,
                         model=voice_model,
+                        course_verified=course_verified,
                     )
                     ai_text = result.get("ai_text", "")
                     await _send({
@@ -400,6 +423,7 @@ async def voice_session(websocket: WebSocket, session_id: str):
                     await websocket.close(code=4403)
                     return
                 is_authenticated = True
+                course_verified = _course_verified(claims, user_id, institute_id)
                 continue
 
             elif not is_authenticated and require_auth:

@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import time
 from datetime import datetime
 import logging
 from typing import Callable, Dict, Any, List, Optional, AsyncGenerator
@@ -174,6 +175,132 @@ def _msg_event(msg) -> dict:
     }
 
 
+# ── course knowledge (CK-10) ─────────────────────────────────────────────────
+
+# The generic resource search a verified learner's own course search replaces.
+_RESOURCE_SEARCH_TOOL = "search_related_resources"
+# learner_tool.TOOL_NAME, spelled out so history filtering needs no import of
+# the course package on turns that never use it (a test pins the two equal).
+_COURSE_TOOL_NAME = "search_my_course"
+# Shadow probes run detached from the turn; keep a reference until they finish
+# so the event loop cannot garbage-collect one mid-flight.
+_SHADOW_TASKS: "set[asyncio.Task]" = set()
+
+
+def _with_course_tool(tool_defs: List[Dict[str, Any]], course_tool: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """tool_defs with search_related_resources swapped for search_my_course, in place
+    (appended when the generic search is absent). The shared list is not mutated."""
+    swapped = [
+        course_tool if t["function"]["name"] == _RESOURCE_SEARCH_TOOL else t
+        for t in tool_defs
+    ]
+    if not any(t is course_tool for t in swapped):
+        swapped.append(course_tool)
+    return swapped
+
+
+# The system prompt's routing line for the generic resource search, and what it
+# becomes on a turn that offers search_my_course instead. Must match the line in
+# _build_system_prompt exactly; a test pins both.
+_RESOURCE_SEARCH_GUIDANCE = (
+    "- Lessons, videos, PDFs or questions on a topic → search_related_resources. Its matches "
+    "are shown to the student as clickable links, so don't repeat the list; say which to open "
+    "first and why."
+)
+_COURSE_SEARCH_GUIDANCE = (
+    "- Lessons, videos, PDFs, notes or any study question about their course content → "
+    "search_my_course (passages from the courses they're enrolled in). Answer from what it "
+    "returns and name the lesson you used; its matches are shown to the student as clickable "
+    "links, so don't repeat the list."
+)
+# What a replayed search_my_course result becomes on a turn that may not read
+# course content (unverified caller, gate off or shadow, kill switch).
+_COURSE_RESULT_WITHHELD = (
+    "[Course search result withheld: the student's course material is not available on this "
+    "turn. Do not quote or rely on it.]"
+)
+
+
+def _with_course_tool_guidance(system_prompt: str) -> str:
+    """The prompt with its resource-search routing line pointed at search_my_course.
+    Appends the line when the generic one is missing, so the offered tool is
+    always named."""
+    if _RESOURCE_SEARCH_GUIDANCE in system_prompt:
+        return system_prompt.replace(_RESOURCE_SEARCH_GUIDANCE, _COURSE_SEARCH_GUIDANCE, 1)
+    return system_prompt + "\n" + _COURSE_SEARCH_GUIDANCE
+
+
+def _withhold_course_tool_results(history: List[Dict[str, Any]], course_tool_name: str) -> List[Dict[str, Any]]:
+    """history with every replayed search_my_course result stubbed out. The
+    tool_call/tool pairing is kept (providers reject unpaired tool messages);
+    only the course text goes. The input list is not mutated."""
+    return [
+        {**entry, "content": _COURSE_RESULT_WITHHELD}
+        if entry.get("role") == "tool" and entry.get("name") == course_tool_name
+        else entry
+        for entry in history
+    ]
+
+
+async def _course_shadow_probe(
+    session_id: str,
+    user_id: str,
+    institute_id: str,
+    query: str,
+    context_meta: Optional[Dict[str, Any]],
+) -> None:
+    """Shadow mode: run the turn's ambient course retrieval and log how it went.
+    Never injects anything and never raises (except cancellation)."""
+    started = time.monotonic()
+    try:
+        from .course_knowledge import learner_tool, prompt_blocks, retrieval
+
+        q = " ".join((query or "").split())[: retrieval.MAX_QUERY_CHARS]
+        if not q:
+            return
+        # The same scope and search the 'on' path uses (course_context_for_turn),
+        # unrolled so an empty result still reports its latency and reason.
+        scope = await learner_tool._scope(user_id, institute_id, context_meta)
+        if scope.is_empty:
+            logger.info(
+                "course_kb.shadow session=%s inst=%s open=0 hits=0 signposts=0 refs=0 top=- "
+                "latency_ms=0 total_ms=%d error=no_lessons",
+                session_id, institute_id, int((time.monotonic() - started) * 1000),
+            )
+            return
+        result = await retrieval.search_course(scope=scope, query=q, mode=retrieval.MODE_AMBIENT)
+        block_chars = len(prompt_blocks.format_course_block(result)) if not result.is_empty else 0
+    except asyncio.CancelledError:
+        raise
+    except Exception as e:  # noqa: BLE001 - a probe must never surface
+        logger.warning(f"course_kb.shadow probe failed for session {session_id}: {e}")
+        return
+    top = result.top_similarity
+    logger.info(
+        "course_kb.shadow session=%s inst=%s open=%d hits=%d signposts=%d refs=%d top=%s "
+        "latency_ms=%d total_ms=%d truncated=%s block_chars=%d leak_blocked=%d error=%s",
+        session_id, institute_id, len(scope.open_ids()), len(result.hits), len(result.signposts),
+        len(result.kb_hits), f"{top:.3f}" if top is not None else "-", result.latency_ms,
+        int((time.monotonic() - started) * 1000), result.truncated, block_chars,
+        result.leak_blocked, result.error or "-",
+    )
+
+
+def _start_course_shadow_probe(
+    session_id: str,
+    user_id: str,
+    institute_id: str,
+    query: str,
+    context_meta: Optional[Dict[str, Any]],
+) -> None:
+    """Fire the shadow probe without waiting for it: it must not slow the turn."""
+    task = asyncio.create_task(
+        _course_shadow_probe(session_id, user_id, institute_id, query, dict(context_meta or {}))
+    )
+    _SHADOW_TASKS.add(task)
+    task.add_done_callback(_SHADOW_TASKS.discard)
+
+
 class AiChatAgentService:
     """
     Orchestrates the AI chat agent with agentic capabilities and SSE support.
@@ -286,6 +413,31 @@ class AiChatAgentService:
         except Exception as e:
             logger.warning(f"Failed to record token usage for agent: {e}")
 
+    def _store_course_sources(self, session_id: str, course_result: Any, final_text: str) -> Optional[dict]:
+        """Store the "Sources" card for the course passages the answer cited
+        ([n] markers), as its own card message like a tool card. Returns the
+        SSE message data, or None when nothing was cited. Never raises."""
+        try:
+            from .course_knowledge import prompt_blocks
+
+            cited = prompt_blocks.parse_citations(final_text)
+            if not cited:
+                return None
+            card = prompt_blocks.sources_card(course_result, cited)
+            if not card:
+                return None
+            with self._get_db() as db:
+                card_msg = ChatMessageRepository(db).create_message(
+                    session_id=session_id,
+                    message_type="card",
+                    content=card_fallback_markdown(card),
+                    metadata={"card": card, "tool_name": "course_sources"},
+                )
+                return _msg_event(card_msg)
+        except Exception as e:  # noqa: BLE001 - the answer is already stored
+            logger.warning(f"Course sources card failed for session {session_id}: {e}")
+            return None
+
     # ── public API ───────────────────────────────────────────────────────
 
     async def create_session(
@@ -298,8 +450,13 @@ class AiChatAgentService:
         user_name: Optional[str] = None,
         session_mode: Optional[str] = "text",
         ui_language: Optional[str] = None,
+        caller_verified: bool = False,
     ) -> tuple[str, str]:
-        """Create a new chat session and optionally save an initial message."""
+        """Create a new chat session and optionally save an initial message.
+
+        caller_verified is stamped on the initial message exactly as
+        send_message stamps it (router-computed, never from the request body).
+        """
         if context_type is None:
             context_type = "general"
         if context_meta is None:
@@ -328,6 +485,7 @@ class AiChatAgentService:
                     session_id=session.id,
                     message_type="user",
                     content=initial_message,
+                    metadata={"caller_verified": True} if caller_verified is True else None,
                 )
 
             session_id = session.id
@@ -342,8 +500,14 @@ class AiChatAgentService:
         quiz_submission: Optional[QuizSubmission] = None,
         idempotency_key: Optional[str] = None,
         attachments: Optional[List[Dict[str, Any]]] = None,
+        caller_verified: bool = False,
     ) -> tuple[int, str]:
-        """Send a message to an existing session."""
+        """Send a message to an existing session.
+
+        caller_verified comes from the router (a real token for the session's
+        own learner and institute), never from the request body; it is what
+        lets this turn read the learner's course content.
+        """
         # Validate session
         with self._get_db() as db:
             session_repo = ChatSessionRepository(db)
@@ -400,6 +564,10 @@ class AiChatAgentService:
             metadata["attachments"] = [
                 att.copy() if isinstance(att, dict) else att for att in attachments
             ]
+        if caller_verified is True:
+            # Server-stamped only: metadata is built from typed fields above,
+            # so a client cannot put this key here itself.
+            metadata["caller_verified"] = True
 
         # Save message
         with self._get_db() as db:
@@ -1097,6 +1265,37 @@ class AiChatAgentService:
                     yield event
                 return
 
+            # ── Course knowledge (no DB held) ──
+            # Only for a caller the router verified (a real token for this
+            # session's learner and institute), and only when the institute's
+            # course-knowledge gate is active. Every read runs in its own short
+            # session inside course_knowledge; nothing here touches self._get_db.
+            # Any failure means no course context for this turn.
+            course_block: Optional[str] = None
+            course_result = None
+            course_tool_on = False
+            if msg_metadata.get("caller_verified") is True:
+                try:
+                    from .course_knowledge import learner_tool, settings_store
+
+                    gate = await asyncio.to_thread(settings_store.learner_gate, institute_id)
+                    if gate.active and gate.mode == "on":
+                        course_tool_on = True
+                        course_block, course_result = await learner_tool.course_context_for_turn(
+                            user_id,
+                            institute_id,
+                            query=latest_msg_content,
+                            context_meta=session_context_meta,
+                        )
+                    elif gate.active and gate.mode == "shadow":
+                        _start_course_shadow_probe(
+                            session_id, user_id, institute_id,
+                            latest_msg_content, session_context_meta,
+                        )
+                except Exception as e:  # noqa: BLE001 - course context is optional
+                    logger.warning(f"Course context skipped for session {session_id}: {e}")
+                    course_block, course_result, course_tool_on = None, None, False
+
             # ── Phase 2: build prompt and run agentic loop ──
 
             system_prompt = self._build_system_prompt(
@@ -1108,13 +1307,25 @@ class AiChatAgentService:
                 is_doubt=(intent == MessageIntent.DOUBT),
                 ui_language=ui_language,
             )
+            if course_tool_on:
+                # search_my_course replaces search_related_resources below; the
+                # routing line must name the tool actually offered.
+                system_prompt = _with_course_tool_guidance(system_prompt)
             if kb_context:
                 system_prompt += kb_context
+            if course_block:
+                system_prompt += "\n\n" + course_block
 
             messages: List[Dict[str, Any]] = [
                 {"role": "system", "content": system_prompt}
             ]
-            messages.extend(optimized_history)
+            if course_tool_on:
+                messages.extend(optimized_history)
+            else:
+                # Course text from an earlier verified turn must not reach a turn
+                # that may not read it (unverified caller, gate off, kill switch).
+                # A no-op for sessions that never ran search_my_course.
+                messages.extend(_withhold_course_tool_results(optimized_history, _COURSE_TOOL_NAME))
 
             # Add attachments to the latest user message if present
             if latest_msg_meta_data and latest_msg_meta_data.get("attachments"):
@@ -1128,6 +1339,14 @@ class AiChatAgentService:
             max_iterations = 5
             iteration = 0
             tools = TOOL_DEFINITIONS
+            course_tool_name: Optional[str] = None
+            if course_tool_on:
+                # The learner's own course replaces the generic resource search;
+                # every other tool stays.
+                from .course_knowledge import learner_tool
+
+                course_tool_name = learner_tool.TOOL_NAME
+                tools = _with_course_tool(TOOL_DEFINITIONS, learner_tool.SEARCH_MY_COURSE_TOOL)
 
             while iteration < max_iterations:
                 iteration += 1
@@ -1261,6 +1480,13 @@ class AiChatAgentService:
                             f"Created message {msg_data['id']}, yielding to SSE stream"
                         )
                         yield {"event": "message", "data": msg_data}
+                        # The [n] course passages the answer cited, as a card.
+                        if course_result is not None:
+                            sources_data = self._store_course_sources(
+                                session_id, course_result, final_content
+                            )
+                            if sources_data:
+                                yield {"event": "message", "data": sources_data}
                     else:
                         logger.warning(
                             f"LLM returned empty content for session {session_id}"
@@ -1345,6 +1571,26 @@ class AiChatAgentService:
                             t for t in tools
                             if t["function"]["name"] not in ORCHESTRATOR_TOOLS
                         ] or None
+                    elif course_tool_name and tool_name in (course_tool_name, _RESOURCE_SEARCH_TOOL):
+                        # Runs WITHOUT self._get_db(): the course search embeds
+                        # the query and opens its own short sessions, so no
+                        # pooled connection is held across the network call.
+                        # search_related_resources is not offered on this turn;
+                        # a model calling it from memory searches the learner's
+                        # course instead of the generic resource index.
+                        from .course_knowledge import learner_tool
+
+                        course_args = tool_args
+                        if tool_name == _RESOURCE_SEARCH_TOOL:
+                            topic = tool_args.get("topic") if isinstance(tool_args, dict) else None
+                            course_args = {"query": str(topic or "")}
+                        tool_output = await learner_tool.run_search_my_course(
+                            user_id=user_id,
+                            institute_id=institute_id,
+                            args=course_args,
+                            context_meta=session_context_meta,
+                        )
+                        tool_result, tool_card = split_tool_output(tool_output)
                     else:
                         with self._get_db() as db:
                             cached_resolver = _CachedKeyResolver(keys)

@@ -24,6 +24,8 @@ export enum TabType {
     DISCUSSION = 'DISCUSSION',
     // Live AI Tutor: per-course teaching-mode settings, compile status, plan preview.
     TUTOR_MODE = 'TUTOR_MODE',
+    // Course knowledge: what the student AI can answer from (coverage, Make course AI-ready).
+    AI_KNOWLEDGE = 'AI_KNOWLEDGE',
     // ASSIGNMENT = 'ASSIGNMENT',
     // GRADING = 'GRADING',
     // ANNOUNCEMENT = 'ANNOUNCEMENT',
@@ -53,6 +55,7 @@ export const tabs = [
     { label: 'Settings', value: 'SETTINGS' },
     { label: 'Discussion', value: 'DISCUSSION' },
     { label: 'Tutor Mode', value: 'TUTOR_MODE' },
+    { label: 'AI Knowledge', value: 'AI_KNOWLEDGE' },
     // { label: 'Assignment ', value: 'ASSIGNMENT' },
     // { label: 'Grading ', value: 'GRADING' },
     // { label: 'Announcements ', value: 'ANNOUNCEMENT' },
@@ -86,6 +89,7 @@ export function buildTabs(t: TFunction): { label: string; value: string }[] {
         { label: t(`${NAMESPACE}:tabs.settings`), value: 'SETTINGS' },
         { label: t(`${NAMESPACE}:tabs.discussion`), value: 'DISCUSSION' },
         { label: t(`${NAMESPACE}:tabs.tutorMode`), value: 'TUTOR_MODE' },
+        { label: t(`${NAMESPACE}:tabs.aiKnowledge`), value: 'AI_KNOWLEDGE' },
     ];
 }
 

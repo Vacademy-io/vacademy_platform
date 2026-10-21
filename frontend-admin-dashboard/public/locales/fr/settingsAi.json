@@ -6,6 +6,7 @@
     "sections": {
         "providers": "Fournisseurs et modèles",
         "courseAi": "IA du cours",
+        "courseKnowledge": "Connaissances du cours",
         "studentAi": "IA étudiant",
         "learnerInsights": "Analyses des apprenants",
         "knowledgeBase": "Base de connaissances",

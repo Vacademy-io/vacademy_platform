@@ -57,6 +57,9 @@ export interface ContextMeta {
   slide_id?: string;
   subject_id?: string;
   package_session_id?: string;
+  // Course-material search hints; the server re-derives access
+  chapter_id?: string;
+  tz?: string;
 }
 
 export interface InitSessionRequest {

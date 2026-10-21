@@ -733,9 +733,123 @@ SETTING_SPECS["site_assistant.llm.disable_reasoning"] = SettingSpec(
     default=lambda: True,
 )
 
+# Course knowledge (app/services/course_knowledge): lessons indexed per institute
+# into a hidden course_content knowledge base. Every switch is off by default;
+# each institute also turns the feature on itself (course_knowledge_setting).
+SETTING_SPECS["course_knowledge.enabled"] = SettingSpec(
+    key="course_knowledge.enabled",
+    group="course_knowledge",
+    label="Course knowledge: on (platform kill switch)",
+    description=(
+        "Off (default) = no lesson is indexed, every course-knowledge screen reports 'not available' and "
+        "learner answers never use course text. On = institutes listed below may turn the feature on. "
+        "Takes up to 30 s."
+    ),
+    type="bool",
+    default=lambda: _env_bool("COURSE_KNOWLEDGE_ENABLED", False),
+)
+SETTING_SPECS["course_knowledge.institutes"] = SettingSpec(
+    key="course_knowledge.institutes",
+    group="course_knowledge",
+    label="Course knowledge: institutes (JSON)",
+    description=(
+        'JSON array of institute ids that may turn course knowledge on, or ["*"] for every institute. '
+        "Empty (default) = none."
+    ),
+    type="string",
+    default=lambda: "[]",
+    max_length=6000,
+)
+SETTING_SPECS["course_knowledge.retrieval_mode"] = SettingSpec(
+    key="course_knowledge.retrieval_mode",
+    group="course_knowledge",
+    label="Course knowledge: learner answers",
+    description=(
+        "'off' (default) = learner chat and voice never read course text. 'shadow' = the search runs and is "
+        "logged, but nothing reaches the answer. 'on' = lessons the learner can open ground the answer."
+    ),
+    type="enum",
+    default=lambda: "off",
+    options=("off", "shadow", "on"),
+)
+SETTING_SPECS["course_knowledge.paid_enabled"] = SettingSpec(
+    key="course_knowledge.paid_enabled",
+    group="course_knowledge",
+    label="Course knowledge: paid processing (scans, videos)",
+    description=(
+        "Off (default) = only free text is indexed; scanned pages and uploaded videos wait as 'needs "
+        "processing' and no provider is called. On = institutes may pay credits to read them."
+    ),
+    type="bool",
+    default=lambda: False,
+)
+SETTING_SPECS["course_knowledge.links_enabled"] = SettingSpec(
+    key="course_knowledge.links_enabled",
+    group="course_knowledge",
+    label="Course knowledge: course to knowledge-base links",
+    description=(
+        "Off (default) = the link screens and APIs are closed and the AI tutor keeps its current grounding. "
+        "On = courses can be linked to knowledge bases. Turn on 'Stable topic ids' first."
+    ),
+    type="bool",
+    default=lambda: False,
+)
+SETTING_SPECS["course_knowledge.drip_mode"] = SettingSpec(
+    key="course_knowledge.drip_mode",
+    group="course_knowledge",
+    label="Course knowledge: drip rules",
+    description=(
+        "'time_exact' (default) = date-based drip is applied exactly and progress-based rules count as not met "
+        "(the lesson stays out of answers). 'mirror' = progress rules are evaluated like the learner app."
+    ),
+    type="enum",
+    default=lambda: "time_exact",
+    options=("time_exact", "mirror"),
+)
+SETTING_SPECS["course_knowledge.max_monthly_auto_cap"] = SettingSpec(
+    key="course_knowledge.max_monthly_auto_cap",
+    group="course_knowledge",
+    label="Course knowledge: highest monthly auto-processing cap (credits)",
+    description="An institute's own monthly cap for automatic paid processing is clamped to this.",
+    type="number",
+    default=lambda: 5000,
+    min_value=0, max_value=1000000,
+)
+SETTING_SPECS["course_knowledge.max_chunks_per_institute"] = SettingSpec(
+    key="course_knowledge.max_chunks_per_institute",
+    group="course_knowledge",
+    label="Course knowledge: most indexed passages per institute",
+    description="Storage guard on the shared database: indexing stops for an institute at this many passages.",
+    type="number",
+    default=lambda: 200000,
+    min_value=1000, max_value=5000000,
+)
+SETTING_SPECS["course_knowledge.worker_batch"] = SettingSpec(
+    key="course_knowledge.worker_batch",
+    group="course_knowledge",
+    label="Course knowledge: lessons claimed per worker tick",
+    description="How many queued lessons each ai_service pod picks up per tick.",
+    type="number",
+    default=lambda: 4,
+    min_value=1, max_value=16,
+)
+SETTING_SPECS["kb.stable_topic_ids"] = SettingSpec(
+    key="kb.stable_topic_ids",
+    group="kb",
+    label="Knowledge base: stable topic ids",
+    description=(
+        "Off (default) = rebuilding a knowledge base's topic tree gives every topic a new id, as before. "
+        "On = unchanged topics keep their ids, so course links to topics survive a rebuild."
+    ),
+    type="bool",
+    default=lambda: False,
+)
+
 GROUP_LABELS = {
     "chatbot": "Student chatbot",
     "site_assistant": "Website assistant",
+    "course_knowledge": "Course knowledge",
+    "kb": "Knowledge base",
     "voice": "Voice call",
     "tutor": "Live AI Tutor",
     "images": "Image generation",

@@ -60,6 +60,8 @@ import Activity from './activity';
 import PulseTab from '../../-components/pulse/PulseTab';
 import { PackageSettingsPanel } from '../../-components/package-settings/PackageSettingsPanel';
 import { TutorModeTab } from '../../-components/tutor-mode/TutorModeTab';
+import { AiKnowledgeTab } from '../../-components/ai-knowledge/AiKnowledgeTab';
+import { useCourseKnowledgeStatus } from '@/services/course-knowledge-settings';
 import { getIcon } from '../modules/chapters/slides/-components/slides-sidebar/slides-sidebar-slides';
 import { MyButton } from '@/components/design-system/button';
 import { useContentStore } from '../modules/chapters/slides/-stores/chapter-sidebar-store';
@@ -104,6 +106,10 @@ export type SubjectModulesMap = { [subjectId: string]: ModuleWithChapters[] };
 
 export const SubjectMaterial = () => {
     const { t } = useTranslation('subjectMaterial');
+    // The AI knowledge tab shows only when course knowledge is available to the
+    // institute; loading or failed counts as not available.
+    const { data: courseKnowledgeStatus } = useCourseKnowledgeStatus();
+    const isAiKnowledgeAvailable = courseKnowledgeStatus?.available === true;
     // role display for numbering toggle
     const accessToken = document?.cookie || '';
     // Simple check from existing stores would be better; fallback to ADMIN=false
@@ -928,6 +934,11 @@ export const SubjectMaterial = () => {
                 <TutorModeTab key={courseId} packageId={courseId} />
             </div>
         ),
+        [TabType.AI_KNOWLEDGE]: isAiKnowledgeAvailable ? (
+            <div className="rounded-md bg-white p-3 shadow-sm">
+                <AiKnowledgeTab key={courseId} packageId={courseId} />
+            </div>
+        ) : null,
         // The Discussion (batch chat) and Downloads (offline telemetry) tabs are
         // rendered only from course-details — Downloads needs the institute
         // OFFLINE_ACCESS_SETTING gate that lives there, so surfacing it here would
@@ -978,7 +989,8 @@ export const SubjectMaterial = () => {
                             .filter(
                                 (tab) =>
                                     tab.value !== TabType.DISCUSSION &&
-                                    tab.value !== TabType.DOWNLOADS
+                                    tab.value !== TabType.DOWNLOADS &&
+                                    (tab.value !== TabType.AI_KNOWLEDGE || isAiKnowledgeAvailable)
                             )
                             // Hidden-by-default tabs (e.g. Live Session) only show
                             // when a role's display settings explicitly enable them.

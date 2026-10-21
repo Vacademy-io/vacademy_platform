@@ -149,21 +149,40 @@ interface ChapterSearchParams {
   chapterId: string;
   slideId: string;
   sessionId: string;
+  // Citation deep links from the chat: open a PDF at this page (1-based) or a
+  // video / audio at this second. Applied once, then cleared from the URL.
+  page?: number;
+  t?: number;
 }
+
+// A deep-link number param: finite and positive, else dropped. Accepts the
+// numeric strings a hand-edited URL can carry as well as parsed numbers.
+const positiveNumberParam = (value: unknown): number | undefined => {
+  const n =
+    typeof value === "string" && value.trim() !== "" ? Number(value) : value;
+  return typeof n === "number" && Number.isFinite(n) && n > 0 ? n : undefined;
+};
 
 export const Route = createFileRoute(
   "/study-library/courses/course-details/subjects/modules/chapters/slides/"
 )({
   component: Slides,
-  validateSearch: (search: Record<string, unknown>): ChapterSearchParams => ({
-    courseId: search.courseId as string,
-    levelId: search.levelId as string | undefined,
-    subjectId: search.subjectId as string,
-    moduleId: search.moduleId as string,
-    chapterId: search.chapterId as string,
-    slideId: search.slideId as string,
-    sessionId: search.sessionId as string,
-  }),
+  validateSearch: (search: Record<string, unknown>): ChapterSearchParams => {
+    const page = positiveNumberParam(search.page);
+    const t = positiveNumberParam(search.t);
+    return {
+      courseId: search.courseId as string,
+      levelId: search.levelId as string | undefined,
+      subjectId: search.subjectId as string,
+      moduleId: search.moduleId as string,
+      chapterId: search.chapterId as string,
+      slideId: search.slideId as string,
+      sessionId: search.sessionId as string,
+      // Pages are whole; a fractional page (2.5) means its page (2).
+      ...(page !== undefined && page >= 1 && { page: Math.floor(page) }),
+      ...(t !== undefined && { t }),
+    };
+  },
 });
 
 // ── Module Accordion Item ────────────────────────────────────────────────────
@@ -265,11 +284,46 @@ const ModuleAccordionItem = ({
 // ────────────────────────────────────────────────────────────────────────────
 
 function Slides() {
-  const { courseId, levelId, subjectId, moduleId, chapterId, slideId, sessionId } =
-    Route.useSearch();
+  const {
+    courseId,
+    levelId,
+    subjectId,
+    moduleId,
+    chapterId,
+    slideId,
+    sessionId,
+    page: deepLinkPage,
+    t: deepLinkTime,
+  } = Route.useSearch();
 
   const { setOpen: setAppSidebarOpen } = useSidebar();
   const navigate = useNavigate();
+
+  // Citation deep link (?page / ?t) for the slide named in the URL. The viewer
+  // applies it once when that slide is on screen; the params are then dropped
+  // with a replace navigation so a refresh resumes from saved progress.
+  const slideStartAt = useMemo(
+    () =>
+      slideId && (deepLinkPage !== undefined || deepLinkTime !== undefined)
+        ? { slideId, page: deepLinkPage, t: deepLinkTime }
+        : undefined,
+    [slideId, deepLinkPage, deepLinkTime]
+  );
+  const handleSlideStartApplied = useCallback(() => {
+    navigate({
+      to: "/study-library/courses/course-details/subjects/modules/chapters/slides",
+      search: {
+        courseId,
+        levelId,
+        subjectId,
+        moduleId,
+        chapterId,
+        slideId,
+        sessionId,
+      },
+      replace: true,
+    });
+  }, [navigate, courseId, levelId, subjectId, moduleId, chapterId, slideId, sessionId]);
 
   // Tracks the URL slideId the slide-selection effect last resolved against, so
   // a re-run can tell "the learner navigated (slideId changed)" apart from "the
@@ -1993,6 +2047,8 @@ function Slides() {
             ) : (
               <SlideMaterial
                 onNavigateToSlide={handleNavigateToSlide}
+                startAt={slideStartAt}
+                onStartAtApplied={handleSlideStartApplied}
                 standaloneNav={hideSlidesSidebar}
                 manualCompletion={manualCompletion}
                 completionContext={{

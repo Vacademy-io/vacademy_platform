@@ -90,6 +90,8 @@ TOOL_FEATURE_OVERRIDES = {
     "kb_ingest_page": "kb_ingest",
     "kb_ingest_url": "kb_ingest",
     "kb_library_unlock": "kb_ingest",
+    "course_kb_ocr_page": "kb_ingest",
+    "course_kb_transcribe_minute": "transcription",
     "tutor_avatar_minute": "tutor_avatar_minutes",
 }
 #: ai_usage_counter.period for plan fair-use counters (V587 reserved it)

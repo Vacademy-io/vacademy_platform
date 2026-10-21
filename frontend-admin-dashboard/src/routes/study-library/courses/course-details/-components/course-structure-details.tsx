@@ -135,6 +135,7 @@ import PulseTab from './pulse/PulseTab';
 import QuizResultsTab from './quiz-results/QuizResultsTab';
 import { PackageSettingsPanel } from './package-settings/PackageSettingsPanel';
 import { TutorModeTab } from './tutor-mode/TutorModeTab';
+import { AiKnowledgeTab } from './ai-knowledge/AiKnowledgeTab';
 import {
     CopyContentDialog,
     type CopyContentSelection,
@@ -146,6 +147,7 @@ import { BulkUploadDialogButton } from '@/components/common/study-library/bulk-c
 import { BatchChatPanel } from '@/components/chat/BatchChatPanel';
 import { getNotificationSettings } from '@/services/notification-settings';
 import { useOfflineAccessEnabled } from '@/routes/settings/-hooks/use-offline-access-enabled';
+import { useCourseKnowledgeStatus } from '@/services/course-knowledge-settings';
 
 // Map between DisplaySettings ids and UI tab values
 const mapDisplayIdToUiValue = (id: CourseDetailsTabId): string => {
@@ -541,6 +543,13 @@ export const CourseStructureDetails = ({
     const offlineAccessEnabled = useOfflineAccessEnabled();
     const isOfflineAccessDisabled = !offlineAccessEnabled;
 
+    // The AI knowledge tab exists only once the platform has made course knowledge
+    // available to the institute. Unknown (loading/error) counts as NOT available,
+    // so the tab never flashes in for institutes that do not have the feature.
+    const courseKnowledgeStatusQuery = useCourseKnowledgeStatus();
+    const isAiKnowledgeAvailable = courseKnowledgeStatusQuery.data?.available === true;
+    const isAiKnowledgeSettled = !courseKnowledgeStatusQuery.isLoading;
+
     // Ensure selected tab is visible per role display settings; otherwise, switch to default/first visible
     useEffect(() => {
         if (!roleDisplay?.courseDetails?.tabs) return;
@@ -556,6 +565,8 @@ export const CourseStructureDetails = ({
         // it and the Downloads effect would flip selectedTab back and forth when
         // a role also has the fallback tab hidden.
         if (isOfflineAccessDisabled) visibilityMap.set(TabType.DOWNLOADS, false);
+        // Same for AI knowledge: the tab strip drops it unless the feature is available.
+        if (!isAiKnowledgeAvailable) visibilityMap.set(TabType.AI_KNOWLEDGE, false);
         // A hidden-by-default tab absent from the config counts as not visible,
         // so a stale localStorage selection of it redirects to a visible tab.
         const isCurrentVisible = visibilityMap.has(selectedTab)
@@ -584,7 +595,7 @@ export const CourseStructureDetails = ({
             }
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [roleDisplay, selectedTab, isChatEnabled, isOfflineAccessDisabled]);
+    }, [roleDisplay, selectedTab, isChatEnabled, isOfflineAccessDisabled, isAiKnowledgeAvailable]);
 
     // Effect to update tab selection when settings load
     useEffect(() => {
@@ -5165,6 +5176,11 @@ export const CourseStructureDetails = ({
                 <TutorModeTab key={courseId} packageId={courseId} />
             </div>
         ),
+        [TabType.AI_KNOWLEDGE]: (
+            <div className="rounded-md bg-white p-3 shadow-sm">
+                <AiKnowledgeTab key={courseId} packageId={courseId} />
+            </div>
+        ),
         [TabType.DISCUSSION]: batchPackageSessionId ? (
             <BatchChatPanel packageSessionId={batchPackageSessionId} />
         ) : (
@@ -5202,6 +5218,20 @@ export const CourseStructureDetails = ({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isOfflineAccessDisabled, selectedTab]);
 
+    // And for AI knowledge: once the status has settled as not available (or the
+    // feature is switched off for the institute), move off a stale selection of it.
+    useEffect(() => {
+        if (
+            selectedTab === TabType.AI_KNOWLEDGE &&
+            isAiKnowledgeSettled &&
+            !isAiKnowledgeAvailable
+        ) {
+            setSelectedTab(TabType.OUTLINE);
+            localStorage.setItem(getStorageKey(), TabType.OUTLINE);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isAiKnowledgeAvailable, isAiKnowledgeSettled, selectedTab]);
+
     // Compute final visible/reordered tabs once for rendering below.
     // Discussion is handled separately (gated on chat-enabled) and conditionally
     // appended after the role/settings reorder pipeline below.
@@ -5213,6 +5243,12 @@ export const CourseStructureDetails = ({
         // role-config visibility below applies as usual.
         if (isOfflineAccessDisabled) {
             reorderedTabs = reorderedTabs.filter((tab) => tab.value !== TabType.DOWNLOADS);
+        }
+
+        // Course knowledge not available to the institute → no AI knowledge tab,
+        // whatever the role config says.
+        if (!isAiKnowledgeAvailable) {
+            reorderedTabs = reorderedTabs.filter((tab) => tab.value !== TabType.AI_KNOWLEDGE);
         }
 
         const details = roleDisplay?.courseDetails;

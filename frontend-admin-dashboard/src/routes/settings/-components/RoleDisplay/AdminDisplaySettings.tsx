@@ -1268,6 +1268,7 @@ export default function AdminDisplaySettings({ onDirtyChange }: RoleDisplayPanel
                             'DOWNLOADS',
                             'SETTINGS',
                             'TUTOR_MODE',
+                            'AI_KNOWLEDGE',
                         ];
                         const orderForId: Record<string, number> = {
                             OUTLINE: 1,
@@ -1287,6 +1288,7 @@ export default function AdminDisplaySettings({ onDirtyChange }: RoleDisplayPanel
                             DOWNLOADS: 12,
                             SETTINGS: 13,
                             TUTOR_MODE: 13.5,
+                            AI_KNOWLEDGE: 13.6,
                         };
                         // Tabs that stay OFF unless explicitly enabled per role.
                         const hiddenByDefault = DEFAULT_HIDDEN_COURSE_DETAILS_TABS;

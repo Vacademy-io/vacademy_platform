@@ -168,6 +168,7 @@ class PlanCompiler:
         ocr_pdfs: bool = True,
         voice_prepare: Optional[Dict[str, Any]] = None,
         metering: Any = None,
+        chapter_topics: Optional[Dict[str, List[str]]] = None,
     ) -> None:
         self.institute_id = institute_id
         # Usage-event attribution for every charge of this compile (never
@@ -190,6 +191,11 @@ class PlanCompiler:
         self.force = force
         self.generate_images = generate_images
         self.kb_grounding = kb_grounding
+        # Course-KB link chapter map {chapter_id: [node_id, ...]} of the
+        # grounding KB (course_knowledge.links_enabled): a slide whose chapter
+        # is mapped is grounded on its first node's whole section. None keeps
+        # the similarity grounding.
+        self.chapter_topics = chapter_topics or None
         self.compile_run_id = (compile_run_id or "")[:64] or None
         self.model = resolve_compile_model(model_override)
         # Board images: the tutor's own image model setting, else the platform
@@ -674,16 +680,27 @@ class PlanCompiler:
             return resp.get("content") or "", resp.get("finish_reason")
         raise last_exc or RuntimeError("no model answered")
 
+    def _chapter_node(self, source: SlideSource) -> Optional[str]:
+        """The first topic node the course link maps to the slide's chapter."""
+        if not self.chapter_topics or not getattr(source, "chapter_id", None):
+            return None
+        nodes = self.chapter_topics.get(source.chapter_id) or []
+        return next((str(n) for n in nodes if n), None)
+
     async def _kb_block(self, source: SlideSource) -> Optional[str]:
         if not self.kb_grounding or source.kind != "document":
             return None
         try:
             from ..kb import course_grounding
+            extra: Dict[str, Any] = {}
+            node_id = self._chapter_node(source)
+            if node_id:
+                extra["node_id"] = node_id
             with db_session() as db:
                 g = await course_grounding.ground_slide(
                     db, kb_id=self.kb_grounding.knowledge_base_id, institute_id=self.institute_id,
                     query=" ".join(p for p in [source.chapter_name, source.title] if p),
-                    mode=self.kb_grounding.mode, faithful=True,
+                    mode=self.kb_grounding.mode, faithful=True, **extra,
                 )
             if g and g.supported:
                 return course_grounding.slide_prompt_block(g, self.kb_grounding.mode)

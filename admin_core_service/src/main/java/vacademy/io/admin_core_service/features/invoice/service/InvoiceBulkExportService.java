@@ -70,6 +70,10 @@ public class InvoiceBulkExportService {
     /** IN-clause chunk for the duplicate and user lookups. */
     private static final int LOOKUP_CHUNK = 500;
 
+    /** Stand-ins for an open-ended window; the query needs real values to type its parameters. */
+    private static final LocalDateTime OPEN_START = LocalDateTime.of(1970, 1, 1, 0, 0);
+    private static final LocalDateTime OPEN_END = LocalDateTime.of(9999, 12, 31, 23, 59, 59);
+
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
     private final InvoiceRepository invoiceRepository;
@@ -86,7 +90,10 @@ public class InvoiceBulkExportService {
 
     public ExportPlan plan(String instituteId, LocalDateTime startDate, LocalDateTime endDate) {
         List<InvoiceExportRow> rows = invoiceRepository.findForBulkExport(
-                instituteId, startDate, endDate, PageRequest.of(0, MAX_INVOICES + 1));
+                instituteId,
+                startDate != null ? startDate : OPEN_START,
+                endDate != null ? endDate : OPEN_END,
+                PageRequest.of(0, MAX_INVOICES + 1));
         if (rows.isEmpty()) {
             throw new VacademyException(HttpStatus.NOT_FOUND, "No invoices were issued in this period.");
         }

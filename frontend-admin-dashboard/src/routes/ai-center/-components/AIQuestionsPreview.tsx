@@ -423,7 +423,10 @@ const AIQuestionsPreview = ({
             queryClient.invalidateQueries({ queryKey: ['GET_QUESTION_PAPER_FILTERED_DATA'] });
         },
         onError: (error: unknown) => {
-            toast.error(error as string);
+            // A string, never the Error itself: the Toaster sits outside the
+            // router's error boundary, so an object here crashed the whole app
+            // to a blank page.
+            toast.error(error instanceof Error ? error.message : String(error));
         },
     });
 

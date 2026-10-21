@@ -15,11 +15,14 @@ import {
     CurrencyDollar,
     Tag,
     TrendUp,
+    ChatText,
 } from '@phosphor-icons/react';
 import { useCallback, useEffect, useState } from 'react';
 import { getUserPlans, UserPlan } from '@/services/user-plan';
 import { getInstituteId } from '@/constants/helper';
 import { ChangePlanDialog } from '../student-membership/change-plan-dialog';
+import { ManualRenewalDialog } from '../student-membership/manual-renewal-dialog';
+import { PlanRemarksDialog } from '../student-membership/plan-remarks';
 import { useStudentSidebar } from '@/routes/manage-students/students-list/-context/selected-student-sidebar-context';
 import { toast } from 'sonner';
 import { format, formatDate } from 'date-fns';
@@ -67,6 +70,9 @@ const getOptionName = (plan: UserPlan, t: TFunction): string =>
  */
 const isCpoPlan = (plan: UserPlan): boolean =>
     (plan.payment_option?.type || '').toUpperCase() === 'CPO';
+
+/** Memberships that have lapsed but can be brought back with a manual renewal. */
+const LAPSED_STATUSES = ['EXPIRED', 'CANCELED', 'PAYMENT_FAILED'];
 
 const getPlanAmount = (plan: UserPlan): number => plan.payment_plan_dto?.actual_price || 0;
 
@@ -174,6 +180,14 @@ const buildPlanStatusMap = (t: TFunction): Record<string, { label: string; class
     },
     EXPIRED: {
         label: t('planStatus.expired'),
+        classes: 'bg-danger-50 text-danger-700 ring-danger-200',
+    },
+    CANCELED: {
+        label: t('planStatus.canceled'),
+        classes: 'bg-neutral-100 text-neutral-700 ring-neutral-200',
+    },
+    PAYMENT_FAILED: {
+        label: t('planStatus.paymentFailed'),
         classes: 'bg-danger-50 text-danger-700 ring-danger-200',
     },
 });
@@ -468,15 +482,28 @@ const PlanCard = ({
     plan,
     enrollmentStatus,
     onChangePlan,
+    onRenew,
+    onRemarks,
 }: {
     plan: UserPlan;
     enrollmentStatus: 'ACTIVE' | 'INACTIVE' | 'TERMINATED' | null;
     /** Absent in the history dialog — past plans are not switchable. */
     onChangePlan?: (plan: UserPlan) => void;
+    /** Record an offline renewal payment and extend access. */
+    onRenew?: (plan: UserPlan) => void;
+    /** Admin remarks on this membership. */
+    onRemarks?: (plan: UserPlan) => void;
 }) => {
     const { t } = useTranslation('manageStudentsPlanDetails');
     const policy = getFirstPolicy(plan);
     const courseLabel = getCourseLabel(plan, t);
+    // CPO-backed memberships are excluded from both: their price comes from an installment
+    // schedule that a plan swap or a manual renewal would leave unreconciled.
+    const canChangePlan = Boolean(onChangePlan) && plan.status === 'ACTIVE' && !isCpoPlan(plan);
+    const canRenew =
+        Boolean(onRenew) &&
+        (plan.status === 'ACTIVE' || LAPSED_STATUSES.includes(plan.status)) &&
+        !isCpoPlan(plan);
     const planName = getPlanName(plan, t);
     const daysLeft = computeDaysLeft(plan.end_date);
     const tone = getDaysLeftTone(t, daysLeft);
@@ -579,16 +606,38 @@ const PlanCard = ({
 
             {/* CPO-backed memberships are excluded: their price comes from an installment
                 schedule that a plan swap would leave unreconciled. */}
-            {onChangePlan && plan.status === 'ACTIVE' && !isCpoPlan(plan) && (
-                <div className="mt-3 flex justify-end border-t border-neutral-100 pt-2">
-                    <MyButton
-                        buttonType="secondary"
-                        scale="small"
-                        onClick={() => onChangePlan(plan)}
-                    >
-                        <ArrowsClockwise className="mr-1 size-3" />
-                        {t('changePlan.button')}
-                    </MyButton>
+            {(canChangePlan || canRenew || onRemarks) && (
+                <div className="mt-3 flex flex-wrap justify-end gap-2 border-t border-neutral-100 pt-2">
+                    {onRemarks && (
+                        <MyButton
+                            buttonType="secondary"
+                            scale="small"
+                            onClick={() => onRemarks(plan)}
+                        >
+                            <ChatText className="mr-1 size-3" />
+                            {t('remarks.button')}
+                        </MyButton>
+                    )}
+                    {canRenew && (
+                        <MyButton
+                            buttonType="secondary"
+                            scale="small"
+                            onClick={() => onRenew?.(plan)}
+                        >
+                            <CurrencyDollar className="mr-1 size-3" />
+                            {t('manualRenewal.button')}
+                        </MyButton>
+                    )}
+                    {canChangePlan && (
+                        <MyButton
+                            buttonType="secondary"
+                            scale="small"
+                            onClick={() => onChangePlan?.(plan)}
+                        >
+                            <ArrowsClockwise className="mr-1 size-3" />
+                            {t('changePlan.button')}
+                        </MyButton>
+                    )}
                 </div>
             )}
         </div>
@@ -606,6 +655,9 @@ const StudentPlanDetails = ({ userId, instituteId }: StudentPlanDetailsProps) =>
     const [currentPage, setCurrentPage] = useState(1);
     const [totalPages, setTotalPages] = useState(0);
     const [planToChange, setPlanToChange] = useState<UserPlan | null>(null);
+    const [lapsedPlans, setLapsedPlans] = useState<UserPlan[]>([]);
+    const [planToRenew, setPlanToRenew] = useState<UserPlan | null>(null);
+    const [planForRemarks, setPlanForRemarks] = useState<UserPlan | null>(null);
     const pageSize = 5;
     // The dialog needs an explicit institute id; the prop is optional here because most
     // callers let the service derive it from the token.
@@ -632,8 +684,13 @@ const StudentPlanDetails = ({ userId, instituteId }: StudentPlanDetailsProps) =>
         if (!userId) return;
         try {
             setIsLoadingActive(true);
-            const response = await getUserPlans(1, 50, ['ACTIVE'], userId, instituteId);
+            const [response, lapsed] = await Promise.all([
+                getUserPlans(1, 50, ['ACTIVE'], userId, instituteId),
+                // Lapsed memberships stay visible so an admin can renew them by hand.
+                getUserPlans(1, 20, LAPSED_STATUSES, userId, instituteId).catch(() => null),
+            ]);
             setActivePlans(response.content || []);
+            setLapsedPlans(lapsed?.content || []);
         } catch (error) {
             console.error('Error loading active plans:', error);
         } finally {
@@ -729,11 +786,51 @@ const StudentPlanDetails = ({ userId, instituteId }: StudentPlanDetailsProps) =>
                                     plan={plan}
                                     enrollmentStatus={resolveEnrollmentStatus(plan)}
                                     onChangePlan={setPlanToChange}
+                                    onRenew={setPlanToRenew}
+                                    onRemarks={setPlanForRemarks}
                                 />
                             ))}
                     </div>
                 )}
+
+                {!isLoadingActive && lapsedPlans.length > 0 && (
+                    <div className="space-y-2.5 pt-1">
+                        <h3 className="text-sm font-semibold text-neutral-800">
+                            {t('heading.lapsedMemberships')}
+                        </h3>
+                        {lapsedPlans.map((plan) => (
+                            <PlanCard
+                                key={plan.id}
+                                plan={plan}
+                                enrollmentStatus={resolveEnrollmentStatus(plan)}
+                                onRenew={setPlanToRenew}
+                                onRemarks={setPlanForRemarks}
+                            />
+                        ))}
+                    </div>
+                )}
             </div>
+
+            <ManualRenewalDialog
+                open={Boolean(planToRenew)}
+                onOpenChange={(open) => {
+                    if (!open) setPlanToRenew(null);
+                }}
+                userPlanId={planToRenew?.id ?? null}
+                instituteId={resolvedInstituteId}
+                planLabel={planToRenew ? getCourseLabel(planToRenew, t) : undefined}
+                onRenewed={loadActivePlans}
+            />
+
+            <PlanRemarksDialog
+                open={Boolean(planForRemarks)}
+                onOpenChange={(open) => {
+                    if (!open) setPlanForRemarks(null);
+                }}
+                userPlanId={planForRemarks?.id ?? null}
+                instituteId={resolvedInstituteId}
+                planLabel={planForRemarks ? getCourseLabel(planForRemarks, t) : undefined}
+            />
 
             <ChangePlanDialog
                 open={Boolean(planToChange)}

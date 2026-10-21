@@ -211,18 +211,17 @@ const FeePlanSummaryCard = ({ summary }: { summary: CpoUserPlanSummary }) => {
     );
 };
 
-/** Account summary grid — shows total accrued, paid, balance, overdue from the ledger. */
+/** Account summary grid — shows total accrued, paid and balance from the ledger. */
 const AccountSummaryGrid = ({ summary }: { summary: UserAccountSummaryDTO }) => {
     const { t } = useTranslation('manageStudentsPaymentHistory');
     const sym = symbolFor(summary.currency);
     const fmt = (v: number) => `${sym}${formatAmount(v, summary.currency, 0)}`;
     return (
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
             {[
                 { label: t('accountSummary.totalAccrued'), value: fmt(summary.total_accrued), tone: 'neutral' },
                 { label: t('accountSummary.totalPaid'), value: fmt(summary.total_paid), tone: 'success' },
                 { label: t('accountSummary.due'), value: fmt(summary.balance), tone: summary.balance > 0 ? 'danger' : 'neutral' },
-                { label: t('accountSummary.pastDue'), value: fmt(summary.overdue), tone: summary.overdue > 0 ? 'danger' : 'neutral' },
             ].map(({ label, value, tone }) => (
                 <div key={label} className="rounded-lg border border-neutral-200 bg-white p-3">
                     <p className="text-2xs uppercase tracking-wider text-muted-foreground">{label}</p>

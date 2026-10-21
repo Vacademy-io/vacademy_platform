@@ -96,9 +96,20 @@ class RoleServiceGrantActiveRolesTest {
         Role teacher = role("r-t", "TEACHER", null);
         when(roles.findByNameIn(List.of("TEACHER"))).thenReturn(List.of(teacher));
 
-        service.grantActiveRoles(user, A, List.of("TEACHER", " TEACHER ", "TEACHER"));
+        service.grantActiveRoles(user, A, List.of("TEACHER", "TEACHER"));
 
         assertEquals(1, saved().size());
+    }
+
+    @Test
+    void aPaddedRoleNameIsNotTrimmedIntoARealRole() {
+        // The admin-grant guard compares names as given; trimming here let "ADMIN " slip past it.
+        when(roles.findByNameIn(List.of("ADMIN "))).thenReturn(List.of());
+
+        RoleService.RoleGrant grant = service.grantActiveRoles(user, A, List.of("ADMIN "));
+
+        verify(userRoles, never()).saveAll(any());
+        assertEquals(List.of("ADMIN "), grant.unknown());
     }
 
     @Test

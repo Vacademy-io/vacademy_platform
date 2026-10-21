@@ -333,13 +333,18 @@ function RouteComponent() {
                         : 'CANCEL';
             return handleDeleteDisableDashboardUsers(instituteId, status, member.id);
         },
-        onSuccess: (_, { kind, member }) => {
+        onSuccess: (data, { kind, member }) => {
             const name = member.full_name;
+            // The server mails the password only to an unused account it created here;
+            // everyone else gets a sign-in reminder, and the toast says which went out.
+            const reminderOnly = kind === 'resend' && data === 'Sign-in reminder sent';
             const messages: Partial<Record<TeamConfirmKind, string>> = {
                 disable: t('confirm.disable.toast', { name }),
                 enable: t('confirm.enable.toast', { name }),
                 delete: t('confirm.delete.toast', { name }),
-                resend: t('confirm.resend.toast', { email: member.email }),
+                resend: t(reminderOnly ? 'confirm.resend.reminderToast' : 'confirm.resend.toast', {
+                    email: member.email,
+                }),
                 cancel: t('confirm.cancel.toast', { name }),
             };
             toast.success(messages[kind]);

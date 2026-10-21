@@ -52,7 +52,7 @@ public class AdminRoleGrantGuard {
 
     private void requireAdminFor(CustomUserDetails caller, String instituteId, Collection<String> roleNames,
                                  String message) {
-        if (roleNames == null || roleNames.stream().noneMatch(ADMIN_ROLE::equalsIgnoreCase)) {
+        if (roleNames == null || roleNames.stream().noneMatch(n -> n != null && ADMIN_ROLE.equalsIgnoreCase(n.strip()))) {
             return;
         }
         if (caller == null || caller.getUserId() == null || instituteId == null || instituteId.isBlank()

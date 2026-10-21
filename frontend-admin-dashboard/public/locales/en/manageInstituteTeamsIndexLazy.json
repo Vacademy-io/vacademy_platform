@@ -293,7 +293,8 @@
             "title": "Resend login details to {{name}}?",
             "body": "We'll email their sign-in details again to",
             "action": "Resend login details",
-            "toast": "Login details sent to {{email}}"
+            "toast": "Login details sent to {{email}}",
+            "reminderToast": "Sign-in reminder sent to {{email}} (they already use this account, so no password was included)"
         },
         "cancel": {
             "title": "Cancel {{name}}'s invite?",

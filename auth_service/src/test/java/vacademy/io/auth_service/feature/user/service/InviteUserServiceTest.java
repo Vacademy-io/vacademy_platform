@@ -373,6 +373,17 @@ class InviteUserServiceTest {
     }
 
     @Test
+    void aHashedPasswordIsNeverMailed() {
+        String hash = "$2a$10$abcdefghijklmnopqrstuuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0";
+        User member = user("m", hash, null);
+        row(member, counsellor, A, "ACTIVE");
+        when(userService.getUserById("m")).thenReturn(member);
+
+        assertEquals("Sign-in reminder sent", service.resendInvitation("m", A, null));
+        assertFalse(sentEmails().get(0).getBody().contains(hash));
+    }
+
+    @Test
     void resendNeedsALiveRoleInThisInstitute() {
         User member = user("m", "pw", null);
         row(member, counsellor, A, "DISABLED");

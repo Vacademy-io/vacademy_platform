@@ -165,8 +165,8 @@ public class RoleService {
             return List.of();
         }
         return roleNames.stream()
+                // Exact names (no trim): the admin-grant guard compares them as given.
                 .filter(n -> n != null && !n.isBlank())
-                .map(String::trim)
                 .collect(Collectors.toCollection(LinkedHashSet::new))
                 .stream().toList();
     }

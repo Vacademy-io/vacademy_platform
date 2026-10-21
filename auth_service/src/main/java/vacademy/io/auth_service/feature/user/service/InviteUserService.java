@@ -246,7 +246,8 @@ public class InviteUserService {
      * gets the sign-in reminder without the password.
      */
     boolean mayResendGeneratedCredentials(User user, String instituteId) {
-        if (user.getLastLoginTime() != null || !StringUtils.hasText(user.getPassword())) {
+        if (user.getLastLoginTime() != null || !StringUtils.hasText(user.getPassword())
+                || user.getPassword().startsWith("$2")) { // a bcrypt hash, not a password
             return false;
         }
         java.time.LocalDateTime firstRowHere = null;
@@ -327,8 +328,10 @@ public class InviteUserService {
         }
         Set<String> out = new LinkedHashSet<>();
         for (String n : names) {
+            // Exact names, as the admin-grant guard compares them: trimming here would let
+            // "ADMIN " pass the guard and then resolve to the ADMIN role.
             if (n != null && !n.isBlank()) {
-                out.add(n.trim());
+                out.add(n);
             }
         }
         return new ArrayList<>(out);

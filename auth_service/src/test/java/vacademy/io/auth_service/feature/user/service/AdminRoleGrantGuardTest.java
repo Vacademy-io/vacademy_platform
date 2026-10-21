@@ -73,6 +73,17 @@ class AdminRoleGrantGuardTest {
     }
 
     @Test
+    void paddedAdminNameStillNeedsAnAdmin() {
+        when(userRoleRepository.findFirstByUserIdAndInstituteIdAndRoleNamesAndStatuses(
+                any(), any(), anyList(), anyList())).thenReturn(Optional.empty());
+        for (String padded : List.of("ADMIN ", " ADMIN", "ADMIN\t", " admin\n")) {
+            assertThrows(VacademyException.class,
+                    () -> guard.requireAdminToGrantAdmin(caller("teacher", false), INSTITUTE,
+                            List.of("TEACHER", padded)), padded);
+        }
+    }
+
+    @Test
     void missingInstituteOrCallerIsRefused() {
         assertThrows(VacademyException.class,
                 () -> guard.requireAdminToGrantAdmin(null, INSTITUTE, List.of("ADMIN")));

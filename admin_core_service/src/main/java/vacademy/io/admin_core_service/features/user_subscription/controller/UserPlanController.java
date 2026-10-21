@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.plan_change.dto.PlanChangeOptionsDTO;
 import vacademy.io.admin_core_service.features.plan_change.dto.PlanChangeRequestDTO;
 import vacademy.io.admin_core_service.features.user_subscription.dto.*;
+import vacademy.io.admin_core_service.features.user_subscription.service.AdminManualRenewalService;
 import vacademy.io.admin_core_service.features.user_subscription.service.UserPlanService;
 import vacademy.io.admin_core_service.features.user_subscription.service.PaymentLogService;
 import vacademy.io.admin_core_service.features.user_subscription.service.PaymentVoidService;
@@ -34,6 +35,9 @@ public class UserPlanController {
 
     @Autowired
     private vacademy.io.admin_core_service.core.security.InstituteAccessValidator instituteAccessValidator;
+
+    @Autowired
+    private AdminManualRenewalService adminManualRenewalService;
 
     @GetMapping("/{userPlanId}/with-payment-logs")
     public ResponseEntity<UserPlanDTO> getUserPlanWithPaymentLogs(
@@ -294,5 +298,57 @@ public class UserPlanController {
 
         return ResponseEntity.ok(
                 userPlanService.adminChangePlan(userPlanId, instituteId, request, userDetails));
+    }
+
+    /** Defaults for the manual-renewal dialog: suggested end date and amount. Saves nothing. */
+    @GetMapping("/{userPlanId}/manual-renewal/preview")
+    public ResponseEntity<ManualRenewalPreviewDTO> previewManualRenewal(
+            @PathVariable String userPlanId,
+            @RequestParam String instituteId,
+            @RequestAttribute("user") CustomUserDetails userDetails) {
+        instituteAccessValidator.validateUserAccess(userDetails, instituteId);
+        return ResponseEntity.ok(adminManualRenewalService.preview(userPlanId, instituteId));
+    }
+
+    /**
+     * Admin records a renewal the member paid offline and extends the membership. Never
+     * turns autopay on, and sends the member nothing unless the request asks for it.
+     */
+    @PostMapping("/{userPlanId}/manual-renewal")
+    @Auditable(
+            entityType = "PAYMENT",
+            action = "CREATE",
+            entityIdExpr = "#userPlanId",
+            descriptionExpr = "'recorded a manual renewal of ' + #request?.amount + ' on plan ' + #userPlanId")
+    public ResponseEntity<ManualRenewalResultDTO> recordManualRenewal(
+            @PathVariable String userPlanId,
+            @RequestParam String instituteId,
+            @RequestBody ManualRenewalRequestDTO request,
+            @RequestAttribute("user") CustomUserDetails userDetails) {
+        instituteAccessValidator.validateUserAccess(userDetails, instituteId);
+        return ResponseEntity.ok(adminManualRenewalService.renew(userPlanId, instituteId, request, userDetails));
+    }
+
+    /** Renewal records and admin remarks on this membership, newest first. */
+    @GetMapping("/{userPlanId}/remarks")
+    public ResponseEntity<Page<vacademy.io.admin_core_service.features.timeline.dto.TimelineEventDTO>> listPlanRemarks(
+            @PathVariable String userPlanId,
+            @RequestParam String instituteId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestAttribute("user") CustomUserDetails userDetails) {
+        instituteAccessValidator.validateUserAccess(userDetails, instituteId);
+        return ResponseEntity.ok(adminManualRenewalService.listRemarks(userPlanId, instituteId, page, size));
+    }
+
+    @PostMapping("/{userPlanId}/remarks")
+    public ResponseEntity<vacademy.io.admin_core_service.features.timeline.dto.TimelineEventDTO> addPlanRemark(
+            @PathVariable String userPlanId,
+            @RequestParam String instituteId,
+            @RequestBody PlanRemarkRequestDTO request,
+            @RequestAttribute("user") CustomUserDetails userDetails) {
+        instituteAccessValidator.validateUserAccess(userDetails, instituteId);
+        return ResponseEntity.ok(adminManualRenewalService.addRemark(
+                userPlanId, instituteId, request != null ? request.getRemark() : null, userDetails));
     }
 }

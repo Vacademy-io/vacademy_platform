@@ -2,7 +2,8 @@
     "heading": {
         "activeMemberships": "Active Memberships",
         "viewHistory": "View History",
-        "membershipHistory": "Membership History"
+        "membershipHistory": "Membership History",
+        "lapsedMemberships": "Lapsed Memberships"
     },
     "emptyState": {
         "noActivePlans": "No active membership for this learner.",
@@ -11,7 +12,9 @@
     "planStatus": {
         "active": "Plan Active",
         "expired": "Plan Expired",
-        "unknown": "Unknown"
+        "unknown": "Unknown",
+        "canceled": "Plan Cancelled",
+        "paymentFailed": "Payment Failed"
     },
     "enrollmentStatus": {
         "active": "Enrollment Active",
@@ -87,5 +90,36 @@
         "applying": "Applying…",
         "successToast": "Moved to {{plan}}",
         "failedToast": "Couldn't change the plan"
+    },
+    "manualRenewal": {
+        "button": "Renew manually",
+        "title": "Record manual renewal",
+        "explainer": "Record a renewal the member paid outside the platform. The membership (now {{status}}, ending {{date}}) becomes active again and its course access is extended to the date below.",
+        "amount": "Amount received ({{symbol}})",
+        "accessUntil": "Access until",
+        "suggestedHint": "Suggested: one full plan period ({{days}} days), from the current end date if it's still ahead, otherwise from today.",
+        "remarks": "Remarks",
+        "remarksPlaceholder": "e.g. Paid by bank transfer on 20 Oct, ref 7781",
+        "remarksHint": "Visible to every admin in this membership's remarks history.",
+        "generateInvoice": "Generate an invoice for this payment",
+        "sendEmail": "Email the invoice / payment confirmation to the member",
+        "noAutopay": "Autopay is not turned on and nothing is charged automatically. The member is only emailed if you tick the box above.",
+        "submit": "Record renewal",
+        "saving": "Saving…",
+        "cancel": "Cancel",
+        "success": "Membership renewed until {{date}}",
+        "failed": "Could not record the renewal",
+        "loadFailed": "We couldn't load this membership. Please try again."
+    },
+    "remarks": {
+        "button": "Remarks",
+        "title": "Membership remarks",
+        "history": "Remarks history",
+        "placeholder": "Add a remark for other admins…",
+        "add": "Add remark",
+        "saving": "Saving…",
+        "empty": "No remarks yet.",
+        "loadFailed": "Could not load remarks.",
+        "saveFailed": "Could not save the remark"
     }
 }

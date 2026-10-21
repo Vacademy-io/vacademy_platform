@@ -3,7 +3,11 @@ import {
     GET_USER_PLANS,
     GET_USER_PLAN_CHANGE_OPTIONS,
     CHANGE_USER_PLAN,
+    GET_MANUAL_RENEWAL_PREVIEW,
+    RECORD_MANUAL_RENEWAL,
+    USER_PLAN_REMARKS,
 } from '@/constants/urls';
+import type { OfflinePaymentDetails } from '@/services/offline-payment-modes';
 import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
 import type { PolicyDetails } from '@/types/membership-expiry';
@@ -334,6 +338,108 @@ export const changeUserPlan = async (
     const response = await authenticatedAxiosInstance.post(
         CHANGE_USER_PLAN(userPlanId),
         body,
+        { params: { instituteId } }
+    );
+    return response.data;
+};
+
+export interface ManualRenewalPreview {
+    user_plan_id: string;
+    status: string;
+    current_end_date?: string | null;
+    suggested_end_date: string;
+    validity_days?: number | null;
+    suggested_amount?: number | null;
+    currency?: string | null;
+    auto_renewal_enabled: boolean;
+    renewable: boolean;
+    not_renewable_reason?: string | null;
+}
+
+export interface ManualRenewalRequest {
+    amount: number;
+    currency?: string;
+    /** yyyy-MM-dd */
+    payment_date?: string;
+    /** yyyy-MM-dd; omitted = the plan's normal renewal */
+    new_end_date?: string;
+    remarks?: string;
+    payment_details?: OfflinePaymentDetails | null;
+    generate_invoice?: boolean;
+    send_email?: boolean;
+}
+
+export interface ManualRenewalResult {
+    user_plan_id: string;
+    payment_log_id?: string | null;
+    previous_status: string;
+    status: string;
+    previous_end_date?: string | null;
+    new_end_date: string;
+    mappings_updated: number;
+    invoice_queued: boolean;
+}
+
+export interface PlanRemark {
+    id: string;
+    action_type: string;
+    actor_name?: string | null;
+    title: string;
+    description?: string | null;
+    metadata?: Record<string, unknown> | null;
+    created_at: string;
+}
+
+export const MANUAL_RENEWAL_PREVIEW_QUERY_KEY = 'ADMIN_MANUAL_RENEWAL_PREVIEW';
+export const PLAN_REMARKS_QUERY_KEY = 'ADMIN_USER_PLAN_REMARKS';
+
+/** Defaults for the manual-renewal dialog (suggested end date and amount). Saves nothing. */
+export const getManualRenewalPreview = async (
+    userPlanId: string,
+    instituteId: string
+): Promise<ManualRenewalPreview> => {
+    const response = await authenticatedAxiosInstance.get(GET_MANUAL_RENEWAL_PREVIEW(userPlanId), {
+        params: { instituteId },
+    });
+    return response.data;
+};
+
+/**
+ * Admin records a renewal the member paid offline. Reactivates the membership and its
+ * course access; never turns autopay on, and emails the member only when asked.
+ */
+export const recordManualRenewal = async (
+    userPlanId: string,
+    instituteId: string,
+    body: ManualRenewalRequest
+): Promise<ManualRenewalResult> => {
+    const response = await authenticatedAxiosInstance.post(RECORD_MANUAL_RENEWAL(userPlanId), body, {
+        params: { instituteId },
+    });
+    return response.data;
+};
+
+/** Renewal records and admin remarks on a membership, newest first. */
+export const getPlanRemarks = async (
+    userPlanId: string,
+    instituteId: string,
+    page = 0,
+    size = 50
+): Promise<{ content: PlanRemark[]; totalElements: number }> => {
+    const response = await authenticatedAxiosInstance.get(USER_PLAN_REMARKS(userPlanId), {
+        params: { instituteId, page, size },
+    });
+    return response.data;
+};
+
+export const addPlanRemark = async (
+    userPlanId: string,
+    instituteId: string,
+    remark: string
+): Promise<PlanRemark> => {
+    const response = await authenticatedAxiosInstance.post(
+        USER_PLAN_REMARKS(userPlanId),
+        { remark },
         { params: { instituteId } }
     );
     return response.data;

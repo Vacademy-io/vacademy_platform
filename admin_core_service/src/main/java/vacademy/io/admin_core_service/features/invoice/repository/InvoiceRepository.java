@@ -107,14 +107,17 @@ public interface InvoiceRepository extends JpaRepository<Invoice, String> {
         * Live (non-REJECTED) invoices issued in the window, oldest first — the bulk ZIP export.
         * The caller passes a page one larger than its cap so it can tell "exactly the cap"
         * from "too many" without a separate count.
+        *
+        * <p>Both bounds are required — an open end is passed as a far-past / far-future date.
+        * A {@code :startDate IS NULL} guard leaves Postgres unable to type the parameter
+        * ("could not determine data type of parameter $2").
         */
        @Query("SELECT i.id AS id, i.invoiceNumber AS invoiceNumber, i.invoiceDate AS invoiceDate, " +
                      "i.userId AS userId, i.status AS status, i.source AS source, " +
                      "i.totalAmount AS totalAmount, i.currency AS currency, i.createdAt AS createdAt " +
                      "FROM Invoice i WHERE i.instituteId = :instituteId " +
                      "AND i.status <> 'REJECTED' " +
-                     "AND (:startDate IS NULL OR i.invoiceDate >= :startDate) " +
-                     "AND (:endDate IS NULL OR i.invoiceDate <= :endDate) " +
+                     "AND i.invoiceDate >= :startDate AND i.invoiceDate <= :endDate " +
                      "ORDER BY i.invoiceDate ASC, i.createdAt ASC")
        List<InvoiceExportRow> findForBulkExport(
                      @Param("instituteId") String instituteId,

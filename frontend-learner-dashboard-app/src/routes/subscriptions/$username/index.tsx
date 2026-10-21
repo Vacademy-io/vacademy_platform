@@ -506,12 +506,7 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
 
   return (
     <div className="space-y-4">
-      <div className="space-y-1">
-        <h2 className="text-xl font-semibold text-gray-900">{t("subscriptions.manage.heading")}</h2>
-        <p className="text-sm text-gray-600">
-          {t("subscriptions.manage.description", { liveClasses })}
-        </p>
-      </div>
+      <h2 className="text-xl font-semibold text-gray-900">{t("subscriptions.manage.heading")}</h2>
 
       {subs.length === 0 && (
         <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white p-4 text-sm text-gray-600">
@@ -569,22 +564,6 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
                 </MyButton>
               )}
             </div>
-
-            {/* A stopped membership is not a success state. Green with a tick
-                read as "all good", so learners who had just cancelled thought
-                nothing had happened. Amber says "this is ending", and the date
-                says when — which is the one thing they actually want to know. */}
-            {!autopayOn && !paymentFailed && (
-              <div className="flex items-start gap-2 rounded-lg bg-warning-50 p-3 text-sm text-warning-600">
-                <Warning className="mt-0.5 size-4 shrink-0" weight="fill" />
-                <span>
-                  <span className="font-medium">{t("subscriptions.manage.membershipStoppedLabel")}</span>{" "}
-                  {accessUntil
-                    ? t("subscriptions.manage.membershipStoppedWithDate", { liveClasses, date: accessUntil })
-                    : t("subscriptions.manage.membershipStoppedNoDate", { liveClasses })}
-                </span>
-              </div>
-            )}
 
             {paymentFailed && (
               <div className="flex items-start gap-2 rounded-lg bg-danger-50 p-3 text-sm text-danger-600">

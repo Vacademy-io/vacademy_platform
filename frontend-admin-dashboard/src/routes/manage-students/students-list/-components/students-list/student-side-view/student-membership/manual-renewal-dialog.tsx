@@ -106,7 +106,7 @@ export const ManualRenewalDialog = ({
                 amount: Number(amount),
                 currency: preview?.currency || undefined,
                 new_end_date: endDate || undefined,
-                remarks: remarks.trim() || undefined,
+                remarks: remarks.trim(),
                 payment_details: toOfflinePaymentDetailsPayload(details),
                 generate_invoice: generateInvoice,
                 send_email: generateInvoice && sendEmail,
@@ -137,6 +137,7 @@ export const ManualRenewalDialog = ({
         Boolean(preview?.renewable) &&
         amountValid &&
         endDateValid &&
+        remarks.trim() !== '' &&
         !detailsError &&
         !mutation.isPending;
     const currency = preview?.currency || 'INR';
@@ -217,13 +218,17 @@ export const ManualRenewalDialog = ({
                         />
 
                         <div className="space-y-1">
-                            <Label htmlFor="mr-remarks">{t('manualRenewal.remarks')}</Label>
+                            <Label htmlFor="mr-remarks">
+                                {t('manualRenewal.remarks')}{' '}
+                                <span className="text-danger-600">*</span>
+                            </Label>
                             <Textarea
                                 id="mr-remarks"
                                 rows={3}
                                 value={remarks}
                                 onChange={(e) => setRemarks(e.target.value)}
                                 placeholder={t('manualRenewal.remarksPlaceholder')}
+                                aria-required="true"
                             />
                             <p className="text-xs text-neutral-500">
                                 {t('manualRenewal.remarksHint')}

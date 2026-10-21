@@ -5,15 +5,18 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
+import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
 import vacademy.io.admin_core_service.features.invoice.service.InvoiceService;
 import vacademy.io.admin_core_service.features.learner_access.enums.LearnerAccessSourceEnum;
 import vacademy.io.admin_core_service.features.learner_access.service.LearnerAccessService;
 import vacademy.io.admin_core_service.features.offline_payment.service.OfflinePaymentDetailsService;
+import vacademy.io.admin_core_service.features.timeline.dto.TimelineEventDTO;
 import vacademy.io.admin_core_service.features.timeline.dto.TimelineEventRequestDTO;
 import vacademy.io.admin_core_service.features.timeline.service.TimelineEventService;
 import vacademy.io.admin_core_service.features.user_account.service.UserAccountLedgerService;
@@ -24,6 +27,7 @@ import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentP
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
 import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogRepository;
 import vacademy.io.admin_core_service.features.user_subscription.repository.UserPlanRepository;
+import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
@@ -54,6 +58,7 @@ class AdminManualRenewalServiceTest {
     private LearnerAccessService access;
     private TimelineEventService timeline;
     private InvoiceService invoices;
+    private AuthService auth;
     private AdminManualRenewalService service;
     private UserPlan plan;
     private StudentSessionInstituteGroupMapping lapsed;
@@ -70,8 +75,9 @@ class AdminManualRenewalServiceTest {
         access = mock(LearnerAccessService.class);
         timeline = mock(TimelineEventService.class);
         invoices = mock(InvoiceService.class);
+        auth = mock(AuthService.class);
         service = new AdminManualRenewalService(planRepo, mappingRepo, paymentLogService, paymentLogRepo,
-                offline, ledger, access, timeline, invoices);
+                offline, ledger, access, timeline, invoices, auth);
 
         EnrollInvite invite = new EnrollInvite();
         invite.setInstituteId(INST);
@@ -274,5 +280,38 @@ class AdminManualRenewalServiceTest {
         verify(timeline).createManualEvent(ev.capture(), eq(admin));
         assertEquals("PLAN_REMARK", ev.getValue().getActionType());
         assertEquals("Called, will pay Friday", ev.getValue().getDescription());
+    }
+
+    @Test
+    @DisplayName("a renewal without a remark is refused before anything is written")
+    void remarkRequired() {
+        for (String blank : new String[] {null, "", "   "}) {
+            ManualRenewalRequestDTO r = req(431);
+            r.setRemarks(blank);
+            assertThrows(VacademyException.class, () -> service.renew("up-1", INST, r, admin));
+        }
+        verify(paymentLogService, never()).createPaymentLog(any(), anyDouble(), any(), any(), any(), any(), any(), any());
+        verify(planRepo, never()).save(any());
+        verifyNoInteractions(timeline);
+    }
+
+    @Test
+    @DisplayName("the remarks history shows each admin's full name, falling back to the stored username")
+    void remarkAuthors() {
+        // Fresh rows per call: the service rewrites actor_name on the DTOs it returns.
+        when(timeline.getTimelineEvents(eq("USER_PLAN"), eq("up-1"), any())).thenAnswer(i -> new PageImpl<>(List.of(
+                TimelineEventDTO.builder().id("e1").actorId("admin-1").actorName("finance").build(),
+                TimelineEventDTO.builder().id("e2").actorId("admin-2").actorName("ops").build())));
+        UserDTO u = new UserDTO();
+        u.setId("admin-1");
+        u.setFullName("Priya Sharma");
+        when(auth.getUsersFromAuthServiceByUserIds(anyList())).thenReturn(List.of(u));
+
+        List<TimelineEventDTO> rows = service.listRemarks("up-1", INST, 0, 20).getContent();
+        assertEquals("Priya Sharma", rows.get(0).getActorName());
+        assertEquals("ops", rows.get(1).getActorName());
+
+        when(auth.getUsersFromAuthServiceByUserIds(anyList())).thenThrow(new RuntimeException("auth down"));
+        assertEquals("finance", service.listRemarks("up-1", INST, 0, 20).getContent().get(0).getActorName());
     }
 }

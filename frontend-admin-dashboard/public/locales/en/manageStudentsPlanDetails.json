@@ -100,7 +100,7 @@
         "suggestedHint": "Suggested: one full plan period ({{days}} days), from the current end date if it's still ahead, otherwise from today.",
         "remarks": "Remarks",
         "remarksPlaceholder": "e.g. Paid by bank transfer on 20 Oct, ref 7781",
-        "remarksHint": "Visible to every admin in this membership's remarks history.",
+        "remarksHint": "Required. Visible to every admin in this membership's remarks history, with your name.",
         "generateInvoice": "Generate an invoice for this payment",
         "sendEmail": "Email the invoice / payment confirmation to the member",
         "noAutopay": "Autopay is not turned on and nothing is charged automatically. The member is only emailed if you tick the box above.",
@@ -120,6 +120,8 @@
         "saving": "Saving…",
         "empty": "No remarks yet.",
         "loadFailed": "Could not load remarks.",
-        "saveFailed": "Could not save the remark"
+        "saveFailed": "Could not save the remark",
+        "addedBy": "Added by {{name}}",
+        "unknownAdmin": "an admin"
     }
 }

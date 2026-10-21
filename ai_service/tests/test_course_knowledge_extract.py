@@ -1078,3 +1078,18 @@ def test_time_windows_drop_consecutive_identical_pieces():
     segs = time_windows([(i, i + 1, "तस्य संजनयं हर्षं") for i in range(30)] + [(31, 32, "next line")], 60)
     assert [s.text for s in segs] == ["तस्य संजनयं हर्षं next line"]
     assert segs[0].t_end_ms == 32000
+
+
+def test_long_lectures_are_speech_but_loops_are_not():
+    # Pilot 2026-10-21: three 54-102 min talks were rejected as "no clear speech":
+    # a whole-text distinct-word share of 0.2 cannot hold for an hour of speech.
+    import random
+    from app.services.tutor.source_text import looks_like_speech
+
+    rng = random.Random(1)
+    vocab = [f"w{i}" for i in range(900)]
+    talk = " ".join(rng.choices(vocab, weights=[1 / (i + 1) for i in range(900)], k=7000))
+    assert len(set(talk.split())) / 7000 < 0.2
+    assert looks_like_speech(talk, 54 * 60)
+    assert not looks_like_speech(" ".join(["la la thank you"] * 400), 54 * 60)
+    assert not looks_like_speech("thank you thank you", 600)

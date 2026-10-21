@@ -341,6 +341,7 @@ async def resolve_free_text(src: SlideSource) -> None:
 # "Subscribe!"). A transcript that is mostly that is no transcript.
 _FILLER = {"thank", "you", "music", "thanks", "subscribe", "bye", "applause", "laughter", "silence", "the", "end"}
 MIN_SPEECH_WORDS_PER_MINUTE = 15
+SPEECH_WINDOW_WORDS = 300       # distinct-word share is judged per window of this many words
 
 
 def looks_like_speech(text: str, duration_seconds: Optional[float]) -> bool:
@@ -348,8 +349,20 @@ def looks_like_speech(text: str, duration_seconds: Optional[float]) -> bool:
     if len(words) < 12:
         return False
     unique = len(set(words))
-    if unique / len(words) < 0.2 or unique <= 6:
+    if unique <= 6:
         return False
+    # The share of distinct words falls as speech gets longer (an hour-long talk
+    # reuses a few thousand words), so a long transcript is judged per window:
+    # a whole-text ratio of 0.2 rejected real 54-102 min lectures as "no speech".
+    window = SPEECH_WINDOW_WORDS
+    if len(words) <= window:
+        if unique / len(words) < 0.2:
+            return False
+    else:
+        ratios = sorted(len(set(words[i:i + window])) / window
+                        for i in range(0, len(words) - window + 1, window))
+        if ratios[len(ratios) // 2] < 0.2:
+            return False
     filler = sum(1 for w in words if w in _FILLER)
     if filler / len(words) > 0.6:
         return False

@@ -18,7 +18,8 @@ from typing import Any, Dict, List, Optional, Union
 EXTRACTOR_VERSION = 1
 # SCORM-only extractor revision: part of SCORM lessons' content hash and cache key, so a
 # better SCORM reader re-indexes SCORM lessons without orphaning other types' paid caches.
-SCORM_EXTRACTOR_VERSION = 2
+# v3: iSpring slide text, iSpring Page sections, image slides through paid OCR.
+SCORM_EXTRACTOR_VERSION = 3
 
 ANCHORS = ("none", "page", "time", "step", "question", "element")
 POINTER_KINDS = ("file", "youtube", "ai_video", "deck", "scorm", "inline", "none")
@@ -44,7 +45,7 @@ class Segment:
     page: Optional[int] = None           # anchor page (PDF page / SCORM resource index)
     t_start_ms: Optional[int] = None     # anchor time
     t_end_ms: Optional[int] = None
-    step: Optional[int] = None           # anchor step (deck slide number)
+    step: Optional[int] = None           # anchor step (deck / SCORM slide number)
     question_no: Optional[int] = None    # anchor question
     label: Optional[str] = None          # human label: first heading, file name, "Slide 3"…
 

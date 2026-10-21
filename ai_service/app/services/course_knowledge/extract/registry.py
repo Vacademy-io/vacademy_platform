@@ -99,7 +99,7 @@ async def _dispatch(ref: SlideRef, permit: Optional[PaidPermit]) -> Extraction:
     if pk == "deck":
         return await deck.extract_deck(ref, permit)
     if pk == "scorm":
-        return await scorm.extract_scorm(ref)
+        return await scorm.extract_scorm(ref, permit)
     return Extraction(ref.slide_id, kind, status="UNSUPPORTED", note="This lesson type cannot be read yet")
 
 

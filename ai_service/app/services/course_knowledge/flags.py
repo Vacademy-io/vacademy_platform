@@ -16,6 +16,7 @@ ALL_INSTITUTES = "*"
 
 RETRIEVAL_MODES = ("off", "shadow", "on")
 DRIP_MODES = ("time_exact", "mirror")
+SCORM_OCR_ENGINES = ("mathpix", "vision")
 
 DEFAULT_MAX_MONTHLY_AUTO_CAP = 5000
 DEFAULT_MAX_CHUNKS_PER_INSTITUTE = 200000
@@ -104,6 +105,11 @@ def drip_mode() -> str:
     return _enum("course_knowledge.drip_mode", DRIP_MODES, "time_exact")
 
 
+def scorm_ocr_engine() -> str:
+    """Who reads SCORM slides drawn as images: MathPix OCR or a vision model."""
+    return _enum("course_knowledge.scorm_ocr_engine", SCORM_OCR_ENGINES, "mathpix")
+
+
 def max_monthly_auto_cap() -> int:
     return _int("course_knowledge.max_monthly_auto_cap", DEFAULT_MAX_MONTHLY_AUTO_CAP, 0, 1000000)
 
@@ -117,8 +123,8 @@ def worker_batch() -> int:
 
 
 __all__ = [
-    "ALL_INSTITUTES", "RETRIEVAL_MODES", "DRIP_MODES", "parse_allowlist",
+    "ALL_INSTITUTES", "RETRIEVAL_MODES", "DRIP_MODES", "SCORM_OCR_ENGINES", "parse_allowlist",
     "platform_enabled", "allowed_institutes", "institute_allowed", "available",
-    "retrieval_mode", "paid_enabled", "links_enabled", "drip_mode",
+    "retrieval_mode", "paid_enabled", "links_enabled", "drip_mode", "scorm_ocr_engine",
     "max_monthly_auto_cap", "max_chunks_per_institute", "worker_batch",
 ]

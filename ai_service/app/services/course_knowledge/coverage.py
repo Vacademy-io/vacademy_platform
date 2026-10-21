@@ -449,6 +449,10 @@ def _quote(
             first_by_pointer[lesson.pointer] = lesson
         credits = estimator.credits(lesson.tool_key, int(lesson.units))
         lesson.credits = credits
+        if (lesson.kind == KIND_DECK and (lesson.source_type or "").upper() == "SCORM" and credits > 0
+                and lesson.reason and "credits)" not in lesson.reason):
+            # "Slides are images: 12 slides need reading (≈ 6 credits)"
+            lesson.reason = f"{lesson.reason} (≈ {num(credits)} credits)"
         if credits <= 0:
             continue
         quote.lines.append(QuoteLine(

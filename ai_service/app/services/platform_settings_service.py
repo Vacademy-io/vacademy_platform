@@ -824,6 +824,18 @@ SETTING_SPECS["course_knowledge.max_chunks_per_institute"] = SettingSpec(
     default=lambda: 200000,
     min_value=1000, max_value=5000000,
 )
+SETTING_SPECS["course_knowledge.scorm_ocr_engine"] = SettingSpec(
+    key="course_knowledge.scorm_ocr_engine",
+    group="course_knowledge",
+    label="Course knowledge: reader for SCORM slides drawn as images",
+    description=(
+        "'mathpix' (default) = MathPix OCR reads each slide image. 'vision' = a vision model (GLM flash) "
+        "transcribes it. Same price to the institute (per slide); used by course knowledge and Tutor Mode."
+    ),
+    type="enum",
+    default=lambda: "mathpix",
+    options=("mathpix", "vision"),
+)
 SETTING_SPECS["course_knowledge.worker_batch"] = SettingSpec(
     key="course_knowledge.worker_batch",
     group="course_knowledge",

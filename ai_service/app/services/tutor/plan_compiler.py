@@ -185,6 +185,8 @@ class PlanCompiler:
         # OCR (per page) or park.
         self.transcribe_videos = bool(transcribe_videos) and source_text.transcription_available()
         self.ocr_pdfs = bool(ocr_pdfs) and source_text.ocr_available()
+        # SCORM slides drawn as images: read per slide (same switch and price as PDF OCR).
+        self.ocr_scorm = bool(ocr_pdfs) and source_text.scorm_ocr_available()
         self.user_id = user_id
         self.language = language if language in ("en", "hi") else "en"
         self.teacher_name = (teacher_name or "Asha")[:60]
@@ -270,7 +272,7 @@ class PlanCompiler:
 
         # Video / PDF: the material's own words (script, captions, cached
         # transcript, PDF text) — network and CPU, so outside any DB session.
-        if source.kind in ("video", "pdf"):
+        if source.kind in ("video", "pdf", "scorm"):
             await source_text.resolve_free_text(source)
             if (source.kind == "video" and not source.text and source.media_file_id and self.transcribe_videos):
                 # Whisper runs later in _build_draft; the plan must hash as
@@ -278,6 +280,8 @@ class PlanCompiler:
                 source.content_hash = source_text.hash_for(source, "transcript")
             if source.kind == "pdf" and not source.text and source.media_file_id and self.ocr_pdfs:
                 source.content_hash = source_text.hash_for(source, "pdf")
+            if source.kind == "scorm" and source.ocr_units and getattr(self, "ocr_scorm", False):
+                source.content_hash = source_text.hash_for(source, source_text.SCORM_OCR_TEXT)
 
         with db_session() as db:
             plan_store.retire_stuck_compiling(db, slide_id)
@@ -300,8 +304,9 @@ class PlanCompiler:
                 description = source.video_description
             will_transcribe = (source.kind == "video" and not source.text and bool(source.media_file_id)
                                and self.transcribe_videos)
-            will_ocr = source.kind == "pdf" and not source.text and bool(source.media_file_id) and self.ocr_pdfs
-            if (source.kind in ("video", "pdf") and not source.text and not will_transcribe and not will_ocr
+            will_ocr = ((source.kind == "pdf" and not source.text and bool(source.media_file_id) and self.ocr_pdfs)
+                        or (source.kind == "scorm" and source.ocr_units > 0 and getattr(self, "ocr_scorm", False)))
+            if (source.kind in ("video", "pdf", "scorm") and not source.text and not will_transcribe and not will_ocr
                     and not (description or "").strip()):
                 # Nothing to teach from: park the slide in NEEDS_DETAILS (once)
                 # so the course page can list it; a description flips it to STALE.
@@ -522,10 +527,30 @@ class PlanCompiler:
                 if not (description or "").strip():
                     raise RuntimeError(f"OCR failed ({str(exc)[:160]}); add what this PDF teaches instead") from exc
                 logger.warning("OCR failed for slide %s; compiling from the description: %s", source.slide_id, exc)
+        if source.kind == "scorm" and source.ocr_units > 0 and getattr(self, "ocr_scorm", False):
+            try:
+                run.ocr_pages = await source_text.ocr_scorm(
+                    source, institute_id=self.institute_id, user_id=self.user_id, request_id=self.compile_run_id,
+                    **supported_kwargs(source_text.ocr_scorm, {"metering": getattr(self, "metering", None)}))
+            except Exception as exc:  # noqa: BLE001
+                if not source.text and not (description or "").strip():
+                    raise RuntimeError(f"OCR failed ({str(exc)[:160]}); add what this package teaches instead") from exc
+                logger.warning("SCORM OCR failed for slide %s; compiling from what was readable: %s",
+                               source.slide_id, exc)
         kb_block = await self._kb_block(source)
         system = prompts.system_prompt(self.teacher_name, self.language, images_enabled=self.generate_images,
                                        style=getattr(source, "style", "lesson"))
-        if source.kind in ("video", "pdf") and source.text and not (source.media_url or source.media_file_id):
+        if source.kind == "scorm":
+            # The package's own words (slide text, sections, OCR of image
+            # slides) taught on the board; the admin's description when the
+            # package had nothing readable.
+            user = prompts.user_prompt(
+                slide_title=source.title, chapter_title=source.chapter_name, course_title=source.course_name,
+                slide_kind="SCORM package — teach the text of its slides on the board",
+                source_text=source.text or (description or ""), lang=self.language, kb_block=kb_block,
+                images_enabled=self.generate_images,
+            )
+        elif source.kind in ("video", "pdf") and source.text and not (source.media_url or source.media_file_id):
             # An AI video (HTML animation, no file to embed): teach its
             # narration on the board like a document.
             user = prompts.user_prompt(
@@ -688,7 +713,7 @@ class PlanCompiler:
         return next((str(n) for n in nodes if n), None)
 
     async def _kb_block(self, source: SlideSource) -> Optional[str]:
-        if not self.kb_grounding or source.kind != "document":
+        if not self.kb_grounding or source.kind not in ("document", "scorm"):
             return None
         try:
             from ..kb import course_grounding

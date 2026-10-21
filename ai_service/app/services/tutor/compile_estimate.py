@@ -2,7 +2,9 @@
 
 Per slide: whether it is up to date, needs details, or will be compiled;
 the compile credits; the transcription minutes and credits for an uploaded
-video without a cached transcript; the image cap when images are on. Prices
+video without a cached transcript; OCR pages for a scanned PDF and OCR slides
+for a SCORM package whose slides are drawn as images (from what an earlier
+free pass cached; never a download here); the image cap when images are on. Prices
 come from the estimator, so super-admin overrides in ai_tool_pricing show up
 here exactly as they will be charged.
 """
@@ -22,7 +24,8 @@ MAX_IMAGES_PER_SLIDE = 4          # plan_compiler.MAX_GENERATED_IMAGES_PER_SLIDE
 ASSUMED_VIDEO_MINUTES = 10
 
 KIND_LABEL = {"document": "Document", "pdf": "PDF", "quiz": "Quiz", "ai_video": "AI video", "youtube": "YouTube video",
-              "video_upload": "Uploaded video", "video_link": "Video link", "other": "Not supported"}
+              "video_upload": "Uploaded video", "video_link": "Video link", "scorm": "SCORM package",
+              "other": "Not supported"}
 
 
 def _credits(est: ToolCostEstimator, tool_key: str, params: Dict[str, Any]) -> float:
@@ -48,6 +51,7 @@ def estimate_compile(
     voice_langs = 0 if (voice_provider or "sarvam") == "edge" else max(1, len([x for x in (languages or ["en"]) if x in ("en", "hi")]))
     can_transcribe = transcribe_videos and source_text.transcription_available()
     can_ocr = ocr_pdfs and source_text.ocr_available()
+    can_ocr_scorm = ocr_pdfs and source_text.scorm_ocr_available()
     newest = plan_store.latest_plans_for_slides(db, slide_ids)
 
     rows: List[Dict[str, Any]] = []
@@ -70,7 +74,10 @@ def estimate_compile(
             row["note"] = "This quiz has no questions" if not src.questions else "Quizzes prepare for free"
             rows.append(row); continue
 
+        scorm = source_text.scorm_cached(src) if kind == "scorm" else None
         expected = source_text.expected_text_kind(src)
+        if kind == "scorm" and scorm is not None and (scorm["paid"] or (scorm["ocr_units"] and can_ocr_scorm)):
+            expected = source_text.SCORM_OCR_TEXT
         h = source_text.hash_for(src, expected) if expected else src.content_hash
         up_to_date = (existing is not None and existing.status == "READY" and existing.content_hash == h
                       and existing.language == language and not force)
@@ -125,6 +132,27 @@ def estimate_compile(
                 row["text"] = None; row["note"] = "Scanned PDF, prepared from the description"
             else:
                 row["note"] = "PDF text (free)" if probe else "PDF text (free; a scanned PDF is read with OCR per page)"
+        elif kind == "scorm":
+            units = int(scorm["ocr_units"]) if scorm else 0
+            if scorm is None:
+                row["note"] = "SCORM package text (free; slides drawn as images are read with OCR per slide)"
+            elif scorm["paid"]:
+                row["note"] = "Slide text already read (free)"
+            elif units and can_ocr_scorm:
+                row["pages"] = units
+                row["ocr"] = _credits(est, source_text.OCR_TOOL, {"num_pages": units})
+                row["note"] = f"Slides are images: OCR of {units} slide(s)"
+            elif not scorm["has_text"] and not description:
+                row["action"] = "needs_details"; row["compile"] = 0.0; row["text"] = None
+                row["note"] = ("Slides are images: turn on OCR or add what it teaches" if units
+                               else "This package has no readable text: add what it teaches")
+                rows.append(row); continue
+            elif not scorm["has_text"]:
+                row["text"] = None; row["note"] = "Prepared from the description"
+            elif units:
+                row["note"] = f"Package text (free); {units} image slide(s) skipped with OCR off"
+            else:
+                row["note"] = "SCORM package text (free)"
         elif kind in ("youtube", "ai_video"):
             row["note"] = {"youtube": "Captions (free)", "ai_video": "Narration script (free)"}[kind]
         elif kind == "video_link":

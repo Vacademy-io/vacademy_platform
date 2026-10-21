@@ -9,6 +9,10 @@ Where the words come from, cheapest first:
 - Uploaded video: Whisper on the render worker (`transcription` tool, per
   audio-minute) — the only paid path, run once per file and cached.
 - PDF: PyMuPDF text layer (free; a scanned PDF has none — no OCR here).
+- SCORM: the course-knowledge SCORM reader (HTML pages, iSpring text, free);
+  slides drawn as images are read with paid OCR (ocr_scorm), billed like PDF
+  OCR pages, and cached in course knowledge's shared cache so neither the
+  tutor nor course knowledge ever pays for a package twice.
 
 Every other result is cached in `file_conversion` under a tutor vendor key, so
 a recompile never re-fetches or re-pays. Nothing here holds a DB session across
@@ -90,7 +94,12 @@ DEFAULT_TRANSCRIPTION_PROVIDER = "openrouter"
 MAX_PDF_BYTES = 40 * 1024 * 1024
 MAX_CACHED_CHARS = 120_000
 
-TEXT_KIND_BY_SOURCE_KIND = {"ai_video": "script", "youtube": "captions", "video_upload": "transcript", "pdf": "pdf"}
+TEXT_KIND_BY_SOURCE_KIND = {"ai_video": "script", "youtube": "captions", "video_upload": "transcript", "pdf": "pdf",
+                            "scorm": "scorm"}
+# SCORM text kinds: the package's own text only, or with its image slides read by OCR.
+SCORM_TEXT = "scorm"
+SCORM_OCR_TEXT = "scorm_ocr"
+MAX_SCORM_OCR_SLIDES = 300
 
 
 def expected_text_kind(src: SlideSource) -> Optional[str]:
@@ -106,6 +115,12 @@ def hash_for(src: SlideSource, text_kind: Optional[str]) -> str:
         return _hash("video", src.title, src.media_file_id or src.media_url, text_kind) if text_kind else src.content_hash
     if src.kind == "pdf":
         return _hash("pdf", src.title, src.media_file_id, text_kind) if text_kind else src.content_hash
+    if src.kind == "scorm":
+        if not text_kind:
+            return src.content_hash
+        from ..course_knowledge.extract.types import SCORM_EXTRACTOR_VERSION
+        return _hash("scorm", src.title, src.scorm_pointer, src.scorm_launch_url, src.scorm_launch_path,
+                     SCORM_EXTRACTOR_VERSION, text_kind)
     return src.content_hash
 
 
@@ -330,9 +345,119 @@ async def resolve_free_text(src: SlideSource) -> None:
             if body:
                 _set_text(src, body, "pdf"); return
             src.text_note = "This PDF has no text layer (scanned pages): turn on OCR or add what it teaches"
+        elif kind == "scorm" and src.scorm_launch_url:
+            await _scorm_free_text(src)
     except Exception as exc:  # noqa: BLE001
         logger.warning("source_text: free text failed for slide %s (%s): %s", src.slide_id, kind, exc, exc_info=True)
         src.text_note = f"Could not read the {kind.replace('_', ' ')}: {str(exc)[:120]}"
+
+
+# ── SCORM packages (through the course-knowledge SCORM reader) ───────────────
+
+def scorm_ref(src: SlideSource):
+    """The course-knowledge SlideRef of a SCORM slide (same pointer and cache key)."""
+    from ..course_knowledge.extract.types import SlideRef
+    extras: dict = {"launch_url": src.scorm_launch_url or "", "text_kind": "scorm"}
+    if src.scorm_launch_path:
+        extras["launch_path"] = src.scorm_launch_path
+    return SlideRef(slide_id=src.slide_id, title=src.title, description="", status="PUBLISHED",
+                    source_type="SCORM", doc_type=None, pointer_kind="scorm", pointer_key=src.scorm_pointer,
+                    extras=extras)
+
+
+def scorm_text(segments: Any) -> str:
+    """Segments as teaching text: each slide under a 'Slide N' line."""
+    parts = []
+    for seg in segments or []:
+        body = (getattr(seg, "text", "") or "").strip()
+        if not body:
+            continue
+        label = getattr(seg, "label", None) if getattr(seg, "anchor", "none") == "step" else None
+        parts.append(f"{label}:\n{body}" if label else body)
+    return "\n\n".join(parts)
+
+
+def scorm_cached(src: SlideSource) -> Optional[dict]:
+    """What course knowledge's shared cache already knows about the package
+    (no network): {"paid", "ocr_units", "has_text"}; None when not scanned."""
+    if not src.scorm_pointer:
+        return None
+    from ..course_knowledge.extract import cache as ck_cache, scorm as ck_scorm
+    hit = ck_cache.get("scorm", ck_scorm.cache_key(scorm_ref(src)))
+    if hit is None:
+        return None
+    waiting = hit.probe.get("ocr_slides") if isinstance(hit.probe, dict) else None
+    return {"paid": hit.tier == "PAID", "ocr_units": 0 if hit.tier == "PAID" else len(waiting or []),
+            "has_text": any((s.text or "").strip() for s in hit.segments)}
+
+
+def scorm_ocr_available() -> bool:
+    """The configured SCORM slide reader can run: MathPix keys, or the vision
+    engine with an OpenRouter key."""
+    try:
+        from ..course_knowledge import flags as ck_flags
+        if ck_flags.scorm_ocr_engine() == "vision":
+            import os
+            return bool(os.environ.get("OPENROUTER_API_KEY")) or ocr_available()
+    except Exception:  # noqa: BLE001
+        pass
+    return ocr_available()
+
+
+async def _scorm_free_text(src: SlideSource) -> None:
+    """The package's free text (or the paid text another run already cached);
+    src.ocr_units = the image slides still to read."""
+    from ..course_knowledge.extract import scorm as ck_scorm
+    ext = await ck_scorm.extract_scorm(scorm_ref(src))
+    body = scorm_text(ext.segments)
+    if ext.status == "READY":
+        _set_text(src, body, SCORM_OCR_TEXT if ext.detail.get("scorm_ocr") else SCORM_TEXT)
+        return
+    if ext.status == "NEEDS_PAID" and ext.paid_need is not None:
+        src.ocr_units = int(ext.paid_need.units or 0)
+        if body:
+            _set_text(src, body, SCORM_TEXT)
+        n = src.ocr_units
+        src.text_note = (f"{n} slide{'s' if n != 1 else ''} of this package {'are' if n != 1 else 'is'} drawn as "
+                         "images: turn on OCR or add what it teaches")
+        return
+    src.text_note = ext.note or "This package has no readable text: add what it teaches"
+
+
+async def ocr_scorm(src: SlideSource, *, institute_id: str, user_id: Optional[str], request_id: Optional[str],
+                    metering: Any = None) -> int:
+    """Read a SCORM package's image slides (one composed picture per slide)
+    and charge them per slide with the `html_document_pdf` OCR tool, like
+    scanned PDF pages. The text lands in course knowledge's shared PAID cache,
+    so a package course knowledge already read costs 0 here, and one read
+    here costs 0 there. Returns the slides charged (0 on a cache hit)."""
+    from ..course_knowledge.extract import scorm as ck_scorm
+    from ..course_knowledge.extract.types import PaidPermit
+    permit = PaidPermit(institute_id=institute_id, allow_ocr=True, max_units={"deck_images": MAX_SCORM_OCR_SLIDES})
+    ref = scorm_ref(src)
+    ext = await ck_scorm.extract_scorm(ref, permit)
+    if ext.status == "FAILED":
+        raise RuntimeError(ext.note or "OCR could not read the slides")
+    if ext.status == "NEEDS_PAID":
+        raise RuntimeError(ext.note or "The package has too many image slides to read")
+    body = scorm_text(ext.segments)
+    if not body:
+        raise RuntimeError("OCR found no readable text in this package")
+    delivered = ext.paid_delivered
+    slides = int(delivered.units) if delivered is not None else 0
+    if slides > 0:
+        record_tool_billing(
+            tool_key=OCR_TOOL, tool_params={"num_pages": slides}, request_type=RequestType.PDF_QUESTIONS,
+            model=delivered.model or "mathpix", institute_id=institute_id, user_id=user_id, user_role="ADMIN",
+            request_id=request_id,
+            idempotency_key=f"tutor_scorm_ocr:{institute_id}:{ck_scorm.billing_key(ck_scorm.cache_key(ref))}",
+            provider_cost_usd=delivered.provider_cost_usd,
+            use_case=UC.TUTOR_SETUP, metering=metering if metering is not None else metering_user(user_id, surface="ADMIN_APP"),
+            usage_context={"slide_id": src.slide_id, "scorm": src.scorm_pointer, "feature": "tutor_scorm_ocr"},
+        )
+    src.ocr_units = 0
+    _set_text(src, body, SCORM_OCR_TEXT)
+    return slides
 
 
 # ── the paid source: Whisper for uploaded videos ─────────────────────────────

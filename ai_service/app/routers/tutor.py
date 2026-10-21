@@ -50,7 +50,7 @@ router = APIRouter(prefix="/tutor/v1", tags=["tutor"])
 _HEARTBEAT_SECONDS = 15
 # Slide types the compiler handles in phase 1; quizzes compile deterministically
 # and are not billed, so they are supported but not "billable".
-SUPPORTED_SOURCE_TYPES = {"DOCUMENT", "QUIZ", "VIDEO", "HTML_VIDEO"}
+SUPPORTED_SOURCE_TYPES = {"DOCUMENT", "QUIZ", "VIDEO", "HTML_VIDEO", "SCORM"}
 # Compiles outlive the request that started them: closing the admin tab must
 # not turn paid model calls into FAILED rows. Tasks are kept here so the
 # event loop does not garbage-collect them mid-flight.

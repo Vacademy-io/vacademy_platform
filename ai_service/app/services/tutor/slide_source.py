@@ -6,6 +6,8 @@ Kinds:
   quiz       structured questions (compiled deterministically)
   video      YouTube / uploaded video, taught as a MEDIA TASK from a description
   pdf        uploaded PDF, taught as a MEDIA TASK from a description
+  scorm      SCORM package, taught on the board from the text the course-knowledge
+             SCORM reader gets out of it (free; slides drawn as images need OCR)
   other      assignments, code, presentations… — not compiled in phase 1
 """
 from __future__ import annotations
@@ -44,10 +46,11 @@ class SlideSource:
     title: str
     source_type: str
     source_id: Optional[str]
-    kind: str                       # document | quiz | video | pdf | other
+    kind: str                       # document | quiz | video | pdf | scorm | other
     text: str = ""
-    # Where `text` came from for a video / PDF: script | captions | transcript | pdf
-    # (None = the slide body itself, or nothing yet). See source_text.py.
+    # Where `text` came from for a video / PDF / SCORM: script | captions |
+    # transcript | pdf | scorm | scorm_ocr (None = the slide body itself, or
+    # nothing yet). See source_text.py.
     text_kind: Optional[str] = None
     # Why no text could be read (shown to the admin when the slide is parked).
     text_note: Optional[str] = None
@@ -59,6 +62,12 @@ class SlideSource:
     ai_gen_video_id: Optional[str] = None
     video_length_ms: Optional[int] = None
     video_description: Optional[str] = None
+    # SCORM: the published package (scorm_slide), and how many of its slides
+    # are drawn as images (known after the free pass; read with paid OCR).
+    scorm_launch_url: Optional[str] = None
+    scorm_launch_path: Optional[str] = None
+    scorm_pointer: Optional[str] = None
+    ocr_units: int = 0
     chapter_id: Optional[str] = None
     chapter_name: Optional[str] = None
     course_name: Optional[str] = None
@@ -266,6 +275,25 @@ def _video(db: Session, src: SlideSource, source_id: str, html_video: bool) -> N
     src.content_hash = _hash("video", src.title, url)
 
 
+def _scorm(db: Session, src: SlideSource, source_id: str) -> None:
+    row = db.execute(
+        text("SELECT launch_url, launch_path, original_file_id FROM scorm_slide WHERE id = :id"), {"id": source_id}
+    ).first()
+    launch_url = ((row[0] if row else None) or "").strip()
+    if not launch_url:
+        src.kind = "other"
+        return
+    # Lazy: course_knowledge.extract imports this module.
+    from ..course_knowledge.extract.types import SCORM_EXTRACTOR_VERSION
+    src.kind = "scorm"
+    src.scorm_launch_url = launch_url
+    src.scorm_launch_path = (row[1] or "").strip() or None
+    # The same pointer course knowledge keys its SCORM cache by (describe._scorm).
+    src.scorm_pointer = (row[2] or "").strip() or launch_url
+    src.content_hash = _hash("scorm", src.title, src.scorm_pointer, launch_url, src.scorm_launch_path,
+                             SCORM_EXTRACTOR_VERSION)
+
+
 def _quiz(db: Session, src: SlideSource, source_id: str) -> None:
     rows = db.execute(text("""
         SELECT q.id, q.question_order, q.question_type, q.auto_evaluation_json,
@@ -360,6 +388,8 @@ def load_slide_source(db: Session, slide_id: str) -> Optional[SlideSource]:
             _video(db, src, sid, html_video=False)
         elif st == "HTML_VIDEO" and sid:
             _video(db, src, sid, html_video=True)
+        elif st == "SCORM" and sid:
+            _scorm(db, src, sid)
     except Exception:  # noqa: BLE001
         logger.warning("Could not load slide %s body", slide_id, exc_info=True)
         src.kind = "other"
@@ -371,8 +401,8 @@ def load_slide_source(db: Session, slide_id: str) -> Optional[SlideSource]:
 # ── what kind of thing a slide is, for the admin's table and the estimate ────
 
 def source_kind_label(src: SlideSource) -> str:
-    """document | pdf | quiz | ai_video | youtube | video_upload | video_link | other"""
-    if src.kind in ("document", "pdf", "quiz", "other"):
+    """document | pdf | quiz | scorm | ai_video | youtube | video_upload | video_link | other"""
+    if src.kind in ("document", "pdf", "quiz", "scorm", "other"):
         return src.kind
     if src.ai_gen_video_id:
         return "ai_video"
@@ -416,6 +446,8 @@ def source_kinds_for_slides(db: Session, slides: List[Dict[str, Any]]) -> Dict[s
             out[s["slide_id"]] = docs.get(sid, "document")
         elif st == "QUIZ":
             out[s["slide_id"]] = "quiz"
+        elif st == "SCORM":
+            out[s["slide_id"]] = "scorm"
         else:
             out[s["slide_id"]] = "other"
     return out

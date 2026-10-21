@@ -37,6 +37,10 @@ pdfplumber>=0.10.0
 # for selective Mathpix re-OCR. Without this, mathpix.enrich_layout_for_math
 # crashes with "No module named 'fitz'" right after LAYOUT_OCR_DONE.
 pymupdf>=1.24.0
+# Pillow — already installed through matplotlib/moviepy/rembg; listed because course
+# knowledge composes iSpring SCORM slides from their positioned PNGs before OCR
+# (app/services/course_knowledge/extract/ispring.py).
+Pillow>=9.0
 # OMRChecker (vendored at app/vendor/omrchecker, MIT) reads assessment OMR sheets
 # in a spawned worker (app/services/omr). These are its own imports; numpy and
 # opencv above already satisfy it (it needs numpy>=1.25, which <2 allows).

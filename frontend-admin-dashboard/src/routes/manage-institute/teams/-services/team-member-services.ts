@@ -31,6 +31,8 @@ export interface InvitedUserResponse {
      * password was sent or returned — they sign in with their current login.
      */
     existing_account?: boolean;
+    /** Existing account that already held every role here: nothing changed, no email sent. */
+    already_member?: boolean;
 }
 
 /**

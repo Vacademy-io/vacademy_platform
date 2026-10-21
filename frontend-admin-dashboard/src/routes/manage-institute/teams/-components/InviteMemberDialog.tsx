@@ -79,6 +79,8 @@ interface SentSummary {
     password?: string;
     /** The email already had an account; they keep signing in with it. */
     existingAccount: boolean;
+    /** …and already held every role here: nothing changed and no email went out. */
+    alreadyMember: boolean;
 }
 
 interface InviteMemberDialogProps {
@@ -92,6 +94,10 @@ interface InviteMemberDialogProps {
     /** Members are active once added, so "done" leads to the Members tab. */
     onViewTeam?: () => void;
 }
+
+/** 409 = this person is disabled in the institute; the server says to use Enable instead. */
+const isDisabledHereConflict = (error: unknown): boolean =>
+    (error as { response?: { status?: number } })?.response?.status === 409;
 
 const serverMessage = (error: unknown): string | undefined => {
     const data = (error as { response?: { data?: { ex?: string; message?: string } } })?.response
@@ -227,6 +233,7 @@ export function InviteMemberDialog({
                 phone: isBlankPhone(values.mobile) ? null : values.mobile ?? null,
                 roles: values.roleType,
                 existingAccount: response?.existing_account === true,
+                alreadyMember: response?.already_member === true,
                 username: response?.username,
                 // An existing account comes back without a password (older backends sent the
                 // stored hash) — never show that as login details.
@@ -240,6 +247,11 @@ export function InviteMemberDialog({
         },
         onError: (error) => {
             const message = serverMessage(error);
+            if (isDisabledHereConflict(error)) {
+                // Shown on the email field so it reads as "this person", not a generic failure.
+                form.setError('email', { message: message || t('invite.errors.disabledHere') });
+                return;
+            }
             if (message && /email|already|exist/i.test(message)) {
                 form.setError('email', { message });
                 return;
@@ -270,7 +282,9 @@ export function InviteMemberDialog({
             <MyDialog
                 open={open}
                 onOpenChange={onOpenChange}
-                heading={t('invite.sent.heading')}
+                heading={
+                    sent.alreadyMember ? t('invite.sent.alreadyHeading') : t('invite.sent.heading')
+                }
                 dialogWidth="max-w-lg"
                 footer={
                     <>
@@ -301,13 +315,22 @@ export function InviteMemberDialog({
                         <CheckCircle size={34} weight="fill" />
                     </div>
                     <h3 className="text-h3 font-semibold text-neutral-900">
-                        {t('invite.sent.title', { name: sent.name })}
+                        {sent.alreadyMember
+                            ? t('invite.sent.alreadyTitle', { name: sent.name })
+                            : t('invite.sent.title', { name: sent.name })}
                     </h3>
                     <p className="mt-1 max-w-sm text-body text-neutral-500">
-                        {t(sent.existingAccount ? 'invite.sent.existingBody' : 'invite.sent.body', {
-                            firstName: sent.name.split(/\s+/)[0],
-                            email: sent.email,
-                        })}
+                        {t(
+                            sent.alreadyMember
+                                ? 'invite.sent.alreadyBody'
+                                : sent.existingAccount
+                                  ? 'invite.sent.existingBody'
+                                  : 'invite.sent.body',
+                            {
+                                firstName: sent.name.split(/\s+/)[0],
+                                email: sent.email,
+                            }
+                        )}
                     </p>
                     {sent.existingAccount && (
                         <span className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-info-50 px-2.5 py-1 text-caption font-semibold text-info-700">

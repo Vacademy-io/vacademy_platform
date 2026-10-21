@@ -182,6 +182,9 @@
             "phoneInvalid": "Enter a valid mobile number for the selected country",
             "roleRequired": "Pick at least one role"
         },
+        "errors": {
+            "disabledHere": "This person is disabled in your institute — use Enable on the Members tab"
+        },
         "toast": {
             "updated": "Invite for {{name}} updated",
             "failed": "Couldn't send the invite. Please try again."
@@ -192,6 +195,9 @@
             "body": "{{firstName}} can sign in now. We've emailed {{email}} how to sign in.",
             "existingBody": "{{firstName}} can sign in now with their current login. We've emailed {{email}} to say they've been added.",
             "existingTag": "Existing account — they sign in with their current login",
+            "alreadyHeading": "Already on the team",
+            "alreadyTitle": "{{name}} is already on the team",
+            "alreadyBody": "{{firstName}} already has these roles here, so nothing changed and no email was sent.",
             "rolesLabel_one": "Role",
             "rolesLabel_other": "Roles",
             "mobileLabel": "Mobile",
@@ -285,7 +291,7 @@
         },
         "resend": {
             "title": "Resend login details to {{name}}?",
-            "body": "We'll email their login details again to",
+            "body": "We'll email their sign-in details again to",
             "action": "Resend login details",
             "toast": "Login details sent to {{email}}"
         },

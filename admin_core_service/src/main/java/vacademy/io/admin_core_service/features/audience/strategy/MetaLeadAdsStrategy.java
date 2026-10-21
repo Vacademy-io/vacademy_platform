@@ -683,30 +683,48 @@ public class MetaLeadAdsStrategy implements AdPlatformStrategy {
         return page;
     }
 
+    /** Upper bound on leadgen_forms pages fetched for the form picker (100 forms per page). */
+    private static final int MAX_FORM_LIST_PAGES = 20;
+
     /**
      * List all lead gen forms for a Facebook Page.
      * Returns [{id, name, status}] — no tokens exposed.
+     *
+     * Meta returns only 25 forms per page by default, newest first, so without
+     * following paging.next a Page with many forms hides its OLDER forms from the
+     * picker — including forms that live ads are still collecting leads on.
      */
     public List<Map<String, String>> listPageForms(String pageId, String pageAccessToken) {
         String url = GRAPH_API_BASE + "/" + pageId + "/leadgen_forms"
                 + "?access_token=" + pageAccessToken
-                + "&fields=id,name,status";
-
-        JsonNode response = webClient
-                .get().uri(url)
-                .retrieve()
-                .bodyToMono(JsonNode.class)
-                .block();
+                + "&fields=id,name,status"
+                + "&limit=100";
 
         List<Map<String, String>> forms = new ArrayList<>();
-        if (response == null) return forms;
+        int pages = 0;
+        while (url != null && !url.isBlank() && pages < MAX_FORM_LIST_PAGES) {
+            // Meta's paging.next is a full, already-encoded URL — hand WebClient a URI
+            // so it isn't re-encoded.
+            JsonNode response = webClient
+                    .get().uri(URI.create(url))
+                    .retrieve()
+                    .bodyToMono(JsonNode.class)
+                    .block();
+            pages++;
+            if (response == null) break;
 
-        for (JsonNode form : response.path("data")) {
-            Map<String, String> f = new LinkedHashMap<>();
-            f.put("id", form.path("id").asText());
-            f.put("name", form.path("name").asText("Unnamed Form"));
-            f.put("status", form.path("status").asText("ACTIVE"));
-            forms.add(f);
+            for (JsonNode form : response.path("data")) {
+                Map<String, String> f = new LinkedHashMap<>();
+                f.put("id", form.path("id").asText());
+                f.put("name", form.path("name").asText("Unnamed Form"));
+                f.put("status", form.path("status").asText("ACTIVE"));
+                forms.add(f);
+            }
+            url = response.path("paging").path("next").asText(null);
+        }
+        if (pages >= MAX_FORM_LIST_PAGES && url != null && !url.isBlank()) {
+            log.warn("Form list for page {} hit page cap {} — {} form(s) listed, older forms omitted",
+                    pageId, MAX_FORM_LIST_PAGES, forms.size());
         }
         return forms;
     }

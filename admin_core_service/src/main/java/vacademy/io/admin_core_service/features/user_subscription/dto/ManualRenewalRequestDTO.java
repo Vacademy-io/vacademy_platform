@@ -28,7 +28,7 @@ public class ManualRenewalRequestDTO {
     private Date paymentDate;
     /** Access runs until this date. Omitted: the plan's normal renewal (see preview). */
     private Date newEndDate;
-    /** Shown to every admin in the plan's remarks history. */
+    /** Required. Shown to every admin in the plan's remarks history, with who wrote it. */
     private String remarks;
     /** How it was paid (mode, reference, proof); see OfflinePaymentDetailsService. */
     private OfflinePaymentDetailsDTO paymentDetails;

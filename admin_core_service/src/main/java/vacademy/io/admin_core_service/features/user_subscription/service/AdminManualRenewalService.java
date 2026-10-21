@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
+import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.common.util.JsonUtil;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionStatusEnum;
@@ -31,6 +32,7 @@ import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanS
 import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogRepository;
 import vacademy.io.admin_core_service.features.user_subscription.repository.UserPlanRepository;
 import vacademy.io.admin_core_service.features.user_subscription.util.PlanValidityResolver;
+import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.payment.enums.PaymentGateway;
@@ -85,6 +87,7 @@ public class AdminManualRenewalService {
     private final LearnerAccessService learnerAccessService;
     private final TimelineEventService timelineEventService;
     private final InvoiceService invoiceService;
+    private final AuthService authService;
 
     @Transactional(readOnly = true)
     public ManualRenewalPreviewDTO preview(String userPlanId, String instituteId) {
@@ -109,6 +112,10 @@ public class AdminManualRenewalService {
                                         ManualRenewalRequestDTO req, CustomUserDetails admin) {
         if (req == null || req.getAmount() == null || req.getAmount() < 0) {
             throw new VacademyException("Enter the amount received (0 or more)");
+        }
+        // Every manual renewal must say why, so the other admins can follow it later.
+        if (!StringUtils.hasText(req.getRemarks())) {
+            throw new VacademyException("Add a remark explaining this renewal");
         }
         UserPlan plan = loadForInstitute(userPlanId, instituteId);
         String reason = notRenewableReason(plan);
@@ -267,12 +274,42 @@ public class AdminManualRenewalService {
                 .build(), admin);
     }
 
-    /** Renewals and remarks on the plan, newest first. */
+    /**
+     * Renewals and remarks on the plan, newest first, each with the full name of the admin who
+     * wrote it. The timeline stores the login username; the name is looked up so the history
+     * reads "Priya Sharma", not "priya.s@…". Falls back to the stored value if the lookup fails.
+     */
     @Transactional(readOnly = true)
     public Page<TimelineEventDTO> listRemarks(String userPlanId, String instituteId, int page, int size) {
         UserPlan plan = loadForInstitute(userPlanId, instituteId);
-        return timelineEventService.getTimelineEvents(REMARK_TYPE, plan.getId(),
+        Page<TimelineEventDTO> events = timelineEventService.getTimelineEvents(REMARK_TYPE, plan.getId(),
                 PageRequest.of(Math.max(page, 0), Math.min(Math.max(size, 1), 100)));
+        Map<String, String> names = adminNames(events.getContent().stream()
+                .map(TimelineEventDTO::getActorId).filter(StringUtils::hasText).distinct().toList());
+        events.getContent().forEach(e -> {
+            String name = e.getActorId() != null ? names.get(e.getActorId()) : null;
+            if (StringUtils.hasText(name)) {
+                e.setActorName(name);
+            }
+        });
+        return events;
+    }
+
+    private Map<String, String> adminNames(List<String> userIds) {
+        Map<String, String> out = new HashMap<>();
+        if (userIds.isEmpty()) {
+            return out;
+        }
+        try {
+            for (UserDTO u : authService.getUsersFromAuthServiceByUserIds(userIds)) {
+                if (u != null && u.getId() != null && StringUtils.hasText(u.getFullName())) {
+                    out.put(u.getId(), u.getFullName().trim());
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Could not resolve remark authors {}: {}", userIds, e.getMessage());
+        }
+        return out;
     }
 
     // ---------------------------------------------------------------- helpers

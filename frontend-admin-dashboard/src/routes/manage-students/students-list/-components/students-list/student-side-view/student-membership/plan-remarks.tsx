@@ -24,6 +24,7 @@ const formatWhen = (iso: string): string => {
 };
 
 const RemarkRow = ({ remark }: { remark: PlanRemark }) => {
+    const { t } = useTranslation('manageStudentsPlanDetails');
     const isRenewal = remark.action_type === 'MANUAL_RENEWAL';
     const Icon = isRenewal ? ArrowsClockwise : ChatText;
     return (
@@ -39,7 +40,8 @@ const RemarkRow = ({ remark }: { remark: PlanRemark }) => {
                     </p>
                 )}
                 <p className="text-xs text-neutral-500">
-                    {remark.actor_name || '—'} · {formatWhen(remark.created_at)}
+                    {t('remarks.addedBy', { name: remark.actor_name || t('remarks.unknownAdmin') })}{' '}
+                    · {formatWhen(remark.created_at)}
                 </p>
             </div>
         </li>

@@ -83,7 +83,7 @@ export function transformQuestionPaperDataAI(data: MyQuestionPaperFormInterface)
                     text: {
                         id: null, // Assuming no direct mapping for option text ID
                         type: 'HTML', // Assuming option content is HTML
-                        content: opt?.name,
+                        content: opt?.name ?? '',
                     },
                     media_id: null, // Assuming no direct mapping for option media ID
                     option_order: null,
@@ -92,7 +92,7 @@ export function transformQuestionPaperDataAI(data: MyQuestionPaperFormInterface)
                     explanation_text: {
                         id: null, // Assuming no direct mapping for explanation text ID
                         type: 'HTML', // Assuming explanation for options is in HTML
-                        content: question.explanation, // Assuming no explanation provided for options
+                        content: question.explanation ?? '', // Assuming no explanation provided for options
                     },
                 }));
             } else if (question.questionType === QuestionType.TRUE_FALSE) {
@@ -103,7 +103,7 @@ export function transformQuestionPaperDataAI(data: MyQuestionPaperFormInterface)
                     text: {
                         id: null, // Assuming no direct mapping for option text ID
                         type: 'HTML', // Assuming option content is HTML
-                        content: opt?.name,
+                        content: opt?.name ?? '',
                     },
                     media_id: null, // Assuming no direct mapping for option media ID
                     option_order: null,
@@ -112,7 +112,7 @@ export function transformQuestionPaperDataAI(data: MyQuestionPaperFormInterface)
                     explanation_text: {
                         id: null, // Assuming no direct mapping for explanation text ID
                         type: 'HTML', // Assuming explanation for options is in HTML
-                        content: question.explanation, // Assuming no explanation provided for options
+                        content: question.explanation ?? '', // Assuming no explanation provided for options
                     },
                 }));
             } else if (question.questionType === QuestionType.MCQM) {
@@ -123,7 +123,7 @@ export function transformQuestionPaperDataAI(data: MyQuestionPaperFormInterface)
                     text: {
                         id: null, // Assuming no direct mapping for option text ID
                         type: 'HTML', // Assuming option content is HTML
-                        content: opt?.name,
+                        content: opt?.name ?? '',
                     },
                     media_id: null, // Assuming no direct mapping for option media ID
                     option_order: null,
@@ -132,7 +132,7 @@ export function transformQuestionPaperDataAI(data: MyQuestionPaperFormInterface)
                     explanation_text: {
                         id: null, // Assuming no direct mapping for explanation text ID
                         type: 'HTML', // Assuming explanation for options is in HTML
-                        content: question.explanation, // Assuming no explanation provided for options
+                        content: question.explanation ?? '', // Assuming no explanation provided for options
                     },
                 }));
             } else if (question.questionType === QuestionType.CMCQS) {
@@ -143,7 +143,7 @@ export function transformQuestionPaperDataAI(data: MyQuestionPaperFormInterface)
                     text: {
                         id: null, // Assuming no direct mapping for option text ID
                         type: 'HTML', // Assuming option content is HTML
-                        content: opt?.name,
+                        content: opt?.name ?? '',
                     },
                     media_id: null, // Assuming no direct mapping for option media ID
                     option_order: null,
@@ -152,7 +152,7 @@ export function transformQuestionPaperDataAI(data: MyQuestionPaperFormInterface)
                     explanation_text: {
                         id: null, // Assuming no direct mapping for explanation text ID
                         type: 'HTML', // Assuming explanation for options is in HTML
-                        content: question.explanation, // Assuming no explanation provided for options
+                        content: question.explanation ?? '', // Assuming no explanation provided for options
                     },
                 }));
             } else if (question.questionType === QuestionType.CMCQM) {
@@ -163,7 +163,7 @@ export function transformQuestionPaperDataAI(data: MyQuestionPaperFormInterface)
                     text: {
                         id: null, // Assuming no direct mapping for option text ID
                         type: 'HTML', // Assuming option content is HTML
-                        content: opt?.name,
+                        content: opt?.name ?? '',
                     },
                     media_id: null, // Assuming no direct mapping for option media ID
                     option_order: null,
@@ -172,7 +172,7 @@ export function transformQuestionPaperDataAI(data: MyQuestionPaperFormInterface)
                     explanation_text: {
                         id: null, // Assuming no direct mapping for explanation text ID
                         type: 'HTML', // Assuming explanation for options is in HTML
-                        content: question.explanation, // Assuming no explanation provided for options
+                        content: question.explanation ?? '', // Assuming no explanation provided for options
                     },
                 }));
             }
@@ -225,7 +225,7 @@ export function transformQuestionPaperDataAI(data: MyQuestionPaperFormInterface)
                 text: {
                     id: null, // Assuming no direct mapping for text ID
                     type: 'HTML', // Assuming the content is HTML
-                    content: question.questionName,
+                    content: question.questionName ?? '',
                 },
                 media_id: null, // Assuming no direct mapping for media_id
                 created_at: null,
@@ -238,7 +238,7 @@ export function transformQuestionPaperDataAI(data: MyQuestionPaperFormInterface)
                 explanation_text: {
                     id: null, // Assuming no direct mapping for explanation text ID
                     type: 'HTML', // Assuming explanation is in HTML
-                    content: question.explanation,
+                    content: question.explanation ?? '',
                 },
                 default_question_time_mins:
                     Number(question.questionDuration.hrs || 0) * 60 +

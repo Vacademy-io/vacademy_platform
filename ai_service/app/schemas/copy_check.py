@@ -75,6 +75,9 @@ class ExamContext(BaseModel):
     subject: Optional[str] = None
     instructions: Optional[str] = None
     answer_language: Optional[str] = None
+    # HIGHLIGHT = mark spelling/grammar errors with corrections, no marks
+    # deducted (language_feedback.py). Absent or anything else = off.
+    language_feedback: Optional[str] = None
 
 
 class RateSnapshot(BaseModel):

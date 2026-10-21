@@ -79,4 +79,17 @@ class AdminRoleGrantGuardTest {
         assertThrows(VacademyException.class,
                 () -> guard.requireAdminToGrantAdmin(caller("admin", true), null, List.of("ADMIN")));
     }
+
+    @Test
+    void removingAdminNeedsAnAdminOfThatInstitute() {
+        when(userRoleRepository.findFirstByUserIdAndInstituteIdAndRoleNamesAndStatuses(
+                any(), any(), anyList(), anyList())).thenReturn(Optional.empty());
+        assertThrows(VacademyException.class,
+                () -> guard.requireAdminToRemoveAdmin(caller("teacher", false), INSTITUTE, List.of("ADMIN")));
+        assertDoesNotThrow(() -> guard.requireAdminToRemoveAdmin(caller("teacher", false), INSTITUTE,
+                List.of("TEACHER")));
+        adminRowFor("admin");
+        assertDoesNotThrow(() -> guard.requireAdminToRemoveAdmin(caller("admin", false), INSTITUTE,
+                List.of("ADMIN")));
+    }
 }

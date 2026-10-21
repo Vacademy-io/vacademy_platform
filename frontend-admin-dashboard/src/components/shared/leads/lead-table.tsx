@@ -1,8 +1,8 @@
+import { useTranslation } from 'react-i18next';
 import { type ReactNode } from 'react';
 import { counsellorDisplayName } from './counsellor-display';
 import { format } from 'date-fns';
 import {
-    Envelope,
     Phone,
     Robot,
     Clock,
@@ -40,6 +40,7 @@ import { LeadScoreBar } from './lead-score-bar';
 import { LeadConversionBadge } from './lead-conversion-badge';
 import { LeadEmptyState } from './lead-empty-state';
 import { CallPickerPopover } from './call-picker-popover';
+import { LeadActionsMenu } from './lead-actions-menu';
 
 /**
  * LeadTable — the premium Orbitra-style leads table: light sentence-case headers,
@@ -84,8 +85,6 @@ interface LeadTableProps {
     showScore?: boolean;
     isLoading: boolean;
     actions: LeadActionHandlers;
-    /** Always render the row's Call / AI-call buttons (default: reveal on row hover). */
-    alwaysShowActions?: boolean;
     /** Called after an inline status change so the parent can refetch. */
     onStatusUpdated?: () => void;
     hiddenColumns?: Set<string>;
@@ -272,13 +271,8 @@ export function LeadTable({
     sortBy,
     sortDirection,
     onSortChange,
-    alwaysShowActions = false,
 }: LeadTableProps) {
-    // Call / AI-call reveal: hover-only by default, or always-on when the page asks
-    // (Recent Leads — makes the AI-call action discoverable without hovering).
-    const actionReveal = alwaysShowActions
-        ? 'opacity-100'
-        : 'opacity-0 focus-within:opacity-100 group-hover/row:opacity-100';
+    const { t: tPages } = useTranslation('crmPages');
     const profOf = (vm: LeadCardVM) => (vm.userId ? profiles[vm.userId] : undefined);
     const notesOf = (vm: LeadCardVM) => (vm.userId ? notes?.[vm.userId] : undefined);
     // Institute tier catalog (labels, colours, score bands) + the institute's own
@@ -298,6 +292,90 @@ export function LeadTable({
     const selectableVms = vms.filter((v) => !!v.userId && !!v.responseId);
     const allSelected =
         selectableVms.length > 0 && selectableVms.every((v) => selectedIds?.has(v.responseId!));
+
+    // Contact cell: phone first and bold, call / AI call as small bordered
+    // buttons (always visible), email as the grey sub-line. Same data and actions.
+    const renderContact = (vm: LeadCardVM) => {
+        const showEmail = vm.email !== '-' && vm.email !== vm.name;
+        const showPhone = vm.phone !== '-';
+        if (!showEmail && !showPhone) return <span className="text-sm text-neutral-300">—</span>;
+        const callGate = actions.onCallLead && actions.canCall ? actions.canCall(vm) : null;
+        const aiGateFn = actions.canAiCall ?? actions.canCall;
+        const aiGate = actions.onAiCallLead && aiGateFn ? aiGateFn(vm) : null;
+        const iconBtn =
+            'inline-flex size-6 shrink-0 items-center justify-center rounded-md border border-neutral-200 bg-white text-neutral-500 transition';
+        return (
+            <div className="min-w-0">
+                {showPhone && (
+                    <div className="flex items-center gap-1.5">
+                        <span className="truncate font-semibold tabular-nums text-neutral-800">
+                            {vm.phone}
+                        </span>
+                        {callGate && (
+                            <CallPickerPopover
+                                leadUserId={vm.userId}
+                                disabled={!callGate.allowed}
+                                disabledReason={callGate.reason}
+                                onConfirm={(preferredNumberId) =>
+                                    actions.onCallLead?.(vm, preferredNumberId)
+                                }
+                                trigger={
+                                    <button
+                                        type="button"
+                                        onClick={(e) => e.stopPropagation()}
+                                        disabled={!callGate.allowed}
+                                        title={
+                                            callGate.allowed
+                                                ? tPages('leadCard.callTitle')
+                                                : callGate.reason ?? tPages('leadCard.callTitle')
+                                        }
+                                        aria-label={tPages('leadCard.callTitle')}
+                                        className={cn(
+                                            iconBtn,
+                                            callGate.allowed
+                                                ? 'hover:border-success-300 hover:text-success-600'
+                                                : 'cursor-not-allowed opacity-50'
+                                        )}
+                                    >
+                                        <Phone weight="fill" className="size-3.5" />
+                                    </button>
+                                }
+                            />
+                        )}
+                        {aiGate && (
+                            <button
+                                type="button"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (aiGate.allowed) actions.onAiCallLead?.(vm);
+                                }}
+                                disabled={!aiGate.allowed}
+                                title={
+                                    aiGate.allowed
+                                        ? tPages('leadCard.aiTitle')
+                                        : aiGate.reason ?? tPages('leadCard.aiTitle')
+                                }
+                                aria-label={tPages('leadCard.aiTitle')}
+                                className={cn(
+                                    iconBtn,
+                                    aiGate.allowed
+                                        ? 'hover:border-primary-300 hover:text-primary-600'
+                                        : 'cursor-not-allowed opacity-50'
+                                )}
+                            >
+                                <Robot weight="fill" className="size-3.5" />
+                            </button>
+                        )}
+                    </div>
+                )}
+                {showEmail && (
+                    <p className="mt-0.5 truncate text-neutral-500" title={vm.email}>
+                        <span className="text-caption">{vm.email}</span>
+                    </p>
+                )}
+            </div>
+        );
+    };
 
     const allCols: Col[] = [
         {
@@ -376,92 +454,7 @@ export function LeadTable({
             thClass: 'min-w-48',
             show: true,
             interactive: true,
-            render: (vm) => {
-                const showEmail = vm.email !== '-' && vm.email !== vm.name;
-                const showPhone = vm.phone !== '-';
-                if (!showEmail && !showPhone)
-                    return <span className="text-sm text-neutral-300">—</span>;
-                const callGate = actions.onCallLead && actions.canCall ? actions.canCall(vm) : null;
-                // AI Call gating — falls back to canCall (both need a phone on file).
-                const aiGateFn = actions.canAiCall ?? actions.canCall;
-                const aiGate = actions.onAiCallLead && aiGateFn ? aiGateFn(vm) : null;
-                return (
-                    <div className="min-w-0 space-y-1">
-                        {showEmail && (
-                            <p
-                                className="flex items-center gap-1.5 truncate text-sm text-neutral-600"
-                                title={vm.email}
-                            >
-                                <Envelope className="size-3.5 shrink-0 text-neutral-400" />
-                                <span className="truncate">{vm.email}</span>
-                            </p>
-                        )}
-                        {showPhone && (
-                            <p className="flex items-center gap-1.5 truncate text-sm text-neutral-600">
-                                <Phone className="size-3.5 shrink-0 text-neutral-400" />
-                                <span className="truncate">{vm.phone}</span>
-                                {callGate && (
-                                    <CallPickerPopover
-                                        leadUserId={vm.userId}
-                                        disabled={!callGate.allowed}
-                                        disabledReason={callGate.reason}
-                                        onConfirm={(preferredNumberId) =>
-                                            actions.onCallLead?.(vm, preferredNumberId)
-                                        }
-                                        trigger={
-                                            <button
-                                                type="button"
-                                                onClick={(e) => e.stopPropagation()}
-                                                disabled={!callGate.allowed}
-                                                title={
-                                                    callGate.allowed
-                                                        ? 'Call lead'
-                                                        : callGate.reason ?? 'Call lead'
-                                                }
-                                                aria-label="Call lead"
-                                                className={cn(
-                                                    'ml-auto inline-flex size-7 shrink-0 items-center justify-center rounded-md text-neutral-400 transition',
-                                                    actionReveal,
-                                                    callGate.allowed
-                                                        ? 'hover:bg-success-50 hover:text-success-600'
-                                                        : 'cursor-not-allowed'
-                                                )}
-                                            >
-                                                <Phone weight="fill" className="size-4" />
-                                            </button>
-                                        }
-                                    />
-                                )}
-                                {aiGate && (
-                                    <button
-                                        type="button"
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            if (aiGate.allowed) actions.onAiCallLead?.(vm);
-                                        }}
-                                        disabled={!aiGate.allowed}
-                                        title={
-                                            aiGate.allowed
-                                                ? 'AI call lead'
-                                                : aiGate.reason ?? 'AI call lead'
-                                        }
-                                        aria-label="AI call lead"
-                                        className={cn(
-                                            'inline-flex size-7 shrink-0 items-center justify-center rounded-md text-neutral-400 transition',
-                                            actionReveal,
-                                            aiGate.allowed
-                                                ? 'hover:bg-primary-50 hover:text-primary-600'
-                                                : 'cursor-not-allowed'
-                                        )}
-                                    >
-                                        <Robot weight="fill" className="size-4" />
-                                    </button>
-                                )}
-                            </p>
-                        )}
-                    </div>
-                );
-            },
+            render: (vm) => renderContact(vm),
         },
         {
             id: 'source',
@@ -510,6 +503,7 @@ export function LeadTable({
                     currentStatus={vm.leadStatus}
                     statuses={statuses ?? []}
                     onUpdated={onStatusUpdated}
+                    caret
                 />
             ),
         },
@@ -669,6 +663,23 @@ export function LeadTable({
     for (const extra of extraColumns ?? []) {
         allCols.push({ ...extra, show: true, interactive: true });
     }
+    // A ⋮ row menu at the end — the same actions as the board card.
+    allCols.push({
+        id: 'rowMenu',
+        header: '',
+        thClass: 'w-12',
+        show: true,
+        interactive: true,
+        render: (vm, profile) => (
+            <LeadActionsMenu
+                vm={vm}
+                currentTier={profile?.lead_tier}
+                currentStatus={vm.leadStatus}
+                showOps={showOps}
+                actions={actions}
+            />
+        ),
+    });
 
     const visible = allCols.filter((c) => c.show && !hiddenColumns?.has(c.id));
     const cols = columnOrder?.length
@@ -695,16 +706,18 @@ export function LeadTable({
         <div className="overflow-x-auto rounded-xl border border-neutral-200 bg-white shadow-sm">
             <table className="w-full border-collapse text-sm">
                 <thead>
-                    <tr className="border-b border-neutral-200 bg-primary-50 text-left">
+                    <tr className={cn('border-b border-neutral-200 text-left', 'bg-neutral-50')}>
                         {cols.map((c) => (
                             <th
                                 key={c.id}
                                 className={cn(
-                                    'whitespace-nowrap border-r border-neutral-200 px-4 py-3 text-xs font-semibold text-neutral-600 last:border-r-0',
-                                    c.id === 'select' && 'sticky left-0 z-20 bg-primary-50 !px-2',
+                                    'whitespace-nowrap px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-neutral-500',
+                                    c.id === 'select' &&
+                                        cn('sticky left-0 z-20 !px-2', 'bg-neutral-50'),
                                     c.id === 'name' &&
                                         cn(
-                                            'sticky z-20 border-r border-neutral-200 bg-primary-50',
+                                            'sticky z-20 border-r border-neutral-200',
+                                            'bg-neutral-50',
                                             selectable ? 'left-10' : 'left-0'
                                         ),
                                     c.thClass
@@ -785,7 +798,7 @@ export function LeadTable({
                                           <td
                                               key={c.id}
                                               className={cn(
-                                                  'border-r border-neutral-100 px-4 py-3.5 align-middle last:border-r-0',
+                                                  'px-3 py-2.5 align-middle',
                                                   c.id === 'select' &&
                                                       'sticky left-0 z-10 bg-white !px-2 group-hover/row:bg-neutral-50',
                                                   c.id === 'name' &&

@@ -420,6 +420,16 @@ DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
         "unit_field": "flat",
         "params": {},
     },
+    # Site Assistant (public website chatbot): exactly 1 credit per produced
+    # answer, never a token overage (PRD: "1 credit per answer"). request_type
+    # 'chatbot' is already in the ai_token_usage CHECK (V501).
+    "site_assistant_answer": {
+        "request_type": "chatbot",
+        "flat_base_credits": Decimal("1"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "flat",
+        "params": {"fixed_price": True},
+    },
     # ---- Question papers from a knowledge base (V441) -----------------------
     # request_type 'assessment' is already in the ai_token_usage CHECK — reusing
     # it avoids another DROP+ADD of that constraint (the V325/V435 trap).

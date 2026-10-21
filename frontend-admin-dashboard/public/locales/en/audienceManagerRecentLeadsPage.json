@@ -70,7 +70,10 @@
         "viewingDeletedButton": "Viewing deleted",
         "exporting": "Exporting…",
         "export": "Export",
-        "addLead": "Add New Lead"
+        "addLead": "Add New Lead",
+        "filters": "Filters",
+        "summaryShow": "Show summary",
+        "summaryHide": "Hide summary"
     },
     "chips": {
         "search": "Search: {{query}}",
@@ -165,5 +168,17 @@
         "bulkStatusUnchanged_other": "{{count}} leads were already on that status",
         "bulkStatusPartial": "{{failed}} could not be updated",
         "bulkStatusFailed": "Failed to change status. Please try again."
+    },
+    "filtersPanel": {
+        "title": "Filters",
+        "active": "{{count}} active",
+        "close": "Close filters",
+        "sections": {
+            "pipeline": "Pipeline",
+            "owner": "Owner & source",
+            "activity": "Activity",
+            "campaign": "Campaign links",
+            "custom": "Custom fields"
+        }
     }
 }

@@ -57,6 +57,11 @@
     "finance": "Finance",
     "followUps": "Follow-ups",
     "inAppMessages": "In-App Messages",
+    "callingDashboard": "Calling Dashboard",
+    "meetingsDashboard": "Meetings Dashboard",
+    "messagingDashboard": "Messaging Dashboard",
+    "instituteOverview": "Institute Overview",
+    "lmsDashboard": "LMS Dashboard",
     "institutePulse": "Institute Pulse",
     "instructorCopilot": "Instructor Copilot",
     "interactiveClass": "Interactive class",
@@ -77,6 +82,7 @@
     "liveSessionFeedback": "{{term}} Feedback",
     "logCourseProgress": "Log {{term}} Progress",
     "manageContacts": "Manage Contacts",
+    "accessPasses": "Access Passes",
     "manageExpiry": "Manage Expiry",
     "manageFinances": "Manage Finances",
     "manageInstitute": "Manage Institute",
@@ -103,6 +109,7 @@
     "payroll": "Payroll",
     "people": "People",
     "productPages": "Product Pages",
+    "siteAssistant": "Site Assistant",
     "blog": "Blog",
     "provisions": "Provisions",
     "questionsBanksAndPapers": "Questions Banks and Papers",
@@ -139,5 +146,8 @@
     "whatsappTemplates": "WhatsApp Templates",
     "workflows": "Workflows",
     "dailyEngagement": "Daily Engagement",
-    "leadLookup": "Check Lead"
+    "leadLookup": "Check Lead",
+    "contactsDashboard": "Contacts Dashboard",
+    "automationDashboard": "Automation Dashboard",
+    "engagementDashboard": "Engagement Dashboard"
 }

@@ -1,5 +1,6 @@
 import {
     Robot,
+    Ticket,
     Megaphone,
     GearSix,
     UsersFour,
@@ -30,6 +31,7 @@ import {
     ChartLineUp,
     SealCheck,
     UserCircle,
+    SquaresFour,
 } from '@phosphor-icons/react';
 import i18next from 'i18next';
 import { StorageKey } from '@/constants/storage/storage';
@@ -289,6 +291,12 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
         category: 'CRM',
         subItems: [
             {
+                subItem: sidebarT('sidebar:instituteOverview'),
+                subItemLink: '/manage-institute/overview',
+                subItemId: 'institute-overview',
+                adminOnly: true,
+            },
+            {
                 subItem: getTerminologyPlural(ContentTerms.Batch, SystemTerms.Batch),
                 subItemLink: '/manage-institute/batches',
                 subItemId: 'batches',
@@ -343,6 +351,12 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
         id: 'manage-contacts',
         category: 'CRM',
         subItems: [
+            {
+                subItem: sidebarT('sidebar:contactsDashboard'),
+                subItemLink: '/manage-contacts/dashboard',
+                subItemId: 'contacts-dashboard',
+                adminOnly: true,
+            },
             {
                 subItem: sidebarT('sidebar:allContacts'),
                 subItemLink: '/manage-contacts',
@@ -472,6 +486,12 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
         category: 'CRM',
         subItems: [
             {
+                subItem: sidebarT('sidebar:messagingDashboard'),
+                subItemLink: '/communication/dashboard',
+                subItemId: 'messaging-dashboard',
+                adminOnly: true,
+            },
+            {
                 subItem: sidebarT('sidebar:inAppMessages'),
                 subItemLink: '/chat',
                 subItemId: 'chat',
@@ -526,6 +546,12 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
         category: 'CRM',
         subItems: [
             {
+                subItem: sidebarT('sidebar:automationDashboard'),
+                subItemLink: '/automation/dashboard',
+                subItemId: 'automation-dashboard',
+                adminOnly: true,
+            },
+            {
                 subItem: sidebarT('sidebar:workflows'),
                 subItemLink: '/workflow/list',
                 subItemId: 'workflow-list',
@@ -544,6 +570,11 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
                 subItem: sidebarT('sidebar:productPages'),
                 subItemLink: '/manage-pages/product-pages',
                 subItemId: 'product-pages',
+            },
+            {
+                subItem: sidebarT('sidebar:siteAssistant'),
+                subItemLink: '/manage-pages/site-assistant',
+                subItemId: 'site-assistant',
             },
             {
                 subItem: sidebarT('sidebar:blog'),
@@ -634,6 +665,11 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
         category: 'CRM',
         subItems: [
             {
+                subItem: sidebarT('sidebar:callingDashboard'),
+                subItemLink: '/calling/dashboard',
+                subItemId: 'calling-dashboard',
+            },
+            {
                 subItem: sidebarT('sidebar:callLog'),
                 subItemLink: '/audience-manager/call-log',
                 subItemId: 'calling-call-log',
@@ -666,6 +702,11 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
         id: 'meetings',
         category: 'CRM',
         subItems: [
+            {
+                subItem: sidebarT('sidebar:meetingsDashboard'),
+                subItemLink: '/meetings/dashboard',
+                subItemId: 'meetings-dashboard',
+            },
             {
                 subItem: sidebarT('sidebar:mySchedule'),
                 subItemLink: '/meetings/my-schedule',
@@ -721,6 +762,12 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
         id: 'engagement-engines',
         category: 'CRM',
         subItems: [
+            {
+                subItem: sidebarT('sidebar:engagementDashboard'),
+                subItemLink: '/engagement-engines/dashboard',
+                subItemId: 'engagement-dashboard',
+                adminOnly: true,
+            },
             {
                 subItem: sidebarT('sidebar:engines'),
                 subItemLink: '/engagement-engines',
@@ -956,6 +1003,15 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
     },
 
     // LMS
+    // LMS Dashboard — the learning cards moved off the home page. Shown only to roles
+    // whose home is the CRM Dashboard (mySidebar.tsx shows it only to people whose sidebar has Leads).
+    {
+        icon: SquaresFour,
+        title: sidebarT('sidebar:lmsDashboard'),
+        id: 'lms-dashboard',
+        to: '/lms-dashboard',
+        category: 'LMS',
+    },
     {
         icon: Books,
         title: getTerminologyPlural(ContentTerms.Course, SystemTerms.Course),
@@ -1216,6 +1272,17 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
         id: 'content-ai-api',
         category: 'AI',
         to: '/video-api-studio',
+    },
+
+    // Access Passes (one purchase -> several courses). An LMS tab, appended last so no
+    // other tab's order moves. Ships HIDDEN for every role (OPT_IN_TAB_IDS, the teacher
+    // defaults and controlledTabs): an institute turns it on in Display Settings.
+    {
+        icon: Ticket,
+        title: sidebarT('sidebar:accessPasses'),
+        id: 'access-passes',
+        category: 'LMS',
+        to: '/access-passes',
     },
 ];
 

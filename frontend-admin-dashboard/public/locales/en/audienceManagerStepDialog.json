@@ -25,7 +25,9 @@
     "sections": {
         "stepAccess": "Step access (who can view/edit this step)",
         "formFields": "Form fields",
-        "loadingFields": "Loading existing fields…"
+        "loadingFields": "Loading existing fields…",
+        "step": "Step",
+        "formFieldsHint": "Attach existing custom fields or create new ones."
     },
     "actions": {
         "cancel": "Cancel",
@@ -42,5 +44,9 @@
     "schema": {
         "stepNameRequired": "Step name is required",
         "stepNameMaxLength": "Keep it under 150 characters"
+    },
+    "switchHints": {
+        "optional": "Admins can skip it with a reason.",
+        "createStudent": "Shows the {{course}} choice and the auto-complete option."
     }
 }

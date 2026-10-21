@@ -183,7 +183,8 @@
                   "mcp-server/tools/blog",
                   "mcp-server/tools/courses",
                   "mcp-server/tools/learners",
-                  "mcp-server/tools/learner-reports"
+                  "mcp-server/tools/learner-reports",
+                  "mcp-server/tools/sub-orgs"
                 ]
               },
               {

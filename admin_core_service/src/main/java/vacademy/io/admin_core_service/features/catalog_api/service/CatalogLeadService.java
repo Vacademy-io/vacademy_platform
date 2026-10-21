@@ -71,11 +71,11 @@ public class CatalogLeadService {
         if (fullName.length() > MAX_NAME) throw invalid("full_name must be at most " + MAX_NAME + " characters.", "full_name");
         String email = str(body, "email");
         if (email == null) throw invalid("email is required.", "email");
-        if (email.length() > MAX_EMAIL || !EMAIL.matcher(email).matches()) {
+        if (!isValidEmail(email)) {
             throw invalid("email is not a valid email address.", "email");
         }
         String phone = str(body, "phone");
-        if (phone != null && (!PHONE.matcher(phone).matches() || phone.replaceAll("\\D", "").length() < 6)) {
+        if (phone != null && !isValidPhone(phone)) {
             throw invalid("phone must be a phone number, e.g. +91 98765 43210.", "phone");
         }
         String message = str(body, "message");
@@ -89,8 +89,17 @@ public class CatalogLeadService {
         String source = str(body, "source");
         if (source != null && source.length() > 100) throw invalid("source must be at most 100 characters.", "source");
 
+        Map<String, String> custom = parseCustomFields(body.get("custom_fields"));
+        return new Lead(fullName, email, phone, message, courseId, campaignId, source, custom);
+    }
+
+    /**
+     * {@code custom_fields}: an object of at most 30 text/number/boolean values, keys 1-64 of
+     * letters, digits, spaces, '_', '-' or '.', values at most 1000 characters, never one of the
+     * lead's own reserved fields; blank values dropped. Null or JSON null = none. 400 on a problem.
+     */
+    public static Map<String, String> parseCustomFields(JsonNode raw) {
         Map<String, String> custom = new LinkedHashMap<>();
-        JsonNode raw = body.get("custom_fields");
         if (raw != null && !raw.isNull()) {
             if (!raw.isObject()) throw invalid("custom_fields must be an object of text values.", "custom_fields");
             if (raw.size() > MAX_CUSTOM_FIELDS) {
@@ -119,7 +128,17 @@ public class CatalogLeadService {
                 if (!value.isEmpty()) custom.put(key, value);
             }
         }
-        return new Lead(fullName, email, phone, message, courseId, campaignId, source, custom);
+        return custom;
+    }
+
+    /** The catalogue lead email rule: at most 254 characters, one @, a dotted domain. */
+    public static boolean isValidEmail(String email) {
+        return email != null && email.length() <= MAX_EMAIL && EMAIL.matcher(email).matches();
+    }
+
+    /** The catalogue lead phone rule: digits with + ( ) - . and spaces, at least 6 digits. */
+    public static boolean isValidPhone(String phone) {
+        return phone != null && PHONE.matcher(phone).matches() && phone.replaceAll("\\D", "").length() >= 6;
     }
 
     public Outcome submit(String instituteId, Lead lead) {

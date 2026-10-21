@@ -1,9 +1,12 @@
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
+import { FollowUpsAgenda } from './FollowUpsAgenda';
+import { FollowUpsEnhancedHeader } from './FollowUpsEnhancedHeader';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import {
     CalendarBlank,
     DownloadSimple,
+    Flame,
     Folders,
     ListBullets,
     MagnifyingGlass,
@@ -168,6 +171,9 @@ export const FollowUpsPage = () => {
 
 const FollowUpsContent = () => {
     const { t } = useTranslation('audienceManagerFollowUpsPage');
+    const { t: tAgenda } = useTranslation('crmPages');
+    // Agenda is a client-side view of the list data.
+    const [agenda, setAgenda] = useState(false);
     const { instituteDetails } = useInstituteDetailsStore();
     const instituteId = instituteDetails?.id;
     const { setSelectedStudent } = useStudentSidebar();
@@ -222,6 +228,9 @@ const FollowUpsContent = () => {
         /** Pre-select a dialog tab — 'FOLLOW_UP' for the "schedule next" flow
          *  after marking a follow-up complete. */
         initialActionType?: string;
+        /** Closes the follow-up being completed — runs only once the next
+         *  one is saved, so dismissing the dialog leaves it pending. */
+        onFollowUpScheduled?: () => void;
     } | null>(null);
     const [counsellorTarget, setCounsellorTarget] = useState<{
         userId: string;
@@ -267,6 +276,19 @@ const FollowUpsContent = () => {
     const { t: tCampaignType } = useTranslation('audienceManagerCampaignTypeDropdown');
     const [campaignTypeFilters, setCampaignTypeFilters] = useState<string[]>([]);
     const [audienceFilters, setAudienceFilters] = useState<string[]>([]);
+    // Interest level recorded on the follow-up. Offered only to an institute that
+    // configured the list (Lead settings → Follow-up fields); everyone else never
+    // sees the control and nothing is sent.
+    const [interestFilters, setInterestFilters] = useState<string[]>([]);
+    const interestOptions = useMemo(
+        () =>
+            leadSettings.followUpFields.enabled ? leadSettings.followUpFields.interestLevels : [],
+        [leadSettings.followUpFields.enabled, leadSettings.followUpFields.interestLevels]
+    );
+    const activeInterests = useMemo(
+        () => interestFilters.filter((level) => interestOptions.includes(level)),
+        [interestFilters, interestOptions]
+    );
     const [utmFilters, setUtmFilters] = useState<UtmFilterSelection>({});
     const setUtmFilter = (dimension: UtmFilterDimension, values: string[]) =>
         setUtmFilters((prev) => {
@@ -355,7 +377,8 @@ const FollowUpsContent = () => {
     const statusFilterReady = !leadSettings.isLoading;
 
     // Completed tile controls. Its own search and window because it queries a
-    // different endpoint — the lead filters above do not apply to follow-up events.
+    // different endpoint. The lead filters above (Source, Label, UTM, interest
+    // level) go with it too — they used to show on this tab without filtering it.
     const [completedRange, setCompletedRange] = useState(COMPLETED_DEFAULT_RANGE);
     const [completedFrom, setCompletedFrom] = useState('');
     const [completedTo, setCompletedTo] = useState('');
@@ -373,6 +396,9 @@ const FollowUpsContent = () => {
             ...completedWindow(completedRange, completedFrom, completedTo),
             leadStatusId,
             leadStatusExcludeId,
+            audienceIds: resolvedAudienceIds?.length ? resolvedAudienceIds : undefined,
+            utmFilters: utmFiltersPayload,
+            interestLevels: activeInterests.length ? activeInterests : undefined,
         }),
         [
             completedSearch,
@@ -381,6 +407,9 @@ const FollowUpsContent = () => {
             completedTo,
             leadStatusId,
             leadStatusExcludeId,
+            resolvedAudienceIds,
+            utmFiltersPayload,
+            activeInterests,
         ]
     );
 
@@ -424,6 +453,7 @@ const FollowUpsContent = () => {
             follow_up_pending: true,
             ...audienceParams,
             utm_filters: utmFiltersPayload,
+            follow_up_interest_levels: activeInterests.length ? activeInterests : undefined,
         }),
         [
             instituteId,
@@ -433,6 +463,7 @@ const FollowUpsContent = () => {
             appliedSearch,
             audienceParams,
             utmFiltersPayload,
+            activeInterests,
         ]
     );
 
@@ -523,7 +554,9 @@ const FollowUpsContent = () => {
                 page,
                 size: PAGE_SIZE,
             }),
-        enabled: !!instituteId && bucket === 'completed' && statusFilterReady,
+        // Same guard as the open buckets: a Source with no audiences must show
+        // nothing, not every completed follow-up.
+        enabled: !!instituteId && !noTypeAudiences && bucket === 'completed' && statusFilterReady,
         staleTime: 30 * 1000,
     });
 
@@ -594,7 +627,7 @@ const FollowUpsContent = () => {
         }),
         [setSelectedStudent, updateTier, isAdmin, placeCall, t]
     );
-
+    // Enhanced lead side panel: Previous / Next and quick actions run on these rows.
     // Inline "Mark complete" row action — the close flow for the follow-up the
     // row represents. Rows are leads (one row can carry several open
     // follow-ups), so the popover fetches the lead's open follow-ups on demand
@@ -612,12 +645,13 @@ const FollowUpsContent = () => {
                             audienceResponseId={vm.responseId}
                             userId={vm.userId}
                             invalidateKeys={INVALIDATE_KEYS}
-                            onScheduleNext={() =>
+                            onScheduleNext={(closeCurrent) =>
                                 setNoteTarget({
                                     userId: vm.userId!,
                                     userName: vm.name,
                                     responseId: vm.responseId,
                                     initialActionType: 'FOLLOW_UP',
+                                    onFollowUpScheduled: () => void closeCurrent(),
                                 })
                             }
                         />
@@ -689,6 +723,15 @@ const FollowUpsContent = () => {
             <LeadEmptyState
                 title={t('errors.loadFailedTitle')}
                 description={t('errors.loadFailedDescription')}
+            />
+        );
+    } else if (agenda) {
+        viewBody = (
+            <FollowUpsAgenda
+                vms={sortedVms}
+                profiles={leadProfiles}
+                onOpen={actions.onOpenDetails}
+                rowActions={extraColumns}
             />
         );
     } else {
@@ -871,12 +914,18 @@ const FollowUpsContent = () => {
                 locked={bucketLocked}
             />
 
+            {/* Summary header. */}
+            <FollowUpsEnhancedHeader allowed={isAdmin || isScopedCounsellor} />
+
             {/* View toggle on the left, counsellor filter on the right — this row
                 renders in both views, which the search toolbar below does not. */}
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <Tabs
-                    value={view}
-                    onValueChange={(v) => setView(v === 'calendar' ? 'calendar' : 'list')}
+                    value={agenda && view === 'list' ? 'agenda' : view}
+                    onValueChange={(v) => {
+                        setAgenda(v === 'agenda');
+                        setView(v === 'calendar' ? 'calendar' : 'list');
+                    }}
                     className={bucket === 'completed' ? 'invisible' : undefined}
                 >
                     <TabsList className="h-11 gap-1 rounded-xl border border-neutral-200 bg-card p-1">
@@ -893,6 +942,13 @@ const FollowUpsContent = () => {
                         >
                             <CalendarBlank className="size-4" />
                             {t('tabs.calendar')}
+                        </TabsTrigger>
+                        <TabsTrigger
+                            value="agenda"
+                            className="h-9 gap-1.5 rounded-lg px-4 text-body data-[state=active]:bg-primary-500 data-[state=active]:text-neutral-50 data-[state=active]:shadow-none"
+                        >
+                            <ListBullets className="size-4" />
+                            {tAgenda('followUps.agenda.tab')}
                         </TabsTrigger>
                     </TabsList>
                 </Tabs>
@@ -943,6 +999,16 @@ const FollowUpsContent = () => {
                     selection={utmFilters}
                     onChange={setUtmFilter}
                 />
+                {interestOptions.length > 0 && (
+                    <MultiSelectFilter
+                        label={t('filters.interestLevel')}
+                        icon={<Flame className="size-4 shrink-0 text-neutral-400" />}
+                        options={interestOptions.map((level) => ({ value: level, label: level }))}
+                        selected={activeInterests}
+                        onChange={setInterestFilters}
+                        widthClass="w-48"
+                    />
+                )}
                 {/* Completed has its own range below — it filters on when a follow-up
                     was closed, this one on when it is due. Today is one day already. */}
                 {bucket !== 'completed' && bucket !== 'today' && (
@@ -1123,6 +1189,7 @@ const FollowUpsContent = () => {
                         // permanently disabled (canSubmit requires it).
                         audienceResponseId={noteTarget.responseId}
                         initialActionType={noteTarget.initialActionType}
+                        onFollowUpScheduled={noteTarget.onFollowUpScheduled}
                         // Scheduling a follow-up changes followUpDueAt — refresh
                         // the queue so the new task appears without a reload.
                         onSuccess={() =>

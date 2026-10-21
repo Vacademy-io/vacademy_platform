@@ -7,6 +7,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.regional_pricing.service.RegionalPriceLock;
 import vacademy.io.admin_core_service.features.common.util.JsonUtil;
+import vacademy.io.admin_core_service.features.user_subscription.util.PlanValidityResolver;
 import vacademy.io.admin_core_service.features.institute.service.InstitutePaymentGatewayMappingService;
 import vacademy.io.admin_core_service.features.institute.service.InstitutePaymentGatewayMappingService.VendorInfo;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
@@ -220,6 +221,10 @@ public class SubscriptionService {
                 .planPrice(plan.getPaymentPlan() != null
                         ? RegionalPriceLock.listPrice(plan)
                         : null)
+                // Same resolver the renewal uses to extend end_date, so the period the
+                // learner is shown is the period they are actually charged for.
+                .planValidityDays(PlanValidityResolver.resolveValidityDays(plan))
+                .supportEmail(resolveSupportEmail(instituteId).orElse(null))
                 .vendorId(plan.getEnrollInvite() != null ? plan.getEnrollInvite().getVendorId() : null)
                 .canRenewManually(canRenewManually)
                 .canCompleteEnrollment(unfinishedSignup)
@@ -233,6 +238,49 @@ public class SubscriptionService {
                 .canChangePlan(planChange.canChangePlan())
                 .scheduledPlanChange(planChange.scheduledChange())
                 .build();
+    }
+
+    /**
+     * The institute's utility-email address, for "questions about your renewal" on the
+     * subscriptions screen.
+     *
+     * <p>Prefers {@code UTILITY_EMAIL.verification_identity} — the bare address SES was
+     * verified against — and falls back to {@code UTILITY_EMAIL.from}, which is usually
+     * written as {@code "Display Name <address@x>"} and has to be unwrapped. Same block
+     * DoubtNotificationService resolves its sender from.
+     *
+     * <p>Empty rather than a platform default on any failure: showing one institute's
+     * support address to another institute's learner is worse than showing none, and the
+     * screen drops the line when this is absent.
+     */
+    private java.util.Optional<String> resolveSupportEmail(String instituteId) {
+        try {
+            var institute = instituteRepository.findById(instituteId).orElse(null);
+            if (institute == null || !StringUtils.hasText(institute.getSetting())) {
+                return java.util.Optional.empty();
+            }
+            var utility = new com.fasterxml.jackson.databind.ObjectMapper()
+                    .readTree(institute.getSetting())
+                    .path("setting").path("EMAIL_SETTING").path("data").path("UTILITY_EMAIL");
+
+            String identity = utility.path("verification_identity").asText("").trim();
+            if (identity.contains("@")) {
+                return java.util.Optional.of(identity);
+            }
+            String from = utility.path("from").asText("").trim();
+            if (from.isEmpty()) {
+                return java.util.Optional.empty();
+            }
+            int lt = from.indexOf('<');
+            int gt = from.indexOf('>');
+            if (lt >= 0 && gt > lt + 1) {
+                return java.util.Optional.of(from.substring(lt + 1, gt).trim());
+            }
+            return from.contains("@") ? java.util.Optional.of(from) : java.util.Optional.empty();
+        } catch (Exception e) {
+            log.warn("Could not resolve support email for institute {}: {}", instituteId, e.getMessage());
+            return java.util.Optional.empty();
+        }
     }
 
     /**

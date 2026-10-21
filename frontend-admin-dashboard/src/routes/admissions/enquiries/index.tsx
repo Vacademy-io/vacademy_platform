@@ -19,7 +19,13 @@ import { Card } from '@/components/ui/card';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { EnquiryTable } from './-components/EnquiryTable';
 import { MyButton } from '@/components/design-system/button';
-import { Copy, Plus, X, Monitor } from '@phosphor-icons/react';
+import { Copy, Plus, X, Monitor, Tray } from '@phosphor-icons/react';
+import {
+    CountChip,
+    PillTabs,
+    ScreenHeader,
+    StatusPill,
+} from '@/components/shared/crm-enhance/screen-header';
 import createCampaignLink from '@/routes/audience-manager/list/-utils/createCampaignLink';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { FilterChips } from '@/components/design-system/chips';
@@ -232,6 +238,16 @@ function EnquiryPage() {
         return getDateRange(dateRangeFilters[0]?.id || '');
     }, [dateRangeFilters]);
 
+    // Built every render (not memoised) so labels follow the loaded catalog.
+    const QUICK_STATUS_IDS = ['NEW', 'CONTACTED', 'FOLLOW_UP', 'QUALIFIED', 'CONVERTED'];
+    const statusTabs = [
+        { key: 'ALL', label: t('quickViews.all') },
+        ...ENQUIRY_STATUSES.filter((s) => QUICK_STATUS_IDS.includes(s.id)).map((s) => ({
+            key: s.id,
+            label: s.label,
+        })),
+    ];
+
     // Check if any filter is active
     const hasActiveFilters =
         statusFilters.length > 0 ||
@@ -257,70 +273,118 @@ function EnquiryPage() {
     return (
         <div className="space-y-4">
             {/* Header */}
-            <div className="flex items-center justify-between">
-                <h1 className="text-2xl font-bold">{t('pageTitle')}</h1>
-                <div className="flex items-stretch gap-4">
-                    <Select value={selectedEnquiryId} onValueChange={setSelectedEnquiryId}>
-                        <SelectTrigger className="h-auto w-72 px-3 py-1.5">
-                            <SelectValue placeholder={t('selectEnquiryPlaceholder')} />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {enquiries.map((enquiry) => (
-                                <SelectItem key={enquiry.id} value={enquiry.id || ''}>
-                                    <div className="flex flex-col items-start gap-0.5 text-left">
-                                        <span className="text-sm font-medium">
-                                            {enquiry.campaign_name}
-                                        </span>
-                                        <span className="text-xs font-light text-muted-foreground">
-                                            {t('enquiryTypeLabel', { type: enquiry.campaign_type })}
-                                        </span>
-                                    </div>
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                    <MyButton
-                        buttonType="primary"
-                        scale="small"
-                        onClick={() =>
-                            navigate({ to: `/admissions/new-enquiry/${selectedEnquiryId}` })
-                        }
-                        className="h-full"
-                    >
-                        <Plus className="mr-1 size-4" />
-                        {t('addNewEnquiryResponse')}
-                    </MyButton>
-                    <MyButton
-                        buttonType="secondary"
-                        scale="small"
-                        onClick={handleCopy}
-                        className="h-full"
-                        title={t('copyLinkTitle')}
-                        aria-label={t('copyLinkTitle')}
-                    >
-                        {' '}
-                        {t('copyFormLink')}
-                        <Copy />
-                    </MyButton>
-                    {leadSettings.enabled && (
+            <ScreenHeader
+                icon={Tray}
+                title={t('pageTitle')}
+                subtitle={t('pageSubtitle')}
+                actions={
+                    <>
                         <MyButton
                             buttonType="secondary"
-                            scale="small"
-                            onClick={() => setIsWalkInOpen(true)}
-                            className="h-full"
-                            title={t('walkInRegisterTitle')}
-                            aria-label={t('walkInRegisterTitle')}
-                            disabled={!selectedEnquiryId}
+                            scale="medium"
+                            onClick={handleCopy}
+                            title={t('copyLinkTitle')}
+                            aria-label={t('copyLinkTitle')}
+                            className="gap-1.5"
                         >
-                            {t('walkInRegister')}
-                            <Monitor className="ml-1 size-4" />
+                            <Copy className="size-4" />
+                            {t('copyFormLink')}
                         </MyButton>
-                    )}
-                </div>
-            </div>
+                        {leadSettings.enabled && (
+                            <MyButton
+                                buttonType="secondary"
+                                scale="medium"
+                                onClick={() => setIsWalkInOpen(true)}
+                                title={t('walkInRegisterTitle')}
+                                aria-label={t('walkInRegisterTitle')}
+                                disabled={!selectedEnquiryId}
+                                className="gap-1.5"
+                            >
+                                <Monitor className="size-4" />
+                                {t('walkInRegister')}
+                            </MyButton>
+                        )}
+                        <MyButton
+                            buttonType="primary"
+                            scale="medium"
+                            onClick={() =>
+                                navigate({ to: `/admissions/new-enquiry/${selectedEnquiryId}` })
+                            }
+                            className="gap-1.5"
+                        >
+                            <Plus className="size-4" />
+                            {t('addNewEnquiryResponse')}
+                        </MyButton>
+                    </>
+                }
+            />
+
+            {/* Enquiry form picker — which form's responses the table shows */}
+            <Card className="flex flex-col gap-3 rounded-xl border-neutral-200 p-3 shadow-sm md:flex-row md:items-center">
+                <Select value={selectedEnquiryId} onValueChange={setSelectedEnquiryId}>
+                    <SelectTrigger className="h-auto w-full px-3 py-1.5 md:w-80">
+                        <SelectValue placeholder={t('selectEnquiryPlaceholder')} />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {enquiries.map((enquiry) => (
+                            <SelectItem key={enquiry.id} value={enquiry.id || ''}>
+                                <div className="flex flex-col items-start gap-0.5 text-left">
+                                    <span className="text-sm font-medium">
+                                        {enquiry.campaign_name}
+                                    </span>
+                                    <span className="text-xs font-light text-muted-foreground">
+                                        {t('enquiryTypeLabel', { type: enquiry.campaign_type })}
+                                    </span>
+                                </div>
+                            </SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+                {selectedEnquiry && (
+                    <div className="flex flex-wrap items-center gap-2">
+                        {selectedEnquiry.campaign_type && (
+                            <CountChip>
+                                {t('enquiryTypeLabel', { type: selectedEnquiry.campaign_type })}
+                            </CountChip>
+                        )}
+                        {selectedEnquiry.status && (
+                            <StatusPill
+                                tone={selectedEnquiry.status === 'ACTIVE' ? 'success' : 'neutral'}
+                            >
+                                {t('formStatus', {
+                                    status: selectedEnquiry.status.toLowerCase().replace(/_/g, ' '),
+                                })}
+                            </StatusPill>
+                        )}
+                    </div>
+                )}
+                <MyButton
+                    buttonType="secondary"
+                    scale="medium"
+                    onClick={() => setIsCreateDialogOpen(true)}
+                    className="gap-1.5 md:ms-auto"
+                >
+                    <Plus className="size-4" />
+                    {t('createNewEnquiryForm')}
+                </MyButton>
+            </Card>
+
+            {/* Quick status views — same single-select Status filter as the chip below */}
+            <PillTabs
+                tabs={statusTabs}
+                value={statusFilters[0]?.id ?? 'ALL'}
+                onChange={(key) => {
+                    if (key === 'ALL') {
+                        setStatusFilters([]);
+                        return;
+                    }
+                    const option = ENQUIRY_STATUSES.find((s) => s.id === key);
+                    if (option) setStatusFilters([option]);
+                }}
+            />
 
             {/* Filters Section */}
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-neutral-200 bg-white p-3 shadow-sm">
                 {/* Status Filter */}
                 <FilterChips
                     label={t('filters.status')}
@@ -431,12 +495,12 @@ function EnquiryPage() {
                                 // Inline style: tier colour is admin-picked hex (no design token).
                                 style={
                                     tierFilter === tier.id
-                                        ? { backgroundColor: tier.color, color: '#fff' }
+                                        ? { backgroundColor: tier.color }
                                         : undefined
                                 }
                                 className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                                     tierFilter === tier.id
-                                        ? ''
+                                        ? 'text-white'
                                         : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
                                 }`}
                             >
@@ -541,17 +605,6 @@ function EnquiryPage() {
                     <p className="text-muted-foreground">{t('selectEnquiryPrompt')}</p>
                 </Card>
             )}
-
-            {/* Disconnected Create Button */}
-            <div className="fixed bottom-8 right-8 z-50">
-                <Button
-                    onClick={() => setIsCreateDialogOpen(true)}
-                    className="h-12 rounded-full bg-primary-500 px-6 text-white shadow-xl transition-all hover:-translate-y-1 hover:bg-primary-600 hover:shadow-2xl md:h-14"
-                >
-                    <Plus className="mr-2 size-5" />
-                    {t('createNewEnquiryForm')}
-                </Button>
-            </div>
 
             {/* Create Enquiry Dialog */}
             <CreateEnquiryDialog isOpen={isCreateDialogOpen} onClose={handleCreateSuccess} />

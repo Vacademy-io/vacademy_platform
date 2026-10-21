@@ -5,6 +5,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.mock.web.MockHttpServletRequest;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 class AiCallingApiAuthTest {
 
@@ -46,5 +47,41 @@ class AiCallingApiAuthTest {
         assertEquals(HttpStatus.TOO_MANY_REQUESTS, e.getStatus());
         assertNotNull(e.getRetryAfterSeconds());
         auth.rateLimit("k2"); // another key is unaffected
+    }
+
+    @Test
+    void aLegacyKeyNeverGetsHumanCallScopes() {
+        var legacy = mock(vacademy.io.admin_core_service.features.telephony.apikey.AiCallApiKeyService.class);
+        var key = new vacademy.io.admin_core_service.features.telephony.apikey.entity.AiCallApiKey();
+        key.setId("old-1");
+        key.setInstituteId("inst-1");
+        when(legacy.verify("vak_live_abc")).thenReturn(key);
+        AiCallingApiAuth auth = new AiCallingApiAuth(null, legacy);
+        MockHttpServletRequest r = new MockHttpServletRequest();
+        r.addHeader("X-API-Key", "vak_live_abc");
+        assertEquals("inst-1", auth.authenticate(r, "calls:write").instituteId());
+        AiCallingApiException e = assertThrows(AiCallingApiException.class,
+                () -> auth.authenticate(r, "human_calls:write"));
+        assertEquals("insufficient_scope", e.getCode());
+        assertThrows(AiCallingApiException.class, () -> auth.authenticate(r, "human_calls:read"));
+    }
+
+    @Test
+    void authenticateAnyPassesWithAnyListedScopeOnly() {
+        var legacy = mock(vacademy.io.admin_core_service.features.telephony.apikey.AiCallApiKeyService.class);
+        var key = new vacademy.io.admin_core_service.features.telephony.apikey.entity.AiCallApiKey();
+        key.setId("old-1");
+        key.setInstituteId("inst-1");
+        when(legacy.verify("vak_live_abc")).thenReturn(key);
+        AiCallingApiAuth auth = new AiCallingApiAuth(null, legacy);
+        MockHttpServletRequest r = new MockHttpServletRequest();
+        r.addHeader("X-API-Key", "vak_live_abc");
+        assertEquals("inst-1", auth.authenticateAny(r, "agents:manage", "calls:read").instituteId());
+        // A legacy key has the default scopes only: never the v1.3 management scopes.
+        AiCallingApiException e = assertThrows(AiCallingApiException.class,
+                () -> auth.authenticateAny(r, "human_calls:read", "counsellors:manage"));
+        assertEquals("insufficient_scope", e.getCode());
+        assertEquals(HttpStatus.FORBIDDEN, e.getStatus());
+        assertThrows(AiCallingApiException.class, () -> auth.authenticate(r, "agents:manage"));
     }
 }

@@ -49,6 +49,7 @@ import vacademy.io.admin_core_service.features.user_subscription.repository.Paym
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentLog;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentLogLineItem;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
+import vacademy.io.admin_core_service.features.common.util.TemplateConditionals;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionRepository;
@@ -165,6 +166,9 @@ public class InvoiceService {
 
     @Autowired
     private vacademy.io.admin_core_service.features.enroll_invite.repository.PackageSessionLearnerInvitationToPaymentOptionRepository packageSessionInvitationRepository;
+
+    @Autowired
+    private vacademy.io.admin_core_service.features.invoice.util.CourseTagResolver courseTagResolver;
 
     @Autowired
     private InstituteSettingService instituteSettingService;
@@ -406,6 +410,28 @@ public class InvoiceService {
         // Only the mode ("Cash", "Cheque"): {{payment_method}} also names the account the money
         // went into, which an institute may not want printed on a learner's receipt.
         PLACEHOLDER_META.put("payment_mode", new PlaceholderMeta("Payment Mode", "RECEIPT", false, "text"));
+        // Single-item invoice layouts (one row: description / qty / unit price / amount) and the
+        // customer-details names an email-editor template uses. The aliases resolve to the same
+        // values as their canonical keys (customer_name = user_name, total = total_amount, ...);
+        // the item fields come from the plan line, see primaryLineItem. Read-only: the canonical
+        // keys are the editable ones.
+        PLACEHOLDER_META.put("customer_name", new PlaceholderMeta("Customer Name", "BILL TO", false, "text"));
+        PLACEHOLDER_META.put("customer_email", new PlaceholderMeta("Customer Email", "BILL TO", false, "text"));
+        PLACEHOLDER_META.put("practice_name", new PlaceholderMeta("Practice / Clinic Name", "BILL TO", false, "text"));
+        PLACEHOLDER_META.put("job_title", new PlaceholderMeta("Job Title", "BILL TO", false, "text"));
+        PLACEHOLDER_META.put("state", new PlaceholderMeta("State", "BILL TO", false, "text"));
+        PLACEHOLDER_META.put("customer_country", new PlaceholderMeta("Customer Country", "BILL TO", false, "text"));
+        PLACEHOLDER_META.put("date_issued", new PlaceholderMeta("Date Issued", "INVOICE", false, "date"));
+        PLACEHOLDER_META.put("date_paid", new PlaceholderMeta("Date Paid", "INVOICE", false, "date"));
+        PLACEHOLDER_META.put("abn", new PlaceholderMeta("ABN (Tax Registration No.)", "TAX", false, "text"));
+        PLACEHOLDER_META.put("invoice_item_description",
+                new PlaceholderMeta("Item Description", "ITEM", false, "text"));
+        PLACEHOLDER_META.put("invoice_item_tag", new PlaceholderMeta("Course Tags", "ITEM", false, "text"));
+        PLACEHOLDER_META.put("qty", new PlaceholderMeta("Quantity", "ITEM", false, "text"));
+        PLACEHOLDER_META.put("unit_price", new PlaceholderMeta("Unit Price", "ITEM", false, "text"));
+        PLACEHOLDER_META.put("amount", new PlaceholderMeta("Item Amount", "ITEM", false, "text"));
+        PLACEHOLDER_META.put("total", new PlaceholderMeta("Total", "AMOUNTS", false, "text"));
+        PLACEHOLDER_META.put("balance_due", new PlaceholderMeta("Balance Due", "AMOUNTS", false, "text"));
     }
 
     /**
@@ -2500,7 +2526,8 @@ public class InvoiceService {
      * Replace template placeholders with actual data
      */
     private String replaceTemplatePlaceholders(String template, InvoiceData invoiceData) {
-        String filled = template;
+        // {{#if key}}...{{/if}} blocks are resolved by this same substitution; see TemplateConditionals.
+        String filled = TemplateConditionals.prepare(template);
         // Institutes can supply their own INVOICE template, and those predate the proforma
         // tokens. Note what this template supports so the proforma marking can be injected
         // below rather than silently not happening. Checked against the RAW template, before
@@ -2774,6 +2801,37 @@ public class InvoiceService {
         // The whole sum, in one conditional block — see buildTotalsRowsHtml.
         filled = filled.replace("{{totals_rows}}", buildTotalsRowsHtml(invoiceData, currencySymbol));
 
+        // Customer-details aliases and the single-row item layout used by email-editor
+        // templates. Each mirrors an existing value above, so the two spellings never disagree.
+        filled = filled.replace("{{customer_name}}", ov.apply("user_name", user.getFullName()));
+        filled = filled.replace("{{customer_email}}", ov.apply("user_email", user.getEmail()));
+        filled = filled.replace("{{date_issued}}",
+                ov.apply("invoice_date", invoiceData.getInvoiceDate() != null
+                        ? invoiceData.getInvoiceDate().format(DISPLAY_DATE_FORMATTER) : ""));
+        filled = filled.replace("{{date_paid}}",
+                invoiceData.getPaymentDate() != null ? invoiceData.getPaymentDate().format(DISPLAY_DATE_FORMATTER)
+                        : "");
+        filled = filled.replace("{{abn}}", ov.apply("tax_registration_number", taxRegistrationNumber));
+        filled = filled.replace("{{total}}", currencySymbol + money(invoiceData.getTotalAmount()));
+        filled = filled.replace("{{balance_due}}", currencySymbol + money(balanceDue(invoiceData)));
+        filled = filled.replace("{{practice_name}}", escapeHtml(lpf.practiceName()));
+        filled = filled.replace("{{job_title}}", escapeHtml(lpf.jobTitle()));
+        filled = filled.replace("{{state}}", escapeHtml(lpf.state()));
+        filled = filled.replace("{{customer_country}}", escapeHtml(lpf.country()));
+        InvoiceLineItemData primaryItem = primaryLineItem(invoiceData.getLineItems());
+        filled = filled.replace("{{invoice_item_description}}",
+                primaryItem != null ? escapeHtml(nz(primaryItem.getDescription())) : "");
+        // The course's own tags ("Vet Course"), not the plan name. Only looked up when the template
+        // asks; blank when the course has none, so a {{#if invoice_item_tag}} block disappears.
+        filled = filled.replace("{{invoice_item_tag}}", template != null && template.contains("{{invoice_item_tag}}")
+                ? escapeHtml(courseTagResolver.tagsFor(invoiceData.getPaymentLog())) : "");
+        filled = filled.replace("{{qty}}", primaryItem != null
+                ? String.valueOf(primaryItem.getQuantity() != null ? primaryItem.getQuantity() : 1) : "");
+        filled = filled.replace("{{unit_price}}", primaryItem != null && primaryItem.getUnitPrice() != null
+                ? currencySymbol + money(primaryItem.getUnitPrice()) : "");
+        filled = filled.replace("{{amount}}", primaryItem != null && primaryItem.getAmount() != null
+                ? currencySymbol + money(primaryItem.getAmount()) : "");
+
         // Terms & Conditions
         String termsHtml = buildTermsAndConditionsHtml(invoiceData);
         if (termsHtml == null || termsHtml.trim().isEmpty()) {
@@ -2788,8 +2846,32 @@ public class InvoiceService {
             filled = filled.replace("{{terms_and_conditions}}", termsHtml);
         }
 
-        return applyProformaFallbackMarkup(filled, invoiceData,
+        return applyProformaFallbackMarkup(TemplateConditionals.finish(filled), invoiceData,
                 templateNamesDocument, templateShowsProformaRef);
+    }
+
+    /**
+     * The line a one-row invoice layout prints: the plan line, else the first line. Discount
+     * and tax lines are not items, they are folded into the totals.
+     */
+    static InvoiceLineItemData primaryLineItem(List<InvoiceLineItemData> lineItems) {
+        if (lineItems == null || lineItems.isEmpty()) {
+            return null;
+        }
+        for (InvoiceLineItemData item : lineItems) {
+            if (item != null && "PLAN".equalsIgnoreCase(item.getItemType())) {
+                return item;
+            }
+        }
+        return lineItems.get(0);
+    }
+
+    /** Nothing is owed once the invoice carries a payment date; until then, the whole total. */
+    static BigDecimal balanceDue(InvoiceData invoiceData) {
+        if (invoiceData == null || invoiceData.getPaymentDate() != null || invoiceData.getTotalAmount() == null) {
+            return BigDecimal.ZERO;
+        }
+        return invoiceData.getTotalAmount();
     }
 
     /**
@@ -3435,7 +3517,9 @@ public class InvoiceService {
             case "JPY":
                 return "¥";
             case "AUD":
-                return "$"; // Australian Dollar uses $ symbol
+                // "A$", like C$ / NZ$ / S$ below: a bare "$" reads as US dollars, and the payment
+                // confirmation email (PaymentNotificatonService) already prints A$.
+                return "A$";
             case "CAD":
                 return "C$";
             case "SGD":
@@ -3845,6 +3929,23 @@ public class InvoiceService {
             return;
         }
         generateInvoice(userPlan, paymentLog, instituteId);
+    }
+
+    /**
+     * {@link #generateInvoiceWithResult} for a payment that has ALREADY COMMITTED, reloaded in a
+     * fresh transaction — the result-returning twin of {@link #generateInvoiceForCommittedPayment}
+     * for callers that still need the PDF afterwards (the synchronous-gateway path attaches it to
+     * the payment-confirmation email). Returns null when the log or its plan is gone.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public InvoiceGenerationResult generateInvoiceWithResultForCommittedPayment(String paymentLogId,
+            String instituteId, boolean sendEmail) {
+        PaymentLog paymentLog = paymentLogRepository.findById(paymentLogId).orElse(null);
+        if (paymentLog == null || paymentLog.getUserPlan() == null || !StringUtils.hasText(instituteId)) {
+            log.warn("Skipping post-commit invoice for payment log {}: log, plan or institute missing", paymentLogId);
+            return null;
+        }
+        return generateInvoiceWithResult(paymentLog.getUserPlan(), paymentLog, instituteId, sendEmail);
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -6476,6 +6577,10 @@ public class InvoiceService {
                 : LearnerProfileFields.EMPTY;
         d.put("parent_name", lpf.parentName());
         d.put("year_group", lpf.yearGroup());
+        d.put("practice_name", lpf.practiceName());
+        d.put("job_title", lpf.jobTitle());
+        d.put("state", lpf.state());
+        d.put("customer_country", lpf.country());
 
         // Seed the receipt fields too, so the review step shows what the PDF will actually
         // print rather than an empty box next to every amount.
@@ -6870,9 +6975,10 @@ public class InvoiceService {
         return date != null ? date.getMonth().getDisplayName(java.time.format.TextStyle.FULL, Locale.ENGLISH) : "";
     }
 
-    /** Parent and year group as the learner's own custom fields hold them; "" when absent. */
-    record LearnerProfileFields(String parentName, String yearGroup) {
-        static final LearnerProfileFields EMPTY = new LearnerProfileFields("", "");
+    /** Learner-profile values as the learner's own custom fields hold them; "" when absent. */
+    record LearnerProfileFields(String parentName, String yearGroup, String practiceName, String jobTitle,
+                                String state, String country) {
+        static final LearnerProfileFields EMPTY = new LearnerProfileFields("", "", "", "", "", "");
     }
 
     /**
@@ -6899,10 +7005,25 @@ public class InvoiceService {
                 "year level").contains(n)) {
             return "year_group";
         }
+        // A practice-membership customer is a person at a clinic: "Clinic Name", "Practice Name".
+        if (Set.of("clinic name", "practice name", "clinic", "practice").contains(n)) {
+            return "practice_name";
+        }
+        if (Set.of("job title", "job role", "designation").contains(n)) {
+            return "job_title";
+        }
+        // Exact names only: "State" must not catch "Statement" or "Estate Name".
+        if (Set.of("state", "state territory", "state province", "province").contains(n)) {
+            return "state";
+        }
+        if (Set.of("country", "country of residence").contains(n)) {
+            return "customer_country";
+        }
         return null;
     }
 
-    private static final List<String> LEARNER_PROFILE_PLACEHOLDERS = List.of("{{parent_name}}", "{{year_group}}");
+    private static final List<String> LEARNER_PROFILE_PLACEHOLDERS = List.of("{{parent_name}}", "{{year_group}}",
+            "{{practice_name}}", "{{job_title}}", "{{state}}", "{{customer_country}}");
 
     /** Whether a template asks for a value that needs the learner's custom fields. */
     static boolean usesLearnerProfileFields(String template) {
@@ -6918,7 +7039,7 @@ public class InvoiceService {
     }
 
     /**
-     * Parent name and year group from the billed learner's custom fields in this institute.
+     * Parent name, year group, practice, job title, state and country from the billed learner's custom fields in this institute.
      * The newest answer wins (the query is newest first). Never throws: a failed lookup leaves
      * the fields blank for the admin to fill in, rather than failing the invoice.
      */
@@ -6932,6 +7053,7 @@ public class InvoiceService {
                     "USER", List.of(invoiceData.getUser().getId()), invoiceData.getInstitute().getId());
             String parentName = "";
             String yearGroup = "";
+            Map<String, String> extra = new HashMap<>();
             for (Object[] row : rows) {
                 // [sourceId, customFieldId, fieldKey, fieldName, fieldType, value, sourceType]
                 String value = row[5] != null ? row[5].toString().trim() : "";
@@ -6943,11 +7065,15 @@ public class InvoiceService {
                     parentName = value;
                 } else if ("year_group".equals(target) && yearGroup.isEmpty()) {
                     yearGroup = value;
+                } else if (target != null) {
+                    extra.putIfAbsent(target, value);
                 }
             }
-            return new LearnerProfileFields(parentName, yearGroup);
+            return new LearnerProfileFields(parentName, yearGroup, extra.getOrDefault("practice_name", ""),
+                    extra.getOrDefault("job_title", ""), extra.getOrDefault("state", ""),
+                    extra.getOrDefault("customer_country", ""));
         } catch (Exception e) {
-            log.warn("Could not read parent / year group custom fields for user {}: {}",
+            log.warn("Could not read learner-profile custom fields for user {}: {}",
                     invoiceData.getUser().getId(), e.getMessage());
             return LearnerProfileFields.EMPTY;
         }

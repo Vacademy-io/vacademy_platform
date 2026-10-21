@@ -97,6 +97,38 @@ class AiCallingUsageServiceTest {
                 "l.provider_type IN ('PLIVO', 'VACADEMY_AI')"), any(MapSqlParameterSource.class));
     }
 
+    @Test
+    void humanCallFiguresAreAddedAfterTheAiFields() {
+        NamedParameterJdbcTemplate jdbc = mock(NamedParameterJdbcTemplate.class);
+        when(jdbc.queryForList(anyString(), any(MapSqlParameterSource.class))).thenAnswer(inv -> {
+            String sql = inv.getArgument(0);
+            if (sql.contains("human_call_api_call")) {
+                return List.of(Map.of("day", "2026-10-14", "calls", 5L, "connected", 4L, "seconds", 600L,
+                        "credits", new BigDecimal("10.00"), "unbilled", 0L));
+            }
+            return List.of(Map.of("day", "2026-10-14", "calls", 3L, "connected", 2L, "seconds", 180L,
+                    "credits", new BigDecimal("20.00"), "unbilled", 1L));
+        });
+        AiCallingUsageService usage = new AiCallingUsageService(jdbc, null);
+        Map<String, Object> out = usage.usage("inst-1", "2026-10-14", "2026-10-14", "UTC", "api");
+        // v1.1 keys unchanged and in order; human_calls only appended.
+        assertEquals(List.of("object", "source", "from", "to", "timezone", "totals", "days", "human_calls"),
+                List.copyOf(out.keySet()));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> ai = (Map<String, Object>) out.get("totals");
+        assertEquals(3L, ai.get("calls"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> human = (Map<String, Object>) ((Map<String, Object>) out.get("human_calls")).get("totals");
+        assertEquals(5L, human.get("calls"));
+        assertEquals(4L, human.get("connected"));
+        assertEquals(600L, human.get("talk_seconds"));
+        assertEquals(10.0, human.get("credits"));
+        // Placed calls only: uploaded recordings (provider MANUAL) are not human calls placed.
+        verify(jdbc).queryForList(argThatSqlMentions("l.counsellor_user_id IS NOT NULL",
+                "l.provider_type IN ('PLIVO', 'EXOTEL', 'AIRTEL')", "'voice_call:' || logs.id"),
+                any(MapSqlParameterSource.class));
+    }
+
     private static String argThatSqlMentions(String... parts) {
         return org.mockito.ArgumentMatchers.argThat(sql -> {
             for (String part : parts) if (sql == null || !sql.contains(part)) return false;

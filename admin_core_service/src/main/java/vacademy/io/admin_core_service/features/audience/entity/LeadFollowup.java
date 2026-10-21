@@ -63,6 +63,10 @@ public class LeadFollowup {
     @Column(name = "next_action")
     private String nextAction;
 
+    /** How warm the lead sounded on this follow-up - its own record, not the lead's tier. */
+    @Column(name = "interest_level")
+    private String interestLevel;
+
     @Column(name = "closer_reason", columnDefinition = "TEXT")
     private String closerReason;
 

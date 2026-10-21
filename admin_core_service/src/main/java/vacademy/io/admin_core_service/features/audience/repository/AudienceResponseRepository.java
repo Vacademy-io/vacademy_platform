@@ -92,6 +92,90 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("last10") String last10);
 
         /**
+         * Does this lead (audience_response) belong to a campaign of this institute? The
+         * telephony click-to-call loads a lead by the id the browser sends; without this a
+         * counsellor of one institute could dial (and file a call under) another
+         * institute's lead by its UUID.
+         */
+        @Query(value = """
+                SELECT COUNT(*) > 0
+                FROM audience_response ar
+                JOIN audience a ON a.id = ar.audience_id
+                WHERE ar.id = :responseId
+                  AND a.institute_id = :instituteId
+                """, nativeQuery = true)
+        boolean isLeadInInstitute(@Param("responseId") String responseId,
+                        @Param("instituteId") String instituteId);
+
+        /**
+         * Does this campaign-less lead belong to this institute through its application?
+         * Admission / application leads are created with audience_id NULL (ApplicantService,
+         * AdmissionService), so {@link #isLeadInInstitute} cannot place them; their institute
+         * is the one owning the applicant's current application stage
+         * (audience_response.applicant_id → applicant.application_stage_id →
+         * application_stage.institute_id, the same rule ApplicantRepository filters by).
+         * applicant / application_stage ids are UUIDs and the referencing columns VARCHAR: a
+         * value that is not a UUID joins nothing instead of failing the cast, and a UUID one
+         * uses the primary keys.
+         */
+        @Query(value = """
+                SELECT COUNT(*) > 0
+                FROM audience_response ar
+                JOIN applicant ap ON ap.id = CASE
+                        WHEN length(ar.applicant_id) = 36
+                         AND ar.applicant_id ~* '^[0-9a-f]+-[0-9a-f]+-[0-9a-f]+-[0-9a-f]+-[0-9a-f]+$'
+                        THEN CAST(ar.applicant_id AS uuid) END
+                JOIN application_stage s ON s.id = CASE
+                        WHEN length(ap.application_stage_id) = 36
+                         AND ap.application_stage_id ~* '^[0-9a-f]+-[0-9a-f]+-[0-9a-f]+-[0-9a-f]+-[0-9a-f]+$'
+                        THEN CAST(ap.application_stage_id AS uuid) END
+                WHERE ar.id = :responseId
+                  AND ar.audience_id IS NULL
+                  AND s.institute_id = :instituteId
+                """, nativeQuery = true)
+        boolean isApplicantLeadInInstitute(@Param("responseId") String responseId,
+                        @Param("instituteId") String instituteId);
+
+        /**
+         * Up to two live leads of this institute whose {@code parent_mobile} matches on the
+         * last 10 digits — {@code [audience_response.id, user_id]}. Two rows means the
+         * number is ambiguous: the public human-call API links a call to a lead only when
+         * exactly one matches, so it never files a call on the wrong person's timeline.
+         * Duplicates and soft-deleted (INACTIVE) leads are skipped.
+         */
+        @Query(value = """
+                SELECT ar.id, ar.user_id
+                FROM audience_response ar
+                JOIN audience a ON a.id = ar.audience_id
+                WHERE a.institute_id = :instituteId
+                  AND ar.parent_mobile IS NOT NULL
+                  AND RIGHT(regexp_replace(ar.parent_mobile, '[^0-9]', '', 'g'), 10) = :last10
+                  AND (ar.is_duplicate IS NULL OR ar.is_duplicate = false)
+                  AND (ar.audience_status IS NULL OR ar.audience_status <> 'INACTIVE')
+                ORDER BY ar.created_at DESC
+                LIMIT 2
+                """, nativeQuery = true)
+        List<Object[]> findUpToTwoLiveLeadsByInstituteAndPhoneLast10(
+                        @Param("instituteId") String instituteId,
+                        @Param("last10") String last10);
+
+        /** Up to two live lead ids of this user in this institute (same filters as above). */
+        @Query(value = """
+                SELECT ar.id
+                FROM audience_response ar
+                JOIN audience a ON a.id = ar.audience_id
+                WHERE a.institute_id = :instituteId
+                  AND ar.user_id = :userId
+                  AND (ar.is_duplicate IS NULL OR ar.is_duplicate = false)
+                  AND (ar.audience_status IS NULL OR ar.audience_status <> 'INACTIVE')
+                ORDER BY ar.created_at DESC
+                LIMIT 2
+                """, nativeQuery = true)
+        List<String> findUpToTwoLiveLeadIdsByInstituteAndUser(
+                        @Param("instituteId") String instituteId,
+                        @Param("userId") String userId);
+
+        /**
          * The lead a WhatsApp chatbot flow should treat as "this person is already a lead":
          * any lead in the institute (any list) whose {@code parent_mobile} matches on the last
          * 10 digits. Opted-out leads count — someone who opted out and writes again is still a

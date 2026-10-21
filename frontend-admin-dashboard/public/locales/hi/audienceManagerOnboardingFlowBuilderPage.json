@@ -44,5 +44,34 @@
         "removeError": "चरण हटाया नहीं जा सका।",
         "flowActivated": "फ़्लो सक्रिय कर दिया गया",
         "activateError": "फ़्लो सक्रिय नहीं किया जा सका।"
+    },
+    "sections": {
+        "steps": "चरण",
+        "stepsDragHint": "क्रम बदलने के लिए हैंडल खींचें",
+        "howItRuns": "यह कैसे चलता है",
+        "people": "इस फ़्लो पर लोग"
+    },
+    "meta": {
+        "fields_one": "{{count}} फ़ील्ड",
+        "fields_other": "{{count}} फ़ील्ड",
+        "roleEdit": "{{role}} संपादन",
+        "roleView": "{{role}} देखना"
+    },
+    "flow": {
+        "startTitle": "प्रोफ़ाइल से शुरू",
+        "startText": "कोई इस फ़्लो को लीड या {{learner}} की प्रोफ़ाइल पर चुनता है",
+        "optional": "वैकल्पिक — छोड़ा जा सकता है",
+        "required": "अनिवार्य",
+        "doneTitle": "ऑनबोर्डिंग पूरी",
+        "doneText": "इंस्टेंस को पूरा चिह्नित किया जाता है"
+    },
+    "people": {
+        "unavailable": "गिनती अभी उपलब्ध नहीं है।",
+        "status": {
+            "IN_PROGRESS": "जारी",
+            "COMPLETED": "पूरा",
+            "ABANDONED": "छोड़ा गया",
+            "CANCELLED": "रद्द"
+        }
     }
 }

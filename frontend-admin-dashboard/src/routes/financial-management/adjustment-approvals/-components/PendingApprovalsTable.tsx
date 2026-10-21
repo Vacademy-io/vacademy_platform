@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { AdjustmentsSummary } from './AdjustmentsSummary';
 import { toast } from 'sonner';
 import dayjs from 'dayjs';
 import { Check, X } from '@phosphor-icons/react';
@@ -73,6 +74,8 @@ export function PendingApprovalsTable() {
     }
 
     return (
+        <>
+            <AdjustmentsSummary items={pending} />
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
             <div className="overflow-auto">
                 <table className="w-full text-left border-collapse min-w-[800px]">
@@ -205,5 +208,6 @@ export function PendingApprovalsTable() {
                 </table>
             </div>
         </div>
+        </>
     );
 }

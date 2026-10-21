@@ -18,14 +18,17 @@
         "retry": "पुनः प्रयास करें",
         "cancel": "रद्द करें",
         "deleting": "हटाया जा रहा है…",
-        "deleteFlow": "फ़्लो हटाएं"
+        "deleteFlow": "फ़्लो हटाएं",
+        "settings": "ऑनबोर्डिंग सेटिंग्स"
     },
     "columns": {
         "name": "नाम",
         "description": "विवरण",
         "status": "स्थिति",
         "steps": "चरण",
-        "actions": "कार्रवाइयाँ"
+        "actions": "कार्रवाइयाँ",
+        "noSteps": "अभी कोई चरण नहीं",
+        "updated": "अपडेट किया गया"
     },
     "statusLabels": {
         "draft": "ड्राफ़्ट",
@@ -46,5 +49,18 @@
     "toasts": {
         "deleted": "ऑनबोर्डिंग फ़्लो हटा दिया गया",
         "deleteError": "फ़्लो हटाया नहीं जा सका। कृपया पुनः प्रयास करें।"
+    },
+    "summary": {
+        "activeFlows": "सक्रिय फ़्लो",
+        "drafts_one": "{{count}} ड्राफ़्ट अभी लाइव नहीं",
+        "drafts_other": "{{count}} ड्राफ़्ट अभी लाइव नहीं",
+        "inProgress": "जारी",
+        "inProgressDetail": "फ़्लो के बीच में चल रहे लोग",
+        "completed": "पूरा",
+        "abandoned": "छोड़ा गया"
+    },
+    "table": {
+        "title": "फ़्लो",
+        "subtitle": "फ़्लो हटाने पर वह संग्रहित हो जाता है — जो लोग उस पर हैं, वे आगे बढ़ते रहते हैं।"
     }
 }

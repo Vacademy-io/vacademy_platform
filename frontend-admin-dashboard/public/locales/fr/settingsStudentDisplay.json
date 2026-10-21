@@ -89,7 +89,10 @@
         "cardDescription": "Interactions globales des cours",
         "moveOnlyOnCorrect": "Avancer uniquement en cas de bonne réponse",
         "celebrateOnComplete": "Célébrer à la fin du quiz",
-        "showReportAndAnswers": "Afficher le rapport et les bonnes réponses"
+        "showReportAndAnswers": "Afficher le rapport et les bonnes réponses",
+        "assignmentHeading": "Devoir",
+        "hideAttemptsAllowed": "Masquer « Tentatives autorisées » sur les devoirs",
+        "hideRepeatedTitle": "Masquer le titre du devoir lorsqu'il répète le nom de la diapositive"
     },
     "permissions": {
         "cardTitle": "Autorisations",
@@ -114,6 +117,7 @@
         "hideAuthorName": "Masquer le nom de l'auteur (page des détails du cours)",
         "showTeachers": "Afficher les enseignants (page des détails du cours)",
         "showCourseConfiguration": "Afficher la configuration du cours",
+        "hideTags": "Masquer les étiquettes du cours (ENGLISH, E-LEARNING…) au-dessus du titre",
         "showCourseContentPrefixes": "Afficher les préfixes du contenu du cours",
         "courseOverviewVisible": "Aperçu du cours visible",
         "showSlidesData": "Afficher les données des diapositives",
@@ -136,6 +140,8 @@
         "cardTitle": "Page Tous les cours",
         "cardDescription": "Onglets et sélection par défaut",
         "hideInstructorName": "Masquer le nom du formateur (cartes de cours)",
+        "pageSize": "Cours par page dans la liste Tous les cours",
+        "showAllEnrolledOnDashboard": "Tableau de bord « My courses » : afficher tous les cours inscrits, pas seulement les 4 premiers",
         "addCustomTab": "+ Ajouter un onglet personnalisé",
         "customTabLabelPlaceholder": "ex. Cours gratuits",
         "customTabTags": "Afficher les cours ayant l'un de ces tags",

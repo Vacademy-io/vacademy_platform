@@ -11,7 +11,8 @@ import { useChatbotPanelStore } from "@/stores/chatbot/useChatbotPanelStore";
 import type { FabPosition, FabSide } from "@/stores/chatbot/useChatbotPanelStore";
 import { cn } from "@/lib/utils";
 import { useChatbotAvatarUrl } from "@/services/chatbot-settings";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { LauncherPeek } from "./LauncherPeek";
 
 // Fallbacks when the institute hasn't configured launcher_settings
 const DEFAULT_NUDGE_INTERVAL_S = 120; // reveal the pill once every 2 minutes
@@ -28,8 +29,10 @@ const isValidFabPosition = (p: FabPosition | null): p is FabPosition =>
 export const ChatbotFloatingButton = () => {
   const avatarUrl = useChatbotAvatarUrl();
   const { t } = useTranslation("chatFeatureB");
-  const { isOpen, setIsOpen, shouldShowChatbot, chatbotSettings } =
+  const { isOpen, setIsOpen, shouldShowChatbot, chatbotSettings, voiceMode } =
     useChatbotContext();
+  const reduceMotion = useReducedMotion();
+  const [isPeekVisible, setIsPeekVisible] = useState(false);
 
   const ROTATING_MESSAGES = [
     { text: t("floatingButton.nudgeMessages.doubts"), icon: Question },
@@ -193,12 +196,17 @@ export const ChatbotFloatingButton = () => {
   }, [nudgeEnabled, nudgeIntervalMs, nudgeDurationMs]);
 
 
+  const isTutorRoute = location.pathname.includes("/course-details/tutor");
+  // The launcher peek only speaks while the launcher is idle on screen.
+  const peekEnabled =
+    !isOpen && !voiceMode && !isDoubtSidebarOpen && !isTutorRoute && !isDragging && shouldShowChatbot();
+
   if (!shouldShowChatbot()) {
     return null;
   }
 
   // The Live AI Tutor is its own conversation: no second assistant on screen.
-  if (location.pathname.includes("/course-details/tutor")) {
+  if (isTutorRoute) {
     return null;
   }
 
@@ -218,7 +226,7 @@ export const ChatbotFloatingButton = () => {
   // Don't expand the launcher (hover/pill) while it's being dragged
   // The pill only expands on the 2-minute timer (showPill) — deliberately NOT on
   // hover, so it can't get stuck open under the cursor / a stale touch-hover.
-  const isExpanded = showPill && !isDragging;
+  const isExpanded = showPill && !isDragging && !isPeekVisible;
 
   // Only honor a saved position when dragging is enabled and it matches the
   // current { side, yRatio } shape; otherwise fall back to the default corner.
@@ -247,6 +255,8 @@ export const ChatbotFloatingButton = () => {
     alignEnd = !isLeft;
   }
 
+  const peekBelow = !dragPos && !!savedPosition && savedPosition.yRatio < 0.35;
+
   return (
     <div
       style={positionStyle}
@@ -262,15 +272,31 @@ export const ChatbotFloatingButton = () => {
         !hasCustomPosition && isNativePlatform && "mb-10"
       )}
     >
+      {/* Out of the flow, so the bubble never moves the launcher; below it
+          when the launcher was parked near the top of the screen. */}
+      <div
+        className={cn(
+          "absolute",
+          peekBelow ? "top-full mt-3" : "bottom-full mb-3",
+          alignEnd ? "end-0" : "start-0",
+        )}
+      >
+        <LauncherPeek
+          enabled={peekEnabled}
+          alignEnd={alignEnd}
+          below={peekBelow}
+          onVisibleChange={setIsPeekVisible}
+        />
+      </div>
 
       <motion.div
         ref={wrapRef}
         className="pointer-events-auto relative"
         // Bounce the whole launcher while the nudge pill is showing, to catch
         // the eye — only when enabled and not mid-drag.
-        animate={showPill && bounceEnabled && !isDragging ? { y: [0, -12, 0, -6, 0] } : { y: 0 }}
+        animate={isExpanded && bounceEnabled && !reduceMotion ? { y: [0, -12, 0, -6, 0] } : { y: 0 }}
         transition={
-          showPill && bounceEnabled && !isDragging
+          isExpanded && bounceEnabled && !reduceMotion
             ? { duration: 1, ease: "easeInOut", repeat: Infinity, repeatDelay: 0.6 }
             : { duration: 0.25 }
         }
@@ -279,8 +305,8 @@ export const ChatbotFloatingButton = () => {
           <motion.div
             className="absolute inset-0 rounded-full bg-primary/30"
             animate={{
-              scale: isDragging ? 1 : [1, 1.3, 1],
-              opacity: isDragging ? 0 : [0.6, 0, 0.6],
+              scale: isDragging || reduceMotion ? 1 : [1, 1.3, 1],
+              opacity: isDragging || reduceMotion ? 0 : [0.6, 0, 0.6],
             }}
             transition={{
               duration: 2,
@@ -362,7 +388,7 @@ export const ChatbotFloatingButton = () => {
           
           {/* Notification Dot (Optional - just visual flair) */}
           <motion.div
-            className="absolute top-0 end-0 w-3 h-3 bg-red-500 rounded-full border-2 border-white z-10"
+            className="absolute top-0 end-0 w-3 h-3 bg-danger-500 rounded-full border-2 border-background z-10"
             initial={{ scale: 0 }}
             animate={{ scale: isExpanded ? 0 : 1 }}
           />

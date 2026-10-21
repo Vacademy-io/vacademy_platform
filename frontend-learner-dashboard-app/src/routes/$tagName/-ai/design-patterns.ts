@@ -379,15 +379,21 @@ export const DESIGN_PATTERNS: DesignPattern[] = [
     requires: [
       { kind: "courseFormats", detail: "source 'courseFormats' lists globalSettings.courseFormats" },
       { kind: "courseTags", detail: "authored options match course tags (e.g. for-parents) or level names" },
+      { kind: "courseTags", detail: "source 'tags' also lists every course tag starting with its prefix (\"for parents\" → Parents)" },
     ],
     bound: [],
     i18n: "mixed",
     reviewAs: ["content"],
-    pitfalls: ["Each group id is also its ?<id>= URL parameter; option ids are slugs.", "Zero-count options stay listed, greyed, unless showEmpty is false."],
+    pitfalls: [
+      "Each group id is also its ?<id>= URL parameter; option ids are slugs.",
+      "An option no course has is not listed; one that is 0 only under other filters stays, greyed, unless showEmpty is false.",
+      "A source 'tags' group needs a prefix; with none it is an authored group.",
+    ],
     minimal: {
       customFilters: [
         { id: "format", label: "Format", source: "courseFormats" },
         { id: "for", label: "For", source: "options", options: [{ id: "parents", label: "Parents", tags: ["for-parents"] }] },
+        { id: "audience", label: "Audience", source: "tags", prefix: "for", exclude: ["everyone"] },
       ],
     },
     fullFrom: { fixture: "brahm-varchas-site", pointer: CATALOG_FIXTURE_ROOT, pick: ["customFilters"] },

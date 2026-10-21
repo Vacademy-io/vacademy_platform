@@ -41,5 +41,19 @@
         "cancel": "Annuler",
         "creating": "Création…",
         "createAssessment": "Créer l'évaluation"
+    },
+    "review": {
+        "ai": {
+            "title": "Réglages de la correction IA",
+            "hint": "Matière, classe, votre barème et le signalement des fautes, pour chaque copie de ce test."
+        },
+        "criteria": {
+            "none": "Pas encore de critères : l'IA les rédige à la première correction",
+            "edited": "Modifié",
+            "edit": "Modifier les critères"
+        }
+    },
+    "retrofit": {
+        "criteriaNotSaved": "La correction IA est activée, mais les critères ou réglages n'ont pas pu être enregistrés. Définissez-les depuis l'onglet Submissions → Check submitted copies."
     }
 }

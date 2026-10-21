@@ -280,7 +280,8 @@ public class CallSearchService {
                    tcl.disposition_key, tcl.disposition_notes, tcl.dispositioned_at, tcl.created_at,
                    tcl.ivr_selection,
                    COALESCE(ar.parent_name, CASE WHEN tcl.subject_type = 'API_CONTACT'
-                       THEN (SELECT api.contact_name FROM ai_call_api_call api WHERE api.id = tcl.subject_id) END)
+                       THEN COALESCE((SELECT api.contact_name FROM ai_call_api_call api WHERE api.id = tcl.subject_id),
+                                     (SELECT h.contact_name FROM human_call_api_call h WHERE h.id = tcl.subject_id)) END)
                        AS lead_name,
                    acr.ai_disposition AS ai_disposition,
                    acr.diag_health AS diag_health,
@@ -513,8 +514,12 @@ public class CallSearchService {
             params.addValue("toNumber", f.getToNumber().trim());
         }
         if (notBlank(f.getLeadName())) {
-            sb.append(" AND (ar.parent_name ILIKE :leadName OR (tcl.subject_type = 'API_CONTACT' AND EXISTS ("
-                    + "SELECT 1 FROM ai_call_api_call api WHERE api.id = tcl.subject_id AND api.contact_name ILIKE :leadName)))");
+            // API contacts (AI calls and human click-to-calls placed through the public API)
+            // carry their name on the API row, not on a lead.
+            sb.append(" AND (ar.parent_name ILIKE :leadName OR (tcl.subject_type = 'API_CONTACT' AND (EXISTS ("
+                    + "SELECT 1 FROM ai_call_api_call api WHERE api.id = tcl.subject_id AND api.contact_name ILIKE :leadName)"
+                    + " OR EXISTS (SELECT 1 FROM human_call_api_call h WHERE h.id = tcl.subject_id"
+                    + " AND h.contact_name ILIKE :leadName))))");
             params.addValue("leadName", "%" + f.getLeadName().trim() + "%");
         }
         if (f.getHasRecording() != null) {

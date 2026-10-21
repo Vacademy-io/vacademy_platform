@@ -70,6 +70,8 @@ export interface RecentLeadDetail {
     follow_up_student_response?: string | null;
     follow_up_mode?: string | null;
     follow_up_next_action?: string | null;
+    /** Interest level on that same open follow-up. */
+    follow_up_interest_level?: string | null;
 }
 
 export interface RecentLeadsResponse {
@@ -115,6 +117,8 @@ export interface RecentLeadsRequest {
      *  it because "today" is the user's day, not the server's. */
     follow_up_from?: string;
     follow_up_to?: string;
+    /** Follow-ups page: only leads whose OPEN follow-up has one of these interest levels. */
+    follow_up_interest_levels?: string[];
     // Conversion-state filter — defaults to EXCLUDE_CONVERTED on the backend so
     // leads that have been enrolled into a course don't pollute the active list.
     conversion_status_filter?: 'EXCLUDE_CONVERTED' | 'ONLY_CONVERTED' | 'ALL';

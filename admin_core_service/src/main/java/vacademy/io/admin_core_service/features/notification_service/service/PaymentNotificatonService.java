@@ -1,6 +1,7 @@
 
 package vacademy.io.admin_core_service.features.notification_service.service;
 
+import vacademy.io.admin_core_service.features.common.util.TemplateConditionals;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -67,6 +68,9 @@ public class PaymentNotificatonService {
 
     @Autowired
     private InvoiceAdminCopyRecipientResolver invoiceAdminCopyRecipientResolver;
+
+    @Autowired
+    private vacademy.io.admin_core_service.features.invoice.util.CourseTagResolver courseTagResolver;
 
     public boolean sendPaymentConfirmationNotification(
             String instituteId,
@@ -188,7 +192,8 @@ public class PaymentNotificatonService {
         NotificationTemplateVariables templateVars = buildPaymentConfirmationVariables(
                 institute, userDTO, paymentInitiationRequestDTO, paymentResponseDTO,
                 invoiceNumber, courseName, paymentLog, invoicePdfBytes, orderAmounts);
-        Map<String, String> variables = sendUniqueLinkService.buildVariablesMap(template, templateVars);
+        Map<String, String> variables = withReceiptAliases(
+                sendUniqueLinkService.buildVariablesMap(template, templateVars), courseTagResolver.tagsFor(paymentLog));
 
         String emailBody = applyVariables(template.getContent(), variables);
         String subject = StringUtils.hasText(template.getSubject())
@@ -484,11 +489,31 @@ public class PaymentNotificatonService {
         if (!StringUtils.hasText(content)) {
             return content;
         }
-        String filled = content;
+        // {{#if key}}...{{/if}} blocks are resolved by this same substitution; see TemplateConditionals.
+        String filled = TemplateConditionals.prepare(content);
         for (Map.Entry<String, String> var : variables.entrySet()) {
             filled = filled.replace("{{" + var.getKey() + "}}", var.getValue() != null ? var.getValue() : "");
         }
-        return filled;
+        return TemplateConditionals.finish(filled);
+    }
+
+    /**
+     * The names an email-editor receipt template uses for values this email already carries, so
+     * such a template fills without being rewritten: customer_name, amount_paid (with the currency
+     * symbol), payment_received_date, invoice_item_description (the course) and invoice_item_tag
+     * (the course's tags, e.g. "Vet Course"; blank when it has none). Keys the variables map
+     * already holds are left alone.
+     */
+    static Map<String, String> withReceiptAliases(Map<String, String> variables, String courseTags) {
+        Map<String, String> out = new HashMap<>(variables != null ? variables : Map.of());
+        String amount = out.getOrDefault("amount", "");
+        out.putIfAbsent("customer_name", out.getOrDefault("user_full_name", ""));
+        out.putIfAbsent("amount_paid", StringUtils.hasText(amount)
+                ? out.getOrDefault("currency_symbol", "") + amount : "");
+        out.putIfAbsent("payment_received_date", out.getOrDefault("payment_date", ""));
+        out.putIfAbsent("invoice_item_description", out.getOrDefault("course_name", ""));
+        out.putIfAbsent("invoice_item_tag", courseTags != null ? courseTags : "");
+        return out;
     }
 
     /**

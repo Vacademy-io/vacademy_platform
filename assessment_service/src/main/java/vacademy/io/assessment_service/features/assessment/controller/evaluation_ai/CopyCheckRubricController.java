@@ -6,6 +6,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -17,8 +18,11 @@ import org.springframework.web.bind.annotation.RestController;
 import vacademy.io.assessment_service.features.assessment.entity.CopyCheckLayout;
 import vacademy.io.assessment_service.features.assessment.repository.CopyCheckLayoutRepository;
 import vacademy.io.assessment_service.features.assessment.client.AiServiceCopyCheckClient;
+import vacademy.io.assessment_service.features.assessment.service.evaluation_ai.CopyCheckCriteriaService;
 import vacademy.io.assessment_service.features.assessment.service.evaluation_ai.EvaluationAccessValidator;
 import vacademy.io.common.auth.model.CustomUserDetails;
+
+import java.util.Map;
 
 /**
  * FE-facing rubric CRUD + layout fetch. The rubric mutations proxy to
@@ -41,6 +45,7 @@ public class CopyCheckRubricController {
     private final AiServiceCopyCheckClient aiServiceClient;
     private final CopyCheckLayoutRepository layoutRepository;
     private final EvaluationAccessValidator accessValidator;
+    private final CopyCheckCriteriaService criteriaService;
 
     @GetMapping("/rubric/{assessmentId}")
     public ResponseEntity<JsonNode> getRubric(@RequestAttribute("user") CustomUserDetails user,
@@ -94,6 +99,35 @@ public class CopyCheckRubricController {
         requireStaffOnAssessment(user, instituteId, assessmentId);
         aiServiceClient.deleteQuestionAnswer(assessmentId, questionId, instituteId);
         return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Every question of the paper with the criteria the AI copy check marks it by
+     * ({@code rubric}, null = generated on its first check) and the question's own
+     * criteria as a starting point.
+     */
+    @GetMapping("/criteria/{assessmentId}")
+    public ResponseEntity<Map<String, Object>> getCriteria(@RequestAttribute("user") CustomUserDetails user,
+                                                           @RequestHeader(value = "clientId", required = false) String instituteId,
+                                                           @PathVariable String assessmentId) {
+        requireStaffOnAssessment(user, instituteId, assessmentId);
+        return ResponseEntity.ok(criteriaService.view(instituteId, assessmentId));
+    }
+
+    /**
+     * Save the criteria for some questions of the paper:
+     * {@code {"rubrics": {question_id: rubric}, "if_match": rubric_version}}. The rest are
+     * left as they are. Used for every copy checked from now on.
+     */
+    @PatchMapping("/criteria/{assessmentId}")
+    public ResponseEntity<Map<String, Object>> saveCriteria(@RequestAttribute("user") CustomUserDetails user,
+                                                            @RequestHeader(value = "clientId", required = false) String instituteId,
+                                                            @PathVariable String assessmentId,
+                                                            @RequestBody JsonNode body) {
+        requireStaffOnAssessment(user, instituteId, assessmentId);
+        Integer ifMatch = body != null && body.hasNonNull("if_match") ? body.get("if_match").asInt() : null;
+        int version = criteriaService.save(instituteId, assessmentId, body == null ? null : body.get("rubrics"), ifMatch);
+        return ResponseEntity.ok(Map.of("rubric_version", version));
     }
 
     @GetMapping("/layout/{layoutId}")

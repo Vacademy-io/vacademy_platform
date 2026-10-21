@@ -67,8 +67,33 @@ public class InstituteApiKeyService {
     public static final String SCOPE_CALLS_READ = "calls:read";
     public static final String SCOPE_CALLS_WRITE = "calls:write";
     public static final String SCOPE_WEBHOOKS_MANAGE = "webhooks:manage";
+    /**
+     * The default scopes of an ai_calling key (what a key gets when none are named, and
+     * what a legacy vak_live_ key is treated as having).
+     */
     public static final List<String> AI_CALLING_SCOPES =
             List.of(SCOPE_CALLS_READ, SCOPE_CALLS_WRITE, SCOPE_WEBHOOKS_MANAGE);
+    /**
+     * Human (counsellor) click-to-call, Telleo API v1.2: read lists the institute's staff
+     * (names, emails) and human calls; write rings a staff member's phone. Never part of
+     * the default set: a key placing AI calls must not gain the power to ring staff or list
+     * them, so an admin grants these explicitly when creating a key.
+     */
+    public static final String SCOPE_HUMAN_CALLS_READ = "human_calls:read";
+    public static final String SCOPE_HUMAN_CALLS_WRITE = "human_calls:write";
+    /**
+     * Telleo API v1.3 management scopes, never in the default set either. counsellors:manage
+     * adds counsellors to the institute (creating a dashboard login and mailing it), edits and
+     * deactivates them; agents:manage creates, edits, switches and deletes AI agents and moves
+     * the institute's default agent and inbound numbers between them. Reading agents stays on
+     * calls:read; reading counsellors is also allowed with human_calls:read.
+     */
+    public static final String SCOPE_COUNSELLORS_MANAGE = "counsellors:manage";
+    public static final String SCOPE_AGENTS_MANAGE = "agents:manage";
+    /** Every scope an ai_calling key may be issued with. */
+    public static final List<String> AI_CALLING_ALLOWED_SCOPES = List.of(SCOPE_CALLS_READ, SCOPE_CALLS_WRITE,
+            SCOPE_WEBHOOKS_MANAGE, SCOPE_HUMAN_CALLS_READ, SCOPE_HUMAN_CALLS_WRITE,
+            SCOPE_COUNSELLORS_MANAGE, SCOPE_AGENTS_MANAGE);
     /**
      * Publishable keys ({@code vak_pub_…}) for the public Catalogue API
      * ({@code /admin-core-service/open/catalog/v1}): safe in browser code, so they only read the
@@ -353,9 +378,13 @@ public class InstituteApiKeyService {
 
     // ── Validation helpers ───────────────────────────────────────────────────
 
-    /** Blank = every AI calling scope. Anything outside {@link #AI_CALLING_SCOPES} is a 400. */
+    /**
+     * Blank = the default AI calling scopes ({@link #AI_CALLING_SCOPES}, no human-call
+     * scopes). Anything outside {@link #AI_CALLING_ALLOWED_SCOPES} is a 400.
+     */
     static List<String> normalizeAiCallingScopes(List<String> raw) {
-        return normalizeProductScopes(raw, AI_CALLING_SCOPES);
+        if (raw == null || raw.isEmpty()) return AI_CALLING_SCOPES;
+        return normalizeProductScopes(raw, AI_CALLING_ALLOWED_SCOPES);
     }
 
     /** Blank = every scope of the product. Anything outside {@code allowed} is a 400. */

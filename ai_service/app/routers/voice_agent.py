@@ -22,7 +22,7 @@ from ..services.sarvam_service import SarvamService, SarvamSTTError
 from ..services.voice_session_service import VoiceSessionService
 from ..services.platform_settings_service import get_platform_setting
 from ..services.voice_tts import default_voice_for, synthesize_speech
-from ..services.audio_utils import transcode_to_wav
+from ..services.audio_utils import transcode_to_wav, trim_to_container_start
 from ..services.context_resolver_service import ContextResolverService
 from ..services.chat_llm_client import ChatLLMClient
 from ..services.api_key_resolver import ApiKeyResolver
@@ -282,6 +282,12 @@ async def voice_session(websocket: WebSocket, session_id: str):
             # that" can be diagnosed from the socket frames instead of pod logs.
             detail = ""
             try:
+                audio, dropped = trim_to_container_start(audio, mime)
+                if dropped:
+                    logger.warning(
+                        f"Voice turn for session {session_id}: dropped {dropped} stray bytes "
+                        f"before the {mime} header (previous turn's trailing chunk)"
+                    )
                 audio, mime, note = await _transcode_to_wav(audio, mime)
                 detail = note
                 if mime == "audio/wav" and len(audio) < MIN_SPEECH_WAV_BYTES:

@@ -132,6 +132,11 @@ public class LIveSessionAttendanceService {
                 statusChanged = isStatusChange(log.getStatus(), entry.getStatus());
                 log.setStatus(entry.getStatus());
                 log.setStatusType("OFFLINE");
+                // Re-type rows an older admin screen saved as EXTERNAL_USER for
+                // enrolled learners; the report only reads USER rows for them.
+                if (entry.getUserSourceType() != null && !entry.getUserSourceType().isBlank()) {
+                    log.setUserSourceType(entry.getUserSourceType());
+                }
                 if (entry.getDetails() != null && !entry.getDetails().isBlank()) {
                     log.setDetails(entry.getDetails());
                 }

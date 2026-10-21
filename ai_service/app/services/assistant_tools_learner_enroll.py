@@ -145,7 +145,8 @@ def _resolve_courses(ctx: ToolContext, specs: Any) -> Tuple[List[Dict[str, Any]]
         if batch["id"] in ld.org_associated_batches(ctx, [batch["id"]]):
             return [], _err("org_batch_unsupported", course=course.get("name"), batch=batch["name"],
                             message="This batch is sold to organisations; enrolling into it needs the organisation "
-                                    "step, which is only in the dashboard (Manage Learners → Enroll Learner).")
+                                    "step. To add learners to a sub-organisation use sub_org_enroll; otherwise "
+                                    "enrol from the dashboard (Manage Learners → Enroll Learner).")
         invites = enrollable_invites(ctx, batch["id"])
         if not invites:
             return [], _err("no_invite", course=course.get("name"),

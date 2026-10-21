@@ -79,6 +79,8 @@ export const SLIDE_TYPE_OPTIONS: SlideTypeOption[] = [
     { key: 'DOCUMENT_CODE', label: 'Code' },
     { key: 'ASSIGNMENT', label: 'Assignment' },
     { key: 'VIDEO', label: 'Video' },
+    { key: 'DOCUMENT_DOC', label: 'Document (Docs)' },
+    { key: 'AUDIO', label: 'Audio' },
 ];
 
 /**
@@ -95,7 +97,9 @@ export const SLIDE_TYPE_OPTIONS: SlideTypeOption[] = [
 export const ADMIN_DEFAULT_DOWNLOAD: Record<string, boolean> = {
     DOCUMENT_PDF: true,
     DOCUMENT_PDF_PRINT: true,
-    DOCUMENT_DOC: true,
+    // Docs and Audio downloads are off for every role until Content Protection
+    // switches them on (no screen offered them before the learner Download button).
+    DOCUMENT_DOC: false,
     DOCUMENT_PRESENTATION: true,
     DOCUMENT_CODE: true,
     DOCUMENT_JUPYTER: true,

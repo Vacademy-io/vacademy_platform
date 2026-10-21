@@ -577,7 +577,8 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
                    sa.start_time     AS attemptDate,
                    sa.submit_time    AS endTime,
                    sa.total_time_in_seconds AS duration,
-                   sa.result_marks   AS score,
+                   COALESCE(sa.result_marks, sa.total_marks) AS score,
+                   sa.total_marks    AS rankMarks,
                    aur.user_id       AS userId,
                    aur.source_id     AS batchId,
                    sa.report_release_status     AS reportReleaseResultStatus,
@@ -589,7 +590,7 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
               AND aur.institute_id  = :instituteId
               AND aur.status NOT IN ('DELETED')
               AND sa.status         = 'ENDED'
-            ORDER BY sa.result_marks DESC NULLS LAST
+            ORDER BY sa.total_marks DESC NULLS LAST, sa.total_time_in_seconds ASC NULLS LAST
             """, nativeQuery = true)
     List<vacademy.io.assessment_service.features.assessment.dto.export.ResultExportRowDto>
             findAllEndedParticipantsForResultExport(@Param("assessmentId") String assessmentId,

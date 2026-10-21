@@ -76,5 +76,19 @@
     "formText": {
         "title": "Form Heading & Text",
         "description": "The heading at the top of the public form (defaults to this list’s name) and the text above the fields — with left, centre or right alignment."
+    },
+    "wizard": {
+        "ariaLabel": "Steps",
+        "steps": {
+            "basics": "Basics",
+            "fields": "Form fields",
+            "afterSubmit": "After submit",
+            "appearance": "Appearance",
+            "notify": "Notifications & scoring"
+        },
+        "stepOf": "Step {{current}} of {{total}}",
+        "back": "Back",
+        "next": "Next: {{step}}",
+        "hasErrors": "This step has errors"
     }
 }

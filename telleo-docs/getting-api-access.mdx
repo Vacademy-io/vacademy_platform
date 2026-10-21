@@ -21,7 +21,12 @@ API access is self-serve: any **admin** of your Telleo account can create keys i
     Scroll down past the AI agents card to **API & webhooks**. It shows the API address (`https://api.telleo.ai/v1`), your keys, your agent ids and your webhook.
   </Step>
   <Step title="Create the key">
-    Click **Create key**, give it a name you will recognise (for example `Our CRM`), and optionally an expiry date. Click **Create key**.
+    Click **Create key**, give it a name you will recognise (for example `Our CRM`), and optionally an expiry date. Tick the extra boxes only for what this key's system needs, because they cannot be added later:
+    - **Can ring counsellors (human calls)**: place [human calls](/concepts/human-calls) (`human_calls:read`, `human_calls:write`).
+    - **Can manage counsellors**: add, update and deactivate [counsellors](/concepts/counsellors) (`counsellors:manage`). A key with it can create dashboard logins in your account.
+    - **Can manage AI agents**: create, edit, switch and delete [agents](/concepts/managing-agents) and choose the default agent and which agent answers each number (`agents:manage`).
+
+    Click **Create key**.
   </Step>
   <Step title="Copy it now">
     The key (`vak_call_…`) is shown **once**. Copy it and store it on your server, for example as an environment variable. If you lose it, revoke it and create a new one.
@@ -35,7 +40,8 @@ Next: the [Quickstart](/quickstart) places your first test call with the new key
 
 ## Managing keys
 
-- Use **one key per system** (CRM, website, automation tool). The table shows when each key was last used.
+- Use **one key per system** (CRM, website, automation tool). The table shows when each key was last used, and a badge marks keys that can ring counsellors or manage counsellors or agents.
+- Give the management scopes to as few keys as possible, ideally one kept on a server only your admins run.
 - **Revoke** stops a key immediately. Calls it already queued still go ahead; cancel them with [`POST /v1/calls/{id}/cancel`](/api-reference/calls/cancel-a-call) if you need to.
 - An account can hold up to 50 active keys.
 

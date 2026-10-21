@@ -99,6 +99,17 @@ USE_CASES: Tuple[UseCase, ...] = (
         seeded_in_release_2=True,
     ),
     UseCase(
+        "site_assistant", "Website assistant (public site chatbot)", GROUP_LEARNER, "ai_service", KIND_CHAT,
+        "Answers anonymous visitors on institute websites (hosted sites and the embed snippet) with catalogue, "
+        "page, FAQ and live-class tools. 1 credit per answer.",
+        (_AI + "site_assistant/engine.py:llm_stream", _AI + "site_assistant/settings.py:DEFAULT_MODEL"),
+        held_reason=(
+            "Public chat widget with a ~2 s first-answer budget: needs a model whose reasoning can be turned off "
+            "(default Gemini 2.5 Flash, GLM as fallback). GLM-5.3-flash always reasons, so bulk 'all chat features "
+            "to GLM' skips it"
+        ),
+    ),
+    UseCase(
         "knowledge_base_qa", "Knowledge base Q&A + paper blueprint", GROUP_LEARNER, "ai_service", KIND_CHAT,
         "Grounded answers from an institute's knowledge base, and the KB question-paper blueprint.",
         (_AI + "services/kb/retrieval.py:37", _AI + "services/kb/paper.py:50"),

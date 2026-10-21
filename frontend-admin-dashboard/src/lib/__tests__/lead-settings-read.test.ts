@@ -78,8 +78,14 @@ describe('follow-up fields config', () => {
             studentResponses: [],
             followUpModes: [],
             nextActions: [],
+            interestLevels: [],
             notesRequired: false,
             fieldsRequired: false,
+            // Behaviour switches: all off, so nothing changes until an institute opts in.
+            keepPopupsOpen: false,
+            showHistory: false,
+            allowEditing: false,
+            reportExports: false,
         });
     });
 

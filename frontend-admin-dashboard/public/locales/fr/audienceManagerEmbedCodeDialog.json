@@ -21,7 +21,7 @@
     "iframePanel": {
         "heading": "Personnaliser l'iFrame",
         "widthLabel": "Largeur",
-        "heightLabel": "Hauteur (px)",
+        "heightLabel": "Hauteur initiale (px) — s’adapte au formulaire",
         "previewScaledLabel": "Aperçu (réduit)",
         "formPreviewTitle": "Aperçu du formulaire",
         "tipPrefix": "Astuce : utilisez",

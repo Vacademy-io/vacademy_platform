@@ -13,7 +13,9 @@
         "studentsMentored": {
             "label": "मार्गदर्शन प्राप्त छात्र",
             "hint_one": "{{count}} सक्रिय जोड़ी",
-            "hint_other": "{{count}} सक्रिय जोड़ियाँ"
+            "hint_other": "{{count}} सक्रिय जोड़ियाँ",
+            "detail_one": "{{count}} जोड़ी · {{mentors}} मेंटर",
+            "detail_other": "{{count}} जोड़ियाँ · {{mentors}} मेंटर"
         },
         "sessionsAhead": {
             "label": "आगामी सत्र",
@@ -23,7 +25,13 @@
             "label": "औसत रेटिंग",
             "hintRated_one": "{{count}} रेटेड मेंटर से",
             "hintRated_other": "{{count}} रेटेड मेंटरों से",
-            "hintNone": "अभी तक कोई रेटिंग नहीं"
+            "hintNone": "अभी तक कोई रेटिंग नहीं",
+            "detailRated_one": "{{count}} रेटेड मेंटर से · {{ratings}} रेटिंग",
+            "detailRated_other": "{{count}} रेटेड मेंटरों से · {{ratings}} रेटिंग"
+        },
+        "requests": {
+            "label": "प्रतीक्षारत अनुरोध",
+            "detail": "आपके निर्णय की प्रतीक्षा में"
         }
     },
     "outcomes": {
@@ -33,7 +41,8 @@
         "completed": "पूर्ण",
         "noShows": "अनुपस्थिति",
         "cancelled": "रद्द",
-        "awaitingReview": "समीक्षा प्रतीक्षित"
+        "awaitingReview": "समीक्षा प्रतीक्षित",
+        "totalLabel": "कुल सत्र"
     },
     "workload": {
         "cardTitle": "मेंटर कार्यभार",
@@ -57,13 +66,60 @@
         "awaitingTitle": "समीक्षा प्रतीक्षित सत्र",
         "awaitingDetail_one": "{{count}} सत्र का परिणाम दर्ज करना बाकी है",
         "awaitingDetail_other": "{{count}} सत्रों का परिणाम दर्ज करना बाकी है",
-        "reviewSessions": "सत्र समीक्षा करें"
+        "reviewSessions": "सत्र समीक्षा करें",
+        "fullTitle": "सीमा पर पहुँचे मेंटर",
+        "fullDetail_one": "{{count}} मेंटर नए {{learners}} नहीं ले सकता",
+        "fullDetail_other": "{{count}} मेंटर नए {{learners}} नहीं ले सकते",
+        "noBookingTitle": "बिना बुकिंग पेज वाले मेंटर",
+        "noBookingDetail_one": "{{count}} मेंटर को उनके {{learners}} बुक नहीं कर सकते",
+        "noBookingDetail_other": "{{count}} मेंटरों को उनके {{learners}} बुक नहीं कर सकते",
+        "openMentors": "मेंटर खोलें"
     },
     "upcoming": {
         "cardTitle": "आगामी सत्र",
         "cardSubtitle": "अगले 5 सत्र",
         "empty": "अभी तक कुछ बुक नहीं हुआ है।",
         "durationMinutes_one": "{{count}} मि",
-        "durationMinutes_other": "{{count}} मि"
+        "durationMinutes_other": "{{count}} मि",
+        "linkReady": "मीट लिंक तैयार",
+        "linkPending": "लिंक बाकी"
+    },
+    "hero": {
+        "eyebrow": "मेंटरशिप · अब तक",
+        "unit": "सत्र पूरे हुए",
+        "sub": "{{upcoming}} आगामी · {{awaiting}} का परिणाम दर्ज होना बाकी",
+        "today": "आज के सत्र",
+        "attendance": "उपस्थिति",
+        "listed": "डायरेक्टरी में दिखने वाले"
+    },
+    "insights": {
+        "top": {
+            "title": "{{name}} के मेंटी सबसे संतुष्ट हैं",
+            "text_one": "{{count}} रेटिंग से ★ {{rating}} — अभी सबसे अच्छी रेटिंग वाले मेंटर।",
+            "text_other": "{{count}} रेटिंग से ★ {{rating}} — अभी सबसे अच्छी रेटिंग वाले मेंटर।"
+        },
+        "noShow": {
+            "title": "दर्ज किए गए {{rate}}% सत्रों में कोई नहीं आया",
+            "text_one": "{{count}} सत्र जिसमें {{learners}} नहीं आए। एक रात पहले रिमाइंडर भेजना मदद करता है।",
+            "text_other": "{{count}} सत्र जिनमें {{learners}} नहीं आए। एक रात पहले रिमाइंडर भेजना मदद करता है।"
+        },
+        "full": {
+            "title_one": "{{count}} मेंटर अपनी सीमा पर है",
+            "title_other": "{{count}} मेंटर अपनी सीमा पर हैं",
+            "text": "सीमा बढ़ाने या किसी मेंटी को हटाने तक उनके लिए अनुरोध स्वीकार नहीं किए जा सकते।"
+        },
+        "noBooking": {
+            "title_one": "{{count}} मेंटर का कोई बुकिंग पेज नहीं है",
+            "title_other": "{{count}} मेंटरों का कोई बुकिंग पेज नहीं है",
+            "text": "उनके {{learners}} अभी उनके साथ 1:1 बुक नहीं कर सकते।"
+        }
+    },
+    "top": {
+        "cardTitle": "शीर्ष मेंटर",
+        "cardSubtitle": "रेटिंग और रेटिंग की संख्या के अनुसार",
+        "empty": "अभी कोई रेटिंग नहीं। सत्रों को रेटिंग मिलने पर मेंटर यहाँ दिखेंगे।",
+        "rating": "★ {{rating}}",
+        "detail_one": "{{count}} रेटिंग · {{students}} {{learners}}",
+        "detail_other": "{{count}} रेटिंग · {{students}} {{learners}}"
     }
 }

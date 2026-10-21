@@ -41,6 +41,7 @@ NON_TEXT_KEYS = frozenset(k.lower() for k in (
     "iconname", "audiencename", "gateaudiencename", "libraryname", "productpagename",
     "types", "anchorprefix",
     "levels",
+    "prefix", "exclude",
     "titlenative", "order", "formats",
 ))
 

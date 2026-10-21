@@ -626,14 +626,30 @@ public class AudienceService {
      * since this is a same-bean self-invocation.)
      */
     public String submitCatalogueLead(CatalogueLeadRequestDTO dto) {
+        return submitCatalogueLead(dto, false);
+    }
+
+    /**
+     * {@link #submitCatalogueLead(CatalogueLeadRequestDTO)}, optionally accepting a lead with a
+     * phone number and no email (the Site Assistant contact card, where a visitor often leaves
+     * only a number). Such a lead's auth user is keyed on the same deterministic, non-deliverable
+     * placeholder that Meta/Google webhook leads and phone-only bulk rows already use
+     * ({@link PlaceholderEmailService}, suppressed by every send path); the lead row itself keeps
+     * {@code parent_email} NULL and gets no email custom field, exactly like an inbound-call lead.
+     * The public catalogue form keeps requiring an email (allowPhoneOnly=false).
+     */
+    public String submitCatalogueLead(CatalogueLeadRequestDTO dto, boolean allowPhoneOnly) {
         if (dto == null || !StringUtils.hasText(dto.getInstituteId())) {
             throw new VacademyException("instituteId is required");
         }
         // submitLeadV2 builds the lead's user from the email; without an email it
         // saves nothing and returns an error sentinel. The catalogue form already
         // makes email mandatory, so require it here too rather than silently drop.
-        if (!StringUtils.hasText(dto.getEmail())) {
-            throw new VacademyException("Email is required to capture a lead");
+        boolean hasEmail = StringUtils.hasText(dto.getEmail());
+        if (!hasEmail && !(allowPhoneOnly && StringUtils.hasText(dto.getMobileNumber()))) {
+            throw new VacademyException(allowPhoneOnly
+                    ? "An email or a phone number is required to capture a lead"
+                    : "Email is required to capture a lead");
         }
 
         // Destination routing: a website capture point (contact form, newsletter,
@@ -658,7 +674,8 @@ public class AudienceService {
 
         UserDTO userDTO = UserDTO.builder()
                 .fullName(dto.getFullName())
-                .email(dto.getEmail())
+                .email(hasEmail ? dto.getEmail()
+                        : placeholderEmailService.synthesize(dto.getFullName(), dto.getMobileNumber(), null))
                 .mobileNumber(dto.getMobileNumber())
                 .build();
 
@@ -3563,6 +3580,31 @@ public class AudienceService {
                 return Page.empty(pageable);
             }
         }
+        // Follow-ups page interest filter rides the same channel: the leads whose
+        // open follow-up carries one of the chosen interest levels.
+        String followUpInterestLevels = LeadFollowupService.joinInterestLevels(
+                filterDTO.getFollowUpInterestLevels());
+        if (followUpInterestLevels != null) {
+            // The per-campaign path may carry no institute id; take it from the
+            // campaign, so the lookup never scans every institute's follow-ups.
+            String interestInstituteId = StringUtils.hasText(filterDTO.getInstituteId())
+                    ? filterDTO.getInstituteId()
+                    : (StringUtils.hasText(filterDTO.getAudienceId())
+                            ? audienceRepository.findById(filterDTO.getAudienceId())
+                                    .map(Audience::getInstituteId).orElse(null)
+                            : null);
+            if (!StringUtils.hasText(interestInstituteId)) {
+                return Page.empty(pageable);
+            }
+            cfResolution = cfResolution.and(
+                    new vacademy.io.admin_core_service.features.common.service.CustomFieldListFilterResolver.Resolution(
+                            new java.util.HashSet<>(leadFollowupRepository.findOpenResponseIdsByInterestLevels(
+                                    interestInstituteId, followUpInterestLevels)),
+                            null));
+            if (cfResolution.shortCircuitsToEmpty()) {
+                return Page.empty(pageable);
+            }
+        }
         String customFieldMatchedIdsCsv = cfResolution.matchedIdsCsv();
         String customFieldExcludedIdsCsv = cfResolution.excludedIdsCsv();
 
@@ -4077,6 +4119,8 @@ public class AudienceService {
                             scheduledFollowup != null ? scheduledFollowup.getStudentResponse() : null)
                     .followUpMode(scheduledFollowup != null ? scheduledFollowup.getFollowUpMode() : null)
                     .followUpNextAction(scheduledFollowup != null ? scheduledFollowup.getNextAction() : null)
+                    .followUpInterestLevel(
+                            scheduledFollowup != null ? scheduledFollowup.getInterestLevel() : null)
                     .sourceAudienceName("OPT_OUT".equals(response.getSourceType())
                             ? sourceAudienceIdToName.get(response.getSourceId())
                             : null)

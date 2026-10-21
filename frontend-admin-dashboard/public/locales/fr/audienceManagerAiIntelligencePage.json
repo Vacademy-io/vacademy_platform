@@ -1,7 +1,8 @@
 {
     "header": {
         "title": "Intelligence IA",
-        "subtitle": "Qualité des appels et activité quotidienne dans le temps — l'équipe d'abord, puis chaque conseiller, avec l'évolution par rapport à la période précédente pour voir ce qui s'est amélioré."
+        "subtitle": "Qualité des appels et activité quotidienne dans le temps — l'équipe d'abord, puis chaque conseiller, avec l'évolution par rapport à la période précédente pour voir ce qui s'est amélioré.",
+        "settings": "Intelligence settings"
     },
     "loadingInstitute": "Chargement de l'établissement…",
     "emptyState": {
@@ -85,6 +86,19 @@
             "noCoaching": "Aucun appel analysé sur cette période — pas encore de coaching pour ce conseiller.",
             "weakestSkills": "Compétences les plus faibles :",
             "notEnoughSignal": "Pas assez de données pour le coaching sur cette période."
-        }
+        },
+        "collapseAll": "Collapse all",
+        "expandAll": "Expand all"
+    },
+    "hero": {
+        "eyebrow": "Call quality · {{range}}",
+        "unit": "/10 avg caller rating",
+        "analyzed_one": "{{count}} call analyzed",
+        "analyzed_other": "{{count}} calls analyzed",
+        "positive": "{{value}}% positive sentiment",
+        "reach": "{{value}}% team reach"
+    },
+    "kpi": {
+        "was": "was {{value}}"
     }
 }

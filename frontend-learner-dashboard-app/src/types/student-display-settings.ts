@@ -217,6 +217,8 @@ export interface StudentCourseDetailsSettings {
   showInstructors?: boolean;
   // New flags
   showCourseConfiguration: boolean;
+  /** Hide the course's tag chips (ENGLISH, E-LEARNING…) above its title. Default false (shown). */
+  hideTags?: boolean;
   showCourseContentPrefixes: boolean;
   courseOverview: { visible: boolean; showSlidesData: boolean };
   slidesView: {
@@ -349,6 +351,10 @@ export interface StudentAllCoursesSettings {
   defaultTab: StudentAllCoursesTabId;
   /** Hide the instructor/teacher name block on each course card in the All Courses list. Default false (shown). */
   hideInstructorName?: boolean;
+  /** Courses per page on the All Courses list. Default 10. */
+  pageSize?: number;
+  /** Dashboard "My courses": list every enrolled course instead of the first 4. Default false. */
+  showAllEnrolledOnDashboard?: boolean;
 }
 
 // UI
@@ -423,8 +429,17 @@ export interface StudentCourseSettingsQuiz {
   showReportAndCorrectAnswers: boolean;
 }
 
+/** Assignment slide. Both off by default (today's slide). */
+export interface StudentCourseSettingsAssignment {
+  /** Hide the "Attempts Allowed: …" line. */
+  hideAttemptsAllowed: boolean;
+  /** Hide the card title when it only repeats the slide name shown above it. */
+  hideRepeatedTitle: boolean;
+}
+
 export interface StudentCourseSettings {
   quiz: StudentCourseSettingsQuiz;
+  assignment: StudentCourseSettingsAssignment;
 }
 
 export interface ConcentrationSettings {

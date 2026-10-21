@@ -63,11 +63,14 @@ import { OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSet
 interface AudienceCampaignCardMenuOptionsProps {
     campaign: CampaignItem;
     onEdit?: (campaign: CampaignItem) => void;
+    /** After a successful delete, e.g. to leave the deleted list's own page. */
+    onDeleted?: () => void;
 }
 
 export const AudienceCampaignCardMenuOptions = ({
     campaign,
     onEdit,
+    onDeleted,
 }: AudienceCampaignCardMenuOptionsProps) => {
     const { t } = useTranslation('audienceManagerAudienceCampaignCardMenuOptions');
     const isOptOut = campaign.campaign_type?.toUpperCase().includes('OPT_OUT');
@@ -130,6 +133,7 @@ export const AudienceCampaignCardMenuOptions = ({
             queryClient.invalidateQueries({ queryKey: ['campaignsList'] });
             toast.success(t('toast.deleteSuccess'));
             setOpenDeleteDialog(false);
+            onDeleted?.();
         },
         onError: (error: unknown) => {
             const message = error instanceof Error ? error.message : t('toast.deleteError');

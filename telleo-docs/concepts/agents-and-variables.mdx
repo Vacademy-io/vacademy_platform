@@ -3,7 +3,7 @@ title: "Agents and variables"
 description: "Choose who calls, and fill their script with your data."
 ---
 
-An **agent** is a configured AI caller: its voice, language, opening line, script, the questions it asks and the labels it can give a call. You create and edit agents in the dashboard (**CRM → Calling → AI Agents**); the API chooses which one makes each call with `agent_id`.
+An **agent** is a configured AI caller: its voice, language, opening line, script, the questions it asks and the labels it can give a call. You create and edit agents in the dashboard (**CRM → Calling → AI Agents**) or, with the `agents:manage` scope, [through the API](/concepts/managing-agents); each call chooses its agent with `agent_id`.
 
 ## Listing agents
 
@@ -20,6 +20,11 @@ curl https://api.telleo.ai/v1/agents -H "X-API-Key: $TELLEO_API_KEY"
       "object": "agent",
       "name": "Riya – admissions",
       "language": "en-IN",
+      "enabled": true,
+      "direction": "outbound",
+      "voice": "hi-IN-Chirp3-HD-Kore",
+      "tts_model": "google",
+      "updated_at": "2026-10-19T10:15:00Z",
       "uses_contact_name": true,
       "variables": ["course", "city"]
     }
@@ -28,7 +33,7 @@ curl https://api.telleo.ai/v1/agents -H "X-API-Key: $TELLEO_API_KEY"
 }
 ```
 
-Only agents that are **turned on** and can **call out** are listed. Using one that is turned off returns `409 agent_disabled`; an inbound-only agent returns `409 agent_inbound_only`. If an agent is turned off or deleted while its calls are waiting in the queue, those calls are canceled, not dialled with another voice.
+Only agents that are **turned on** and can **call out** are listed; add `?include_disabled=true` to list every agent, including those turned off and inbound-only ones. `GET /v1/agents/{id}` returns one agent's whole configuration. Using one that is turned off returns `409 agent_disabled`; an inbound-only agent returns `409 agent_inbound_only`. If an agent is turned off while calls are waiting for it in the queue, those calls are canceled, not dialled with another voice — whether they came from the API, a workflow, a bulk campaign or the dashboard. API calls whose agent is deleted are canceled too.
 
 ## Personalising the call
 

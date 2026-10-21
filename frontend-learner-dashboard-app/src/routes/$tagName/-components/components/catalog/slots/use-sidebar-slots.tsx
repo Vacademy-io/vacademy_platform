@@ -53,14 +53,20 @@ export const useSidebarSlots = (ctx: CatalogSlotContext): SidebarSlotOutputs => 
     () => (sidebar ? categoriesInScope(categoryFilter, ctx.streamList, ctx.activeStream) : NO_CATEGORIES),
     [sidebar, categoryFilter, ctx.streamList, ctx.activeStream],
   );
-  // sort 'count': by the UNFILTERED course count, so rows never jump while filtering.
+  // The UNFILTERED course count of each category: sort 'count' orders by it (rows
+  // never jump while filtering), and a category no course is in is not listed.
   const totals = useMemo(
-    () =>
-      sidebar && categoryFilter.sort === "count" && scope.length
-        ? countFacetOptions(ctx.allCards, [], GROUP_IDS.category, categoryOptions(scope))
-        : null,
-    [sidebar, categoryFilter.sort, scope, ctx.allCards],
+    () => (sidebar && scope.length ? countFacetOptions(ctx.allCards, [], GROUP_IDS.category, categoryOptions(scope)) : null),
+    [sidebar, scope, ctx.allCards],
   );
+  // The same for the authored groups: an option no course has (Format "Audio Book"
+  // with no audio book) is not listed; one that is 0 only under other filters stays, greyed.
+  const customTotals = useMemo(() => {
+    const out: Record<string, Record<string, number>> = {};
+    if (!ctx.allCards.length) return out;
+    for (const g of custom) out[g.id] = countFacetOptions(ctx.allCards, [], customGroupId(g.id), customOptions(g.options));
+    return out;
+  }, [custom, ctx.allCards]);
   // Live counts of the authored groups (each against every OTHER active filter).
   const customCounts = useMemo(() => {
     const out: Record<string, Record<string, number>> = {};
@@ -86,9 +92,11 @@ export const useSidebarSlots = (ctx: CatalogSlotContext): SidebarSlotOutputs => 
   };
   const customRows = (g: ResolvedCustomFilter) => {
     const counts = customCounts[g.id];
+    const total = customTotals[g.id];
     const selected = selectedOf(g.id);
     return g.options
       .map((o) => ({ option: o, count: counts?.[o.id] }))
+      .filter(({ option }) => !total || (total[option.id] ?? 0) > 0 || selected.includes(option.id))
       .filter(({ option, count }) => g.showEmpty || count === undefined || count > 0 || selected.includes(option.id))
       .map(({ option, count }) => ({
         value: option.id,
@@ -277,8 +285,12 @@ function buildEditorialGroups(
     let list = cf.hideComingSoon
       ? data.scope.filter((c) => !c.comingSoon || discoveryState.categories.includes(c.slug))
       : data.scope;
-    if (data.totals) {
-      const totals = data.totals;
+    // No course in it (and not a coming-soon placeholder): nothing to filter by.
+    const totals = data.totals;
+    if (totals && ctx.allCards.length) {
+      list = list.filter((c) => c.comingSoon || (totals[c.slug] ?? 0) > 0 || discoveryState.categories.includes(c.slug));
+    }
+    if (totals && cf.sort === "count") {
       list = list
         .map((c, i) => ({ c, i }))
         .sort((a, b) => (totals[b.c.slug] ?? 0) - (totals[a.c.slug] ?? 0) || a.i - b.i)

@@ -2,8 +2,8 @@
  * LeadFollowUpFieldsSettings — the "Follow-up fields" card on Settings → Lead
  * settings → Configuration.
  *
- * Turns on three extra dropdowns wherever a counsellor logs a follow-up:
- * Student response, Follow-up mode and Next follow-up action. Each one is the
+ * Turns on extra dropdowns wherever a counsellor logs a follow-up: Interest
+ * level, Student response, Follow-up mode and Next follow-up action. Each one is the
  * institute's own list of answers, so the wording matches whatever script its
  * counsellors actually run. A list left empty hides that one dropdown — an
  * institute can enable just the field it cares about.
@@ -41,9 +41,14 @@ const QUERY_KEY = ['lead-followup-fields-settings'];
 /** Max options per list — past this the dropdown stops being faster than typing. */
 const MAX_OPTIONS = 60;
 
-type ListKey = 'studentResponses' | 'followUpModes' | 'nextActions';
+type ListKey = 'interestLevels' | 'studentResponses' | 'followUpModes' | 'nextActions';
 
 const LISTS: { key: ListKey; title: string; hint: string }[] = [
+    {
+        key: 'interestLevels',
+        title: 'Interest level',
+        hint: 'How interested the lead sounded on this follow-up, e.g. Very Hot to Very Cold.',
+    },
     {
         key: 'studentResponses',
         title: 'Student response',
@@ -58,6 +63,31 @@ const LISTS: { key: ListKey; title: string; hint: string }[] = [
         key: 'nextActions',
         title: 'Next follow-up action',
         hint: 'What the counsellor does next.',
+    },
+];
+
+type BehaviourKey = 'keepPopupsOpen' | 'showHistory' | 'allowEditing' | 'reportExports';
+
+const BEHAVIOUR_SWITCHES: { key: BehaviourKey; label: string; hint: string }[] = [
+    {
+        key: 'keepPopupsOpen',
+        label: 'Close follow-up pop-ups only with ✕',
+        hint: 'Follow-up pop-ups stay open on a click outside or Escape, so typed text is not lost by accident. They close with ✕ or Cancel.',
+    },
+    {
+        key: 'showHistory',
+        label: 'Show follow-up history',
+        hint: 'A Follow-up history section in the Lead Profile (created date, next follow-up, comment, interest level), plus created dates in reminders, the Completed tab and Check Lead.',
+    },
+    {
+        key: 'allowEditing',
+        label: 'Allow editing past follow-ups',
+        hint: 'Counsellors can correct a follow-up’s comment, closing note and interest level, including completed ones. The earlier text stays in the activity log.',
+    },
+    {
+        key: 'reportExports',
+        label: 'Per-lead report exports',
+        hint: 'Reports gets per-lead CSV exports: TAT (response time and met / breached per enquiry), SLA (where each lead sits on the SLA clock) and Overdue follow-ups.',
     },
 ];
 
@@ -284,6 +314,7 @@ export default function LeadFollowUpFieldsSettings() {
     };
 
     const noOptions =
+        draft.interestLevels.length === 0 &&
         draft.studentResponses.length === 0 &&
         draft.followUpModes.length === 0 &&
         draft.nextActions.length === 0;
@@ -327,6 +358,26 @@ export default function LeadFollowUpFieldsSettings() {
 
                         <Separator />
 
+                        {/* Behaviour switches — each off by default, and off keeps a
+                            follow-up working exactly as it always has. */}
+                        {BEHAVIOUR_SWITCHES.map(({ key, label, hint }) => (
+                            <div key={key} className="space-y-1.5">
+                                <div className="flex items-center gap-3">
+                                    <Switch
+                                        id={`followup-${key}`}
+                                        checked={draft[key]}
+                                        onCheckedChange={(v) => update({ [key]: v })}
+                                    />
+                                    <Label htmlFor={`followup-${key}`} className="cursor-pointer">
+                                        {label}
+                                    </Label>
+                                </div>
+                                <p className="text-xs text-muted-foreground">{hint}</p>
+                            </div>
+                        ))}
+
+                        <Separator />
+
                         <div className="space-y-1.5">
                             <div className="flex items-center gap-3">
                                 <Switch
@@ -339,8 +390,8 @@ export default function LeadFollowUpFieldsSettings() {
                                 </Label>
                             </div>
                             <p className="text-xs text-muted-foreground">
-                                Student response, follow-up mode and next action, each from a list
-                                you write below.
+                                Interest level, student response, follow-up mode and next action,
+                                each from a list you write below.
                             </p>
                         </div>
 

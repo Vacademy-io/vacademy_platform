@@ -104,13 +104,19 @@
         "stopHeader": "إيقاف (بلا إعادة محاولة)",
         "removeAria": "إزالة {{disposition}}",
         "addOutcomePlaceholder": "أضف نتيجة مخصصة (مثل رقم خاطئ)",
-        "addOutcome": "إضافة نتيجة"
+        "addOutcome": "إضافة نتيجة",
+        "otherwiseHeader": "Otherwise",
+        "otherwiseRetry": "Retry, then assign after max retries",
+        "otherwiseRetryOnly": "Retry until max retries",
+        "customBadge": "custom"
     },
     "assignmentCard": {
         "title": "إسناد المستشار",
         "description": "كيفية اختيار المستشار عندما يستوفي العميل المحتمل الشروط (أو عند استنفاد المحاولات).",
         "modeLabel": "نمط الإسناد",
-        "assignExhausted": "إسناد العملاء المحتملين غير المستجيبين إلى شخص بعد استنفاد المحاولات"
+        "assignExhausted": "إسناد العملاء المحتملين غير المستجيبين إلى شخص بعد استنفاد المحاولات",
+        "reassignQualified": "Give qualified leads to this list's pool, even if they already have a counsellor",
+        "reassignQualifiedHint": "Use for lists of previously-worked leads: when the AI books or qualifies one, it goes to the pool instead of staying with whoever last held it. Leads that simply never answered are never moved."
     },
     "save": {
         "saving": "جارٍ الحفظ…",
@@ -173,7 +179,16 @@
                 "expiryInPast": "اختر تاريخًا بعد اليوم.",
                 "generic": "راجع النموذج وحاول مرة أخرى."
             },
-            "notCopiedWarning": "لم تنسخ المفتاح. أغلق مرة أخرى للتخلي عنه؛ لا يمكن عرضه مرة أخرى."
+            "notCopiedWarning": "لم تنسخ المفتاح. أغلق مرة أخرى للتخلي عنه؛ لا يمكن عرضه مرة أخرى.",
+            "humanCallsLabel": "يمكنها الاتصال بالمستشارين (مكالمات بشرية)",
+            "humanCallsHint": "تتيح لهذا المفتاح عرض أسماء مستشاريك وبريدهم الإلكتروني وربطهم بجهات الاتصال هاتفيًا (human_calls:read وhuman_calls:write). لا يمكن تعديل المفتاح لاحقًا.",
+            "humanCallsBadge": "مكالمات بشرية",
+            "manageCounsellorsLabel": "يمكنها إدارة المستشارين",
+            "manageCounsellorsHint": "تتيح لهذا المفتاح إضافة مستشارين (يحصل كل منهم على تسجيل دخول إلى لوحة التحكم وبريد ترحيبي)، وتعديل الاسم ورقم الجوال وامتداد Airtel، وإلغاء تفعيلهم (counsellors:manage). لا يغيّر المسؤولين أو بقية الموظفين أبدًا. لا يمكن تعديل المفتاح لاحقًا.",
+            "manageCounsellorsBadge": "يدير المستشارين",
+            "manageAgentsLabel": "يمكنها إدارة وكلاء الذكاء الاصطناعي",
+            "manageAgentsHint": "تتيح لهذا المفتاح إنشاء وكلاء الذكاء الاصطناعي وتعديلهم وتشغيلهم أو إيقافهم وحذفهم، واختيار الوكيل الافتراضي والوكيل الذي يرد على الرقم الوارد (agents:manage). لا يمكن تعديل المفتاح لاحقًا.",
+            "manageAgentsBadge": "يدير وكلاء الذكاء الاصطناعي"
         },
         "agents": {
             "title": "معرّفات الوكلاء",
@@ -210,5 +225,19 @@
             "rotateTitle": "إنشاء سر توقيع جديد؟",
             "rotateDescription": "كل تسليم من الآن فصاعدًا يُوقَّع بالسر الجديد. إلى أن يستخدمه خادمك ستفشل عمليات التحقق من التوقيع وستُعاد محاولة الأحداث. حدّث خادمك فور نسخ السر الجديد."
         }
+    },
+    "header": {
+        "title": "AI Calling Settings",
+        "description": "AI-first calling: who the AI calls, from which line, how often it retries, and what happens after each outcome.",
+        "unsaved": "Unsaved changes",
+        "aiAgents": "AI Agents",
+        "disabledBanner": "AI calling is off. Switch it on in the AI calling tab to set up retries, outcomes and assignment."
+    },
+    "tabs": {
+        "general": "AI calling",
+        "agents": "Agents & campaigns",
+        "retries": "Retries & shifts",
+        "outcomes": "Outcome → action",
+        "assignment": "Assignment"
     }
 }

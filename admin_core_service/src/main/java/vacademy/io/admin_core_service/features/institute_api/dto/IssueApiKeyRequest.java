@@ -33,7 +33,7 @@ public class IssueApiKeyRequest {
      * evaluation (default when empty) | login_links | ai_calling. A login_links key always gets
      * the single scope login_links:create; scopes and daily_copy_cap are ignored for it. An
      * ai_calling key (vak_call_...) takes calls:read, calls:write, webhooks:manage (all three
-     * when empty); daily_copy_cap is ignored for it. A catalog key (vak_pub_..., publishable)
+     * when empty) and, only when named, human_calls:read / human_calls:write; daily_copy_cap is ignored for it. A catalog key (vak_pub_..., publishable)
      * takes catalog:read, leads:write (both when empty); daily_copy_cap is ignored for it.
      */
     private String product;

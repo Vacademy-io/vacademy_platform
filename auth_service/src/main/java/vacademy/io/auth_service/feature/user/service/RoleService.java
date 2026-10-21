@@ -3,6 +3,7 @@ package vacademy.io.auth_service.feature.user.service;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.auth_service.feature.user.dto.ModifyUserRolesDTO;
@@ -24,6 +25,7 @@ import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 @Service
@@ -48,16 +50,20 @@ public class RoleService {
     public String addRolesToUser(ModifyUserRolesDTO addRolesToUserDTO, Optional<String> roleStatus,
             CustomUserDetails customUserDetails) {
         User user = getUserById(addRolesToUserDTO.getUserId());
-        List<Role> roles = roleRepository.findByNameIn(addRolesToUserDTO.getRoles());
+        String instituteId = addRolesToUserDTO.getInstituteId();
+        List<Role> roles = rolesUsableIn(roleRepository.findByNameIn(addRolesToUserDTO.getRoles()), instituteId);
 
         List<UserRole> userRoles = new ArrayList<>();
         for (Role role : roles) {
-            List<UserRole> userRolesList = userRoleRepository.findByUserAndStatusAndRoleName(user,
-                    UserRoleStatus.ACTIVE.name(), role.getName());
-            if (userRolesList.size() > 0) {
+            // Already ACTIVE in THIS institute: nothing to add. The same role held in another
+            // institute is a different membership and must not swallow this grant.
+            boolean activeHere = userRoleRepository.findByUserAndStatusAndRoleName(user,
+                    UserRoleStatus.ACTIVE.name(), role.getName()).stream()
+                    .anyMatch(ur -> Objects.equals(ur.getInstituteId(), instituteId));
+            if (activeHere) {
                 continue;
             }
-            userRoles.add(createUserRole(user, role, roleStatus, addRolesToUserDTO.getInstituteId()));
+            userRoles.add(createUserRole(user, role, roleStatus, instituteId));
         }
 
         userRoleRepository.saveAll(userRoles);
@@ -105,10 +111,94 @@ public class RoleService {
         return userRole;
     }
 
+    /**
+     * Roles a grant in {@code instituteId} may use: the built-in ones (institute_id NULL) and
+     * that institute's own custom roles. Role names are only unique per institute, so a bare
+     * name lookup also returns other institutes' custom roles of the same name, and granting
+     * one of those would attach this user to a role (and its permissions) another institute
+     * defined.
+     */
+    static List<Role> rolesUsableIn(List<Role> candidates, String instituteId) {
+        if (candidates == null) {
+            return List.of();
+        }
+        return candidates.stream()
+                .filter(r -> r.getInstituteId() == null || r.getInstituteId().equals(instituteId))
+                .toList();
+    }
+
+    /**
+     * Deletes the user's rows of these roles in ONE institute. It used to delete them in every
+     * institute the user belongs to, so an admin of one institute removing "TEACHER" from a
+     * shared user also removed it everywhere else.
+     */
+    @Transactional
     public String removeRolesFromUser(ModifyUserRolesDTO modifyUserRolesDTO, CustomUserDetails customUserDetails) {
-        userRoleRepository.deleteUserRolesByUserIdAndRoleNames(modifyUserRolesDTO.getUserId(),
-                modifyUserRolesDTO.getRoles());
+        String instituteId = modifyUserRolesDTO.getInstituteId();
+        if (instituteId == null || instituteId.isBlank()) {
+            throw new VacademyException(HttpStatus.BAD_REQUEST, "institute_id is required to remove roles");
+        }
+        List<String> names = modifyUserRolesDTO.getRoles() == null ? List.of() : modifyUserRolesDTO.getRoles();
+        User user = getUserById(modifyUserRolesDTO.getUserId());
+        List<UserRole> rows = new ArrayList<>();
+        for (UserRole ur : userRoleRepository.findByUser(user)) {
+            if (instituteId.equals(ur.getInstituteId()) && ur.getRole() != null
+                    && names.contains(ur.getRole().getName())) {
+                rows.add(ur);
+            }
+        }
+        userRoleRepository.deleteAll(rows);
+        evictCachedIdentities(instituteId, List.of(user.getId()));
         return "Roles removed successfully";
+    }
+
+    /**
+     * Pauses (DISABLED) or restores (ACTIVE) ONLY the named roles of one user in one institute,
+     * for a service that manages a single kind of member (admin_core's public calling API manages
+     * counsellors and nothing else). Same transitions as
+     * {@link #updateUserRoleStatusByInstituteIdAndUserId}: disable moves live rows (ACTIVE /
+     * INVITED), enable moves paused rows (DISABLED / INACTIVE); deleted rows never come back.
+     * Role names match ignoring case.
+     *
+     * @return how many rows changed
+     */
+    @Transactional
+    public int updateRoleStatusForRoles(String instituteId, String userId, List<String> roleNames, String newStatus) {
+        if (instituteId == null || instituteId.isBlank() || userId == null || userId.isBlank()) {
+            throw new VacademyException(HttpStatus.BAD_REQUEST, "instituteId and userId are required");
+        }
+        if (roleNames == null || roleNames.isEmpty()) {
+            throw new VacademyException(HttpStatus.BAD_REQUEST, "Name the roles to update");
+        }
+        List<String> from;
+        if (UserRoleStatus.DISABLED.name().equals(newStatus)) {
+            from = UserRoleService.ACCESS_GRANTING_STATUSES;
+        } else if (UserRoleStatus.ACTIVE.name().equals(newStatus)) {
+            from = PAUSED_STATUSES;
+        } else {
+            throw new VacademyException(HttpStatus.BAD_REQUEST, "status must be ACTIVE or DISABLED");
+        }
+        User user = getUserById(userId);
+        List<UserRole> changed = new ArrayList<>();
+        for (UserRole ur : userRoleRepository.findByUser(user)) {
+            // Role names are matched ignoring case: institutes hold "COUNSELLOR", "Counsellor"
+            // and "COUNSELOR", and a caller that checked one spelling must change them all.
+            if (instituteId.equals(ur.getInstituteId()) && ur.getRole() != null && ur.getRole().getName() != null
+                    && roleNames.stream().anyMatch(ur.getRole().getName()::equalsIgnoreCase)
+                    && from.contains(ur.getStatus())) {
+                ur.setStatus(newStatus);
+                changed.add(ur);
+            }
+        }
+        if (!changed.isEmpty()) {
+            userRoleRepository.saveAll(changed);
+        }
+        // Like the dashboard's update-role-status: only this institute's cached identity is
+        // dropped, so the change applies to the member's next request HERE. The user-wide
+        // "token updated" stamp is deliberately not bumped — it is one value for every
+        // institute the user belongs to.
+        evictCachedIdentities(instituteId, List.of(userId));
+        return changed.size();
     }
 
     public List<RoleCountProjection> geRolesCountByInstituteId(String instituteId, CustomUserDetails userDetails) {

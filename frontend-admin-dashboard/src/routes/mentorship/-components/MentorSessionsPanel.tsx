@@ -5,6 +5,7 @@ import {
     CheckCircle,
     Clock,
     Eye,
+    MagnifyingGlass,
     Star,
     UserMinus,
     VideoCamera,
@@ -15,12 +16,21 @@ import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
+import { MyInput } from '@/components/design-system/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { MyTable } from '@/components/design-system/table';
 import { MultiSelectFilter } from '@/components/shared/leads/multi-select-filter';
 import type { ColumnDef } from '@tanstack/react-table';
+import { cn } from '@/lib/utils';
+import { instituteTerms } from '@/components/shared/crm-enhance/institute-terms';
 import { useMentorDashboard, useMentorSessions } from '../-hooks/use-mentorship';
-import { dayOfMonth, sessionDateTime, shortMonth, timeOfDay } from '../-utils/format-session-time';
+import {
+    dayOfMonth,
+    relativeDay,
+    sessionDateTime,
+    shortMonth,
+    timeOfDay,
+} from '../-utils/format-session-time';
 import { SessionActionDialog } from './SessionActionDialog';
 import { MentorAvatar } from './MentorAvatar';
 import type { MentorSessionDTO } from '../-types/mentorship-types';
@@ -53,7 +63,10 @@ export function MentorSessionsPanel({
     studentUserId?: string;
 }) {
     const { t } = useTranslation('mentorshipMentorSessionsPanel');
+    const { t: tFormat, i18n } = useTranslation('mentorshipFormatSessionTimeUtils');
     const FILTERS = useMemo(() => buildFilters(t), [t]);
+    // Narrows the rows already loaded — no request per keystroke.
+    const [search, setSearch] = useState('');
     const [lifecycle, setLifecycle] = useState<string>('');
     // Only offered when the panel isn't already scoped to one mentor — inside a
     // mentor's own detail view the filter would be a no-op.
@@ -72,11 +85,25 @@ export function MentorSessionsPanel({
         studentUserId,
         lifecycle: lifecycle || undefined,
     });
-    const sessions = useMemo(() => {
+    const scoped = useMemo(() => {
         const all = data ?? [];
         if (mentorId || mentorFilter.length === 0) return all;
         return all.filter((s) => s.mentor_id != null && mentorFilter.includes(s.mentor_id));
     }, [data, mentorId, mentorFilter]);
+    const query = search.trim().toLowerCase();
+    const sessions = useMemo(
+        () =>
+            query
+                ? scoped.filter((s) =>
+                      [s.mentor_name, s.student_name, s.topic, s.title].some((f) =>
+                          (f ?? '').toLowerCase().includes(query)
+                      )
+                  )
+                : scoped,
+        [scoped, query]
+    );
+    // The week ahead, from the same rows — only where "what's coming" is the question.
+    const showWeek = !studentUserId && (lifecycle === '' || lifecycle === 'UPCOMING');
 
     // The mentor list is already cached by the dashboard query, so the filter costs
     // nothing extra on a screen an admin has usually arrived at from there.
@@ -135,19 +162,32 @@ export function MentorSessionsPanel({
                 size: 170,
                 cell: ({ row }) => {
                     const s = row.original;
+                    const today = isToday(s.scheduled_start_utc);
                     return (
                         <span className="flex items-center gap-2.5">
                             {/* Leading date block — turns a wall of rows into something scannable. */}
-                            <span className="flex size-10 shrink-0 flex-col items-center justify-center rounded-lg bg-neutral-50 leading-none text-neutral-600">
+                            <span
+                                className={cn(
+                                    'flex size-10 shrink-0 flex-col items-center justify-center rounded-lg border leading-none',
+                                    today
+                                        ? 'border-primary-200 bg-primary-50 text-primary-600'
+                                        : 'border-neutral-200 bg-neutral-50 text-neutral-600'
+                                )}
+                            >
                                 <span className="text-body font-semibold tabular-nums">
                                     {dayOfMonth(s.scheduled_start_utc)}
                                 </span>
                                 <span className="text-caption font-medium tracking-wide text-neutral-400">
-                                    {shortMonth(s.scheduled_start_utc)}
+                                    {shortMonth(s.scheduled_start_utc, i18n.language)}
                                 </span>
                             </span>
-                            <span className="text-caption text-neutral-500">
-                                {timeOfDay(s.scheduled_start_utc)}
+                            <span className="flex min-w-0 flex-col">
+                                <span className="truncate text-caption font-medium text-neutral-700">
+                                    {relativeDay(s.scheduled_start_utc, tFormat, i18n.language)}
+                                </span>
+                                <span className="text-caption text-neutral-500">
+                                    {timeOfDay(s.scheduled_start_utc, i18n.language)}
+                                </span>
                             </span>
                         </span>
                     );
@@ -279,90 +319,124 @@ export function MentorSessionsPanel({
                 },
             },
         ],
-        [t]
+        // tFormat and the language feed the When cell's relative-day label.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [t, tFormat, i18n.language]
     );
 
     return (
         <div className="flex flex-col gap-4">
-            <div className="flex flex-wrap items-end justify-between gap-3 border-b border-neutral-200">
-                <div className="flex flex-wrap gap-1">
-                    {FILTERS.map((f) => (
-                        <button
-                            key={f.key || 'all'}
-                            type="button"
-                            onClick={() => setLifecycle(f.key)}
-                            className={`-mb-px border-b-2 px-3 py-2 text-body transition-colors ${
-                                lifecycle === f.key
-                                    ? 'border-primary-500 font-medium text-primary-600'
-                                    : 'border-transparent text-neutral-500 hover:text-neutral-700'
-                            }`}
-                        >
-                            {f.label}
-                        </button>
-                    ))}
+            {showWeek && !isLoading && !isError && (
+                <WeekAhead sessions={scoped} onOpen={setDetail} />
+            )}
+            <div className="flex flex-col gap-4 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
+                <div className="flex flex-wrap items-end justify-between gap-3 border-b border-neutral-200">
+                    <div className="flex flex-wrap gap-1">
+                        {FILTERS.map((f) => (
+                            <button
+                                key={f.key || 'all'}
+                                type="button"
+                                onClick={() => setLifecycle(f.key)}
+                                className={`-mb-px border-b-2 px-3 py-2 text-body transition-colors ${
+                                    lifecycle === f.key
+                                        ? 'border-primary-500 font-medium text-primary-600'
+                                        : 'border-transparent text-neutral-500 hover:text-neutral-700'
+                                }`}
+                            >
+                                {f.label}
+                            </button>
+                        ))}
+                    </div>
+                    {!mentorId && (
+                        <div className="pb-2">
+                            <MultiSelectFilter
+                                label={t('mentorsFilterLabel')}
+                                options={mentorOptions}
+                                selected={mentorFilter}
+                                onChange={setMentorFilter}
+                                placeholder={t('mentorsSearchPlaceholder')}
+                                widthClass="w-52"
+                            />
+                        </div>
+                    )}
                 </div>
-                {!mentorId && (
-                    <div className="pb-2">
-                        <MultiSelectFilter
-                            label={t('mentorsFilterLabel')}
-                            options={mentorOptions}
-                            selected={mentorFilter}
-                            onChange={setMentorFilter}
-                            placeholder={t('mentorsSearchPlaceholder')}
-                            widthClass="w-52"
+
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="relative w-full sm:w-80">
+                        <MagnifyingGlass
+                            size={16}
+                            className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-neutral-400"
+                        />
+                        <MyInput
+                            input={search}
+                            onChangeFunction={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                setSearch(e.target.value)
+                            }
+                            inputType="text"
+                            inputPlaceholder={t('searchPlaceholder', {
+                                learner: instituteTerms().learner.toLowerCase(),
+                            })}
+                            className="pl-9 sm:w-full"
+                        />
+                    </div>
+                    {!isLoading && !isError && (
+                        <span className="text-caption text-neutral-500">
+                            {t('shownCount', { count: sessions.length })}
+                        </span>
+                    )}
+                </div>
+
+                {isLoading ? (
+                    <div className="flex flex-col gap-2">
+                        {[1, 2, 3].map((i) => (
+                            <Skeleton key={i} className="h-16 w-full rounded-lg" />
+                        ))}
+                    </div>
+                ) : isError ? (
+                    <div className="flex flex-col items-start gap-3 rounded-lg border border-danger-100 bg-danger-50 p-4">
+                        <div className="flex items-center gap-2">
+                            <WarningCircle size={18} weight="fill" className="text-danger-600" />
+                            <p className="text-body text-danger-600">{t('loadError')}</p>
+                        </div>
+                        <MyButton
+                            type="button"
+                            buttonType="secondary"
+                            scale="small"
+                            onClick={() => refetch()}
+                        >
+                            {t('retry')}
+                        </MyButton>
+                    </div>
+                ) : sessions.length === 0 ? (
+                    <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-neutral-200 p-10 text-center">
+                        <CalendarBlank size={36} className="text-neutral-300" />
+                        <p className="text-body font-medium text-neutral-700">
+                            {lifecycle || query ? t('emptyStateFiltered') : t('emptyStateAll')}
+                        </p>
+                        <p className="max-w-md text-caption text-neutral-500">
+                            {t('emptyStateHint')}
+                        </p>
+                    </div>
+                ) : (
+                    <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white">
+                        <MyTable<MentorSessionDTO>
+                            data={{
+                                content: sessions,
+                                total_pages: 1,
+                                page_no: 0,
+                                page_size: sessions.length,
+                                total_elements: sessions.length,
+                                last: true,
+                            }}
+                            columns={columns}
+                            isLoading={false}
+                            error={null}
+                            currentPage={0}
+                            scrollable
                         />
                     </div>
                 )}
             </div>
-
-            {isLoading ? (
-                <div className="flex flex-col gap-2">
-                    {[1, 2, 3].map((i) => (
-                        <Skeleton key={i} className="h-16 w-full rounded-lg" />
-                    ))}
-                </div>
-            ) : isError ? (
-                <div className="flex flex-col items-start gap-3 rounded-lg border border-danger-100 bg-danger-50 p-4">
-                    <div className="flex items-center gap-2">
-                        <WarningCircle size={18} weight="fill" className="text-danger-600" />
-                        <p className="text-body text-danger-600">{t('loadError')}</p>
-                    </div>
-                    <MyButton
-                        type="button"
-                        buttonType="secondary"
-                        scale="small"
-                        onClick={() => refetch()}
-                    >
-                        {t('retry')}
-                    </MyButton>
-                </div>
-            ) : sessions.length === 0 ? (
-                <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-neutral-200 p-10 text-center">
-                    <CalendarBlank size={36} className="text-neutral-300" />
-                    <p className="text-body font-medium text-neutral-700">
-                        {lifecycle ? t('emptyStateFiltered') : t('emptyStateAll')}
-                    </p>
-                    <p className="max-w-md text-caption text-neutral-500">{t('emptyStateHint')}</p>
-                </div>
-            ) : (
-                <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm">
-                    <MyTable<MentorSessionDTO>
-                        data={{
-                            content: sessions,
-                            total_pages: 1,
-                            page_no: 0,
-                            page_size: sessions.length,
-                            total_elements: sessions.length,
-                            last: true,
-                        }}
-                        columns={columns}
-                        isLoading={false}
-                        error={null}
-                        currentPage={0}
-                        scrollable
-                    />
-                </div>
-            )}
 
             <SessionDetailDialog session={detail} onOpenChange={(o) => !o && setDetail(null)} />
 
@@ -374,6 +448,108 @@ export function MentorSessionsPanel({
                     if (!o) setActing(null);
                 }}
             />
+        </div>
+    );
+}
+
+const isToday = (epochMillis?: number | null) =>
+    !!epochMillis && new Date(epochMillis).toDateString() === new Date().toDateString();
+
+const LIFECYCLE_BAR: Record<string, string> = {
+    UPCOMING: 'border-info-500',
+    AWAITING_REVIEW: 'border-warning-500',
+    COMPLETED: 'border-success-500',
+    NO_SHOW: 'border-danger-500',
+};
+
+/**
+ * Today and the six days after it, each with its sessions, from the rows the panel
+ * already loaded. A glance at how the week fills up; a click opens the session.
+ */
+function WeekAhead({
+    sessions,
+    onOpen,
+}: {
+    sessions: MentorSessionDTO[];
+    onOpen: (s: MentorSessionDTO) => void;
+}) {
+    const { t, i18n } = useTranslation('mentorshipMentorSessionsPanel');
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    const days = Array.from({ length: 7 }, (_, i) => {
+        const d = new Date(start);
+        d.setDate(start.getDate() + i);
+        const key = d.toDateString();
+        const list = sessions
+            .filter(
+                (s) =>
+                    !!s.scheduled_start_utc &&
+                    new Date(s.scheduled_start_utc).toDateString() === key
+            )
+            .sort((a, b) => (a.scheduled_start_utc ?? 0) - (b.scheduled_start_utc ?? 0));
+        return { d, key, list, today: i === 0 };
+    });
+    return (
+        <div className="flex flex-col gap-3 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
+            <div className="flex flex-col">
+                <span className="flex items-center gap-2 text-subtitle font-semibold text-neutral-900">
+                    <CalendarBlank size={18} weight="duotone" className="text-neutral-500" />
+                    {t('week.title')}
+                </span>
+                <span className="text-caption text-neutral-500">{t('week.subtitle')}</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
+                {days.map(({ d, key, list, today }) => (
+                    <div
+                        key={key}
+                        className={cn(
+                            'flex min-w-0 flex-col gap-1.5 rounded-lg border p-2',
+                            today ? 'border-primary-200 bg-primary-50' : 'border-neutral-200'
+                        )}
+                    >
+                        <div className="flex items-center justify-between gap-1">
+                            <span className="text-caption text-neutral-500">
+                                {d.toLocaleDateString(i18n.language, { weekday: 'short' })}
+                            </span>
+                            <span className="text-body font-semibold tabular-nums text-neutral-800">
+                                {d.getDate()}
+                            </span>
+                            <span
+                                className={cn(
+                                    'rounded-full px-1.5 text-caption tabular-nums',
+                                    list.length
+                                        ? 'bg-info-50 text-info-700'
+                                        : 'bg-neutral-100 text-neutral-400'
+                                )}
+                            >
+                                {list.length}
+                            </span>
+                        </div>
+                        {list.slice(0, 2).map((s) => (
+                            <button
+                                key={s.booking_instance_id}
+                                type="button"
+                                onClick={() => onOpen(s)}
+                                className={cn(
+                                    'min-w-0 truncate rounded border-l-2 bg-white px-1.5 py-1 text-left text-caption text-neutral-700 hover:bg-neutral-50',
+                                    LIFECYCLE_BAR[s.lifecycle] ?? 'border-neutral-300'
+                                )}
+                                title={`${s.mentor_name ?? ''} → ${s.student_name ?? ''}`}
+                            >
+                                <b className="font-semibold">
+                                    {timeOfDay(s.scheduled_start_utc, i18n.language)}
+                                </b>{' '}
+                                {(s.student_name || t('fallback.learner')).split(' ')[0]}
+                            </button>
+                        ))}
+                        {list.length > 2 && (
+                            <span className="text-caption text-neutral-400">
+                                {t('week.more', { count: list.length - 2 })}
+                            </span>
+                        )}
+                    </div>
+                ))}
+            </div>
         </div>
     );
 }

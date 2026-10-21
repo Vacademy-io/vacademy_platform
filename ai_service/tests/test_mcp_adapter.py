@@ -81,6 +81,7 @@ def test_exposed_set_is_the_documented_one():
         "workflows", "workflows_edit", "blog", "blog_edit",
         "courses", "course_edit", "course_drip_edit", "course_invites_edit", "course_structure_edit",
         "learners", "learner_report", "learner_enroll", "learner_edit",
+        "sub_orgs", "sub_org_edit", "sub_org_enroll",
         "crm_leads", "crm_lead_activity", "crm_lead_edit", "crm_team_edit", "crm_lead_intake",
         "crm_calls", "crm_dial", "crm_ai_campaign",
         "crm_meetings", "crm_meetings_edit",
@@ -292,7 +293,7 @@ def test_website_publish_is_an_opt_in_live_capability_no_existing_connection_has
     # Every other group keeps the area's Edit level / presets behaviour.
     opt_in_keys = [
         "website_data_edits", "website_publish", "course_structure_edits", "learner_enrollments",
-        "learner_profile_edits",
+        "learner_profile_edits", "sub_org_edits", "sub_org_enrollments",
         "crm_lead_activity", "crm_lead_edits", "crm_team_edits", "crm_lead_intake",
         "crm_calling_outbound", "crm_ai_campaigns", "crm_meeting_edits", "crm_messaging_outbound"]
     keys_loaded = {ASSISTANT_TOOLS[n].key() for n in loaded(MCP_EXPOSED_TOOLS) if n in ASSISTANT_TOOLS}

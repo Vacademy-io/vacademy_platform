@@ -35,5 +35,12 @@
         "clearDates": "Clear dates",
         "gridView": "Grid view",
         "listView": "List view"
+    },
+    "export": "Export",
+    "summary": "{{shown}} of {{total}} {{batches}} · {{learners}} {{learnerTerm}}",
+    "csv": {
+        "status": "Status",
+        "inviteCode": "Invite code",
+        "startDate": "Start date"
     }
 }

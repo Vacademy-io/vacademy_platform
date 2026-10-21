@@ -78,5 +78,14 @@
         "footer": "تذييل"
     },
     "showFullMessage": "عرض الرسالة كاملة",
-    "showLess": "عرض أقل"
+    "showLess": "عرض أقل",
+    "providerChip": "المزوّد: {{provider}}",
+    "filters": {
+        "allCategories": "كل الفئات",
+        "allLanguages": "كل اللغات",
+        "clear": "مسح عوامل التصفية"
+    },
+    "resultsCount_one": "{{count}} قالب",
+    "resultsCount_other": "{{count}} قالب",
+    "actionsNote": "التعديل والإرسال إلى Meta متاحان للمسودات والقوالب المرفوضة فقط. يمكن حذف القوالب المعتمدة وقيد الانتظار فقط."
 }

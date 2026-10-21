@@ -18,7 +18,9 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Telleo AI calling API v1. Public base URL https://api.telleo.ai/v1 (ingress rewrite to
+ * Telleo calling API v1: AI calls (/calls, /batches) and, since v1.2, human counsellor
+ * click-to-call (/human-calls). v1.3's counsellor and agent management lives in
+ * {@link PublicAiCallingManagementController} (same base path; the catch-all below covers it). Public base URL https://api.telleo.ai/v1 (ingress rewrite to
  * this path); authenticated with an AI calling API key. JSON is snake_case. Errors use
  * {"error":{"code","message","request_id","details"}} (AiCallingApiErrorAdvice).
  */
@@ -31,10 +33,14 @@ public class PublicAiCallingApiController {
     private final AiCallingApiService service;
     private final AiCallingWebhookService webhooks;
     private final AiCallingUsageService usage;
+    private final HumanCallApiService humanCalls;
 
     /** Every route of this API, for telling a wrong method (405) from an unknown path (404). */
     private static final java.util.regex.Pattern KNOWN_PATHS = java.util.regex.Pattern.compile(
-            "^/(calls(/[^/]+(/cancel)?)?|batches(/[^/]+)?|agents|webhook(/(rotate-secret|test))?|credits|usage)/?$");
+            "^/(calls(/[^/]+(/cancel)?)?|batches(/[^/]+)?|agents(/[^/]+(/(enable|disable))?)?"
+                    + "|webhook(/(rotate-secret|test))?|credits|usage"
+                    + "|human-calls(/[^/]+(/disposition)?)?|counsellors(/[^/]+)?|dispositions"
+                    + "|voices|settings/default-agent|numbers(/[^/]+/agent)?)/?$");
     private static final String PREFIX = "/admin-core-service/open/ai-calling/v1";
 
     // ── Calls ────────────────────────────────────────────────────────────────────
@@ -105,9 +111,76 @@ public class PublicAiCallingApiController {
     // ── Agents ───────────────────────────────────────────────────────────────────
 
     @GetMapping("/agents")
-    public ResponseEntity<Map<String, Object>> agents(HttpServletRequest http) {
+    public ResponseEntity<Map<String, Object>> agents(HttpServletRequest http,
+            @RequestParam(value = "include_disabled", required = false, defaultValue = "false") boolean includeDisabled) {
         var p = auth.authenticate(http, InstituteApiKeyService.SCOPE_CALLS_READ);
-        return ok(http, HttpStatus.OK, service.listAgents(p));
+        return ok(http, HttpStatus.OK, service.listAgents(p, includeDisabled));
+    }
+
+    // ── Human calls (counsellor click-to-call) ───────────────────────────────────
+    // Own scopes (human_calls:read / human_calls:write), never granted by default: a key
+    // that places AI calls must not be able to ring staff phones or list staff.
+
+    @GetMapping("/counsellors")
+    public ResponseEntity<Map<String, Object>> counsellors(HttpServletRequest http) {
+        var p = auth.authenticateAny(http, InstituteApiKeyService.SCOPE_HUMAN_CALLS_READ,
+                InstituteApiKeyService.SCOPE_COUNSELLORS_MANAGE);
+        return ok(http, HttpStatus.OK, humanCalls.listCounsellors(p));
+    }
+
+    @PostMapping("/human-calls")
+    public ResponseEntity<Map<String, Object>> createHumanCall(HttpServletRequest http,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+            @RequestBody(required = false) HumanCallBody body) {
+        var p = auth.authenticate(http, InstituteApiKeyService.SCOPE_HUMAN_CALLS_WRITE);
+        if (body == null) throw AiCallingApiException.invalid("Send a JSON body with counsellor_id and phone_number.");
+        Map<String, Object> out = humanCalls.createHumanCall(p, body.toInput(), idempotencyKey);
+        boolean replay = Boolean.TRUE.equals(out.get("idempotent_replay"));
+        return ok(http, replay ? HttpStatus.OK : HttpStatus.CREATED, out);
+    }
+
+    @GetMapping("/human-calls")
+    public ResponseEntity<Map<String, Object>> listHumanCalls(HttpServletRequest http,
+            @RequestParam(value = "counsellor_id", required = false) String counsellorId,
+            @RequestParam(value = "status", required = false) String status,
+            @RequestParam(value = "phone_number", required = false) String phoneNumber,
+            @RequestParam(value = "external_id", required = false) String externalId,
+            @RequestParam(value = "created_after", required = false) String createdAfter,
+            @RequestParam(value = "created_before", required = false) String createdBefore,
+            @RequestParam(value = "limit", required = false, defaultValue = "25") int limit,
+            @RequestParam(value = "starting_after", required = false) String startingAfter) {
+        var p = auth.authenticate(http, InstituteApiKeyService.SCOPE_HUMAN_CALLS_READ);
+        return ok(http, HttpStatus.OK, humanCalls.listHumanCalls(p, counsellorId, status, phoneNumber, externalId,
+                instant(createdAfter, "created_after"), instant(createdBefore, "created_before"), limit, startingAfter));
+    }
+
+    @GetMapping("/human-calls/{id}")
+    public ResponseEntity<Map<String, Object>> getHumanCall(HttpServletRequest http, @PathVariable String id) {
+        var p = auth.authenticate(http, InstituteApiKeyService.SCOPE_HUMAN_CALLS_READ);
+        return ok(http, HttpStatus.OK, humanCalls.getHumanCall(p, id));
+    }
+
+    @PostMapping("/human-calls/{id}/disposition")
+    public ResponseEntity<Map<String, Object>> setDisposition(HttpServletRequest http, @PathVariable String id,
+            @RequestBody(required = false) DispositionBody body) {
+        var p = auth.authenticate(http, InstituteApiKeyService.SCOPE_HUMAN_CALLS_WRITE);
+        if (body == null) throw AiCallingApiException.invalid("Send a JSON body with key.");
+        return ok(http, HttpStatus.OK, humanCalls.setDisposition(p, id, body.key, body.notes));
+    }
+
+    @GetMapping("/dispositions")
+    public ResponseEntity<Map<String, Object>> dispositions(HttpServletRequest http) {
+        var p = auth.authenticate(http, InstituteApiKeyService.SCOPE_HUMAN_CALLS_READ);
+        return ok(http, HttpStatus.OK, humanCalls.listDispositions(p));
+    }
+
+    private static Instant instant(String raw, String field) {
+        if (raw == null || raw.isBlank()) return null;
+        try {
+            return Instant.parse(raw.trim());
+        } catch (DateTimeParseException e) {
+            throw AiCallingApiException.invalid(field + " must be an ISO-8601 instant, e.g. 2026-10-13T09:00:00Z.");
+        }
     }
 
     // ── Credits and usage ────────────────────────────────────────────────────────
@@ -228,6 +301,36 @@ public class PublicAiCallingApiController {
         private String agentId;
         private boolean test;
         private List<CallBody> calls;
+    }
+
+    @Data
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class HumanCallBody {
+        @JsonProperty("counsellor_id")
+        @JsonAlias("counsellorId")
+        private String counsellorId;
+        @JsonProperty("counsellor_email")
+        @JsonAlias("counsellorEmail")
+        private String counsellorEmail;
+        @JsonProperty("phone_number")
+        @JsonAlias("phoneNumber")
+        private String phoneNumber;
+        private ContactBody contact;
+        private Map<String, Object> metadata;
+        private Boolean analyze;
+
+        HumanCallApiService.HumanCallInput toInput() {
+            return new HumanCallApiService.HumanCallInput(counsellorId, counsellorEmail, phoneNumber,
+                    contact == null ? null : contact.name, contact == null ? null : contact.email,
+                    contact == null ? null : contact.externalId, metadata, analyze);
+        }
+    }
+
+    @Data
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class DispositionBody {
+        private String key;
+        private String notes;
     }
 
     @Data

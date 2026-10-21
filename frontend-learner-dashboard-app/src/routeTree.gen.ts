@@ -18,6 +18,7 @@ import { Route as SubOrgRegistrationIndexRouteImport } from './routes/sub-org-re
 import { Route as SubOrgLearnersIndexRouteImport } from './routes/sub-org-learners/index'
 import { Route as StudyLibraryIndexRouteImport } from './routes/study-library/index'
 import { Route as SignupIndexRouteImport } from './routes/signup/index'
+import { Route as SiteAssistantEmbedIndexRouteImport } from './routes/site-assistant-embed/index'
 import { Route as SessionTerminatedIndexRouteImport } from './routes/session-terminated/index'
 import { Route as RegisterIndexRouteImport } from './routes/register/index'
 import { Route as ReferralIndexRouteImport } from './routes/referral/index'
@@ -171,6 +172,11 @@ const StudyLibraryIndexRoute = StudyLibraryIndexRouteImport.update({
 const SignupIndexRoute = SignupIndexRouteImport.update({
   id: '/signup/',
   path: '/signup/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SiteAssistantEmbedIndexRoute = SiteAssistantEmbedIndexRouteImport.update({
+  id: '/site-assistant-embed/',
+  path: '/site-assistant-embed/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SessionTerminatedIndexRoute = SessionTerminatedIndexRouteImport.update({
@@ -809,6 +815,7 @@ export interface FileRoutesByFullPath {
   '/register': typeof RegisterIndexRoute
   '/session-terminated': typeof SessionTerminatedIndexRoute
   '/signup': typeof SignupIndexRoute
+  '/site-assistant-embed': typeof SiteAssistantEmbedIndexRoute
   '/study-library': typeof StudyLibraryIndexRoute
   '/sub-org-learners': typeof SubOrgLearnersIndexRoute
   '/sub-org-registration': typeof SubOrgRegistrationIndexRoute
@@ -928,6 +935,7 @@ export interface FileRoutesByTo {
   '/register': typeof RegisterIndexRoute
   '/session-terminated': typeof SessionTerminatedIndexRoute
   '/signup': typeof SignupIndexRoute
+  '/site-assistant-embed': typeof SiteAssistantEmbedIndexRoute
   '/study-library': typeof StudyLibraryIndexRoute
   '/sub-org-learners': typeof SubOrgLearnersIndexRoute
   '/sub-org-registration': typeof SubOrgRegistrationIndexRoute
@@ -1048,6 +1056,7 @@ export interface FileRoutesById {
   '/register/': typeof RegisterIndexRoute
   '/session-terminated/': typeof SessionTerminatedIndexRoute
   '/signup/': typeof SignupIndexRoute
+  '/site-assistant-embed/': typeof SiteAssistantEmbedIndexRoute
   '/study-library/': typeof StudyLibraryIndexRoute
   '/sub-org-learners/': typeof SubOrgLearnersIndexRoute
   '/sub-org-registration/': typeof SubOrgRegistrationIndexRoute
@@ -1170,6 +1179,7 @@ export interface FileRouteTypes {
     | '/register'
     | '/session-terminated'
     | '/signup'
+    | '/site-assistant-embed'
     | '/study-library'
     | '/sub-org-learners'
     | '/sub-org-registration'
@@ -1289,6 +1299,7 @@ export interface FileRouteTypes {
     | '/register'
     | '/session-terminated'
     | '/signup'
+    | '/site-assistant-embed'
     | '/study-library'
     | '/sub-org-learners'
     | '/sub-org-registration'
@@ -1408,6 +1419,7 @@ export interface FileRouteTypes {
     | '/register/'
     | '/session-terminated/'
     | '/signup/'
+    | '/site-assistant-embed/'
     | '/study-library/'
     | '/sub-org-learners/'
     | '/sub-org-registration/'
@@ -1529,6 +1541,7 @@ export interface RootRouteChildren {
   RegisterIndexRoute: typeof RegisterIndexRoute
   SessionTerminatedIndexRoute: typeof SessionTerminatedIndexRoute
   SignupIndexRoute: typeof SignupIndexRoute
+  SiteAssistantEmbedIndexRoute: typeof SiteAssistantEmbedIndexRoute
   StudyLibraryIndexRoute: typeof StudyLibraryIndexRoute
   SubOrgLearnersIndexRoute: typeof SubOrgLearnersIndexRoute
   SubOrgRegistrationIndexRoute: typeof SubOrgRegistrationIndexRoute
@@ -1665,6 +1678,13 @@ declare module '@tanstack/react-router' {
       path: '/signup'
       fullPath: '/signup'
       preLoaderRoute: typeof SignupIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/site-assistant-embed/': {
+      id: '/site-assistant-embed/'
+      path: '/site-assistant-embed'
+      fullPath: '/site-assistant-embed'
+      preLoaderRoute: typeof SiteAssistantEmbedIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/session-terminated/': {
@@ -2513,6 +2533,7 @@ const rootRouteChildren: RootRouteChildren = {
   RegisterIndexRoute: RegisterIndexRoute,
   SessionTerminatedIndexRoute: SessionTerminatedIndexRoute,
   SignupIndexRoute: SignupIndexRoute,
+  SiteAssistantEmbedIndexRoute: SiteAssistantEmbedIndexRoute,
   StudyLibraryIndexRoute: StudyLibraryIndexRoute,
   SubOrgLearnersIndexRoute: SubOrgLearnersIndexRoute,
   SubOrgRegistrationIndexRoute: SubOrgRegistrationIndexRoute,

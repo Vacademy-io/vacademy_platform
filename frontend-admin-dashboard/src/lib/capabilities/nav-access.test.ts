@@ -90,6 +90,7 @@ describe('filterSidebarByEntitlement — CRM-only plan', () => {
 
     it('drops non-entitled sub-tabs of a kept tab', () => {
         expect(subIds(out, 'manage-institute')).toEqual([
+            'institute-overview',
             'teams',
             'suborg-teams',
             'manage-institute-suborgs',

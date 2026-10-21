@@ -514,6 +514,18 @@ export const onboardingDashboardKey = (
     pageNo: number
 ) => ['onboarding-dashboard', instituteId, flowId ?? null, status ?? null, pageNo] as const;
 
+/** Instance counts per status plus ALL, for the dashboard count cards (one grouped query). */
+export async function fetchOnboardingStatusCounts(
+    instituteId: string,
+    flowId?: string
+): Promise<Record<string, number>> {
+    const { data } = await authenticatedAxiosInstance.get(
+        `${ONBOARDING_INSTANCES_BASE}/dashboard/status-counts`,
+        { params: { instituteId, flowId: flowId || undefined } }
+    );
+    return (data ?? {}) as Record<string, number>;
+}
+
 /** Every onboarding instance for the institute (optionally filtered), for the management dashboard. */
 export async function fetchOnboardingDashboard(
     instituteId: string,

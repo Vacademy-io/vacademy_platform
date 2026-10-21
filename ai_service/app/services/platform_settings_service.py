@@ -161,6 +161,32 @@ SETTING_SPECS: Dict[str, SettingSpec] = {
             default=lambda: get_settings().voice_require_auth,
         ),
         SettingSpec(
+            key="chatbot.text.require_auth",
+            group="rollout",
+            label="Require a login token on the text chatbot",
+            description=(
+                "Refuse /chat-agent requests that don't present a learner access token. Until it "
+                "is on, a token is verified when present (and must belong to the session's "
+                "learner) but not demanded, so older app builds keep working. Turn on once the "
+                "'chat-agent request without a token' log line goes quiet. Also settable via "
+                "CHAT_REQUIRE_AUTH."
+            ),
+            type="bool",
+            default=lambda: get_settings().chat_require_auth,
+        ),
+        SettingSpec(
+            key="chatbot.text.llm_greeting",
+            group="chatbot",
+            label="AI-written greeting",
+            description=(
+                "Write each chat's opening greeting with the model. Off = a templated greeting "
+                "with the learner's name and current lesson, at no cost: 61% of chats (Sep-Oct "
+                "2026) never got a question, so the AI greeting was mostly paid for nothing."
+            ),
+            type="bool",
+            default=lambda: False,
+        ),
+        SettingSpec(
             key="tutor.compile.model",
             group="tutor",
             label="Tutor compile model",
@@ -651,8 +677,65 @@ if "billing.packs.reconcile.enabled" not in SETTING_SPECS:
         default=lambda: False,
     )
 
+# Site Assistant (public website chatbot, app/site_assistant): the platform
+# kill switch and the per-visitor / per-network daily caps. Per-site settings
+# (on/off, daily answers per site) live in each site's catalogue JSON.
+SETTING_SPECS["site_assistant.enabled"] = SettingSpec(
+    key="site_assistant.enabled",
+    group="site_assistant",
+    label="Site Assistant: on (platform kill switch)",
+    description=(
+        "On (default) = the website assistant answers on every site that has it turned on. Off = every site's "
+        "assistant refuses new chats and messages (admin preview too), without any model call. Takes up to 30 s."
+    ),
+    type="bool",
+    default=lambda: True,
+)
+SETTING_SPECS["site_assistant.visitor_daily_answers"] = SettingSpec(
+    key="site_assistant.visitor_daily_answers",
+    group="site_assistant",
+    label="Site Assistant: answers per visitor per day",
+    description="A visitor (browser) gets at most this many model answers a day; then the contact card is shown.",
+    type="number",
+    default=lambda: 40,
+    min_value=0, max_value=1000,
+)
+SETTING_SPECS["site_assistant.ip_daily_answers"] = SettingSpec(
+    key="site_assistant.ip_daily_answers",
+    group="site_assistant",
+    label="Site Assistant: answers per network (IP) per day",
+    description="All visitors behind one IP address (IPv6: one /64) share this daily ceiling.",
+    type="number",
+    default=lambda: 80,
+    min_value=0, max_value=10000,
+)
+SETTING_SPECS["site_assistant.llm.prefer_non_reasoning"] = SettingSpec(
+    key="site_assistant.llm.prefer_non_reasoning",
+    group="site_assistant",
+    label="Site Assistant: answer with a non-reasoning model first",
+    description=(
+        "Off (default) = the chain runs exactly as set under Model defaults (site_assistant), so the portal shows "
+        "what answers. On = when that chain starts with a model that cannot turn reasoning off (GLM), the first "
+        "model of the chain that can answers instead and GLM becomes the fallback. Emergency lever only."
+    ),
+    type="bool",
+    default=lambda: False,
+)
+SETTING_SPECS["site_assistant.llm.disable_reasoning"] = SettingSpec(
+    key="site_assistant.llm.disable_reasoning",
+    group="site_assistant",
+    label="Site Assistant: suppress reasoning tokens",
+    description=(
+        "Ask the provider not to spend hidden reasoning tokens on website-assistant answers (latency: first token "
+        "should arrive in under 2 s). Models that cannot turn reasoning off still run at low effort."
+    ),
+    type="bool",
+    default=lambda: True,
+)
+
 GROUP_LABELS = {
     "chatbot": "Student chatbot",
+    "site_assistant": "Website assistant",
     "voice": "Voice call",
     "tutor": "Live AI Tutor",
     "images": "Image generation",

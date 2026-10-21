@@ -89,7 +89,10 @@
         "cardDescription": "वैश्विक कोर्स इंटरैक्शन",
         "moveOnlyOnCorrect": "केवल सही उत्तर पर ही आगे बढ़ें",
         "celebrateOnComplete": "क्विज़ पूरा होने पर उत्सव मनाएं",
-        "showReportAndAnswers": "रिपोर्ट और सही उत्तर दिखाएं"
+        "showReportAndAnswers": "रिपोर्ट और सही उत्तर दिखाएं",
+        "assignmentHeading": "असाइनमेंट",
+        "hideAttemptsAllowed": "असाइनमेंट पर \"अनुमत प्रयास\" छिपाएं",
+        "hideRepeatedTitle": "असाइनमेंट का शीर्षक छिपाएं जब वह स्लाइड का नाम दोहराए"
     },
     "permissions": {
         "cardTitle": "अनुमतियां",
@@ -114,6 +117,7 @@
         "hideAuthorName": "लेखक का नाम छिपाएं (कोर्स विवरण पेज)",
         "showTeachers": "शिक्षक दिखाएं (कोर्स विवरण पेज)",
         "showCourseConfiguration": "कोर्स कॉन्फ़िगरेशन दिखाएं",
+        "hideTags": "शीर्षक के ऊपर कोर्स टैग (ENGLISH, E-LEARNING…) छिपाएं",
         "showCourseContentPrefixes": "कोर्स कंटेंट प्रीफ़िक्स दिखाएं",
         "courseOverviewVisible": "कोर्स ओवरव्यू दृश्यमान",
         "showSlidesData": "स्लाइड्स डेटा दिखाएं",
@@ -136,6 +140,8 @@
         "cardTitle": "सभी कोर्स पेज",
         "cardDescription": "टैब और डिफ़ॉल्ट चयन",
         "hideInstructorName": "प्रशिक्षक का नाम छिपाएं (कोर्स कार्ड)",
+        "pageSize": "All Courses सूची में प्रति पेज कोर्स",
+        "showAllEnrolledOnDashboard": "डैशबोर्ड \"My courses\": सिर्फ पहले 4 नहीं, सभी नामांकित कोर्स दिखाएँ",
         "addCustomTab": "+ कस्टम टैब जोड़ें",
         "customTabLabelPlaceholder": "जैसे फ्री कोर्स",
         "customTabTags": "इनमें से किसी भी टैग वाले कोर्स दिखाएँ",

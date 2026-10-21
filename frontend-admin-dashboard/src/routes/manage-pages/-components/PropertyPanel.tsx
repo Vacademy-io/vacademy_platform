@@ -65,6 +65,7 @@ import { useBlogManagerStore } from '../-stores/blog-manager-store';
 import { LinkPicker } from './LinkPicker';
 import { CampaignPicker, websiteFormFields } from './CampaignPicker';
 import { FolderBrowserEditor } from './folders/FolderBrowserEditor';
+import { AccessPassGridEditor } from './access-pass/AccessPassGridEditor';
 import { CatalogDiscoveryEditor } from './catalog/CatalogDiscoveryEditor';
 import { CatalogDesignGroups } from './catalog/CatalogDesignGroups';
 import { RowActions } from './catalog/design-fields';
@@ -81,8 +82,10 @@ import { LearningPathEditor } from './learning-path/LearningPathEditor';
 import { VisibleWhenEditor } from './settings/VisibleWhenEditor';
 import { CourseLanguagesSettingsCard } from './settings/CourseLanguagesSettingsCard';
 import { CourseFormatsCard } from './settings/CourseFormatsCard';
+import { CoursePageSettingsCard } from './settings/CoursePageSettingsCard';
 import { SitePaletteCard } from './settings/SitePaletteCard';
 import { SiteCartSettingsCard } from './settings/SiteCartSettingsCard';
+import { SiteAssistantSettingsCard } from './settings/SiteAssistantSettingsCard';
 import { SectionJsonDialog } from './SectionJsonDialog';
 import { describeKeptSettings, mergeSectionVersion } from '../-utils/section-edits';
 import type { ComponentStyle } from '../-types/editor-types';
@@ -1806,11 +1809,22 @@ const GlobalSettingsEditor = ({
                             Array.isArray(gs.courseFormatOrder) ? gs.courseFormatOrder : undefined
                         }
                         onChange={(next) => updateGlobalSettings(next)}
+                        fromTags={gs.courseFormatsFromTags}
+                        onFromTagsChange={(next) => updateField('courseFormatsFromTags', next)}
                         i18n={gs.i18n}
                         readOnlyNames={!!editingLocale}
                     />
             )}
+            <CoursePageSettingsCard
+                value={gs.courseDetails}
+                onChange={(next) => updateField('courseDetails', next)}
+            />
             <SiteCartSettingsCard value={gs.siteCart} onChange={(next) => updateField('siteCart', next)} />
+            <SiteAssistantSettingsCard
+                value={gs.siteAssistant}
+                onChange={(next) => updateField('siteAssistant', next)}
+                config={config}
+            />
 
             {/* Enquiry */}
             <div className="space-y-3 rounded-lg border bg-gray-50 p-4">
@@ -2188,6 +2202,8 @@ const ComponentEditor = ({ component, pageId, updateComponent, siteConfig }: any
             return <ProductPageOfferEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'folderBrowser':
             return <FolderBrowserEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
+        case 'accessPassGrid':
+            return <AccessPassGridEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'learningPath':
             return <LearningPathEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'leadForm':

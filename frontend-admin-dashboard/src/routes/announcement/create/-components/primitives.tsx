@@ -17,6 +17,8 @@ interface SectionCardProps {
     className?: string;
     /** Adds a danger outline when the section holds a blocking error. */
     invalid?: boolean;
+    /** DOM id, so a progress step or "Edit" link can scroll to this card. */
+    id?: string;
 }
 
 export function SectionCard({
@@ -28,11 +30,13 @@ export function SectionCard({
     children,
     className,
     invalid,
+    id,
 }: SectionCardProps) {
     return (
         <Card
+            id={id}
             className={cn(
-                'border-border/80 shadow-sm transition-colors',
+                'rounded-xl border-neutral-200 bg-white shadow-sm transition-colors',
                 invalid && 'border-danger-400',
                 className
             )}
@@ -41,7 +45,7 @@ export function SectionCard({
                 <div className="flex min-w-0 items-start gap-3">
                     {badge}
                     {!badge && SectionIcon && (
-                        <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-md bg-primary-50 text-primary-500">
+                        <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-500">
                             <SectionIcon className="size-5" weight="duotone" />
                         </span>
                     )}

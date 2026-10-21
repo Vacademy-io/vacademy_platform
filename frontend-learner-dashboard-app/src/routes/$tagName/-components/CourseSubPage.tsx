@@ -20,6 +20,7 @@ import { siteUsesDevanagari } from "../-utils/catalogue-site-language";
 import { collectConfigFontFamilies, ensureFontsLoaded } from "../-utils/catalogue-fonts";
 import { CatalogueSeoHead } from "./CatalogueSeoHead";
 import { WhatsAppFloatingButton } from "./WhatsAppFloatingButton";
+import { HostedSiteAssistant } from "@/components/site-assistant/HostedSiteAssistant";
 import { IntroPageComponent } from "./IntroPageComponent";
 import { JsonRenderer } from "./JsonRenderer";
 import { buildPrimaryScaleVars } from "../-utils/style-utils";
@@ -592,6 +593,17 @@ const CourseSubPageContent: React.FC<CourseSubPageProps> = ({
         settings={(catalogueData?.globalSettings as any)?.whatsapp}
         hasMobileBar
       />
+
+      {/* Site Assistant (globalSettings.siteAssistant) — see CourseCataloguePage. */}
+      {(!showIntroPage || introCompleted) && (
+        <HostedSiteAssistant
+          globalSettings={catalogueData?.globalSettings}
+          tagName={tagName}
+          pageKind="page"
+          pageComponents={currentPage?.components}
+          hasMobileBar
+        />
+      )}
 
       {(!showIntroPage || introCompleted) && catalogueData && (
         <MobileActionBar

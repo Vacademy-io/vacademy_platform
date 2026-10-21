@@ -1,7 +1,19 @@
 import { createLazyFileRoute, useNavigate } from '@tanstack/react-router';
 import { Helmet } from 'react-helmet';
 import { useEffect, useMemo, useState } from 'react';
-import { Check, Warning } from '@phosphor-icons/react';
+import type { Icon } from '@phosphor-icons/react';
+import {
+    Check,
+    FilePlus,
+    FileText,
+    Flask,
+    GraduationCap,
+    Info,
+    ListBullets,
+    Robot,
+    ShieldCheck,
+    UsersThree,
+} from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
@@ -31,11 +43,20 @@ import { getTerminologyPlural } from '@/components/common/layout-container/sideb
 import { ContentTerms, OtherTerms, RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { buildChannelMeta, CHANNEL_ORDER, buildLanguageOptions } from '../-constants';
 import { useCreateEngine, useDataPointCatalog } from '../-hooks';
+import {
+    CHANNEL_ICON,
+    CHANNEL_TINT,
+    ChannelChip,
+    Chip,
+    IconTile,
+    KeyValue,
+} from '../-components/engine-ui';
 import type {
     AudienceSelector,
     ChannelKey,
     ChannelsConfig,
     CreateEngineRequest,
+    DataPointSpec,
     EngineLanguage,
 } from '../-types';
 
@@ -45,39 +66,144 @@ export const Route = createLazyFileRoute('/engagement-engines/create/')({
 
 const STEP_KEYS = ['basics', 'dataPoints', 'channels', 'audience', 'cadence', 'review'] as const;
 
-function StepRail({ current, t }: { current: number; t: TFunction }) {
+function StepRail({
+    current,
+    t,
+    onGoTo,
+}: {
+    current: number;
+    t: TFunction;
+    onGoTo: (step: number) => void;
+}) {
     return (
-        <div className="flex flex-row gap-4 overflow-x-auto lg:w-52 lg:flex-col">
+        <nav className="flex shrink-0 flex-row gap-1 overflow-x-auto border-b border-neutral-100 bg-neutral-50 p-3 lg:w-64 lg:flex-col lg:border-b-0 lg:border-e lg:p-4">
             {STEP_KEYS.map((key, i) => {
                 const label = t(`steps.${key}`);
                 const done = i < current;
                 const active = i === current;
                 return (
-                    <div key={label} className="flex shrink-0 items-center gap-2">
+                    <button
+                        key={key}
+                        type="button"
+                        // Only steps already passed can be revisited, so step validation still
+                        // gates every forward move.
+                        disabled={!done}
+                        onClick={() => onGoTo(i)}
+                        aria-current={active ? 'step' : undefined}
+                        className={cn(
+                            'flex shrink-0 items-start gap-3 rounded-lg px-3 py-2 text-left transition-colors',
+                            active && 'bg-white shadow-sm',
+                            done && 'hover:bg-white',
+                            !done && 'cursor-default'
+                        )}
+                    >
                         <span
                             className={cn(
-                                'flex size-6 items-center justify-center rounded-full border text-caption font-medium',
+                                'mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full border font-medium',
                                 done && 'border-primary-500 bg-primary-500 text-white',
                                 active && 'border-primary-500 text-primary-600',
                                 !done && !active && 'border-neutral-300 text-neutral-400'
                             )}
                         >
-                            {done ? <Check className="size-3.5" /> : i + 1}
-                        </span>
-                        <span
-                            className={cn(
-                                'text-body',
-                                active ? 'font-medium text-neutral-700' : 'text-neutral-500'
+                            {done ? (
+                                <Check className="size-3.5" />
+                            ) : (
+                                <span className="text-caption">{i + 1}</span>
                             )}
-                        >
-                            {label}
                         </span>
-                    </div>
+                        <span className="flex min-w-0 flex-col">
+                            <span
+                                className={
+                                    active ? 'font-semibold text-neutral-900' : 'text-neutral-600'
+                                }
+                            >
+                                <span className="text-body">{label}</span>
+                            </span>
+                            <span className="hidden text-neutral-500 lg:block">
+                                <span className="text-caption">{t(`stepHints.${key}`)}</span>
+                            </span>
+                        </span>
+                    </button>
                 );
             })}
-        </div>
+        </nav>
     );
 }
+
+/** A titled block inside a step, with an icon tile. */
+function StepSection({
+    icon,
+    title,
+    hint,
+    children,
+}: {
+    icon: Icon;
+    title: string;
+    hint?: string;
+    children: React.ReactNode;
+}) {
+    return (
+        <section className="flex flex-col gap-3 rounded-xl border border-neutral-200 p-4">
+            <div className="flex items-start gap-3">
+                <IconTile icon={icon} size="sm" tint="bg-neutral-100 text-neutral-600" />
+                <div className="min-w-0">
+                    <p className="font-semibold text-neutral-800">
+                        <span className="text-subtitle">{title}</span>
+                    </p>
+                    {hint && (
+                        <p className="text-neutral-500">
+                            <span className="text-caption">{hint}</span>
+                        </p>
+                    )}
+                </div>
+            </div>
+            {children}
+        </section>
+    );
+}
+
+function StepLead({ children }: { children: React.ReactNode }) {
+    return (
+        <p className="text-neutral-600">
+            <span className="text-body">{children}</span>
+        </p>
+    );
+}
+
+/** A switch row inside a channel card: a title, a one-line hint and the toggle. */
+function ChannelOption({
+    title,
+    hint,
+    ariaLabel,
+    checked,
+    onChange,
+}: {
+    title: string;
+    hint: string;
+    ariaLabel: string;
+    checked: boolean;
+    onChange: (v: boolean) => void;
+}) {
+    return (
+        <label className="flex items-start justify-between gap-3 border-t border-neutral-200 pt-3">
+            <span className="flex flex-col">
+                <span className="font-medium text-neutral-700">
+                    <span className="text-body">{title}</span>
+                </span>
+                <span className="text-neutral-500">
+                    <span className="text-caption">{hint}</span>
+                </span>
+            </span>
+            <Switch aria-label={ariaLabel} checked={checked} onCheckedChange={onChange} />
+        </label>
+    );
+}
+
+const SENSITIVITY_TINT: Record<NonNullable<DataPointSpec['sensitivity']>, string> = {
+    LOW: 'bg-neutral-100 text-neutral-600',
+    MEDIUM: 'bg-warning-50 text-warning-700',
+    HIGH: 'bg-danger-50 text-danger-700',
+};
 
 function CreateEnginePage() {
     const navigate = useNavigate();
@@ -208,337 +334,502 @@ function CreateEnginePage() {
         });
     };
 
+    const channelMeta = buildChannelMeta(tConstants);
+    const languageOptions = buildLanguageOptions(tConstants);
+    const holdoutValue = Math.max(0, Math.min(100, Number(holdoutPct) || 0));
+    const quietFrom = Number(quietStart);
+    const quietTo = Number(quietEnd);
+    // Display only: the window wraps past midnight when the end is before the start.
+    const isQuiet = (h: number) =>
+        quietFrom === quietTo
+            ? false
+            : quietFrom < quietTo
+              ? h >= quietFrom && h < quietTo
+              : h >= quietFrom || h < quietTo;
+    const dataPointLabel = (key: string) =>
+        (catalog ?? []).find((d) => d.key === key)?.label ?? key;
+    const autoSendKeys = CHANNEL_ORDER.filter((c) => channels[c]?.enabled && channels[c]?.auto);
+    const hours = Array.from({ length: 24 }, (_, h) => h);
+
+    const nextSteps: { icon: Icon; tint: string; key: string }[] = [
+        { icon: FilePlus, tint: 'bg-neutral-100 text-neutral-600', key: 'draft' },
+        { icon: UsersThree, tint: 'bg-info-50 text-info-600', key: 'enroll' },
+        ...(channels.WHATSAPP?.enabled
+            ? [{ icon: FileText, tint: 'bg-warning-50 text-warning-600', key: 'templates' }]
+            : []),
+        { icon: Flask, tint: 'bg-primary-50 text-primary-500', key: 'activate' },
+    ];
+
+    const basicsStep = (
+        <div className="flex flex-col gap-4">
+            <div className="grid gap-4 md:grid-cols-2">
+                <MyInput
+                    label={t('basics.name')}
+                    required
+                    inputType="text"
+                    inputPlaceholder={t('basics.namePlaceholder', { learners: learnersLower })}
+                    input={name}
+                    onChangeFunction={(e) => setName(e.target.value)}
+                />
+                <MyInput
+                    label={t('basics.objective')}
+                    inputType="text"
+                    inputPlaceholder={t('basics.objectivePlaceholder', { learners: learnersLower })}
+                    input={objective}
+                    onChangeFunction={(e) => setObjective(e.target.value)}
+                />
+            </div>
+            <div className="flex flex-col gap-1">
+                <label htmlFor="engine-brief" className="text-subtitle font-regular">
+                    {t('basics.brief')}
+                    <span className="text-danger-600">*</span>
+                </label>
+                <Textarea
+                    id="engine-brief"
+                    rows={7}
+                    value={brief}
+                    onChange={(e) => setBrief(e.target.value)}
+                    placeholder={t('basics.briefPlaceholder', { learners: learnersLower })}
+                />
+                <p className="text-caption text-neutral-500">{t('basics.briefHint')}</p>
+            </div>
+            <div className="w-full sm:w-80">
+                <label className="mb-1 block text-subtitle font-regular">
+                    {t('basics.language')}
+                </label>
+                <SearchableSelect
+                    options={languageOptions.map((l) => ({ label: l.label, value: l.value }))}
+                    value={language}
+                    onChange={(v) => setLanguage(v as EngineLanguage)}
+                />
+            </div>
+        </div>
+    );
+
+    const dataPointsStep = (
+        <div className="flex flex-col gap-4">
+            <StepLead>{t('dataPoints.intro')}</StepLead>
+            <div className="grid gap-3 md:grid-cols-2">
+                {(catalog ?? []).map((d) => {
+                    const alwaysOn = d.alwaysOn === true;
+                    const selected = alwaysOn || dataPoints.includes(d.key);
+                    return (
+                        <button
+                            key={d.key}
+                            type="button"
+                            disabled={alwaysOn}
+                            aria-pressed={selected}
+                            onClick={() =>
+                                setDataPoints((prev) =>
+                                    selected ? prev.filter((k) => k !== d.key) : [...prev, d.key]
+                                )
+                            }
+                            className={cn(
+                                'flex items-start gap-3 rounded-xl border p-4 text-left transition-colors',
+                                selected
+                                    ? 'border-primary-300 bg-primary-50'
+                                    : 'border-neutral-200 hover:border-primary-200',
+                                alwaysOn && 'cursor-default'
+                            )}
+                        >
+                            <span
+                                className={cn(
+                                    'mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-sm border',
+                                    selected
+                                        ? 'border-primary-500 bg-primary-500 text-white'
+                                        : 'border-neutral-300 bg-white'
+                                )}
+                            >
+                                {selected && <Check size={12} weight="bold" />}
+                            </span>
+                            <span className="flex min-w-0 flex-col gap-1">
+                                <span className="font-semibold text-neutral-800">
+                                    <span className="text-subtitle">{d.label}</span>
+                                </span>
+                                {d.description && (
+                                    <span className="text-neutral-500">
+                                        <span className="text-caption">{d.description}</span>
+                                    </span>
+                                )}
+                                <span className="mt-1 flex flex-wrap items-center gap-1.5">
+                                    {alwaysOn && <Chip label={t('dataPoints.alwaysOn')} />}
+                                    {d.sensitivity && (
+                                        <Chip
+                                            label={t(`dataPoints.sensitivity.${d.sensitivity}`)}
+                                            className={SENSITIVITY_TINT[d.sensitivity]}
+                                        />
+                                    )}
+                                    <code className="rounded bg-neutral-100 px-1.5 py-0.5 font-mono text-neutral-500">
+                                        <span className="text-caption">{d.key}</span>
+                                    </code>
+                                </span>
+                            </span>
+                        </button>
+                    );
+                })}
+            </div>
+            {highSelected && (
+                <label className="flex items-start gap-3 rounded-xl border border-warning-200 bg-warning-50 p-4">
+                    <ShieldCheck size={20} className="mt-0.5 shrink-0 text-warning-600" />
+                    <Checkbox
+                        checked={consentHigh}
+                        onCheckedChange={(v) => setConsentHigh(v === true)}
+                        className="mt-0.5"
+                    />
+                    <span className="text-caption text-neutral-700">{t('dataPoints.consent')}</span>
+                </label>
+            )}
+        </div>
+    );
+
+    const channelsStep = (
+        <div className="flex flex-col gap-4">
+            <StepLead>{t('channels.intro')}</StepLead>
+            <div className="grid gap-3 md:grid-cols-2">
+                {CHANNEL_ORDER.map((c) => {
+                    const meta = channelMeta[c];
+                    const cfg = channels[c] ?? {};
+                    return (
+                        <div
+                            key={c}
+                            className={cn(
+                                'flex flex-col gap-3 rounded-xl border p-4 transition-colors',
+                                cfg.enabled
+                                    ? 'border-primary-300 bg-primary-50'
+                                    : 'border-neutral-200'
+                            )}
+                        >
+                            <div className="flex items-center gap-3">
+                                <IconTile icon={CHANNEL_ICON[c]} size="sm" tint={CHANNEL_TINT[c]} />
+                                <span className="flex-1 font-semibold text-neutral-800">
+                                    <span className="text-subtitle">{meta.label}</span>
+                                </span>
+                                <Switch
+                                    aria-label={t('channels.enableAria', { channel: meta.label })}
+                                    checked={!!cfg.enabled}
+                                    onCheckedChange={(v) => toggleChannel(c, { enabled: v })}
+                                />
+                            </div>
+                            {cfg.enabled && meta.supportsAuto && (
+                                <ChannelOption
+                                    title={t('channels.autoTitle')}
+                                    hint={t('channels.autoHint')}
+                                    ariaLabel={t('channels.autoAria', { channel: meta.label })}
+                                    checked={!!cfg.auto}
+                                    onChange={(v) => toggleChannel(c, { auto: v })}
+                                />
+                            )}
+                            {cfg.enabled && meta.supportsAutoReply && (
+                                <ChannelOption
+                                    title={t('channels.autoReplyTitle')}
+                                    hint={t('channels.autoReplyHint')}
+                                    ariaLabel={t('channels.autoReplyAria', {
+                                        channel: meta.label,
+                                    })}
+                                    checked={!!cfg.autoReply}
+                                    onChange={(v) => toggleChannel(c, { autoReply: v })}
+                                />
+                            )}
+                            {!meta.supportsAuto && (
+                                <p className="text-neutral-500">
+                                    <span className="text-caption">{t('channels.callNote')}</span>
+                                </p>
+                            )}
+                            {c === 'WHATSAPP' && cfg.enabled && (
+                                <p className="flex items-start gap-2 rounded-lg bg-warning-50 p-2 text-warning-700">
+                                    <FileText size={14} className="mt-0.5 shrink-0" />
+                                    <span className="text-caption">
+                                        {t('channels.whatsappNote')}
+                                    </span>
+                                </p>
+                            )}
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+
+    const audienceStep = (
+        <div className="flex flex-col gap-4">
+            <StepLead>
+                {t('audience.intro', {
+                    batches: batchesLabel.toLowerCase(),
+                    audiences: audiencesLabel.toLowerCase(),
+                })}
+            </StepLead>
+            <StepSection icon={GraduationCap} title={batchesLabel}>
+                <PackageSelector
+                    instituteId={instituteId}
+                    multiSelect
+                    initialPackageSessionIds={batchIds}
+                    onChange={({ packageSessionIds }) => setBatchIds(packageSessionIds ?? [])}
+                />
+            </StepSection>
+            <StepSection
+                icon={ListBullets}
+                title={audiencesLabel}
+                hint={t('audience.audiencesHint')}
+            >
+                <MultiSelect
+                    options={campaignOptions}
+                    selected={audienceIds}
+                    onChange={setAudienceIds}
+                    placeholder={t('audience.select', {
+                        audiences: audiencesLabel.toLowerCase(),
+                    })}
+                />
+            </StepSection>
+            <div className="flex items-center gap-3 rounded-xl border border-neutral-200 bg-neutral-50 p-4">
+                <span className="font-bold tabular-nums text-neutral-900">
+                    <span className="text-h3">{audienceCount}</span>
+                </span>
+                <span className="text-neutral-500">
+                    <span className="text-body">
+                        {t('audience.count', { count: audienceCount })}
+                    </span>
+                </span>
+            </div>
+        </div>
+    );
+
+    const cadenceStep = (
+        <div className="flex flex-col gap-4">
+            <div className="grid gap-4 md:grid-cols-2">
+                <div className="flex flex-col gap-1">
+                    <MyInput
+                        label={t('cadence.recheck')}
+                        required
+                        inputType="number"
+                        inputPlaceholder="72"
+                        input={cadenceHours}
+                        onChangeFunction={(e) => setCadenceHours(e.target.value)}
+                    />
+                    <p className="text-caption text-neutral-500">{t('cadence.recheckHint')}</p>
+                </div>
+                <div>
+                    <label className="mb-1 block text-subtitle font-regular">
+                        {t('cadence.timezone')}
+                    </label>
+                    <SearchableSelect
+                        options={TIMEZONE_OPTIONS.map((o: { label: string; value: string }) => ({
+                            label: o.label,
+                            value: o.value,
+                        }))}
+                        value={timezone}
+                        onChange={setTimezone}
+                    />
+                </div>
+            </div>
+            <div className="flex flex-col gap-2">
+                <label className="text-subtitle font-regular">{t('cadence.quietHours')}</label>
+                <div className="flex flex-wrap items-end gap-3">
+                    <HourSelect
+                        label={t('cadence.from')}
+                        value={quietStart}
+                        onChange={setQuietStart}
+                    />
+                    <HourSelect label={t('cadence.to')} value={quietEnd} onChange={setQuietEnd} />
+                </div>
+                <div className="flex flex-col gap-1" aria-hidden>
+                    <div className="flex gap-0.5">
+                        {hours.map((h) => (
+                            <span
+                                key={h}
+                                title={`${String(h).padStart(2, '0')}:00`}
+                                className={cn(
+                                    'h-6 flex-1 rounded-sm',
+                                    isQuiet(h) ? 'bg-neutral-700' : 'bg-success-100'
+                                )}
+                            />
+                        ))}
+                    </div>
+                    <div className="flex gap-0.5 text-neutral-400">
+                        {hours.map((h) => (
+                            <span key={h} className="flex-1">
+                                <span className="text-caption">{h % 3 === 0 ? h : ''}</span>
+                            </span>
+                        ))}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-3 text-neutral-500">
+                        <span className="flex items-center gap-1.5">
+                            <span className="size-3 rounded-sm bg-neutral-700" />
+                            <span className="text-caption">{t('cadence.legendQuiet')}</span>
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                            <span className="size-3 rounded-sm bg-success-100" />
+                            <span className="text-caption">{t('cadence.legendOpen')}</span>
+                        </span>
+                    </div>
+                </div>
+                <p className="text-caption text-neutral-500">{t('cadence.quietHint')}</p>
+            </div>
+
+            <StepSection icon={ShieldCheck} title={t('autonomy.title')} hint={t('autonomy.hint')}>
+                <div className="grid gap-4 md:grid-cols-2">
+                    <div className="flex flex-col gap-1">
+                        <MyInput
+                            label={t('autonomy.firstN')}
+                            inputType="number"
+                            inputPlaceholder={t('autonomy.firstNPlaceholder')}
+                            input={firstN}
+                            onChangeFunction={(e) => setFirstN(e.target.value)}
+                        />
+                        <p className="text-caption text-neutral-500">{t('autonomy.firstNHint')}</p>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                        <MyInput
+                            label={t('autonomy.holdout')}
+                            inputType="number"
+                            inputPlaceholder="0"
+                            input={holdoutPct}
+                            onChangeFunction={(e) => {
+                                const v = e.target.value;
+                                // Keep the field inside 0..100 so what's shown always matches what's sent.
+                                if (v === '') return setHoldoutPct('');
+                                const n = Number(v);
+                                if (Number.isNaN(n)) return;
+                                setHoldoutPct(String(Math.max(0, Math.min(100, n))));
+                            }}
+                        />
+                        <p className="text-caption text-neutral-500">{t('autonomy.holdoutHint')}</p>
+                    </div>
+                </div>
+            </StepSection>
+        </div>
+    );
+
+    const reviewStep = (
+        <div className="flex flex-col gap-4">
+            <div className="grid gap-6 lg:grid-cols-5">
+                <div className="lg:col-span-3">
+                    <KeyValue label={t('review.name')}>
+                        <b>{name}</b>
+                    </KeyValue>
+                    <KeyValue label={t('review.objective')}>{objective || '—'}</KeyValue>
+                    <KeyValue label={t('review.language')}>
+                        {languageOptions.find((l) => l.value === language)?.label ?? language}
+                    </KeyValue>
+                    <KeyValue label={t('review.dataPoints')}>
+                        <span className="flex flex-wrap items-center gap-1.5">
+                            <span>
+                                {dataPoints.length
+                                    ? dataPoints.map(dataPointLabel).join(', ')
+                                    : t('review.dataPointsNone')}
+                            </span>
+                            {highSelected && consentHigh && (
+                                <Chip
+                                    icon={ShieldCheck}
+                                    label={t('review.consentGiven')}
+                                    className={SENSITIVITY_TINT.HIGH}
+                                />
+                            )}
+                        </span>
+                    </KeyValue>
+                    <KeyValue label={t('review.channels')}>
+                        <span className="flex flex-wrap gap-1.5">
+                            {enabledChannelKeys.map((c) => (
+                                <ChannelChip key={c} channel={c} label={channelMeta[c].label} />
+                            ))}
+                        </span>
+                    </KeyValue>
+                    <KeyValue label={t('review.audienceSources')}>{`${audienceCount}`}</KeyValue>
+                    <KeyValue label={t('review.cadence')}>
+                        {t('review.cadenceValue', { hours: cadenceHours })}
+                    </KeyValue>
+                    <KeyValue label={t('review.quietHours')}>
+                        {`${quietStart}:00–${quietEnd}:00 ${timezone}`}
+                    </KeyValue>
+                    <KeyValue label={t('review.autoSendChannels')}>
+                        {autoSendKeys.map((c) => channelMeta[c].label).join(', ') ||
+                            t('review.autoSendNone')}
+                    </KeyValue>
+                    <KeyValue label={t('review.holdout')}>{`${holdoutValue}%`}</KeyValue>
+                </div>
+                <div className="lg:col-span-2">
+                    <p className="mb-3 font-semibold uppercase tracking-wide text-neutral-500">
+                        <span className="text-caption">{t('review.whatNext')}</span>
+                    </p>
+                    <ol className="flex flex-col">
+                        {nextSteps.map((s, i) => (
+                            <li key={s.key} className="flex gap-3">
+                                <span className="flex flex-col items-center">
+                                    <IconTile icon={s.icon} size="sm" tint={s.tint} />
+                                    {i < nextSteps.length - 1 && (
+                                        <span className="my-1 w-px flex-1 bg-neutral-200" />
+                                    )}
+                                </span>
+                                <span className="flex min-w-0 flex-col pb-4">
+                                    <span className="font-semibold text-neutral-800">
+                                        <span className="text-body">
+                                            {t(`review.next.${s.key}.title`)}
+                                        </span>
+                                    </span>
+                                    <span className="text-neutral-500">
+                                        <span className="text-caption">
+                                            {t(`review.next.${s.key}.text`)}
+                                        </span>
+                                    </span>
+                                </span>
+                            </li>
+                        ))}
+                    </ol>
+                </div>
+            </div>
+            <div className="flex items-start gap-2 rounded-xl border border-info-200 bg-info-50 p-3">
+                <Info className="mt-0.5 size-4 shrink-0 text-info-600" />
+                <p className="text-caption text-neutral-600">{t('review.draftNote')}</p>
+            </div>
+        </div>
+    );
+
+    const stepBodies = [
+        basicsStep,
+        dataPointsStep,
+        channelsStep,
+        audienceStep,
+        cadenceStep,
+        reviewStep,
+    ];
+
     return (
         <LayoutContainer>
             <Helmet>
                 <title>{t('pageTitle')}</title>
             </Helmet>
             <div className="flex flex-col gap-5 p-1">
-                <h1 className="text-h3 font-semibold text-neutral-700">{t('heading')}</h1>
-                <div className="flex flex-col gap-6 lg:flex-row">
-                    <StepRail current={step} t={t} />
-                    <Card className="flex-1 p-5">
-                        {step === 0 && (
-                            <div className="flex flex-col gap-4">
-                                <MyInput
-                                    label={t('basics.name')}
-                                    required
-                                    inputType="text"
-                                    inputPlaceholder={t('basics.namePlaceholder', { learners: learnersLower })}
-                                    input={name}
-                                    onChangeFunction={(e) => setName(e.target.value)}
-                                />
-                                <MyInput
-                                    label={t('basics.objective')}
-                                    inputType="text"
-                                    inputPlaceholder={t('basics.objectivePlaceholder', { learners: learnersLower })}
-                                    input={objective}
-                                    onChangeFunction={(e) => setObjective(e.target.value)}
-                                />
-                                <div className="flex flex-col gap-1">
-                                    <label htmlFor="engine-brief" className="text-subtitle font-regular">
-                                        {t('basics.brief')}
-                                        <span className="text-danger-600">*</span>
-                                    </label>
-                                    <p className="text-caption text-neutral-500">{t('basics.briefHint')}</p>
-                                    <Textarea
-                                        id="engine-brief"
-                                        rows={7}
-                                        value={brief}
-                                        onChange={(e) => setBrief(e.target.value)}
-                                        placeholder={t('basics.briefPlaceholder', { learners: learnersLower })}
-                                    />
-                                </div>
-                                <div className="w-full sm:w-80">
-                                    <label className="mb-1 block text-subtitle font-regular">
-                                        {t('basics.language')}
-                                    </label>
-                                    <SearchableSelect
-                                        options={buildLanguageOptions(tConstants).map((l) => ({
-                                            label: l.label,
-                                            value: l.value,
-                                        }))}
-                                        value={language}
-                                        onChange={(v) => setLanguage(v as EngineLanguage)}
-                                    />
-                                </div>
-                            </div>
-                        )}
-
-                        {step === 1 && (
-                            <div className="flex flex-col gap-3">
-                                <p className="text-body text-neutral-500">{t('dataPoints.intro')}</p>
-                                <div className="flex flex-col gap-2">
-                                    {(catalog ?? []).map((d) => {
-                                        const alwaysOn = d.alwaysOn === true;
-                                        const selected = alwaysOn || dataPoints.includes(d.key);
-                                        return (
-                                            <button
-                                                key={d.key}
-                                                type="button"
-                                                disabled={alwaysOn}
-                                                onClick={() =>
-                                                    setDataPoints((prev) =>
-                                                        selected
-                                                            ? prev.filter((k) => k !== d.key)
-                                                            : [...prev, d.key]
-                                                    )
-                                                }
-                                                className={cn(
-                                                    'flex items-start gap-3 rounded-lg border p-3 text-left transition-colors',
-                                                    selected
-                                                        ? 'border-primary-300 bg-primary-50'
-                                                        : 'border-neutral-200 hover:border-primary-200',
-                                                    alwaysOn && 'cursor-default'
-                                                )}
-                                            >
-                                                <Checkbox checked={selected} className="mt-0.5" />
-                                                <div className="min-w-0">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="text-subtitle font-medium text-neutral-700">
-                                                            {d.label}
-                                                        </span>
-                                                        {d.sensitivity === 'HIGH' && (
-                                                            <span className="rounded bg-warning-50 px-1.5 py-0.5 text-caption text-warning-600">
-                                                                {t('dataPoints.sensitive')}
-                                                            </span>
-                                                        )}
-                                                        {alwaysOn && (
-                                                            <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-caption text-neutral-500">
-                                                                {t('dataPoints.alwaysOn')}
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                    {d.description && (
-                                                        <p className="mt-0.5 text-caption text-neutral-500">
-                                                            {d.description}
-                                                        </p>
-                                                    )}
-                                                </div>
-                                            </button>
-                                        );
+                <div className="flex items-start gap-3">
+                    <IconTile icon={Robot} size="lg" />
+                    <div>
+                        <h1 className="font-semibold text-neutral-900">
+                            <span className="text-h2">{t('pageTitle')}</span>
+                        </h1>
+                        <p className="text-neutral-500">
+                            <span className="text-body">{t('subtitle')}</span>
+                        </p>
+                    </div>
+                </div>
+                <Card className="flex flex-col overflow-hidden rounded-xl border-neutral-200 shadow-sm lg:flex-row">
+                    <StepRail current={step} t={t} onGoTo={setStep} />
+                    <div className="flex min-w-0 flex-1 flex-col">
+                        <div className="flex-1 p-5">{stepBodies[step]}</div>
+                        <div className="flex flex-wrap items-center gap-2 border-t border-neutral-100 bg-neutral-50 px-5 py-3">
+                            <span className="me-auto text-neutral-500">
+                                <span className="text-caption">
+                                    {t('footer.step', {
+                                        n: step + 1,
+                                        total: STEP_KEYS.length,
+                                        label: t(`steps.${STEP_KEYS[step]}`),
                                     })}
-                                </div>
-                                {highSelected && (
-                                    <label className="mt-1 flex items-start gap-2 rounded-lg border border-warning-200 bg-warning-50 p-3">
-                                        <Checkbox
-                                            checked={consentHigh}
-                                            onCheckedChange={(v) => setConsentHigh(v === true)}
-                                            className="mt-0.5"
-                                        />
-                                        <span className="text-caption text-neutral-600">
-                                            {t('dataPoints.consent')}
-                                        </span>
-                                    </label>
-                                )}
-                            </div>
-                        )}
-
-                        {step === 2 && (
-                            <div className="flex flex-col gap-3">
-                                <p className="text-body text-neutral-500">{t('channels.intro')}</p>
-                                {CHANNEL_ORDER.map((c) => {
-                                    const meta = buildChannelMeta(tConstants)[c];
-                                    const cfg = channels[c] ?? {};
-                                    return (
-                                        <div
-                                            key={c}
-                                            className="flex flex-col gap-2 rounded-lg border border-neutral-200 p-3"
-                                        >
-                                            <div className="flex items-center justify-between">
-                                                <span className="text-subtitle font-medium text-neutral-700">
-                                                    {meta.label}
-                                                </span>
-                                                <Switch
-                                                    aria-label={t('channels.enableAria', { channel: meta.label })}
-                                                    checked={!!cfg.enabled}
-                                                    onCheckedChange={(v) => toggleChannel(c, { enabled: v })}
-                                                />
-                                            </div>
-                                            {cfg.enabled && meta.supportsAuto && (
-                                                <label className="flex items-center justify-between pl-1">
-                                                    <span className="text-caption text-neutral-500">
-                                                        {t('channels.auto')}
-                                                    </span>
-                                                    <Switch
-                                                        aria-label={t('channels.autoAria', { channel: meta.label })}
-                                                        checked={!!cfg.auto}
-                                                        onCheckedChange={(v) => toggleChannel(c, { auto: v })}
-                                                    />
-                                                </label>
-                                            )}
-                                            {cfg.enabled && meta.supportsAutoReply && (
-                                                <label className="flex items-center justify-between pl-1">
-                                                    <span className="text-caption text-neutral-500">
-                                                        {t('channels.autoReply')}
-                                                    </span>
-                                                    <Switch
-                                                        aria-label={t('channels.autoReplyAria', { channel: meta.label })}
-                                                        checked={!!cfg.autoReply}
-                                                        onCheckedChange={(v) =>
-                                                            toggleChannel(c, { autoReply: v })
-                                                        }
-                                                    />
-                                                </label>
-                                            )}
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        )}
-
-                        {step === 3 && (
-                            <div className="flex flex-col gap-4">
-                                <p className="text-body text-neutral-500">
-                                    {t('audience.intro', {
-                                        batches: batchesLabel.toLowerCase(),
-                                        audiences: audiencesLabel.toLowerCase(),
-                                    })}
-                                </p>
-                                <div>
-                                    <label className="mb-1 block text-subtitle font-regular">
-                                        {batchesLabel}
-                                    </label>
-                                    <PackageSelector
-                                        instituteId={instituteId}
-                                        multiSelect
-                                        initialPackageSessionIds={batchIds}
-                                        onChange={({ packageSessionIds }) =>
-                                            setBatchIds(packageSessionIds ?? [])
-                                        }
-                                    />
-                                </div>
-                                <div>
-                                    <label className="mb-1 block text-subtitle font-regular">
-                                        {audiencesLabel}
-                                    </label>
-                                    <MultiSelect
-                                        options={campaignOptions}
-                                        selected={audienceIds}
-                                        onChange={setAudienceIds}
-                                        placeholder={t('audience.select', { audiences: audiencesLabel.toLowerCase() })}
-                                    />
-                                </div>
-                                <p className="text-caption text-neutral-400">
-                                    {t('audience.count', { count: audienceCount })}
-                                </p>
-                            </div>
-                        )}
-
-                        {step === 4 && (
-                            <div className="flex flex-col gap-4">
-                                <MyInput
-                                    label={t('cadence.recheck')}
-                                    required
-                                    inputType="number"
-                                    inputPlaceholder="72"
-                                    input={cadenceHours}
-                                    onChangeFunction={(e) => setCadenceHours(e.target.value)}
-                                />
-                                <p className="-mt-2 text-caption text-neutral-500">{t('cadence.recheckHint')}</p>
-                                <div className="flex flex-col gap-2">
-                                    <label className="text-subtitle font-regular">{t('cadence.quietHours')}</label>
-                                    <p className="text-caption text-neutral-500">{t('cadence.quietHint')}</p>
-                                    <div className="flex flex-wrap items-end gap-3">
-                                        <HourSelect label={t('cadence.from')} value={quietStart} onChange={setQuietStart} />
-                                        <HourSelect label={t('cadence.to')} value={quietEnd} onChange={setQuietEnd} />
-                                        <div className="w-56">
-                                            <label className="mb-1 block text-caption text-neutral-500">
-                                                {t('cadence.timezone')}
-                                            </label>
-                                            <SearchableSelect
-                                                options={TIMEZONE_OPTIONS.map(
-                                                    (o: { label: string; value: string }) => ({
-                                                        label: o.label,
-                                                        value: o.value,
-                                                    })
-                                                )}
-                                                value={timezone}
-                                                onChange={setTimezone}
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="flex flex-col gap-3 rounded-lg border border-neutral-200 p-3">
-                                    <div>
-                                        <p className="text-subtitle font-regular text-neutral-700">
-                                            {t('autonomy.title')}
-                                        </p>
-                                        <p className="text-caption text-neutral-500">{t('autonomy.hint')}</p>
-                                    </div>
-                                    <MyInput
-                                        label={t('autonomy.firstN')}
-                                        inputType="number"
-                                        inputPlaceholder={t('autonomy.firstNPlaceholder')}
-                                        input={firstN}
-                                        onChangeFunction={(e) => setFirstN(e.target.value)}
-                                    />
-                                    <p className="-mt-2 text-caption text-neutral-500">{t('autonomy.firstNHint')}</p>
-                                    <MyInput
-                                        label={t('autonomy.holdout')}
-                                        inputType="number"
-                                        inputPlaceholder="0"
-                                        input={holdoutPct}
-                                        onChangeFunction={(e) => {
-                                            const v = e.target.value;
-                                            // Keep the field inside 0..100 so what's shown always matches what's sent.
-                                            if (v === '') return setHoldoutPct('');
-                                            const n = Number(v);
-                                            if (Number.isNaN(n)) return;
-                                            setHoldoutPct(String(Math.max(0, Math.min(100, n))));
-                                        }}
-                                    />
-                                    <p className="-mt-2 text-caption text-neutral-500">{t('autonomy.holdoutHint')}</p>
-                                </div>
-                            </div>
-                        )}
-
-                        {step === 5 && (
-                            <div className="flex flex-col gap-3">
-                                <ReviewRow label={t('review.name')} value={name} />
-                                <ReviewRow label={t('review.objective')} value={objective || '—'} />
-                                <ReviewRow
-                                    label={t('review.language')}
-                                    value={buildLanguageOptions(tConstants).find((l) => l.value === language)?.label ?? language}
-                                />
-                                <ReviewRow
-                                    label={t('review.dataPoints')}
-                                    value={dataPoints.length ? dataPoints.join(', ') : t('review.dataPointsNone')}
-                                />
-                                <ReviewRow
-                                    label={t('review.channels')}
-                                    value={enabledChannelKeys.map((c) => buildChannelMeta(tConstants)[c].label).join(', ')}
-                                />
-                                <ReviewRow label={t('review.audienceSources')} value={`${audienceCount}`} />
-                                <ReviewRow
-                                    label={t('review.cadence')}
-                                    value={t('review.cadenceValue', { hours: cadenceHours })}
-                                />
-                                <ReviewRow
-                                    label={t('review.quietHours')}
-                                    value={`${quietStart}:00–${quietEnd}:00 ${timezone}`}
-                                />
-                                <ReviewRow
-                                    label={t('review.autoSendChannels')}
-                                    value={
-                                        CHANNEL_ORDER.filter((c) => channels[c]?.enabled && channels[c]?.auto)
-                                            .map((c) => buildChannelMeta(tConstants)[c].label)
-                                            .join(', ') || t('review.autoSendNone')
-                                    }
-                                />
-                                <ReviewRow
-                                    label={t('review.holdout')}
-                                    value={`${Math.max(0, Math.min(100, Number(holdoutPct) || 0))}%`}
-                                />
-                                <div className="mt-2 flex items-start gap-2 rounded-lg border border-info-200 bg-info-50 p-3">
-                                    <Warning className="mt-0.5 size-4 shrink-0 text-info-600" />
-                                    <p className="text-caption text-neutral-600">{t('review.draftNote')}</p>
-                                </div>
-                            </div>
-                        )}
-
-                        <div className="mt-6 flex items-center justify-between border-t border-neutral-100 pt-4">
+                                </span>
+                            </span>
+                            <MyButton
+                                buttonType="text"
+                                scale="medium"
+                                onClick={() => navigate({ to: '/engagement-engines' })}
+                            >
+                                {t('actions.cancel')}
+                            </MyButton>
                             <MyButton
                                 buttonType="secondary"
                                 scale="medium"
@@ -563,12 +854,14 @@ function CreateEnginePage() {
                                     disable={createEngine.isPending}
                                     onClick={submit}
                                 >
-                                    {createEngine.isPending ? t('actions.creating') : t('actions.create')}
+                                    {createEngine.isPending
+                                        ? t('actions.creating')
+                                        : t('actions.create')}
                                 </MyButton>
                             )}
                         </div>
-                    </Card>
-                </div>
+                    </div>
+                </Card>
             </div>
         </LayoutContainer>
     );
@@ -598,15 +891,6 @@ function HourSelect({
                     ))}
                 </SelectContent>
             </Select>
-        </div>
-    );
-}
-
-function ReviewRow({ label, value }: { label: string; value: string }) {
-    return (
-        <div className="flex items-start justify-between gap-4 border-b border-neutral-100 pb-2">
-            <span className="text-body text-neutral-500">{label}</span>
-            <span className="max-w-sm text-right text-body font-medium text-neutral-700">{value}</span>
         </div>
     );
 }

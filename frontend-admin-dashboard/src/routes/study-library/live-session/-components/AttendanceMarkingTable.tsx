@@ -344,9 +344,15 @@ export function AttendanceMarkingTable({
         try {
             const entries = Object.entries(statusOverrides).map(([studentId, status]) => {
                 const student = data.find((s) => s.studentId === studentId);
+                // Only form guests are EXTERNAL_USER. enrollmentStatus is null for
+                // individually added learners too, so keying on it saved their marks
+                // as guests — and the report (which reads USER rows) showed Unmarked.
+                const isGuest = student?.sourceType
+                    ? student.sourceType === 'EXTERNAL_USER'
+                    : !student?.enrollmentStatus;
                 return {
                     userSourceId: studentId,
-                    userSourceType: student?.enrollmentStatus ? 'USER' : 'EXTERNAL_USER',
+                    userSourceType: isGuest ? 'EXTERNAL_USER' : 'USER',
                     status,
                 };
             });

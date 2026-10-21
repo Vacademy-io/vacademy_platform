@@ -291,7 +291,8 @@ const CourseCatalougePage: React.FC = () => {
     PROGRESS: 0,
     COMPLETED: 0,
   });
-  const pageSize = 10;
+  // Student Display Settings → allCourses.pageSize (default 10; 1–100).
+  const [pageSize, setPageSize] = useState(10);
 
   // Version key to trigger fetch only when filters are explicitly applied
   const [filtersVersion, setFiltersVersion] = useState(0);
@@ -407,7 +408,7 @@ const CourseCatalougePage: React.FC = () => {
     },
     // allCourses is only a shape template for the page envelope.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sortOption, debouncedSearch, pageByTab, setDripCondition, clearDripCondition]
+    [sortOption, debouncedSearch, pageByTab, pageSize, setDripCondition, clearDripCondition]
   );
 
   const fetchCoursesForTab = useCallback(
@@ -660,6 +661,7 @@ const CourseCatalougePage: React.FC = () => {
       debouncedSearch,
       selectedTags,
       pageByTab,
+      pageSize,
       sortOption,
       fetchCatalogueSubset,
       setDripCondition,
@@ -813,6 +815,8 @@ const CourseCatalougePage: React.FC = () => {
     };
 
     getStudentDisplaySettings(false).then((settings) => {
+      const size = Number(settings?.allCourses?.pageSize);
+      if (Number.isInteger(size) && size >= 1 && size <= 100) setPageSize(size);
       const tabs = settings?.allCourses?.tabs || [];
       // A custom tab without a label or tags would be blank or list the
       // whole catalogue; the admin screen flags those as incomplete.

@@ -44,7 +44,10 @@
         "recipientsMore": "+{{count}} more",
         "channels": "Sent via",
         "loadFailed": "Could not load announcements.",
-        "noMatch": "No announcements match this search on this page."
+        "noMatch": "No announcements match this search on this page.",
+        "announcement": "Announcement",
+        "appearsIn": "Appears in · via",
+        "inProductOnly": "In-product only"
     },
     "actions": {
         "view": "View",

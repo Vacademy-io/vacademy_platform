@@ -14,7 +14,10 @@
         "mentorFallback": "Mentor",
         "menteesAssigned_one": "{{count}} mentoré assigné",
         "menteesAssigned_many": "{{count}} mentorés assignés",
-        "menteesAssigned_other": "{{count}} mentorés assignés"
+        "menteesAssigned_other": "{{count}} mentorés assignés",
+        "ratingChip_one": "{{rating}} · {{count}} rating",
+        "ratingChip_other": "{{rating}} · {{count}} ratings",
+        "expertise": "Expertise: {{tags}}"
     },
     "googleCalendar": {
         "title": "Google Agenda",
@@ -43,7 +46,8 @@
         "heading_other": "{{count}} sessions à enregistrer",
         "description": "Tant que vous ne l'enregistrez pas, une session n'est considérée comme effectuée nulle part.",
         "menteeFallback": "Mentoré",
-        "record": "Enregistrer"
+        "record": "Enregistrer",
+        "notCounted": "Not counted yet"
     },
     "mentees": {
         "heading": "Mentorés",
@@ -69,5 +73,20 @@
         "messageAriaLabel": "Envoyer un message à {{name}}",
         "openAriaLabel": "Ouvrir {{name}}",
         "openRowTitle": "Progression d'apprentissage, notes et appels planifiés"
+    },
+    "header": {
+        "schedule": "Schedule 1:1"
+    },
+    "kpi": {
+        "mentees": "My mentees",
+        "menteesLeft_one": "{{count}} place left of {{cap}}",
+        "menteesLeft_other": "{{count}} places left of {{cap}}",
+        "menteesNoLimit": "No limit set",
+        "rating": "My average rating",
+        "ratingDetail_one": "{{count}} rated session",
+        "ratingDetail_other": "{{count}} rated sessions",
+        "ratingNone": "No ratings yet",
+        "toRecord": "Sessions to record",
+        "toRecordDetail": "Not counted as delivered until recorded"
     }
 }

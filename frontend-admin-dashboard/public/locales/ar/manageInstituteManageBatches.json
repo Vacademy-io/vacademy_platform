@@ -9,5 +9,12 @@
         "noSessionsAvailable": "لا توجد جلسات متاحة",
         "createBatchHint": "أنشئ دفعة جديدة في هذه الجلسة للبدء.",
         "createSessionHint": "يرجى إنشاء جلسة أولاً قبل إضافة الدفعات."
+    },
+    "export": "Export",
+    "summary": "{{shown}} of {{total}} {{batches}} · {{learners}} {{learnerTerm}}",
+    "csv": {
+        "status": "Status",
+        "inviteCode": "Invite code",
+        "startDate": "Start date"
     }
 }

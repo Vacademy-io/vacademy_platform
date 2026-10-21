@@ -251,6 +251,7 @@ function mergeWithDefaults(
             showCourseConfiguration:
                 incoming?.courseDetails?.showCourseConfiguration ??
                 d.courseDetails.showCourseConfiguration,
+            hideTags: incoming?.courseDetails?.hideTags ?? d.courseDetails.hideTags,
             showCourseContentPrefixes:
                 incoming?.courseDetails?.showCourseContentPrefixes ??
                 d.courseDetails.showCourseContentPrefixes,
@@ -314,6 +315,14 @@ function mergeWithDefaults(
                     incoming?.courseSettings?.quiz?.showReportAndCorrectAnswers ??
                     d.courseSettings.quiz.showReportAndCorrectAnswers,
             },
+            assignment: {
+                hideAttemptsAllowed:
+                    incoming?.courseSettings?.assignment?.hideAttemptsAllowed ??
+                    d.courseSettings.assignment.hideAttemptsAllowed,
+                hideRepeatedTitle:
+                    incoming?.courseSettings?.assignment?.hideRepeatedTitle ??
+                    d.courseSettings.assignment.hideRepeatedTitle,
+            },
         },
         allCourses: {
             tabs: mergeArrayById(incoming?.allCourses?.tabs, d.allCourses.tabs).map((t) => ({
@@ -327,6 +336,10 @@ function mergeWithDefaults(
             hideInstructorName:
                 incoming?.allCourses?.hideInstructorName ??
                 d.allCourses.hideInstructorName,
+            pageSize: incoming?.allCourses?.pageSize ?? d.allCourses.pageSize,
+            showAllEnrolledOnDashboard:
+                incoming?.allCourses?.showAllEnrolledOnDashboard ??
+                d.allCourses.showAllEnrolledOnDashboard,
         },
         notifications: {
             allowSystemAlerts:

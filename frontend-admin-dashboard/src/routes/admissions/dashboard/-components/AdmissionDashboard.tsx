@@ -16,6 +16,7 @@ import { Users, ChartLine, Target, TrendUp, ArrowRight, UserPlus } from '@phosph
 import { getPipelineMetricsQuery, getInstituteId } from '../-services/pipeline-services';
 import type { PipelineMetrics } from '../-types/pipeline-types';
 import PipelineUsersTable from './PipelineUsersTable';
+import { AdmissionsEnhanced } from './AdmissionsEnhanced';
 
 export default function AdmissionDashboard() {
     const { t } = useTranslation('admissionsAdmissionDashboard');
@@ -164,6 +165,9 @@ export default function AdmissionDashboard() {
                     </div>
                 </CardContent>
             </Card>
+
+            {/* funnel + insights. */}
+            <AdmissionsEnhanced data={data} />
 
             {/* Pipeline Users Table */}
             <PipelineUsersTable

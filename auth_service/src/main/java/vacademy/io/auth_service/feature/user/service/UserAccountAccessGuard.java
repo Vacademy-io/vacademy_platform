@@ -233,6 +233,40 @@ public class UserAccountAccessGuard {
     }
 
     /**
+     * PUT /user-roles/update-role-status (enable / disable / delete members of {@code instituteId}).
+     * Besides super-admin: a member DELETING only their own rows (the learner app's "delete my
+     * account" sends the caller's own id with status DELETED) — any other self change, e.g. a
+     * member disabled here re-activating themselves, is not allowed; otherwise staff of
+     * {@code instituteId}, and ADMIN of it when any target is ADMIN there (same rule as
+     * {@link #requireCanUpdateDetails}).
+     */
+    public void requireCanChangeRoleStatus(CustomUserDetails caller, String instituteId, Collection<String> userIds,
+                                           String newStatus) {
+        if (isSuperAdmin(caller)) {
+            return;
+        }
+        CustomUserDetails who = requireCaller(caller, "Only staff of this institute can change a member's access");
+        if (isBlank(instituteId) || userIds == null || userIds.isEmpty()) {
+            throw forbidden("Only staff of this institute can change a member's access");
+        }
+        if (UserRoleStatus.DELETED.name().equals(newStatus) && userIds.stream().allMatch(who.getUserId()::equals)) {
+            return;
+        }
+        Memberships callerRoles = callerMemberships(who);
+        if (!callerRoles.isStaff(instituteId)) {
+            throw forbidden("Only staff of this institute can change a member's access");
+        }
+        if (callerRoles.isAdmin(instituteId)) {
+            return;
+        }
+        for (String target : new LinkedHashSet<>(userIds)) {
+            if (target != null && targetMemberships(rows(target)).admin.contains(instituteId)) {
+                throw forbidden("Only an admin of this institute can change an admin's access");
+            }
+        }
+    }
+
+    /**
      * ADMIN of {@code instituteId} (or super-admin): an ACTIVE/INVITED "ADMIN" (or legacy "Admin")
      * row there. For changes that shape what other members may do, e.g. a custom role's permissions.
      */

@@ -5,6 +5,7 @@ import { CampaignItem } from '../../-services/get-campaigns-list';
 import {
     Dialog,
     DialogContent,
+    DialogDescription,
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
@@ -15,12 +16,15 @@ interface CreateCampaignDialogProps {
     isOpen: boolean;
     onClose: () => void;
     campaign?: CampaignItem | null;
+    /** Wizard step to open on (0 = Basics). */
+    initialStep?: number;
 }
 
 export const CreateCampaignDialog: React.FC<CreateCampaignDialogProps> = ({
     isOpen,
     onClose,
     campaign,
+    initialStep,
 }) => {
     const { t } = useTranslation('audienceManagerCreateCampaignDialog');
     const audienceListLabel = getTerminology(OtherTerms.AudienceList, SystemTerms.AudienceList);
@@ -33,9 +37,16 @@ export const CreateCampaignDialog: React.FC<CreateCampaignDialogProps> = ({
             <DialogContent className="w-dialog-lg max-h-dialog-tall overflow-y-auto overflow-x-hidden">
                 <DialogHeader>
                     <DialogTitle>{heading}</DialogTitle>
+                    <DialogDescription>
+                        {campaign ? campaign.campaign_name : t('createDescription')}
+                    </DialogDescription>
                 </DialogHeader>
                 <div className="min-w-0 overflow-hidden">
-                    <CreateCampaignForm onSuccess={onClose} campaign={campaign} />
+                    <CreateCampaignForm
+                        onSuccess={onClose}
+                        campaign={campaign}
+                        initialStep={initialStep}
+                    />
                 </div>
             </DialogContent>
         </Dialog>

@@ -46,6 +46,7 @@ from .routers.mathpix import router as mathpix_router
 from .routers.knowledge_base import router as knowledge_base_router
 from .routers.kb_paper import router as kb_paper_router
 from .routers.kb_companion import router as kb_companion_router
+from .site_assistant.router import router as site_assistant_router
 from .routers.paper_digitise import router as paper_digitise_router
 from .routers.kb_library import router as kb_library_router
 from .routers.voice_agent import router as voice_agent_router
@@ -374,6 +375,8 @@ def create_app() -> FastAPI:
     app.include_router(kb_paper_router, prefix=settings.api_base_path)
     # Student study companions built on a knowledge base (V535).
     app.include_router(kb_companion_router, prefix=settings.api_base_path)
+    # Public website assistant for institute sites (hosted + embed), docs/site-assistant.
+    app.include_router(site_assistant_router, prefix=settings.api_base_path)
     # A question-paper PDF read into gradable questions for offline tests.
     app.include_router(paper_digitise_router, prefix=settings.api_base_path)
     app.include_router(kb_library_router, prefix=settings.api_base_path)

@@ -52,6 +52,11 @@ public class RoleController {
             @RequestBody ModifyUserRolesDTO removeUserRolesDTO,
             @RequestAttribute("user") CustomUserDetails customUserDetails) {
 
+        // Same bar as adding roles: staff of the institute, and an admin there to take ADMIN
+        // away. Without it any signed-in user could strip anyone's roles.
+        userAccountAccessGuard.requireStaffOf(customUserDetails, removeUserRolesDTO.getInstituteId());
+        adminRoleGrantGuard.requireAdminToRemoveAdmin(customUserDetails, removeUserRolesDTO.getInstituteId(),
+                removeUserRolesDTO.getRoles());
         String response = roleService.removeRolesFromUser(removeUserRolesDTO, customUserDetails);
         return ResponseEntity.ok(response);
     }
@@ -110,6 +115,9 @@ public class RoleController {
                                                        @RequestBody List<String> userIds,
                                                        @RequestParam String status,
                                                        @RequestAttribute("user") CustomUserDetails customUserDetails) {
+        // A member may delete their own rows (the learner app's "delete my account");
+        // anyone else's need staff of the institute, and an admin there for an admin.
+        userAccountAccessGuard.requireCanChangeRoleStatus(customUserDetails, instituteId, userIds, status);
         String response = roleService.updateUserRoleStatusByInstituteIdAndUserId(status, instituteId, userIds, customUserDetails);
         return ResponseEntity.ok(response);
     }

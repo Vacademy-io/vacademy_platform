@@ -330,11 +330,12 @@ public class AiCallQueueDrainJob {
      */
     private DispatchOutcome dispatch(AiCallQueueItem item, CallTrigger trigger,
                                      boolean surfaceConflicts) {
-        // A public API call names its agent (campaign_id = ai_agent.id). If that agent was
-        // turned off or deleted while the call waited, dialling would reach the contact
-        // with the built-in generic persona instead: cancel it, visibly, without a dial.
-        if (trigger == CallTrigger.API && !agentCanCall(item)) {
-            finish(item, AiCallQueueStatus.CANCELLED, "The agent was turned off or deleted.");
+        // If the agent this call is for was turned off or deleted while it waited, dialling
+        // would reach the contact with the built-in generic persona (VoiceBotInternalController
+        // falls back to it for a missing or disabled agent): cancel it, visibly, without a dial.
+        String agentRefusal = agentRefusal(item, trigger);
+        if (agentRefusal != null) {
+            finish(item, AiCallQueueStatus.CANCELLED, agentRefusal);
             return DispatchOutcome.ITEM_HANDLED;
         }
         AiCallRequestDTO req = toRequest(item);
@@ -487,6 +488,90 @@ public class AiCallQueueDrainJob {
         req.setCustomerEmail(item.getCustomerEmail());
         req.setMetadata(queueService.readMetadata(item.getMetadata()));
         return req;
+    }
+
+    static final String AGENT_OFF = "The agent was turned off or deleted.";
+    static final String NAMED_AGENT_OFF = "The AI agent \"%s\" is turned off, so this call was not placed.";
+    static final String RESOLVED_AGENT_OFF =
+            "The AI agent this call resolves to (%s) is turned off, so this call was not placed.";
+
+    /**
+     * Why this waiting call must not be dialled because of its AI agent, or null.
+     *
+     * <p>A public API call ({@link CallTrigger#API}) names its agent by id and, as since v1.1,
+     * must reach an existing, enabled agent that places outbound calls; otherwise it is
+     * cancelled.
+     *
+     * <p>Every other trigger (workflow CALL_AI node, bulk campaign, manual button) on the
+     * Vacademy AI provider is resolved the way {@code AiCallService.placeCall} resolves it —
+     * the item's campaign id, else its agent name through the campaigns registry, else the
+     * institute default — and is cancelled ONLY when that resolves to an agent that EXISTS
+     * and is turned OFF (dialling it would reach the contact with the generic persona instead
+     * of the agent the admin switched off). When nothing resolves to an existing agent
+     * (deleted, never created, or a default that names no agent) the call dials exactly as
+     * before, with the voice bot's fallback persona: prod has institutes that run on it
+     * (2026-10-19 replica check: one institute with no agents at all, 26/26 calls in 30 days).
+     * Other providers (Aavtaar, Mock) carry their own campaign ids and are not checked.
+     */
+    String agentRefusal(AiCallQueueItem item, CallTrigger trigger) {
+        if (trigger == CallTrigger.API) {
+            return agentCanCall(item) ? null : AGENT_OFF;
+        }
+        if (!ProviderType.VACADEMY_AI.equalsIgnoreCase(item.getProvider())) return null;
+        String instituteId = item.getInstituteId();
+        String campaignId = blankToNull(item.getCampaignId());
+        String campaignName = blankToNull(item.getCampaignName());
+        List<Object[]> agents;
+        try {
+            agents = agentRepository.findIdNameEnabledByInstituteId(instituteId);
+        } catch (RuntimeException e) {
+            log.warn("ai-call queue: agent lookup failed for item {}: {}", item.getId(), e.getMessage());
+            return null; // degrade to the old behaviour rather than cancel on a read failure
+        }
+        if (campaignId == null) {
+            // Named by the CALL_AI node: an agent of that name that is now off must not be
+            // swapped for whatever the registry or the institute default resolves to.
+            if (campaignName != null && hasOnlyDisabled(agents, campaignName)) {
+                return String.format(NAMED_AGENT_OFF, campaignName);
+            }
+            try {
+                AiCallingSettingsPojo settings = settingsService.get(instituteId);
+                campaignId = blankToNull(settings.resolveCampaignId(item.getProvider(), campaignName));
+            } catch (RuntimeException e) {
+                return null; // placeCall reads the same settings and reports its own error
+            }
+            if (campaignId == null) return null;
+        }
+        Boolean enabled = enabledById(agents, campaignId);
+        if (enabled == null) enabled = enabledByName(agents, campaignId); // a default that holds a NAME
+        // null = no such agent: keep the pre-existing fallback-persona behaviour.
+        return Boolean.FALSE.equals(enabled) ? String.format(RESOLVED_AGENT_OFF, campaignId) : null;
+    }
+
+    private static Boolean enabledById(List<Object[]> agents, String id) {
+        for (Object[] a : agents) {
+            if (a != null && id.equals(String.valueOf(a[0]))) return Boolean.TRUE.equals(a[2]);
+        }
+        return null;
+    }
+
+    /** True when any agent of that name is on, false when there are only disabled ones, null when none. */
+    private static Boolean enabledByName(List<Object[]> agents, String name) {
+        Boolean found = null;
+        for (Object[] a : agents) {
+            if (a == null || a[1] == null || !name.equalsIgnoreCase(String.valueOf(a[1]).trim())) continue;
+            if (Boolean.TRUE.equals(a[2])) return true;
+            found = false;
+        }
+        return found;
+    }
+
+    private static boolean hasOnlyDisabled(List<Object[]> agents, String name) {
+        return Boolean.FALSE.equals(enabledByName(agents, name));
+    }
+
+    private static String blankToNull(String s) {
+        return s == null || s.isBlank() ? null : s.trim();
     }
 
     private boolean agentCanCall(AiCallQueueItem item) {

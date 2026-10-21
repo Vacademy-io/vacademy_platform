@@ -36,6 +36,16 @@
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
 
+# Site Assistant iframe, injected by /site-assistant.js on institutes' own
+# websites. Must stay frameable: never add X-Frame-Options / frame-ancestors.
+/site-assistant-embed
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+
+/site-assistant-embed/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+
 # ============================================
 # ALL OTHER ROUTES - Basic security headers only
 # ============================================
@@ -71,6 +81,13 @@
 
 /*.css
   Cache-Control: public, max-age=31536000
+
+# The Site Assistant loader keeps ONE unhashed URL that institutes paste into
+# their own sites, so the year-long /*.js cache above must not apply to it:
+# a fix would otherwise take a year to reach their visitors.
+/site-assistant.js
+  ! Cache-Control
+  Cache-Control: public, max-age=300, must-revalidate
 
 /*.png
   Cache-Control: public, max-age=31536000, immutable

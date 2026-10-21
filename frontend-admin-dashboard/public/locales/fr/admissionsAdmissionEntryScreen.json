@@ -2,7 +2,9 @@
     "header": {
         "title": "Formulaire d'admission par défaut",
         "admissionForm": "Formulaire d'admission",
-        "bulkImport": "Import groupé"
+        "bulkImport": "Import groupé",
+        "subtitle": "Admissions and applications for a session — start a new one or convert an enquiry.",
+        "sessionLabel": "Session"
     },
     "filters": {
         "status": "Statut",
@@ -116,5 +118,10 @@
         "enterIdOrPhone": "Veuillez saisir l'ID de candidature ou le numéro de téléphone",
         "noApplicationFound": "Aucune candidature trouvée avec les informations fournies.",
         "fetchFailed": "Échec de la récupération des détails de la candidature. Veuillez vérifier l'ID ou le numéro de téléphone."
+    },
+    "quickViews": {
+        "admitted": "Admitted",
+        "applications": "Applications",
+        "all": "All records"
     }
 }

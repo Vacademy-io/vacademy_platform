@@ -15,7 +15,7 @@ result is held until the admin releases it.
    - Allowed questions: only single-correct MCQs (`MCQS`), each with 2 to 5 options.
    - At most 200 questions.
    - Publishing refuses anything else (`AssessmentBasicDetailsManager.publishAssessment`).
-2. **Settings** (OMR & Sets tab), stored in `assessment.omr_config` (V58):
+2. **Settings** (OMR & Sets tab), stored in `assessment.omr_config` (V60):
    - set count, 1 to 8;
    - shuffle questions;
    - shuffle options.

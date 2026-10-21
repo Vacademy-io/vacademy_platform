@@ -3,7 +3,27 @@ import { Helmet } from 'react-helmet';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
-import { ArrowLeft, Lightning, PencilSimple, Prohibit, Users } from '@phosphor-icons/react';
+import type { Icon } from '@phosphor-icons/react';
+import {
+    Archive,
+    ArrowLeft,
+    ArrowsClockwise,
+    CheckCircle,
+    Clock,
+    FileText,
+    Flask,
+    GearSix,
+    Lightning,
+    Pause,
+    PencilSimple,
+    Play,
+    Prohibit,
+    Repeat,
+    Tray,
+    Users,
+    UsersThree,
+    Warning,
+} from '@phosphor-icons/react';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { MyButton } from '@/components/design-system/button';
@@ -11,6 +31,7 @@ import { MyDialog } from '@/components/design-system/dialog';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
+import { Progress } from '@/components/ui/progress';
 import {
     AlertDialog,
     AlertDialogAction,
@@ -21,8 +42,17 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { StatStrip, type StatItem } from '@/components/shared/crm-enhance';
+import { SectionCard } from '@/routes/study-library/live-session/-components/dashboard/dashboard-charts';
+import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import {
+    ContentTerms,
+    OtherTerms,
+    SystemTerms,
+} from '@/routes/settings/-components/NamingSettings';
 import { ToneBadge } from './-components/ToneBadge';
 import { TemplateNegotiation } from './-components/TemplateNegotiation';
+import { ChannelChip, Chip, IconTile, KeyValue, SubHeading } from './-components/engine-ui';
 import { buildChannelMeta } from './-constants';
 import { buildEngineStatusMeta, buildLanguageOptions, NEXT_STATUSES } from './-constants';
 import {
@@ -32,8 +62,14 @@ import {
     useSetAutonomy,
     useTransitionEngine,
 } from './-hooks';
-import { autoSendChannels, channelLabels, whatsappEnabled } from './-utils';
-import type { EngineDetail } from './-types';
+import {
+    autoSendChannels,
+    enabledChannels,
+    formatDateTime,
+    safeParse,
+    whatsappEnabled,
+} from './-utils';
+import type { AudienceSelector, EngagementEngine, EngineDetail, QuietHours } from './-types';
 import type { EngineStatus } from './-types';
 
 export const Route = createLazyFileRoute('/engagement-engines/$engineId')({
@@ -47,6 +83,26 @@ function buildStatusActionLabel(t: TFunction): Record<string, string> {
         PAUSED: t('statusActions.PAUSED'),
         ARCHIVED: t('statusActions.ARCHIVED'),
     };
+}
+
+const STATUS_ACTION_ICON: Record<string, Icon> = {
+    DRY_RUN: Flask,
+    ACTIVE: Play,
+    PAUSED: Pause,
+    ARCHIVED: Archive,
+};
+
+const pad = (h: number) => String(h).padStart(2, '0');
+
+function quietHoursText(engine: EngagementEngine): string | null {
+    const q = safeParse<QuietHours>(engine.quietHours, {});
+    if (q.startHour == null || q.endHour == null) return null;
+    return `${pad(q.startHour)}:00–${pad(q.endHour)}:00${q.timezone ? ` ${q.timezone}` : ''}`;
+}
+
+/** The autonomy card only means something once a channel auto-sends, or a holdout exists. */
+function hasAutonomyPanel(engine: EngagementEngine): boolean {
+    return autoSendChannels(engine).length > 0 || !!(engine.holdoutPct && engine.holdoutPct > 0);
 }
 
 function EngineDetailPage() {
@@ -72,7 +128,12 @@ function EngineDetailPage() {
             <LayoutContainer>
                 <div className="flex flex-col gap-4 p-1">
                     <Skeleton className="h-8 w-64 rounded" />
-                    <Skeleton className="h-40 w-full rounded-lg" />
+                    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                        {[0, 1, 2, 3].map((i) => (
+                            <Skeleton key={i} className="h-28 rounded-xl" />
+                        ))}
+                    </div>
+                    <Skeleton className="h-40 w-full rounded-xl" />
                 </div>
             </LayoutContainer>
         );
@@ -93,8 +154,75 @@ function EngineDetailPage() {
         tone: 'neutral' as const,
     };
     const nextStatuses = NEXT_STATUSES[engine.status] ?? [];
-    const channels = channelLabels(engine, tConstants);
+    const channelMeta = buildChannelMeta(tConstants);
+    const channels = enabledChannels(engine);
     const hasWhatsApp = whatsappEnabled(engine);
+    const quietHours = quietHoursText(engine);
+    const dataPointKeys = safeParse<string[]>(engine.dataPoints, []);
+    const audience = safeParse<AudienceSelector[]>(engine.audience, []);
+    const showAutonomy = hasAutonomyPanel(engine);
+    const approvedTotal =
+        data.approvedSends ??
+        (data.approvedSendsByChannel
+            ? Object.values(data.approvedSendsByChannel).reduce((a, n) => a + n, 0)
+            : undefined);
+
+    const sourceParts = [
+        {
+            n: audience.filter((a) => a.type === 'PACKAGE_SESSION').length,
+            label: getTerminologyPlural(ContentTerms.Batch, SystemTerms.Batch),
+        },
+        {
+            n: audience.filter((a) => a.type === 'AUDIENCE').length,
+            label: getTerminologyPlural(OtherTerms.AudienceList, SystemTerms.AudienceList),
+        },
+        { n: audience.filter((a) => a.type === 'USER').length, label: t('status.people') },
+    ].filter((p) => p.n > 0);
+
+    const kpis: StatItem[] = [
+        {
+            key: 'members',
+            icon: UsersThree,
+            label: t('kpi.members'),
+            value: activeMembers,
+            detail:
+                engine.holdoutPct && engine.holdoutPct > 0
+                    ? t('kpi.holdout', { pct: engine.holdoutPct })
+                    : t('kpi.noHoldout'),
+        },
+        ...(approvedTotal !== undefined
+            ? [
+                  {
+                      key: 'approved',
+                      icon: CheckCircle,
+                      tint: 'success' as const,
+                      label: t('kpi.approved'),
+                      value: approvedTotal,
+                      detail: data.effectiveFirstN
+                          ? t('kpi.graduateAfter', { n: data.effectiveFirstN })
+                          : undefined,
+                  },
+              ]
+            : []),
+        {
+            key: 'cadence',
+            icon: Repeat,
+            tint: 'info',
+            label: t('kpi.cadence'),
+            value: t('config.cadence', { hours: engine.cadenceHours }),
+            detail: quietHours ? t('kpi.quiet', { window: quietHours }) : undefined,
+        },
+        {
+            key: 'next',
+            icon: Clock,
+            tint: 'warning',
+            label: t('kpi.nextRun'),
+            value: engine.nextDueAt ? formatDateTime(engine.nextDueAt) : t('kpi.notScheduled'),
+            detail: engine.lastSweptAt
+                ? t('kpi.lastRun', { when: formatDateTime(engine.lastSweptAt) })
+                : undefined,
+        },
+    ];
 
     return (
         <LayoutContainer>
@@ -111,58 +239,135 @@ function EngineDetailPage() {
                 </button>
 
                 <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                        <div className="flex items-center gap-3">
-                            <h1 className="text-h3 font-semibold text-neutral-700">{engine.name}</h1>
-                            <ToneBadge label={meta.label} tone={meta.tone} />
+                    <div className="flex min-w-0 items-start gap-3">
+                        <IconTile status={engine.status} size="lg" />
+                        <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                                <h1 className="font-semibold text-neutral-900">
+                                    <span className="text-h2">{engine.name}</span>
+                                </h1>
+                                <ToneBadge label={meta.label} tone={meta.tone} />
+                            </div>
+                            {engine.objective && (
+                                <p className="mt-0.5 text-neutral-500">
+                                    <span className="text-body">{engine.objective}</span>
+                                </p>
+                            )}
                         </div>
-                        {engine.objective && (
-                            <p className="mt-1 text-body text-neutral-500">{engine.objective}</p>
-                        )}
                     </div>
                     <MyButton
                         buttonType="secondary"
                         scale="medium"
                         onClick={() => navigate({ to: '/engagement-engines/inbox' })}
                     >
-                        {t('viewTaskInbox')}
+                        <Tray className="me-1 size-4" /> {t('viewTaskInbox')}
                     </MyButton>
                 </div>
 
-                {/* Status + audience controls */}
-                <Card className="flex flex-wrap items-center gap-4 p-4">
-                    <div className="flex items-center gap-2">
-                        <Users className="size-5 text-neutral-400" />
-                        <span className="text-body text-neutral-600">
-                            <b>{activeMembers}</b> {t('detail.activeMember', { count: activeMembers })}
-                        </span>
+                {engine.status === 'TEMPLATES_PENDING' && hasWhatsApp && (
+                    <div className="flex items-start gap-2 rounded-xl border border-warning-200 bg-warning-50 p-3 text-warning-700">
+                        <Warning size={18} className="mt-0.5 shrink-0" />
+                        <span className="text-body">{t('templatesPendingBanner')}</span>
                     </div>
-                    <MyButton
-                        buttonType="secondary"
-                        scale="small"
-                        disable={enroll.isPending}
-                        onClick={() => enroll.mutate(engine.id)}
-                    >
-                        {enroll.isPending ? t('detail.resolving') : t('detail.resolveAudience')}
-                    </MyButton>
-                    <div className="ms-auto flex flex-wrap items-center gap-2">
-                        {nextStatuses.map((s: EngineStatus) => (
+                )}
+
+                <StatStrip items={kpis} />
+
+                <div className="grid gap-5 lg:grid-cols-5">
+                    {/* Status + audience controls */}
+                    <SectionCard title={t('status.title')} icon={Users} className="lg:col-span-2">
+                        <div className="flex flex-wrap items-end justify-between gap-3">
+                            <div>
+                                <span className="font-bold tabular-nums text-neutral-900">
+                                    <span className="text-h2">{activeMembers}</span>
+                                </span>{' '}
+                                <span className="text-neutral-500">
+                                    <span className="text-body">
+                                        {t('detail.activeMember', { count: activeMembers })}
+                                    </span>
+                                </span>
+                            </div>
                             <MyButton
-                                key={s}
-                                buttonType={s === 'ACTIVE' ? 'primary' : 'secondary'}
+                                buttonType="secondary"
                                 scale="small"
-                                disable={transition.isPending}
-                                onClick={() =>
-                                    s === 'ARCHIVED'
-                                        ? setConfirmArchive(true)
-                                        : transition.mutate({ engineId: engine.id, toStatus: s })
-                                }
+                                disable={enroll.isPending}
+                                onClick={() => enroll.mutate(engine.id)}
                             >
-                                {STATUS_ACTION_LABEL[s] ?? s}
+                                <ArrowsClockwise className="me-1 size-4" />
+                                {enroll.isPending
+                                    ? t('detail.resolving')
+                                    : t('detail.resolveAudience')}
                             </MyButton>
-                        ))}
-                    </div>
-                </Card>
+                        </div>
+                        <KeyValue label={t('status.sources')}>
+                            {sourceParts.length
+                                ? sourceParts.map((p) => `${p.n} ${p.label}`).join(' · ')
+                                : t('config.noChannels')}
+                        </KeyValue>
+
+                        <SubHeading>{t('status.change')}</SubHeading>
+                        <div className="flex flex-wrap items-center gap-2">
+                            {nextStatuses.length === 0 && (
+                                <span className="text-caption text-neutral-500">
+                                    {t('status.noTransitions')}
+                                </span>
+                            )}
+                            {nextStatuses.map((s: EngineStatus) => {
+                                const ActionIcon = STATUS_ACTION_ICON[s];
+                                return (
+                                    <MyButton
+                                        key={s}
+                                        buttonType={s === 'ACTIVE' ? 'primary' : 'secondary'}
+                                        scale="small"
+                                        disable={transition.isPending}
+                                        onClick={() =>
+                                            s === 'ARCHIVED'
+                                                ? setConfirmArchive(true)
+                                                : transition.mutate({
+                                                      engineId: engine.id,
+                                                      toStatus: s,
+                                                  })
+                                        }
+                                    >
+                                        {ActionIcon && <ActionIcon className="me-1 size-4" />}
+                                        {STATUS_ACTION_LABEL[s] ?? s}
+                                    </MyButton>
+                                );
+                            })}
+                        </div>
+                        <p className="mt-4 border-t border-neutral-100 pt-3 text-neutral-500">
+                            <span className="text-caption">{t('status.footnote')}</span>
+                        </p>
+                    </SectionCard>
+
+                    {/* Brief */}
+                    <SectionCard
+                        title={t('brief.title')}
+                        subtitle={
+                            prompt ? t('brief.version', { version: prompt.version }) : undefined
+                        }
+                        icon={FileText}
+                        className="lg:col-span-3"
+                        right={
+                            <MyButton
+                                buttonType="secondary"
+                                scale="small"
+                                onClick={() => {
+                                    setDelta('');
+                                    setAmendOpen(true);
+                                }}
+                            >
+                                <PencilSimple className="me-1 size-4" /> {t('brief.amend')}
+                            </MyButton>
+                        }
+                    >
+                        <div className="max-h-96 overflow-y-auto whitespace-pre-wrap rounded-lg bg-neutral-50 p-4 text-neutral-700">
+                            <span className="text-body">
+                                {prompt?.compiledText || engine.objective || t('brief.empty')}
+                            </span>
+                        </div>
+                    </SectionCard>
+                </div>
 
                 <AlertDialog open={confirmArchive} onOpenChange={setConfirmArchive}>
                     <AlertDialogContent>
@@ -193,72 +398,63 @@ function EngineDetailPage() {
                     </AlertDialogContent>
                 </AlertDialog>
 
-                {engine.status === 'TEMPLATES_PENDING' && hasWhatsApp && (
-                    <div className="rounded-lg border border-warning-200 bg-warning-50 p-3 text-caption text-warning-600">
-                        {t('templatesPendingBanner')}
-                    </div>
-                )}
-
-                <div className="grid gap-5 lg:grid-cols-2">
-                    {/* Brief */}
-                    <Card className="p-4">
-                        <div className="flex items-center justify-between">
-                            <p className="text-subtitle font-semibold text-neutral-700">{t('brief.title')}</p>
-                            <MyButton
-                                buttonType="text"
-                                scale="small"
-                                onClick={() => {
-                                    setDelta('');
-                                    setAmendOpen(true);
-                                }}
-                            >
-                                <PencilSimple className="me-1 size-4" /> {t('brief.amend')}
-                            </MyButton>
-                        </div>
-                        <p className="mt-2 whitespace-pre-wrap text-body text-neutral-600">
-                            {prompt?.compiledText || engine.objective || t('brief.empty')}
-                        </p>
-                        {prompt && (
-                            <p className="mt-2 text-caption text-neutral-400">
-                                {t('brief.version', { version: prompt.version })}
-                            </p>
-                        )}
-                    </Card>
-
+                <div className={showAutonomy ? 'grid gap-5 lg:grid-cols-2' : 'grid gap-5'}>
                     {/* Config summary */}
-                    <Card className="flex flex-col gap-2 p-4">
-                        <p className="text-subtitle font-semibold text-neutral-700">{t('config.title')}</p>
-                        <Row
-                            label={t('config.channels')}
-                            value={channels.length ? channels.join(', ') : t('config.noChannels')}
-                        />
-                        <Row
-                            label={t('config.language')}
-                            value={
-                                buildLanguageOptions(tConstants).find((l) => l.value === engine.language)?.label ??
-                                engine.language
+                    <SectionCard title={t('config.title')} icon={GearSix}>
+                        <KeyValue label={t('config.channels')}>
+                            {channels.length ? (
+                                <span className="flex flex-wrap gap-1.5">
+                                    {channels.map((c) => (
+                                        <ChannelChip
+                                            key={c}
+                                            channel={c}
+                                            label={channelMeta[c].label}
+                                        />
+                                    ))}
+                                </span>
+                            ) : (
+                                t('config.noChannels')
+                            )}
+                        </KeyValue>
+                        <KeyValue label={t('config.language')}>
+                            {buildLanguageOptions(tConstants).find(
+                                (l) => l.value === engine.language
+                            )?.label ?? engine.language}
+                        </KeyValue>
+                        <KeyValue label={t('config.cadenceLabel')}>
+                            {t('config.cadence', { hours: engine.cadenceHours })}
+                        </KeyValue>
+                        {quietHours && (
+                            <KeyValue label={t('config.quietHours')}>{quietHours}</KeyValue>
+                        )}
+                        <KeyValue label={t('config.dataPoints')}>
+                            {dataPointKeys.length ? (
+                                <span className="flex flex-wrap gap-1.5">
+                                    {dataPointKeys.map((k) => (
+                                        <Chip key={k} label={k} className="font-mono" />
+                                    ))}
+                                </span>
+                            ) : (
+                                t('config.noChannels')
+                            )}
+                        </KeyValue>
+                        <KeyValue label={t('autonomy.holdout')}>
+                            {`${engine.holdoutPct ?? 0}%`}
+                        </KeyValue>
+                    </SectionCard>
+
+                    {showAutonomy && (
+                        <AutonomyPanel
+                            detail={data}
+                            onToggleKill={(killed) =>
+                                setAutonomy.mutate({ engineId: engine.id, killed })
                             }
+                            busy={setAutonomy.isPending}
                         />
-                        <Row
-                            label={t('config.cadenceLabel')}
-                            value={t('config.cadence', { hours: engine.cadenceHours })}
-                        />
-                    </Card>
+                    )}
                 </div>
 
-                <AutonomyPanel
-                    detail={data}
-                    onToggleKill={(killed) =>
-                        setAutonomy.mutate({ engineId: engine.id, killed })
-                    }
-                    busy={setAutonomy.isPending}
-                />
-
-                {hasWhatsApp && (
-                    <Card className="p-4">
-                        <TemplateNegotiation engineId={engine.id} />
-                    </Card>
-                )}
+                {hasWhatsApp && <TemplateNegotiation engineId={engine.id} />}
             </div>
 
             {amendOpen && (
@@ -298,15 +494,6 @@ function EngineDetailPage() {
                 </MyDialog>
             )}
         </LayoutContainer>
-    );
-}
-
-function Row({ label, value }: { label: string; value: string }) {
-    return (
-        <div className="flex items-center justify-between gap-3">
-            <span className="text-body text-neutral-500">{label}</span>
-            <span className="text-body font-medium text-neutral-700">{value}</span>
-        </div>
     );
 }
 
@@ -362,7 +549,7 @@ function AutonomyPanel({
     const { engine, approvedSends, approvedSendsByChannel, effectiveFirstN } = detail;
     const autoChannels = autoSendChannels(engine);
     // Only meaningful once at least one channel is set to auto-send, or a holdout exists.
-    if (autoChannels.length === 0 && !(engine.holdoutPct && engine.holdoutPct > 0)) return null;
+    if (!hasAutonomyPanel(engine)) return null;
 
     const killed = engine.autoSendKilled === true;
     const target = effectiveFirstN ?? 0;
@@ -372,50 +559,58 @@ function AutonomyPanel({
     const channelMeta = buildChannelMeta(tConstants);
 
     return (
-        <Card className="flex flex-col gap-3 p-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                    <Lightning className="size-5 text-primary-500" />
-                    <p className="text-subtitle font-semibold text-neutral-700">{t('autonomy.title')}</p>
-                </div>
-                {autoChannels.length > 0 &&
-                    (killed ? (
-                        <MyButton
-                            buttonType="primary"
-                            scale="small"
-                            disable={busy}
-                            onClick={() => onToggleKill(false)}
-                        >
-                            {t('autonomy.allowAutoSend')}
-                        </MyButton>
-                    ) : (
-                        <MyButton
-                            buttonType="secondary"
-                            scale="small"
-                            disable={busy}
-                            onClick={() => onToggleKill(true)}
-                        >
-                            <Prohibit className="me-1 size-4" /> {t('autonomy.keepAsCopilot')}
-                        </MyButton>
-                    ))}
-            </div>
-
+        <SectionCard
+            title={t('autonomy.title')}
+            icon={Lightning}
+            right={
+                autoChannels.length > 0 &&
+                (killed ? (
+                    <MyButton
+                        buttonType="primary"
+                        scale="small"
+                        disable={busy}
+                        onClick={() => onToggleKill(false)}
+                    >
+                        <Lightning className="me-1 size-4" /> {t('autonomy.allowAutoSend')}
+                    </MyButton>
+                ) : (
+                    <MyButton
+                        buttonType="secondary"
+                        scale="small"
+                        disable={busy}
+                        onClick={() => onToggleKill(true)}
+                    >
+                        <Prohibit className="me-1 size-4" /> {t('autonomy.keepAsCopilot')}
+                    </MyButton>
+                ))
+            }
+        >
             {autoChannels.length > 0 ? (
-                <>
-                    <Row
-                        label={t('autonomy.autoSendChannels')}
-                        value={autoChannels.map((c) => buildChannelMeta(tConstants)[c].label).join(', ')}
-                    />
+                <div className="flex flex-col gap-3">
+                    <SubHeading>{t('autonomy.autoSendChannels')}</SubHeading>
                     {autoChannels.map((channel) => {
                         const approved = approvedOn(channel);
                         const graduated = target <= 0 || approved >= target;
+                        const pct =
+                            target > 0 ? Math.min(100, Math.round((approved / target) * 100)) : 100;
                         return (
-                            <div key={channel} className="flex flex-col gap-1">
-                                <div className="flex items-center justify-between gap-3">
-                                    <span className="text-body text-neutral-500">
-                                        {t('autonomy.statusFor', {
-                                            channel: channelMeta[channel].label,
-                                        })}
+                            <div
+                                key={channel}
+                                className="flex flex-col gap-2 rounded-lg border border-neutral-100 p-3"
+                            >
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <span className="flex items-center gap-2">
+                                        <ChannelChip
+                                            channel={channel}
+                                            label={channelMeta[channel].label}
+                                        />
+                                        <span className="text-neutral-500">
+                                            <span className="text-caption">
+                                                {t('autonomy.statusFor', {
+                                                    channel: channelMeta[channel].label,
+                                                })}
+                                            </span>
+                                        </span>
                                     </span>
                                     <AutonomyStatusBadge
                                         killed={killed}
@@ -425,6 +620,15 @@ function AutonomyPanel({
                                         engineStatus={engine.status}
                                     />
                                 </div>
+                                {!killed && (
+                                    <Progress
+                                        value={pct}
+                                        aria-label={t('autonomy.statusFor', {
+                                            channel: channelMeta[channel].label,
+                                        })}
+                                        className="h-1.5 border border-neutral-200"
+                                    />
+                                )}
                                 {!killed && !graduated && (
                                     <p className="text-caption text-neutral-500">
                                         {t('autonomy.rampingHintChannel', {
@@ -436,17 +640,16 @@ function AutonomyPanel({
                             </div>
                         );
                     })}
-                </>
+                </div>
             ) : (
                 <p className="text-caption text-neutral-500">{t('autonomy.noAutoSend')}</p>
             )}
 
             {engine.holdoutPct != null && engine.holdoutPct > 0 && (
-                <Row
-                    label={t('autonomy.holdout')}
-                    value={t('autonomy.holdoutValue', { pct: engine.holdoutPct })}
-                />
+                <KeyValue label={t('autonomy.holdout')}>
+                    {t('autonomy.holdoutValue', { pct: engine.holdoutPct })}
+                </KeyValue>
             )}
-        </Card>
+        </SectionCard>
     );
 }

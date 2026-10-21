@@ -75,10 +75,10 @@
           "label": "Institute Overview",
           "route": "/manage-institute/overview",
           "order": 1,
-          "admin_only": false,
+          "admin_only": true,
           "default_visible": {
             "ADMIN": true,
-            "TEACHER": true
+            "TEACHER": false
           }
         },
         {
@@ -437,10 +437,10 @@
           "label": "Messaging Dashboard",
           "route": "/communication/dashboard",
           "order": 1,
-          "admin_only": false,
+          "admin_only": true,
           "default_visible": {
             "ADMIN": true,
-            "TEACHER": true
+            "TEACHER": false
           }
         },
         {
@@ -611,10 +611,21 @@
           }
         },
         {
+          "id": "site-assistant",
+          "label": "Site Assistant",
+          "route": "/manage-pages/site-assistant",
+          "order": 6,
+          "admin_only": false,
+          "default_visible": {
+            "ADMIN": true,
+            "TEACHER": true
+          }
+        },
+        {
           "id": "blog",
           "label": "Blog",
           "route": "/manage-pages/blog",
-          "order": 6,
+          "order": 7,
           "admin_only": false,
           "default_visible": {
             "ADMIN": false,
@@ -1836,6 +1847,18 @@
       "default_visible": {
         "ADMIN": true,
         "TEACHER": true
+      },
+      "sub_tabs": []
+    },
+    {
+      "id": "access-passes",
+      "label": "Access Passes",
+      "category": "LMS",
+      "route": "/access-passes",
+      "order": 42,
+      "default_visible": {
+        "ADMIN": false,
+        "TEACHER": false
       },
       "sub_tabs": []
     }

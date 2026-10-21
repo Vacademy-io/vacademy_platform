@@ -12,6 +12,7 @@ import vacademy.io.admin_core_service.features.catalog_api.service.CatalogLeadSe
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.function.Function;
 import java.util.regex.Pattern;
 
 /**
@@ -46,32 +47,26 @@ public class PublicCatalogApiController {
     }
 
     @GetMapping("/courses")
-    public ResponseEntity<Map<String, Object>> courses(HttpServletRequest http,
-            @RequestParam(value = "q", required = false) String q,
-            @RequestParam(value = "stream", required = false) String stream,
-            @RequestParam(value = "category", required = false) String category,
-            @RequestParam(value = "format", required = false) String format,
-            @RequestParam(value = "language", required = false) String language,
-            @RequestParam(value = "tag", required = false) String tag,
-            @RequestParam(value = "availability", required = false) String availability,
-            @RequestParam(value = "page", required = false) String page,
-            @RequestParam(value = "page_size", required = false) String pageSize,
-            @RequestParam(value = "sort", required = false) String sort,
-            @RequestParam(value = "level", required = false) String level,
-            @RequestParam(value = "instructor", required = false) String instructor,
-            @RequestParam(value = "session", required = false) String session,
-            @RequestParam(value = "badge", required = false) String badge,
-            @RequestParam(value = "price", required = false) String price,
-            @RequestParam(value = "price_min", required = false) String priceMin,
-            @RequestParam(value = "price_max", required = false) String priceMax,
-            @RequestParam(value = "custom", required = false) String custom,
-            @RequestParam(value = "facets", required = false) String facets) {
+    public ResponseEntity<Map<String, Object>> courses(HttpServletRequest http) {
         var p = auth.authenticate(http, CatalogApiAuth.SCOPE_READ);
-        int pageNo = intParam("page", page, 1);
-        int size = intParam("page_size", pageSize, 24);
-        return cacheable(service.courses(p.instituteId(), new CatalogApiService.CourseQuery(q, stream, category,
-                format, language, tag, availability, pageNo, size, sort, level, instructor, session, badge, price,
-                priceMin, priceMax, custom, boolParam("facets", facets))));
+        return cacheable(service.courses(p.instituteId(), courseQuery(http::getParameter)));
+    }
+
+    /**
+     * The /courses query parameters (q, stream, category, format, language, tag, availability,
+     * page, page_size, sort, level, instructor, session, badge, price, price_min, price_max, custom,
+     * facets) as a {@link CatalogApiService.CourseQuery}; 400 invalid_request for a non-numeric page
+     * or page_size or a non-boolean facets. Shared with the Site Assistant internal catalogue proxy so
+     * both parse a query the same way.
+     */
+    public static CatalogApiService.CourseQuery courseQuery(Function<String, String> param) {
+        int pageNo = intParam("page", param.apply("page"), 1);
+        int size = intParam("page_size", param.apply("page_size"), 24);
+        return new CatalogApiService.CourseQuery(param.apply("q"), param.apply("stream"), param.apply("category"),
+                param.apply("format"), param.apply("language"), param.apply("tag"), param.apply("availability"),
+                pageNo, size, param.apply("sort"), param.apply("level"), param.apply("instructor"),
+                param.apply("session"), param.apply("badge"), param.apply("price"), param.apply("price_min"),
+                param.apply("price_max"), param.apply("custom"), boolParam("facets", param.apply("facets")));
     }
 
     @GetMapping("/courses/{id}")

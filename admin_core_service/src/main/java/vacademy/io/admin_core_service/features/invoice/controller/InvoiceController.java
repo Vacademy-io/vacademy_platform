@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.invoice.dto.AdminCreateInvoiceRequestDTO;
 import vacademy.io.admin_core_service.features.invoice.dto.AdminInvoicePaymentLinkResponseDTO;
 import vacademy.io.admin_core_service.features.invoice.dto.InvoiceDTO;
+import vacademy.io.admin_core_service.features.invoice.service.InvoiceBulkExportService;
 import vacademy.io.admin_core_service.features.invoice.service.InvoiceService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.payment.dto.PaymentResponseDTO;
@@ -27,6 +28,9 @@ public class InvoiceController {
 
     @Autowired
     private InvoiceService invoiceService;
+
+    @Autowired
+    private InvoiceBulkExportService invoiceBulkExportService;
 
     @Autowired
     private vacademy.io.admin_core_service.features.invoice.service.ManualReminderService manualReminderService;
@@ -121,6 +125,35 @@ public class InvoiceController {
         Page<InvoiceDTO> invoices = invoiceService.getInvoicesByInstituteId(
                 instituteId, userId, status, startDate, endDate, page, size);
         return ResponseEntity.ok(invoices);
+    }
+
+    /**
+     * Every invoice issued in a date window as one ZIP of PDFs plus an {@code invoices.csv}
+     * manifest — the "Invoices (ZIP)" export on Manage Payments. One invoice per payment;
+     * see {@link vacademy.io.admin_core_service.features.invoice.service.InvoiceBulkExportService}.
+     *
+     * <p>Written straight to the response rather than as a {@code StreamingResponseBody}: an
+     * async response would be cut off by the servlet async timeout on a large period. The plan
+     * is made first, so "nothing in this period" / "too many" come back as ordinary errors.
+     *
+     * <p>Usage: GET /admin-core-service/v1/invoices/institute/{instituteId}/bulk-download?startDate=...&endDate=...
+     */
+    @GetMapping("/institute/{instituteId}/bulk-download")
+    public void bulkDownloadInvoices(
+            @PathVariable String instituteId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endDate,
+            @RequestAttribute("user") CustomUserDetails userDetails,
+            jakarta.servlet.http.HttpServletResponse response) {
+        instituteAccessValidator.validateUserAccess(userDetails, instituteId);
+        InvoiceBulkExportService.ExportPlan plan = invoiceBulkExportService.plan(instituteId, startDate, endDate);
+        response.setContentType("application/zip");
+        response.setHeader("Content-Disposition", "attachment; filename=\"invoices.zip\"");
+        try {
+            invoiceBulkExportService.writeZip(plan, response.getOutputStream());
+        } catch (java.io.IOException e) {
+            throw new java.io.UncheckedIOException("Failed to write invoice archive", e);
+        }
     }
 
     /**

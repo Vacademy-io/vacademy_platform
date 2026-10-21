@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import { matchesCataloguePost } from "@/lib/catalogue-post-route";
+import { isPasswordlessLandingRoute } from "@/lib/auth/passwordless-landing-routes";
 import { Preferences } from "@capacitor/preferences";
 import {
   resolveDomainRouting,
@@ -575,14 +576,14 @@ export const useDomainRouting = () => {
         "/courses/course-details"
       ) || /^\/[^/]+\/[^/]+\/?$/.test(currentPath);
 
-      // Don't redirect if we're on live-class dynamic route
-      const isOnLiveClassDynamicRoute =
-        /^\/study-library\/live-class\/[^/]+\/?$/.test(currentPath);
+      // Don't redirect on a passwordless landing (live-class, profile edit):
+      // it signs the learner in itself, then moves on.
+      const isOnPasswordlessLanding = isPasswordlessLandingRoute(currentPath);
 
       if (
         isOnPublicRoute ||
         isOnCourseDetailsPage ||
-        isOnLiveClassDynamicRoute ||
+        isOnPasswordlessLanding ||
         matchesCataloguePost(router.state.matches)
       ) {
         return;
@@ -635,9 +636,9 @@ export const useDomainRouting = () => {
         "/courses/course-details"
       ) || /^\/[^/]+\/[^/]+\/?$/.test(currentPath);
 
-      // Don't redirect if we're on live-class dynamic route
-      const isOnLiveClassDynamicRoute =
-        /^\/study-library\/live-class\/[^/]+\/?$/.test(currentPath);
+      // Don't redirect on a passwordless landing (live-class, profile edit):
+      // it signs the learner in itself, then moves on.
+      const isOnPasswordlessLanding = isPasswordlessLandingRoute(currentPath);
 
       // Don't redirect if we're on my-files routes
       const isOnMyFilesRoute = currentPath.startsWith("/my-files");
@@ -647,7 +648,7 @@ export const useDomainRouting = () => {
         // A blog post on a tagged catalogue site, /<tag>/<page>/<slug>.
         matchesCataloguePost(router.state.matches) ||
         isOnCourseDetailsPage ||
-        isOnLiveClassDynamicRoute ||
+        isOnPasswordlessLanding ||
         isOnMyFilesRoute
       ) {
         return;

@@ -827,7 +827,8 @@
           "default_on": true,
           "governs": {
             "nav": [
-              "automations/website-builder"
+              "automations/website-builder",
+              "automations/site-assistant"
             ],
             "widgets": [],
             "quick_actions": [],

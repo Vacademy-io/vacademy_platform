@@ -70,9 +70,27 @@ export interface ExamExperienceSettings {
  */
 export type CommentPlacement = 'INSIDE' | 'OUTSIDE';
 
+/**
+ * Spelling and grammar on AI-checked copies: HIGHLIGHT = each error underlined
+ * with its correction and listed in the answer's feedback, no marks deducted.
+ */
+export type LanguageFeedback = 'HIGHLIGHT' | 'OFF';
+
 export interface AiCopyCheckSettings {
     /** The template preselected when copies are sent for AI checking. */
     commentPlacement: CommentPlacement;
+    /** Marking instructions for the AI, used when an assessment has none of its own. */
+    instructions?: string;
+    /** Used when an assessment has made no choice of its own. */
+    languageFeedback?: LanguageFeedback;
+}
+
+/** How the AI checks one assessment's copies, kept on the assessment (snake_case, as sent). */
+export interface CopyCheckConfig {
+    subject?: string | null;
+    level?: string | null;
+    instructions?: string | null;
+    language_feedback?: LanguageFeedback | null;
 }
 
 /**

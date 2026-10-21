@@ -1051,6 +1051,20 @@
       "dataBound": "Renders a LIVE Product Page's sellable courses (names, prices, images) and deep-links each card into that page's cart. Set ONLY title/subtitle/ctaLabel/columns, the header props (align: left|center — left with headerScale 'md' and showViewAll true is the app-style rail look; headerScale: md|lg; viewAllLabel), the browse props (layout: grid|carousel — carousel is one swipeable edge-to-edge row, pair it with align 'left'; pageSize — courses per page, 9 is a good default, 0 disables paging; showSearch; scrollable + scrollMaxHeight to cap a grid's height) and the display toggles — productPageCode must be chosen by the admin from their existing product pages, so leave it as an empty string and NEVER invent a code or course entries. Use it when the brief mentions selling/enrolling a specific set of paid programs; use courseCatalog for the full course grid."
     },
     {
+      "type": "accessPassGrid",
+      "templateKey": "accessPassGrid",
+      "exampleProps": {
+        "title": "Memberships",
+        "subtitle": "One purchase, several courses.",
+        "tag": "",
+        "columns": 3,
+        "buyLabel": "Get the pass",
+        "showCourses": true,
+        "showPrice": true
+      },
+      "dataBound": "Renders the institute's LIVE published Access Passes (one purchase that unlocks several courses) as cards with a details dialog and a Buy button into the pass's checkout. Passes are created by the admin in LMS → Access Passes, so NEVER invent pass names, prices or courses. Set ONLY title/subtitle/buyLabel/columns (2-4) and the showCourses/showPrice toggles; leave tag as an empty string unless the admin names a pass tag to filter by. Use it when the brief mentions memberships, passes or all-access bundles; it renders nothing until a pass is published."
+    },
+    {
       "type": "folderBrowser",
       "templateKey": "folderBrowser",
       "exampleProps": {
@@ -2051,6 +2065,10 @@
         {
           "kind": "courseTags",
           "detail": "authored options match course tags (e.g. for-parents) or level names"
+        },
+        {
+          "kind": "courseTags",
+          "detail": "source 'tags' also lists every course tag starting with its prefix (\"for parents\" → Parents)"
         }
       ],
       "bound": [],
@@ -2060,7 +2078,8 @@
       ],
       "pitfalls": [
         "Each group id is also its ?<id>= URL parameter; option ids are slugs.",
-        "Zero-count options stay listed, greyed, unless showEmpty is false."
+        "An option no course has is not listed; one that is 0 only under other filters stays, greyed, unless showEmpty is false.",
+        "A source 'tags' group needs a prefix; with none it is an authored group."
       ],
       "minimal": {
         "customFilters": [
@@ -2081,6 +2100,15 @@
                   "for-parents"
                 ]
               }
+            ]
+          },
+          {
+            "id": "audience",
+            "label": "Audience",
+            "source": "tags",
+            "prefix": "for",
+            "exclude": [
+              "everyone"
             ]
           }
         ]

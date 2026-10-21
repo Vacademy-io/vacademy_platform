@@ -96,6 +96,7 @@ import { LearnerTab } from './-components/LearnerTab';
 import { SettingsTabs } from '../settings/-constants/terms';
 import { useEntitlement } from '@/lib/capabilities/use-entitlement';
 import { hasEntitledSetupStep, welcomeTextKey } from './-config/dashboard-entitlements';
+import { DashboardSwitch } from './-components/crm/DashboardSwitch';
 
 // Define the lazy Route
 export const Route = createLazyFileRoute('/dashboard/')({
@@ -173,7 +174,9 @@ function DashboardPage() {
 
     return (
         <LayoutContainer>
-            <DashboardComponent onOpenAllAlerts={() => setShowAllAlerts(true)} />
+            <DashboardSwitch
+                legacy={<DashboardComponent onOpenAllAlerts={() => setShowAllAlerts(true)} />}
+            />
             <BaseDialog open={showAllAlerts} onOpenChange={setShowAllAlerts}>
                 <BaseDialogContent className="max-w-lg p-0">
                     <div className="flex items-center justify-between gap-2 px-4 py-3">

@@ -27,17 +27,17 @@
     "submitToMeta": "Submit to Meta",
     "delete": "Delete",
     "status": {
-        "draft": "DRAFT",
-        "pending": "PENDING",
-        "approved": "APPROVED",
-        "rejected": "REJECTED",
-        "disabled": "DISABLED",
-        "deleted": "DELETED"
+        "draft": "Draft",
+        "pending": "Pending",
+        "approved": "Approved",
+        "rejected": "Rejected",
+        "disabled": "Disabled",
+        "deleted": "Deleted"
     },
     "category": {
-        "marketing": "MARKETING",
-        "utility": "UTILITY",
-        "authentication": "AUTHENTICATION"
+        "marketing": "Marketing",
+        "utility": "Utility",
+        "authentication": "Authentication"
     },
     "couldNotLoadTemplates": "Could not load templates.",
     "syncedCount_one": "Synced {{count}} template from {{provider}}",
@@ -66,5 +66,14 @@
         "footer": "Footer"
     },
     "showFullMessage": "Show full message",
-    "showLess": "Show less"
+    "showLess": "Show less",
+    "providerChip": "Provider: {{provider}}",
+    "filters": {
+        "allCategories": "All categories",
+        "allLanguages": "All languages",
+        "clear": "Clear filters"
+    },
+    "resultsCount_one": "{{count}} template",
+    "resultsCount_other": "{{count}} templates",
+    "actionsNote": "Edit and Submit to Meta are available for drafts and rejected templates. Approved and pending templates can only be deleted."
 }

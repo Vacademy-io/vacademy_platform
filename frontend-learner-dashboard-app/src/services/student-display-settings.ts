@@ -254,6 +254,7 @@ function mergeWithDefaults(
       showCourseConfiguration:
         incoming?.courseDetails?.showCourseConfiguration ??
         d.courseDetails.showCourseConfiguration,
+      hideTags: incoming?.courseDetails?.hideTags ?? d.courseDetails.hideTags,
       showCourseContentPrefixes:
         incoming?.courseDetails?.showCourseContentPrefixes ??
         d.courseDetails.showCourseContentPrefixes,
@@ -324,6 +325,10 @@ function mergeWithDefaults(
       hideInstructorName:
         incoming?.allCourses?.hideInstructorName ??
         d.allCourses.hideInstructorName,
+      pageSize: incoming?.allCourses?.pageSize ?? d.allCourses.pageSize,
+      showAllEnrolledOnDashboard:
+        incoming?.allCourses?.showAllEnrolledOnDashboard ??
+        d.allCourses.showAllEnrolledOnDashboard,
     },
     notifications: {
       allowSystemAlerts:
@@ -354,6 +359,14 @@ function mergeWithDefaults(
         celebrateOnQuizComplete:
           incoming?.courseSettings?.quiz?.celebrateOnQuizComplete ??
           d.courseSettings.quiz.celebrateOnQuizComplete,
+      },
+      assignment: {
+        hideAttemptsAllowed:
+          incoming?.courseSettings?.assignment?.hideAttemptsAllowed ??
+          d.courseSettings.assignment.hideAttemptsAllowed,
+        hideRepeatedTitle:
+          incoming?.courseSettings?.assignment?.hideRepeatedTitle ??
+          d.courseSettings.assignment.hideRepeatedTitle,
       },
     },
     concentration: {

@@ -25,7 +25,9 @@
     "sections": {
         "stepAccess": "चरण की पहुँच (इस चरण को कौन देख/संपादित कर सकता है)",
         "formFields": "फ़ॉर्म फ़ील्ड",
-        "loadingFields": "मौजूदा फ़ील्ड लोड हो रही हैं…"
+        "loadingFields": "मौजूदा फ़ील्ड लोड हो रही हैं…",
+        "step": "चरण",
+        "formFieldsHint": "मौजूदा कस्टम फ़ील्ड जोड़ें या नए बनाएँ।"
     },
     "actions": {
         "cancel": "रद्द करें",
@@ -42,5 +44,9 @@
     "schema": {
         "stepNameRequired": "चरण का नाम आवश्यक है",
         "stepNameMaxLength": "इसे 150 अक्षरों से कम रखें"
+    },
+    "switchHints": {
+        "optional": "एडमिन कारण देकर इसे छोड़ सकते हैं।",
+        "createStudent": "{{course}} चुनने और अपने-आप पूरा करने का विकल्प दिखाता है।"
     }
 }

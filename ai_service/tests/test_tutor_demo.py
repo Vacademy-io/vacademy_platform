@@ -47,6 +47,21 @@ def test_ip_bucketing():
     assert demo.ip_hash("1.2.3.4") != demo.ip_hash("1.2.3.5")
 
 
+def test_client_ip_prefers_cloudflare_connecting_ip():
+    class Req:
+        # Behind Cloudflare the first X-Forwarded-For hop may be the edge, not the visitor.
+        headers = {"cf-connecting-ip": "203.0.113.7", "x-forwarded-for": "172.70.1.1, 10.0.0.1"}
+        class client:
+            host = "10.42.0.9"
+    assert demo.client_ip(Req()) == "203.0.113.7"
+    Req.headers = {"cf-connecting-ip": "not-an-ip", "x-forwarded-for": "198.51.100.4, 172.70.1.1"}
+    assert demo.client_ip(Req()) == "198.51.100.4"
+    Req.headers = {"cf-connecting-ip": "2001:db8:aa:bb:1::2"}
+    assert demo.client_ip(Req()) == "2001:db8:aa:bb::"
+    Req.headers = {"x-forwarded-for": "garbage"}
+    assert demo.client_ip(Req()) == "10.42.0.9"
+
+
 def test_public_topics_requires_everything(monkeypatch):
     base = {"enabled": True, "package_session_id": "", "topics": [], "minutes": 3, "per_ip_per_day": 1, "daily_cap": 200, "teacher_name": ""}
     monkeypatch.setattr(demo, "list_topics", lambda db, **k: [{"key": "k", "title": "T", "emoji": "", "language": "en", "ready": True},

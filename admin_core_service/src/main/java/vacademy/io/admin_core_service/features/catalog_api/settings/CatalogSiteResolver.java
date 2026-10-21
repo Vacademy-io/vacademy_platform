@@ -126,14 +126,9 @@ public class CatalogSiteResolver {
         if (siteTag == null) {
             List<InstituteDomainRouting> ranked = rank(learnerRows, null);
             for (InstituteDomainRouting r : ranked) {
-                if (notBlank(r.getRootCatalogueTag())) {
-                    siteTag = r.getRootCatalogueTag().trim();
-                    tagSource = SOURCE_DOMAIN_ROUTING;
-                    break;
-                }
-                String fromRedirect = redirectTag(r.getRedirect());
-                if (fromRedirect != null && catalogueExists.test(fromRedirect)) {
-                    siteTag = fromRedirect;
+                String tag = rowSiteTag(r, catalogueExists);
+                if (tag != null) {
+                    siteTag = tag;
                     tagSource = SOURCE_DOMAIN_ROUTING;
                     break;
                 }
@@ -165,6 +160,22 @@ public class CatalogSiteResolver {
         if (!notBlank(base)) return new Resolution(siteTag, tagSource, null, null);
         return new Resolution(siteTag, tagSource,
                 stripTrailingSlash(base.trim()) + (siteTag == null ? "" : "/" + siteTag), SOURCE_LEARNER_PORTAL);
+    }
+
+    /**
+     * The catalogue one routing row serves on its host: its {@code root_catalogue_tag} ‖ the first
+     * segment of its {@code redirect} when a live catalogue with that tag exists ‖ null. The per-row
+     * rule of the site tag above; also how the Site Assistant maps a visitor's host to a site.
+     */
+    public String rowSiteTag(String instituteId, InstituteDomainRouting row) {
+        return rowSiteTag(row, tag -> catalogueExists(instituteId, tag));
+    }
+
+    static String rowSiteTag(InstituteDomainRouting row, Predicate<String> catalogueExists) {
+        if (row == null) return null;
+        if (notBlank(row.getRootCatalogueTag())) return row.getRootCatalogueTag().trim();
+        String fromRedirect = redirectTag(row.getRedirect());
+        return fromRedirect != null && catalogueExists.test(fromRedirect) ? fromRedirect : null;
     }
 
     /**

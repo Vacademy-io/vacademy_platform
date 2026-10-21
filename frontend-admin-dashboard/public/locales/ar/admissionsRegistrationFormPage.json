@@ -63,5 +63,9 @@
     },
     "payment": {
         "defaultFeeName": "رسوم الطلب / التسجيل"
+    },
+    "header": {
+        "backToList": "Back to applications",
+        "stepBadge": "Step {{current}} of {{total}}"
     }
 }

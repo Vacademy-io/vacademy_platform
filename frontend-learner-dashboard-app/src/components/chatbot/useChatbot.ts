@@ -12,7 +12,13 @@ import {
   AIStatus,
   MessageIntent,
   SessionMode,
+  type ChatStream,
+  type ChatSessionSummary,
+  type ChatStartersResponse,
+  type FeedbackRating,
 } from "@/services/chatbot-api";
+import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
+import { TokenKey } from "@/constants/auth/tokens";
 import { enqueueMessage, peekQueue, dequeueMessage, QueuedMessage } from "@/services/offline-queue";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
 import { useInstituteDetailsStore } from "@/stores/study-library/useInstituteDetails";
@@ -31,9 +37,57 @@ import {
 import { isChatbotVisibleOnRoute, setChatbotPages } from "@/config/chatbot-routes";
 import { parseAiUsageLimitBody, type AiUsageLimitBody } from "@/lib/ai-usage-limit";
 import { aiUsageLimitMessage, claimAiUsageLimit } from "@/lib/ai-usage-limit-notify";
+import { visibleStreamText } from "./stream-text";
+import { useReplySpeech } from "./useReplySpeech";
+
+/** Loading state of the personal starters (empty chat + launcher peek). */
+export type StartersState = "idle" | "loading" | "ready" | "error";
+
+// ── The learner's current chat, remembered across reloads ───────────────
+// Scoped to learner + institute; reopened on the next visit within a day.
+const LAST_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+/** Starters are time-sensitive (a class about to start); refetch after this long. */
+const STARTERS_TTL_MS = 5 * 60 * 1000;
+/** Pause between Stop and re-opening the stream, so the server saves the partial reply first. */
+const STOP_REATTACH_DELAY_MS = 300;
+
+const lastSessionKey = async (): Promise<string | null> => {
+  try {
+    const { userId, instituteId } = await chatbotAPI.getScope();
+    return userId ? `chatbot:last-session:${userId}:${instituteId}` : null;
+  } catch {
+    return null;
+  }
+};
+
+const readLastSession = async (): Promise<string | null> => {
+  const key = await lastSessionKey();
+  if (!key) return null;
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { sessionId?: unknown; at?: unknown };
+    if (typeof parsed.sessionId !== "string" || typeof parsed.at !== "number") return null;
+    return Date.now() - parsed.at < LAST_SESSION_TTL_MS ? parsed.sessionId : null;
+  } catch {
+    return null;
+  }
+};
+
+/** Remember `sessionId` as the current chat; `null` forgets it. */
+const writeLastSession = async (sessionId: string | null): Promise<void> => {
+  const key = await lastSessionKey();
+  if (!key) return;
+  try {
+    if (sessionId) localStorage.setItem(key, JSON.stringify({ sessionId, at: Date.now() }));
+    else localStorage.removeItem(key);
+  } catch {
+    // Storage blocked (private mode, quota): the chat just starts fresh next time.
+  }
+};
 
 export const useChatbot = () => {
-  const { t } = useTranslation("chatFeatureB");
+  const { t, i18n } = useTranslation("chatFeatureB");
   // Check if parent portal is active
   const parentPortal = useParentPortalStore();
   const location = useLocation();
@@ -74,10 +128,39 @@ export const useChatbot = () => {
   const [voiceLanguage, setVoiceLanguage] = useState(
     chatbotSettings.voice_settings?.default_language || "en-IN"
   );
+  /** The learner's past chats, for the history list (see loadSessions). */
+  const [sessions, setSessions] = useState<ChatSessionSummary[]>([]);
+  /** Personal starters for the current page (see loadStarters). */
+  const [starters, setStarters] = useState<ChatStartersResponse | null>(null);
+  const [startersState, setStartersState] = useState<StartersState>("idle");
 
   // Ref to scroll to bottom
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const eventSourceRef = useRef<EventSource | null>(null);
+  const eventSourceRef = useRef<ChatStream | null>(null);
+  // Latest values for callbacks that must not re-bind on every token.
+  const streamingContentRef = useRef("");
+  streamingContentRef.current = streamingContent;
+  const messagesRef = useRef<ChatMessage[]>(messages);
+  messagesRef.current = messages;
+  const sessionIdRef = useRef<string | null>(sessionId);
+  sessionIdRef.current = sessionId;
+  const stopReattachTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Per-message counter so a failed rating only reverts if no newer click happened. */
+  const feedbackSeqRef = useRef(new Map<number, number>());
+  /** Same, for saving a reply. */
+  const savedSeqRef = useRef(new Map<number, number>());
+  /** Page + language the shown starters were made for, and the request in flight. */
+  const startersKeyRef = useRef<string | null>(null);
+  const startersRef = useRef<ChatStartersResponse | null>(null);
+  startersRef.current = starters;
+  const startersRequestRef = useRef<{ key: string; promise: Promise<ChatStartersResponse | null> } | null>(null);
+  const startersFetchedAtRef = useRef(0);
+  /** A request to send once the chat is ready (launcher peek tapped while closed). */
+  const pendingPromptRef = useRef<string | null>(null);
+  const [pendingPromptTick, setPendingPromptTick] = useState(0);
+  // The tapped prompt, shown at once while the chat opens (or replays) and
+  // the real send has to wait.
+  const [queuedPrompt, setQueuedPrompt] = useState<string | null>(null);
 
   // Subscribe to stores for reactive context
   const activeSlide = useContentStore((state) => state.activeItem);
@@ -94,25 +177,20 @@ export const useChatbot = () => {
     (state) => state.modulesWithChaptersData,
   );
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages, isOpen]);
-
-  // Cleanup on unmount
+  // Cleanup on unmount only. Never on a session change: reopening a chat sets
+  // the id and attaches its stream in the same tick, and a cleanup here would
+  // close that new stream (the reply then waited for the 45 s watchdog).
+  // Switching chats closes the old stream itself.
   useEffect(() => {
     return () => {
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
       }
-      if (sessionId) {
-        chatbotAPI.closeSession(sessionId).catch(console.error);
+      if (sessionIdRef.current) {
+        chatbotAPI.closeSession(sessionIdRef.current).catch(console.error);
       }
     };
-  }, [sessionId]);
+  }, []);
 
   // Flush offline queue when back online
   const flushOfflineQueue = useCallback(async () => {
@@ -229,7 +307,7 @@ export const useChatbot = () => {
     return "general";
   }, [location.pathname]);
 
-  const buildContextMeta = useCallback(async (): Promise<ContextMeta> => {
+  const buildPageContextMeta = useCallback(async (): Promise<ContextMeta> => {
     const contextType = getContextType();
     const context = getContext();
 
@@ -421,6 +499,24 @@ export const useChatbot = () => {
     modulesWithChaptersData,
   ]);
 
+  /**
+   * Page context plus the ids the tutor's tools act on: which lesson (so a
+   * doubt sent to a teacher is attached to it and routed to its subject
+   * teacher) and which batch the learner is studying in.
+   */
+  const buildContextMeta = useCallback(async (): Promise<ContextMeta> => {
+    const meta = await buildPageContextMeta();
+    const context = getContext();
+    return {
+      ...meta,
+      ...(context.slideId && { slide_id: context.slideId }),
+      ...(context.subjectId && { subject_id: context.subjectId }),
+      ...((context.sessionId || context.packageSessionId) && {
+        package_session_id: context.sessionId || context.packageSessionId,
+      }),
+    };
+  }, [buildPageContextMeta, getContext]);
+
   // ── SSE stream lifecycle ──────────────────────────────────────────────
   // Replies are produced by the server INSIDE the session's SSE loop, so a
   // message sent while the stream is down is never answered. The browser does
@@ -430,6 +526,13 @@ export const useChatbot = () => {
   const reconnectAttemptsRef = useRef(0);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const attachStreamRef = useRef<(sid: string) => void>(() => {});
+  /**
+   * Set when an existing chat is opened into an empty view: the server's
+   * transcript replay (everything before its first status event) then also
+   * fills in the learner's own messages, which live turns show optimistically.
+   * Stays set across a reconnect until a replay has completed.
+   */
+  const hydratePendingRef = useRef(false);
 
   /** Show an AI usage limit inline (one bubble; a repeat of the same text is not re-added). */
   const showUsageLimit = useCallback((body: AiUsageLimitBody) => {
@@ -445,6 +548,11 @@ export const useChatbot = () => {
   }, []);
 
   const closeStream = useCallback(() => {
+    hydratePendingRef.current = false;
+    if (stopReattachTimerRef.current) {
+      clearTimeout(stopReattachTimerRef.current);
+      stopReattachTimerRef.current = null;
+    }
     if (reconnectTimerRef.current) {
       clearTimeout(reconnectTimerRef.current);
       reconnectTimerRef.current = null;
@@ -482,13 +590,23 @@ export const useChatbot = () => {
         eventSourceRef.current.close();
         eventSourceRef.current = null;
       }
-    // Setup SSE connection
-    const eventSource = chatbotAPI.createEventSource(sid);
-    eventSourceRef.current = eventSource;
 
-    eventSource.addEventListener("message", (event) => {
-      try {
-        const messageData: MessageEvent = JSON.parse(event.data);
+      const showCreditsExhausted = () => {
+        setIsCreditsExhausted(true);
+        setIsWaitingForResponse(false);
+        setIsLoading(false);
+        setAiStatus("idle");
+        const creditsMessage: ChatMessage = {
+          id: Date.now(),
+          role: "assistant",
+          content: t("common.creditsExhausted"),
+          timestamp: Date.now(),
+        };
+        setMessages((prev) => [...prev, creditsMessage]);
+      };
+
+      const handleMessage = (raw: string) => {
+        const messageData: MessageEvent = JSON.parse(raw);
 
         const usageLimit = parseAiUsageLimitBody(messageData);
         if (usageLimit) {
@@ -497,27 +615,13 @@ export const useChatbot = () => {
         }
 
         // Check for credits exhausted error in message data
-        if (
-          (messageData as any).type === "ERROR" &&
-          (messageData as any).code === 402
-        ) {
-          setIsCreditsExhausted(true);
-          setIsWaitingForResponse(false);
-          setIsLoading(false);
-          setAiStatus("idle");
-
-          const creditsMessage: ChatMessage = {
-            id: Date.now(),
-            role: "assistant",
-            content:
-              t("common.creditsExhausted"),
-            timestamp: Date.now(),
-          };
-          setMessages((prev) => [...prev, creditsMessage]);
+        const maybeError = messageData as unknown as { type?: string; code?: number };
+        if (maybeError.type === "ERROR" && maybeError.code === 402) {
+          showCreditsExhausted();
           return;
         }
 
-         // Handle tool_call: show indicator; tool_result: clear it
+        // Handle tool_call: show indicator; tool_result: clear it
         if (messageData.type === "tool_call") {
           setActiveToolCall(messageData.metadata?.tool_name || null);
           return;
@@ -528,7 +632,22 @@ export const useChatbot = () => {
         }
 
         // Skip user messages from SSE since we already show them optimistically
+        // — except while replaying an opened chat's transcript.
         if (messageData.type === "user") {
+          if (!hydratePendingRef.current) return;
+          const meta = messageData.metadata as { attachments?: ChatMessage["attachments"] } | undefined;
+          const replayed: ChatMessage = {
+            id: messageData.id,
+            role: "user",
+            content: messageData.content,
+            timestamp: new Date(messageData.created_at).getTime(),
+            attachments: Array.isArray(meta?.attachments) ? meta.attachments : undefined,
+            fromServer: true,
+            replayed: true,
+          };
+          setMessages((prev) =>
+            prev.some((msg) => msg.id === replayed.id) ? prev : [...prev, replayed],
+          );
           return;
         }
 
@@ -548,36 +667,34 @@ export const useChatbot = () => {
           content: messageData.content,
           timestamp: new Date(messageData.created_at).getTime(),
           metadata: messageData.metadata as ChatMessage["metadata"],
+          fromServer: true,
+          ...(hydratePendingRef.current && { replayed: true }),
         };
 
         setMessages((prev) => {
-          // Check if message already exists
+          // The server replays the transcript on every (re)connect.
           const exists = prev.some((msg) => msg.id === newMessage.id);
           if (exists) return prev;
+          // After Stop, the first new assistant message is the server's copy
+          // of that reply: it takes the local partial bubble's place.
+          const localIndex =
+            newMessage.role === "assistant" ? prev.findIndex((msg) => msg.isLocal) : -1;
+          if (localIndex !== -1) {
+            return [
+              ...prev.slice(0, localIndex),
+              newMessage,
+              ...prev.slice(localIndex + 1).filter((msg) => !msg.isLocal),
+            ];
+          }
           return [...prev, newMessage];
         });
-      } catch (error) {
-        console.error("Error parsing message event:", error);
-      }
-    });
+      };
 
-    eventSource.addEventListener("token", (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        setIsStreaming(true);
-        setStreamingContent((prev) => prev + (data.content || ""));
-        scrollToBottom();
-      } catch (e) {
-        console.error("Error parsing token event:", e);
-      }
-    });
-
-    eventSource.addEventListener("status", (event) => {
-      try {
-        const statusData = JSON.parse(event.data);
+      const handleStatus = (raw: string) => {
+        // The server sends its first status right after the transcript replay.
+        hydratePendingRef.current = false;
+        const statusData = JSON.parse(raw);
         setAiStatus(statusData.ai_status);
-
-        // Check if session is closed
         if (statusData.session_status === "CLOSED") {
           setIsSessionClosed(true);
           if (eventSourceRef.current) {
@@ -585,78 +702,57 @@ export const useChatbot = () => {
             eventSourceRef.current = null;
           }
         }
-      } catch (error) {
-        console.error("Error parsing status event:", error);
-      }
-    });
+      };
 
-    eventSource.addEventListener("error", (event) => {
-      // Check if this is a structured error event with data (e.g. credits exhausted)
-      try {
-        const errorEvent = event as MessageEvent;
-        if (errorEvent.data) {
-          const errorData = JSON.parse(errorEvent.data);
-          const usageLimit = parseAiUsageLimitBody(errorData);
-          if (usageLimit) {
-            showUsageLimit(usageLimit);
-            return;
-          }
-          if (errorData.type === "ERROR" && errorData.code === 402) {
-            console.error("Credits exhausted (402):", errorData.message);
-            setIsCreditsExhausted(true);
-            setIsWaitingForResponse(false);
-            setIsLoading(false);
-            setAiStatus("idle");
-
-            const creditsMessage: ChatMessage = {
-              id: Date.now(),
-              role: "assistant",
-              content:
-                t("common.creditsExhausted"),
-              timestamp: Date.now(),
-            };
-            setMessages((prev) => [...prev, creditsMessage]);
-            return;
-          }
+      // A structured `error` event (credits exhausted, usage limit, a failed turn).
+      const handleErrorEvent = (raw: string) => {
+        const errorData = JSON.parse(raw);
+        const usageLimit = parseAiUsageLimitBody(errorData);
+        if (usageLimit) {
+          showUsageLimit(usageLimit);
+          return;
         }
-      } catch {
-        // Not a JSON error event, handle as regular SSE error below
-      }
+        if (errorData.type === "ERROR" && errorData.code === 402) {
+          showCreditsExhausted();
+        }
+      };
 
-      console.error("SSE Error event:", event);
-      console.error("EventSource readyState:", eventSource.readyState);
-      console.error("EventSource url:", eventSource.url);
-
-      // ReadyState: 0 = CONNECTING, 1 = OPEN, 2 = CLOSED
-      if (eventSource.readyState === EventSource.CLOSED) {
-        console.error("EventSource connection closed");
-        // The browser never retries a CLOSED EventSource (a 503 during a
-        // restart, a dropped connection). Reconnect ourselves: the server
-        // replays the session and processes any unanswered message.
-        eventSource.close();
-        if (eventSourceRef.current === eventSource) eventSourceRef.current = null;
-        scheduleStreamReconnect(sid);
-      }
-    });
-
-    eventSource.onerror = (error) => {
-      console.error("EventSource failed:", error);
-      console.error("EventSource readyState:", eventSource.readyState);
-
-      // Set error state to prevent re-initialization
-      if (eventSource.readyState === EventSource.CLOSED) {
-        // The browser never retries a CLOSED EventSource (a 503 during a
-        // restart, a dropped connection). Reconnect ourselves: the server
-        // replays the session and processes any unanswered message.
-        eventSource.close();
-        if (eventSourceRef.current === eventSource) eventSourceRef.current = null;
-        scheduleStreamReconnect(sid);
-      }
-    };
-
-      eventSource.addEventListener("open", () => {
-        reconnectAttemptsRef.current = 0;
+      const stream = chatbotAPI.openStream(sid, {
+        onOpen: () => {
+          reconnectAttemptsRef.current = 0;
+        },
+        onEvent: (event, data) => {
+          try {
+            if (event === "message") handleMessage(data);
+            else if (event === "token") {
+              const parsed = JSON.parse(data);
+              setIsStreaming(true);
+              setStreamingContent((prev) => prev + (parsed.content || ""));
+            } else if (event === "status") handleStatus(data);
+            else if (event === "error") handleErrorEvent(data);
+          } catch (error) {
+            console.error(`[chatbot] could not handle '${event}' event:`, error);
+          }
+        },
+        onDisconnect: ({ status }) => {
+          if (eventSourceRef.current === stream) eventSourceRef.current = null;
+          // 403: the session is not this learner's; 404: it no longer exists.
+          // Retrying cannot help — stop and let Retry / New chat start over.
+          if (status === 403 || status === 404) {
+            console.error(`[chatbot] stream refused (${status}); not retrying`);
+            setHasError(true);
+            setIsLoading(false);
+            setIsWaitingForResponse(false);
+            setAiStatus("idle");
+            return;
+          }
+          // Dropped connection, 5xx during a deploy, or the server's 30-minute
+          // idle close: reconnect. The server replays the transcript and
+          // answers any question that was left unanswered.
+          scheduleStreamReconnect(sid);
+        },
       });
+      eventSourceRef.current = stream;
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [t, scheduleStreamReconnect, showUsageLimit],
@@ -686,6 +782,27 @@ export const useChatbot = () => {
     console.log("Starting session initialization...");
 
     try {
+      // Reopen the learner's current chat from an earlier visit, if any. A
+      // refused or vanished session (403/404) is forgotten and a new one made.
+      const storedSessionId = await readLastSession();
+      if (storedSessionId) {
+        try {
+          await chatbotAPI.resumeSession(storedSessionId);
+          setMessages([]);
+          setIsWaitingForResponse(false);
+          setAiStatus("idle");
+          setSessionId(storedSessionId);
+          void writeLastSession(storedSessionId);
+          // The server replays the transcript on attach.
+          hydratePendingRef.current = true;
+          attachStream(storedSessionId);
+          return;
+        } catch (error) {
+          console.warn("[chatbot] could not reopen the last chat; starting a new one", error);
+          await writeLastSession(null);
+        }
+      }
+
       const contextType = getContextType();
       const context = getContext();
 
@@ -713,10 +830,7 @@ export const useChatbot = () => {
 
       setSessionId(response.session_id);
       setAiStatus(response.status);
-
-      // Add small delay before establishing SSE connection
-      // to ensure backend is ready
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      void writeLastSession(response.session_id);
 
       console.log("Setting up SSE connection...");
 
@@ -857,7 +971,9 @@ export const useChatbot = () => {
   ]);
 
   const sendMessage = async (content: string, intent?: MessageIntent, attachments?: Array<{type: string; url: string; mime_type?: string; name?: string}>) => {
-    if (!content.trim() || !sessionId) return;
+    // A photo of a question with no typed text is a real message.
+    const hasAttachments = !!attachments && attachments.length > 0;
+    if ((!content.trim() && !hasAttachments) || !sessionId) return;
 
     if (isCreditsExhausted) {
       const creditsMessage: ChatMessage = {
@@ -872,7 +988,7 @@ export const useChatbot = () => {
 
     // Queue message if offline
     if (!navigator.onLine) {
-      const queued = enqueueMessage({ sessionId, message: content, intent });
+      enqueueMessage({ sessionId, message: content, intent });
       setMessages((prev) => [
         ...prev,
         {
@@ -898,6 +1014,7 @@ export const useChatbot = () => {
 
     setMessages((prev) => [...prev, newMessage]);
     setInputValue("");
+    void writeLastSession(sessionId);
     // If intent is practice, show generating_quiz status, else thinking
     setIsLoading(true);
     setAiStatus(intent === "practice" ? "generating_quiz" : "thinking");
@@ -921,6 +1038,18 @@ export const useChatbot = () => {
           timestamp: Date.now(),
         };
         setMessages((prev) => [...prev, creditsMsg]);
+        setAiStatus("idle");
+      } else if (axios.isAxiosError(error) && error.response?.status === 429) {
+        // Per-learner send rate limit: not an error state, just slow down.
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: Date.now(),
+            role: "assistant",
+            content: t("useChatbot.sendingTooFast"),
+            timestamp: Date.now(),
+          },
+        ]);
         setAiStatus("idle");
       } else {
         setHasError(true);
@@ -974,6 +1103,8 @@ export const useChatbot = () => {
   };
 
   const startNewChat = useCallback(async () => {
+    // Forget the remembered chat first, so the re-init below starts fresh.
+    await writeLastSession(null);
     // Close existing session
     if (sessionId) {
       try {
@@ -987,6 +1118,8 @@ export const useChatbot = () => {
     closeStream();
 
     // Reset state
+    pendingPromptRef.current = null;
+    setQueuedPrompt(null);
     setSessionId(null);
     setMessages([]);
     setInputValue("");
@@ -1053,7 +1186,11 @@ export const useChatbot = () => {
   const enterVoiceMode = useCallback(async (mode: SessionMode, language: string = chatbotSettings.voice_settings?.default_language || "en-IN", topic?: string) => {
     // Close current text session if exists
     if (sessionId) {
-      try { await chatbotAPI.closeSession(sessionId); } catch {}
+      try {
+        await chatbotAPI.closeSession(sessionId);
+      } catch {
+        // best-effort: the voice session starts regardless
+      }
     }
     closeStream();
     // The call screen mounts on `voiceMode && sessionId`. Clear the id BEFORE
@@ -1110,6 +1247,8 @@ export const useChatbot = () => {
   }, []);
 
   const closeSession = useCallback(async () => {
+    // Forget the remembered chat first, so the re-init below starts fresh.
+    await writeLastSession(null);
     // Close existing session
     if (sessionId) {
       try {
@@ -1123,6 +1262,8 @@ export const useChatbot = () => {
     closeStream();
 
     // Reset state
+    pendingPromptRef.current = null;
+    setQueuedPrompt(null);
     setSessionId(null);
     setMessages([]);
     setInputValue("");
@@ -1136,6 +1277,274 @@ export const useChatbot = () => {
     setStreamingContent("");
     setIsStreaming(false);
   }, [sessionId]);
+
+  /** Fetch the learner's past chats into `sessions` (and return them). */
+  const loadSessions = useCallback(async (): Promise<ChatSessionSummary[]> => {
+    const list = await chatbotAPI.listSessions(20);
+    setSessions(list);
+    return list;
+  }, []);
+
+  /**
+   * Switch to one of the learner's chats. The current chat is left untouched
+   * if the server refuses (403) or no longer has it (404): resolves false.
+   */
+  const openSession = useCallback(
+    async (id: string): Promise<boolean> => {
+      if (id === sessionId && !isSessionClosed && !hasError) return true;
+      try {
+        await chatbotAPI.resumeSession(id);
+      } catch (error) {
+        console.error("[chatbot] could not open chat:", error);
+        return false;
+      }
+      closeStream();
+      reconnectAttemptsRef.current = 0;
+      setMessages([]);
+      setStreamingContent("");
+      setIsStreaming(false);
+      setActiveToolCall(null);
+      setIsLoading(false);
+      setAiStatus("idle");
+      setIsWaitingForResponse(false);
+      setHasError(false);
+      setIsUsageLimited(false);
+      setIsSessionClosed(false);
+      // A new id also re-syncs the page context (the context effect above).
+      setSessionId(id);
+      void writeLastSession(id);
+      // The server replays the transcript on attach, repopulating messages.
+      hydratePendingRef.current = true;
+      attachStream(id);
+      return true;
+    },
+    [sessionId, isSessionClosed, hasError, closeStream, attachStream],
+  );
+
+  /**
+   * Stop the reply being written. Closing the stream makes the server save
+   * the partial reply (metadata.stopped); it is shown locally until that
+   * copy arrives on the re-opened stream.
+   */
+  const stopGeneration = useCallback(() => {
+    const sid = sessionId;
+    const busy =
+      isLoading || isStreaming || aiStatus === "thinking" || aiStatus === "generating_quiz";
+    if (!sid || !busy) return;
+    closeStream();
+    const partial = visibleStreamText(streamingContentRef.current);
+    if (partial) {
+      const now = Date.now();
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: -now,
+          role: "assistant",
+          content: partial,
+          timestamp: now,
+          isLocal: true,
+          metadata: { stopped: true },
+        },
+      ]);
+    }
+    setStreamingContent("");
+    setIsStreaming(false);
+    setActiveToolCall(null);
+    setIsLoading(false);
+    setIsWaitingForResponse(false);
+    setAiStatus("idle");
+    reconnectAttemptsRef.current = 0;
+    // Tell the server first, so the stopped question is never picked up again
+    // by the stream we re-open (or another tab); then re-open so the saved
+    // partial copy and later replies still arrive.
+    const reattach = () => {
+      stopReattachTimerRef.current = setTimeout(() => {
+        stopReattachTimerRef.current = null;
+        if (sessionIdRef.current === sid) attachStreamRef.current(sid);
+      }, STOP_REATTACH_DELAY_MS);
+    };
+    chatbotAPI.stopTurn(sid).then(reattach, reattach);
+  }, [sessionId, isLoading, isStreaming, aiStatus, closeStream]);
+
+  /** Thumbs up / down on an assistant reply ("none" clears). Optimistic; reverts on failure. */
+  const setFeedback = useCallback(
+    async (messageId: number, rating: FeedbackRating) => {
+      const sid = sessionId;
+      const target = messagesRef.current.find((m) => m.id === messageId);
+      if (!sid || !target?.fromServer) return;
+      const previous = target.metadata?.feedback;
+      const seq = (feedbackSeqRef.current.get(messageId) ?? 0) + 1;
+      feedbackSeqRef.current.set(messageId, seq);
+      const applyFeedback = (feedback: NonNullable<ChatMessage["metadata"]>["feedback"]) =>
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === messageId ? { ...m, metadata: { ...m.metadata, feedback } } : m,
+          ),
+        );
+      applyFeedback({ rating });
+      try {
+        await chatbotAPI.sendFeedback(sid, messageId, rating);
+      } catch (error) {
+        console.error("[chatbot] could not save feedback:", error);
+        if (feedbackSeqRef.current.get(messageId) === seq) applyFeedback(previous);
+      }
+    },
+    [sessionId],
+  );
+
+  /**
+   * Save (bookmark) or unsave a reply. Optimistic for a reply in the open chat;
+   * reverts on failure. `targetSessionId` unsaves from the Saved list, where the
+   * reply may belong to another chat. Resolves whether the server accepted it.
+   */
+  const setSaved = useCallback(
+    async (messageId: number, saved: boolean, targetSessionId?: string): Promise<boolean> => {
+      const sid = targetSessionId || sessionId;
+      if (!sid) return false;
+      const target = messagesRef.current.find((m) => m.id === messageId && m.fromServer);
+      const previous = target?.metadata?.saved_at ?? null;
+      const seq = (savedSeqRef.current.get(messageId) ?? 0) + 1;
+      savedSeqRef.current.set(messageId, seq);
+      const applySaved = (savedAt: string | null) =>
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === messageId ? { ...m, metadata: { ...m.metadata, saved_at: savedAt } } : m,
+          ),
+        );
+      if (target) applySaved(saved ? new Date().toISOString() : null);
+      try {
+        await chatbotAPI.setSaved(sid, messageId, saved);
+        return true;
+      } catch (error) {
+        console.error("[chatbot] could not save the reply:", error);
+        if (target && savedSeqRef.current.get(messageId) === seq) applySaved(previous);
+        return false;
+      }
+    },
+    [sessionId],
+  );
+
+  // ── Personal starters ────────────────────────────────────────────────
+  /** What the learner is looking at, named for the starters (lesson or course). */
+  const getStarterLesson = useCallback((): string => {
+    const contextType = getContextType();
+    if (contextType === "slide") return activeSlide?.title || "";
+    if (contextType === "course_details") {
+      const { courseId } = getContext();
+      if (!courseId) return "";
+      const details = getCourseDetails(courseId) as unknown as { package_name?: string } | undefined;
+      const batch = (instituteDetails?.batches_for_sessions || []).find(
+        (b) => b.package_dto.id === courseId,
+      );
+      return details?.package_name || batch?.package_dto?.package_name || "";
+    }
+    return "";
+  }, [getContextType, getContext, activeSlide, getCourseDetails, instituteDetails]);
+
+  /**
+   * Fetch the starters for the current page (cached a few minutes per page +
+   * language; concurrent calls share one request). Resolves null when they
+   * could not be loaded, e.g. signed out or offline.
+   */
+  const loadStarters = useCallback((): Promise<ChatStartersResponse | null> => {
+    const contextType = getContextType();
+    const lesson = getStarterLesson();
+    const key = `${contextType}|${lesson}|${i18n.language}`;
+    const fresh = Date.now() - startersFetchedAtRef.current < STARTERS_TTL_MS;
+    if (startersKeyRef.current === key && startersRef.current && fresh) {
+      return Promise.resolve(startersRef.current);
+    }
+    if (startersRequestRef.current?.key === key) return startersRequestRef.current.promise;
+    const isCurrent = () => startersRequestRef.current?.key === key;
+    const promise = (async (): Promise<ChatStartersResponse | null> => {
+      let token: string | null = null;
+      try {
+        token = await getTokenFromStorage(TokenKey.accessToken);
+      } catch {
+        token = null;
+      }
+      // Signed out (a public page): there is nothing personal to suggest.
+      if (!token) {
+        if (isCurrent()) setStartersState("error");
+        return null;
+      }
+      if (isCurrent()) setStartersState("loading");
+      try {
+        const data = await chatbotAPI.getStarters(contextType, lesson || undefined);
+        if (isCurrent()) {
+          startersKeyRef.current = key;
+          startersFetchedAtRef.current = Date.now();
+          setStarters(data);
+          setStartersState("ready");
+        }
+        return data;
+      } catch (error) {
+        console.warn("[chatbot] could not load starters:", error);
+        if (isCurrent()) setStartersState("error");
+        return null;
+      } finally {
+        if (isCurrent()) startersRequestRef.current = null;
+      }
+    })();
+    startersRequestRef.current = { key, promise };
+    return promise;
+  }, [getContextType, getStarterLesson, i18n.language]);
+
+  const hasLearnerMessage = messages.some((m) => m.role === "user");
+
+  // The empty chat shows starters for the page the learner is on.
+  useEffect(() => {
+    if (!isOpen || voiceMode || hasLearnerMessage) return;
+    const timer = setTimeout(() => void loadStarters(), 250);
+    return () => clearTimeout(timer);
+  }, [isOpen, voiceMode, hasLearnerMessage, loadStarters]);
+
+  /** Open the chat and send `prompt` as soon as the chat is ready (launcher peek). */
+  const openAndSend = useCallback((prompt: string) => {
+    if (!prompt.trim()) return;
+    pendingPromptRef.current = prompt;
+    setQueuedPrompt(prompt);
+    setIsOpen(true);
+    setPendingPromptTick((n) => n + 1);
+  }, []);
+
+  // A chat that could not open drops the waiting prompt with it.
+  useEffect(() => {
+    if (!hasError && !isUsageLimited) return;
+    pendingPromptRef.current = null;
+    setQueuedPrompt(null);
+  }, [hasError, isUsageLimited]);
+
+  const sendMessageRef = useRef(sendMessage);
+  sendMessageRef.current = sendMessage;
+  useEffect(() => {
+    if (!pendingPromptRef.current || !sessionId || isInitializing || voiceMode) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    // An opened chat replays its transcript first; send after it, so the new
+    // question lands below the history.
+    const trySend = (attempt: number) => {
+      if (hydratePendingRef.current && attempt < 20) {
+        timer = setTimeout(() => trySend(attempt + 1), 250);
+        return;
+      }
+      const prompt = pendingPromptRef.current;
+      pendingPromptRef.current = null;
+      // Same render as the real bubble, so the hand-over does not flicker.
+      setQueuedPrompt(null);
+      if (prompt) void sendMessageRef.current(prompt);
+    };
+    trySend(0);
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [sessionId, isInitializing, voiceMode, pendingPromptTick]);
+
+  // ── Read aloud ───────────────────────────────────────────────────────
+  const { speakingMessageId, speechLoadingId, toggleReadAloud, stopSpeech } =
+    useReplySpeech(sessionId);
+  useEffect(() => {
+    if (!isOpen || voiceMode) stopSpeech();
+  }, [isOpen, voiceMode, stopSpeech]);
 
   return {
     isOpen,
@@ -1169,6 +1578,21 @@ export const useChatbot = () => {
     isOffline,
     pendingMessages,
     reconnectStream,
+    sessions,
+    loadSessions,
+    openSession,
+    stopGeneration,
+    setFeedback,
+    setSaved,
+    starters,
+    startersState,
+    loadStarters,
+    openAndSend,
+    queuedPrompt,
+    speakingMessageId,
+    speechLoadingId,
+    toggleReadAloud,
+    stopSpeech,
     voiceMode,
     voiceTopic,
     suggestedVoiceTopic,

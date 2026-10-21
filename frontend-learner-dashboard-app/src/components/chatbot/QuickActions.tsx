@@ -29,6 +29,7 @@ export const getQuickActions = (
   t: TFunction,
   course: string,
   slide: string,
+  completeOnly = false,
 ): QuickAction[] => {
   // Slide/content pages
   if (pathname.includes("/slides") || pathname.includes("/content")) {
@@ -40,10 +41,13 @@ export const getQuickActions = (
         intent: "doubt",
       },
       {
+        // A complete request (not the "Quiz me on " prefill): learners sent
+        // the bare prefill 354 times a month. The tutor quizzes on this
+        // lesson through its quiz tool.
         label: t("quickActions.quizMe.label"),
         icon: FileDashed,
-        prompt: t("quickActions.quizMe.prompt"),
-        intent: "practice",
+        prompt: t("quickActions.quizMeOnThis.prompt", { slide }),
+        intent: "general",
       },
       {
         label: t("quickActions.summarize.label"),
@@ -99,6 +103,30 @@ export const getQuickActions = (
     ];
   }
 
+  // The empty chat sends complete requests only (never a bare prefill).
+  if (completeOnly) {
+    return [
+      {
+        label: t("quickActions.studyNext.label"),
+        icon: Lightbulb,
+        prompt: t("quickActions.studyNext.prompt"),
+        intent: "general",
+      },
+      {
+        label: t("quickActions.quizRecent.label"),
+        icon: FileDashed,
+        prompt: t("quickActions.quizRecent.prompt"),
+        intent: "general",
+      },
+      {
+        label: t("quickActions.myProgress.label"),
+        icon: Repeat,
+        prompt: t("quickActions.myProgress.prompt"),
+        intent: "general",
+      },
+    ];
+  }
+
   // Default/general suggestions — all end with space so user can type before sending
   return [
     {
@@ -129,35 +157,42 @@ export interface QuickActionsProps {
   onAction: (prompt: string, intent?: MessageIntent) => void;
   /** Disable all chips (e.g. while loading or no session) */
   disabled?: boolean;
+  /** Complete requests only (no "Quiz me on " prefills), for the empty chat. */
+  completeOnly?: boolean;
   /**
    * Render smaller chips for the "after first message" compact mode.
    * When false/undefined, renders the larger initial-state chips.
    */
   compact?: boolean;
+  className?: string;
 }
 
 export const QuickActions: React.FC<QuickActionsProps> = ({
   pathname,
   onAction,
   disabled = false,
+  completeOnly = false,
   compact = false,
+  className,
 }) => {
   const { t } = useTranslation("chatFeatureB");
   // The chatbot speaks the app's language, also over a public site in another.
   const course = getAppTerminology(ContentTerms.Course, SystemTerms.Course);
   const slide = getAppTerminology(ContentTerms.Slides, SystemTerms.Slides);
-  const quickActions = getQuickActions(pathname, t, course, slide);
+  const quickActions = getQuickActions(pathname, t, course, slide, completeOnly);
 
   return (
     <div
       className={cn(
         "w-full flex flex-wrap",
         compact ? "gap-1" : "gap-1.5",
+        className,
       )}
     >
       {quickActions.map((action, index) => (
         <button
           key={index}
+          type="button"
           onClick={() => onAction(action.prompt, action.intent)}
           disabled={disabled}
           className={cn(

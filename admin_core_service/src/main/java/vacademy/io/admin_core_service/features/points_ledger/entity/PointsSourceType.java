@@ -11,5 +11,7 @@ public enum PointsSourceType {
     /** Time-on-platform learning activity. */
     ACTIVITY,
     /** Admin-granted, with a reason. */
-    MANUAL
+    MANUAL,
+    /** Passed a practice quiz set by the learner AI tutor (small, capped per day). */
+    AI_TUTOR_QUIZ
 }

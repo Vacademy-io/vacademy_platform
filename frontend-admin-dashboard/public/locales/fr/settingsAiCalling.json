@@ -104,13 +104,19 @@
         "stopHeader": "Arrêter (pas de relance)",
         "removeAria": "Supprimer {{disposition}}",
         "addOutcomePlaceholder": "Ajouter un résultat personnalisé (ex. Mauvais numéro)",
-        "addOutcome": "Ajouter un résultat"
+        "addOutcome": "Ajouter un résultat",
+        "otherwiseHeader": "Otherwise",
+        "otherwiseRetry": "Retry, then assign after max retries",
+        "otherwiseRetryOnly": "Retry until max retries",
+        "customBadge": "custom"
     },
     "assignmentCard": {
         "title": "Attribution des conseillers",
         "description": "Comment un conseiller est choisi lorsqu'un lead est qualifié (ou lorsque les relances sont épuisées).",
         "modeLabel": "Mode d'attribution",
-        "assignExhausted": "Assigner les leads sans réponse à une personne une fois les relances épuisées"
+        "assignExhausted": "Assigner les leads sans réponse à une personne une fois les relances épuisées",
+        "reassignQualified": "Give qualified leads to this list's pool, even if they already have a counsellor",
+        "reassignQualifiedHint": "Use for lists of previously-worked leads: when the AI books or qualifies one, it goes to the pool instead of staying with whoever last held it. Leads that simply never answered are never moved."
     },
     "save": {
         "saving": "Enregistrement…",
@@ -173,7 +179,16 @@
                 "expiryInPast": "Choisissez une date postérieure à aujourd'hui.",
                 "generic": "Vérifiez le formulaire et réessayez."
             },
-            "notCopiedWarning": "Vous n'avez pas copié la clé. Fermez à nouveau pour l'abandonner ; elle ne pourra plus être affichée."
+            "notCopiedWarning": "Vous n'avez pas copié la clé. Fermez à nouveau pour l'abandonner ; elle ne pourra plus être affichée.",
+            "humanCallsLabel": "Peut appeler les conseillers (appels humains)",
+            "humanCallsHint": "Permet à cette clé de lister les noms et e-mails de vos conseillers et de les mettre en relation avec des contacts par téléphone (human_calls:read, human_calls:write). Une clé ne peut pas être modifiée ensuite.",
+            "humanCallsBadge": "Appels humains",
+            "manageCounsellorsLabel": "Peut gérer les conseillers",
+            "manageCounsellorsHint": "Permet à cette clé d'ajouter des conseillers (chacun reçoit un accès au tableau de bord et un e-mail de bienvenue), de modifier leur nom, leur numéro de mobile et leur extension Airtel, et de les désactiver (counsellors:manage). Elle ne modifie jamais les administrateurs ni les autres membres de l'équipe. Une clé ne peut pas être modifiée ensuite.",
+            "manageCounsellorsBadge": "Gère les conseillers",
+            "manageAgentsLabel": "Peut gérer les agents IA",
+            "manageAgentsHint": "Permet à cette clé de créer, modifier, activer ou désactiver et supprimer des agents IA, de choisir l'agent par défaut et l'agent qui répond sur un numéro entrant (agents:manage). Une clé ne peut pas être modifiée ensuite.",
+            "manageAgentsBadge": "Gère les agents IA"
         },
         "agents": {
             "title": "Identifiants d'agent",
@@ -210,5 +225,19 @@
             "rotateTitle": "Créer un nouveau secret de signature ?",
             "rotateDescription": "Toutes les livraisons seront désormais signées avec le nouveau secret. Tant que votre serveur ne l'utilise pas, ses vérifications de signature échoueront et les événements seront retentés. Mettez votre serveur à jour juste après avoir copié le nouveau secret."
         }
+    },
+    "header": {
+        "title": "AI Calling Settings",
+        "description": "AI-first calling: who the AI calls, from which line, how often it retries, and what happens after each outcome.",
+        "unsaved": "Unsaved changes",
+        "aiAgents": "AI Agents",
+        "disabledBanner": "AI calling is off. Switch it on in the AI calling tab to set up retries, outcomes and assignment."
+    },
+    "tabs": {
+        "general": "AI calling",
+        "agents": "Agents & campaigns",
+        "retries": "Retries & shifts",
+        "outcomes": "Outcome → action",
+        "assignment": "Assignment"
     }
 }

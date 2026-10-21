@@ -66,6 +66,7 @@ export interface LeadLookupFollowUp {
     /** May be HTML from the rich-text editor. */
     comments?: string;
     student_response?: string;
+    interest_level?: string;
     closer_reason?: string;
     closed_at?: string;
     created_at?: string;

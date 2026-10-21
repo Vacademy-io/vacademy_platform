@@ -27,5 +27,17 @@
         "partial": "Partiel",
         "failed": "Échec",
         "pending": "En attente"
+    },
+    "subtitle": "Messages sent to this list",
+    "sendMessage": "Send message",
+    "summary": {
+        "sent": "Messages sent",
+        "sentDetail": "to this list so far",
+        "recipients": "Recipients",
+        "accepted": "Accepted",
+        "acceptedDetail": "{{accepted}} of {{total}} accepted",
+        "failed": "Failed",
+        "latest_one": "across the latest {{count}} send",
+        "latest_other": "across the latest {{count}} sends"
     }
 }

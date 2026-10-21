@@ -112,6 +112,7 @@ import {
 import { CourseLanguagePicker, CourseVersionPicker } from "./CourseLanguagePicker";
 import { CourseCartActions, CourseCartPending } from "./CourseCartActions";
 import { EbookDetailsView } from "./EbookDetailsView";
+import { HostedSiteAssistant } from "@/components/site-assistant/HostedSiteAssistant";
 import { headerOffsetClass } from "../../-components/header/header-chrome";
 import {
   BookOpen,
@@ -1428,8 +1429,19 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
         : null,
     [standardLayout, catalogueData?.pages, catalogStreamsConfig],
   );
+  // globalSettings.courseDetails (Manage Pages → Course page): series = false leaves the
+  // "Part of <path>" chips off (seriesLimit = how many of them show), content = false the Course content (modules & slides) tab,
+  // contentHeading = false only the "Course Content (Modules & Slides)" line above the structure.
+  const courseDetailsSettings = (
+    catalogueData?.globalSettings as
+      | { courseDetails?: { series?: unknown; seriesLimit?: unknown; content?: unknown; contentHeading?: unknown } }
+      | undefined
+  )?.courseDetails;
+  const seriesOn = courseDetailsSettings?.series !== false;
+  const contentOn = courseDetailsSettings?.content !== false;
+  const contentHeadingOn = courseDetailsSettings?.contentHeading !== false;
   const courseSeries = useCourseSeries({
-    enabled: standardLayout,
+    enabled: standardLayout && seriesOn,
     instituteId,
     libraryId: pathLibraryId,
     streamSlug: coursePlace.stream?.slug,
@@ -1934,6 +1946,7 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
       packageSessionId={courseData.packageSessionId}
       levelId={courseData.levelId}
       variant={structureVariant}
+      showContentHeading={contentHeadingOn}
     />
   );
 
@@ -2193,6 +2206,7 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
               )
             }
             series={courseSeries}
+            seriesLimit={courseDetailsSettings?.seriesLimit}
             formatStepPrice={(step) =>
               step.price === null
                 ? ""
@@ -2206,6 +2220,7 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
               return label ? siteT(label) : "";
             }}
             outline={courseStructure}
+            showContent={contentOn}
             related={
               coursePlace.related ? (
                 <CourseShowcaseComponent
@@ -2442,7 +2457,7 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
                 </div>
 
                 {/* Course Structure */}
-                {!isOutlineView && courseStructure}
+                {!isOutlineView && contentOn && courseStructure}
 
                 {/* Content sections (what-you'll-learn / about /
                     who-should-learn / instructors / tags) moved into the
@@ -2886,6 +2901,22 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
             )}
           </div>
         </div>
+      )}
+
+      {/* Site Assistant (globalSettings.siteAssistant): knows this course
+          (page.course_id) and clears the mobile enrol bar above. */}
+      {catalogueData && (
+        <HostedSiteAssistant
+          globalSettings={catalogueData.globalSettings}
+          tagName={tagName}
+          pageKind="course"
+          courseId={courseId}
+          hasMobileBar={
+            !ebookLayout &&
+            (catalogueData.globalSettings as { courseCatalogeType?: { enabled?: boolean } } | undefined)
+              ?.courseCatalogeType?.enabled !== true
+          }
+        />
       )}
     </div>
   );

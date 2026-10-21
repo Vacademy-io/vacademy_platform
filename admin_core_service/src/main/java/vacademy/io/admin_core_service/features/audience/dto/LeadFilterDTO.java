@@ -87,6 +87,12 @@ public class LeadFilterDTO {
     private Boolean followUpPending;
     private Timestamp followUpFrom;
     private Timestamp followUpTo;
+    /**
+     * Follow-ups page: keep only leads whose OPEN follow-up carries one of these
+     * interest levels (lead_followup.interest_level, the institute's own labels).
+     * Null / empty = no filter.
+     */
+    private java.util.List<String> followUpInterestLevels;
 
     // ── Status Filters ──
     private java.util.List<String> overallStatuses;    // ENQUIRY, APPLICATION, ADMITTED, etc.

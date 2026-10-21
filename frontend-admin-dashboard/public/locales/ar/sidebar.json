@@ -56,6 +56,11 @@
     "finance": "المالية",
     "followUps": "المتابعات",
     "inAppMessages": "الرسائل داخل التطبيق",
+    "callingDashboard": "لوحة المكالمات",
+    "meetingsDashboard": "لوحة الاجتماعات",
+    "messagingDashboard": "لوحة الرسائل",
+    "instituteOverview": "نظرة عامة على المؤسسة",
+    "lmsDashboard": "لوحة LMS",
     "institutePulse": "نبض المؤسسة",
     "instructorCopilot": "مساعد المدرّب",
     "interactiveClass": "الحصة التفاعلية",
@@ -102,6 +107,7 @@
     "payroll": "كشوف الرواتب",
     "people": "الأفراد",
     "productPages": "صفحات المنتجات",
+    "siteAssistant": "مساعد الموقع",
     "blog": "المدونة",
     "provisions": "المخصصات",
     "questionsBanksAndPapers": "بنوك الأسئلة والأوراق الامتحانية",
@@ -138,5 +144,8 @@
     "whatsappTemplates": "قوالب واتساب",
     "workflows": "سير العمل",
     "dailyEngagement": "المشاركة اليومية",
-    "leadLookup": "التحقق من العميل"
+    "leadLookup": "التحقق من العميل",
+    "contactsDashboard": "لوحة جهات الاتصال",
+    "automationDashboard": "لوحة الأتمتة",
+    "engagementDashboard": "لوحة التفاعل"
 }

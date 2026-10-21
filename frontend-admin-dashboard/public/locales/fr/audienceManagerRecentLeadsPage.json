@@ -71,7 +71,10 @@
         "viewingDeletedButton": "Prospects supprimés affichés",
         "exporting": "Exportation…",
         "export": "Exporter",
-        "addLead": "Ajouter un prospect"
+        "addLead": "Ajouter un prospect",
+        "filters": "Filtres",
+        "summaryShow": "Afficher le résumé",
+        "summaryHide": "Masquer le résumé"
     },
     "chips": {
         "search": "Recherche : {{query}}",
@@ -170,5 +173,17 @@
         "bulkStatusUnchanged_other": null,
         "bulkStatusPartial": null,
         "bulkStatusFailed": null
+    },
+    "filtersPanel": {
+        "title": "Filtres",
+        "active": "{{count}} actifs",
+        "close": "Fermer les filtres",
+        "sections": {
+            "pipeline": "Pipeline",
+            "owner": "Responsable et source",
+            "activity": "Activité",
+            "campaign": "Liens de campagne",
+            "custom": "Champs personnalisés"
+        }
     }
 }

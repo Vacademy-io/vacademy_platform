@@ -195,6 +195,30 @@ public class AdminExportManager {
     @Autowired
     ClassAiReportGenerationService classAiReportGenerationService;
 
+    /**
+     * Rank of each row by the platform rule (StudentAttemptRepository: DENSE_RANK over marks
+     * DESC, time taken ASC, nulls last), so a sheet shows the same rank as the learner's report:
+     * equal marks are split by who finished faster, and only an exact tie on both shares a rank.
+     * Ranks are returned in the input order; the rows themselves are not reordered.
+     */
+    static int[] platformRanks(List<Double> marks, List<Long> seconds) {
+        Comparator<Integer> order = Comparator
+                .comparing((Integer i) -> marks.get(i), Comparator.nullsLast(Comparator.<Double>reverseOrder()))
+                .thenComparing(i -> seconds.get(i), Comparator.nullsLast(Comparator.<Long>naturalOrder()));
+        List<Integer> idx = new ArrayList<>();
+        for (int i = 0; i < marks.size(); i++) idx.add(i);
+        idx.sort(order);
+        int[] ranks = new int[marks.size()];
+        int rank = 0;
+        Integer prev = null;
+        for (Integer i : idx) {
+            if (prev == null || order.compare(prev, i) != 0) rank++;
+            ranks[i] = rank;
+            prev = i;
+        }
+        return ranks;
+    }
+
     public static String convertToReadableTime(Long timeInSeconds) {
         if (Objects.isNull(timeInSeconds) || timeInSeconds < 0) {
             return "Invalid Input";
@@ -355,7 +379,10 @@ public class AdminExportManager {
     private List<ParticipantsDetailExportDto> createExportDtoFromParticipantsDtoWithTotalMarks(
             List<ParticipantsDetailsDto> participantsDetailsDtos, Double totalMarks) {
         List<ParticipantsDetailExportDto> response = new ArrayList<>();
-        // Results arrive sorted by score DESC (ORDER BY in query), so index+1 = rank.
+        // Several of these queries list learners by name, so the row number is not a rank.
+        int[] ranks = platformRanks(
+                participantsDetailsDtos.stream().map(ParticipantsDetailsDto::getScore).toList(),
+                participantsDetailsDtos.stream().map(ParticipantsDetailsDto::getDuration).toList());
         for (int i = 0; i < participantsDetailsDtos.size(); i++) {
             ParticipantsDetailsDto dto = participantsDetailsDtos.get(i);
             Double obtained = dto.getScore();
@@ -371,7 +398,7 @@ public class AdminExportManager {
                     .marksObtained(obtained)
                     .totalMarks(totalMarks)
                     .percentage(pct)
-                    .rank(i + 1)
+                    .rank(ranks[i])
                     .duration(durationFormatted)
                     .attemptDate(dto.getAttemptDate())
                     .build());
@@ -426,7 +453,11 @@ public class AdminExportManager {
                 participants.stream().map(ResultExportRowDto::getBatchId)
                         .filter(Objects::nonNull).distinct().sorted().toList());
 
-        // Rows arrive sorted by score DESC (ORDER BY in query) → index+1 = rank.
+        // Rows arrive in rank order (ORDER BY in query); the rank itself is the platform's, so
+        // learners with equal marks are split by time taken, exactly as on their report.
+        int[] ranks = platformRanks(
+                participants.stream().map(ResultExportRowDto::getRankMarks).toList(),
+                participants.stream().map(ResultExportRowDto::getDuration).toList());
         for (int i = 0; i < participants.size(); i++) {
             ResultExportRowDto p = participants.get(i);
             Double obtained = p.getScore() != null ? p.getScore() : 0.0;
@@ -449,7 +480,7 @@ public class AdminExportManager {
                     .append(obtained).append(",")
                     .append(totalMarks).append(",")
                     .append(pct).append(",")
-                    .append(i + 1).append(",")
+                    .append(ranks[i]).append(",")
                     .append(escapeCsvField(duration)).append(",")
                     .append(escapeCsvField(attemptDate));
 

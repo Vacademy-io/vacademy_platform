@@ -311,7 +311,7 @@ function StatTile({
     tone?: Tone;
 }) {
     return (
-        <div className="flex items-start justify-between gap-3 rounded-lg border border-neutral-200 bg-white p-4">
+        <div className="flex items-start justify-between gap-3 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
             <div className="min-w-0">
                 <p className="text-caption font-semibold text-neutral-500">{label}</p>
                 <p className={cn('mt-1 text-h2-semibold', TONE[tone].value)}>{value ?? '-'}</p>
@@ -389,7 +389,7 @@ function OverviewPanel({ stats: s }: { stats: AnnouncementStats }) {
                     icon={XCircle}
                 />
             </div>
-            <div className="flex flex-col gap-3 rounded-lg border border-neutral-200 p-4">
+            <div className="flex flex-col gap-3 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
                 <RateBar
                     label={t('statsDialog.rates.delivery')}
                     value={s.deliveryRate}

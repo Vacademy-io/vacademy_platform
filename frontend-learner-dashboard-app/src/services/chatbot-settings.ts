@@ -201,7 +201,8 @@ export async function setChatbotSettings(
 }
 
 function readCacheForInstitute(
-  instituteId: string | null | undefined
+  instituteId: string | null | undefined,
+  allowStale = false
 ): ChatbotSettingsData | null {
   if (!instituteId) return null;
   try {
@@ -211,7 +212,7 @@ function readCacheForInstitute(
       ts: number;
       data: ChatbotSettingsData;
     };
-    return parsed?.ts && Date.now() - parsed.ts <= CACHE_TTL_MS
+    return parsed?.ts && (allowStale || Date.now() - parsed.ts <= CACHE_TTL_MS)
       ? parsed.data
       : null;
   } catch {
@@ -269,10 +270,11 @@ export async function getChatbotSettings(
     void refreshAvatarUrl(settings, instituteId);
     return settings;
   } catch {
-    // Fetch failed — serve defaults for this call, but keep the icon we have.
-    const defaults = DEFAULT_CHATBOT_SETTINGS;
-    await writeCacheForInstitute(instituteId, defaults);
-    return defaults;
+    // Fetch failed (network blip, deploy). Serve the last settings we saw, even
+    // if stale, and do NOT cache anything: caching the defaults here
+    // (enable:false) used to hide the launcher for five minutes after a single
+    // transient error. The next call retries the fetch.
+    return readCacheForInstitute(instituteId, true) ?? DEFAULT_CHATBOT_SETTINGS;
   }
 }
 

@@ -58,6 +58,26 @@ const EMBED_MODAL_BORDER_COLOR = '#e5e7eb'; // design-lint-ignore: portable lite
 const EMBED_MODAL_TEXT_COLOR = '#111827'; // design-lint-ignore: portable literal color, see comment above
 const EMBED_MODAL_MUTED_TEXT_COLOR = '#6b7280'; // design-lint-ignore: portable literal color, see comment above
 
+/**
+ * Sizes the embedded iframe to the form. The form page posts its height
+ * (`vacademy-form-height`) whenever it changes — fields revealed, errors shown,
+ * the thank-you screen — so the frame never cuts a long form off or leaves a
+ * short one floating in empty space. The height set above is only the size
+ * before the form has loaded. Messages from any other frame are ignored.
+ */
+const autoHeightScript = (frameId: string) => `<script>
+  (function () {
+    var frame = document.getElementById('${frameId}');
+    window.addEventListener('message', function (e) {
+      if (!frame || e.source !== frame.contentWindow) return;
+      var d = e.data;
+      if (d && d.type === 'vacademy-form-height' && d.height > 0) {
+        frame.style.height = Math.ceil(d.height) + 'px';
+      }
+    });
+  })();
+</script>`;
+
 export const EmbedCodeDialog = ({ isOpen, onClose, campaign }: EmbedCodeDialogProps) => {
     const { t } = useTranslation('audienceManagerEmbedCodeDialog');
     const [copiedSection, setCopiedSection] = useState<string | null>(null);
@@ -67,6 +87,9 @@ export const EmbedCodeDialog = ({ isOpen, onClose, campaign }: EmbedCodeDialogPr
     const { instituteDetails } = useInstituteDetailsStore();
 
     const campaignId = campaign.id || campaign.campaign_id || campaign.audience_id || '';
+    // Per-snippet suffix for the auto-height frame id, so the same form pasted
+    // twice on one page still gets two distinct frames.
+    const frameSuffix = useMemo(() => Math.random().toString(36).slice(2, 7), []);
     const formUrl = useMemo(() => {
         return createCampaignLink(campaignId, instituteDetails?.learner_portal_base_url);
     }, [campaignId, instituteDetails?.learner_portal_base_url]);
@@ -107,6 +130,8 @@ export const EmbedCodeDialog = ({ isOpen, onClose, campaign }: EmbedCodeDialogPr
     left: 0;
     width: 100%;
     height: 100%;
+    padding: 16px;
+    box-sizing: border-box;
     background: rgba(0, 0, 0, 0.5);
     z-index: 9999;
     justify-content: center;
@@ -119,12 +144,16 @@ export const EmbedCodeDialog = ({ isOpen, onClose, campaign }: EmbedCodeDialogPr
     background: white;
     border-radius: 12px;
     max-width: 600px;
-    width: 90%;
-    max-height: 90vh;
+    width: 100%;
+    max-height: calc(100vh - 32px);
+    max-height: calc(100dvh - 32px);
+    display: flex;
+    flex-direction: column;
     overflow: hidden;
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
   }
   .vacademy-modal-header {
+    flex-shrink: 0;
     padding: 16px 20px;
     border-bottom: 1px solid ${EMBED_MODAL_BORDER_COLOR};
     display: flex;
@@ -150,11 +179,15 @@ export const EmbedCodeDialog = ({ isOpen, onClose, campaign }: EmbedCodeDialogPr
     color: ${EMBED_MODAL_TEXT_COLOR};
   }
   .vacademy-modal-body {
-    height: 500px;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
   .vacademy-modal-body iframe {
+    display: block;
     width: 100%;
-    height: 100%;
+    height: 500px;
     border: none;
   }
 </style>
@@ -170,16 +203,18 @@ export const EmbedCodeDialog = ({ isOpen, onClose, campaign }: EmbedCodeDialogPr
       <button class="vacademy-modal-close" onclick="document.getElementById('vacademy-modal-${campaignId.slice(0, 8)}').classList.remove('active')">&times;</button>
     </div>
     <div class="vacademy-modal-body">
-      <iframe src="${formUrl}" title="${campaign.campaign_name} Form"></iframe>
+      <iframe id="vacademy-form-${campaignId.slice(0, 8)}-${frameSuffix}" src="${formUrl}" title="${campaign.campaign_name} Form"></iframe>
     </div>
   </div>
-</div>`;
-    }, [customization, campaignId, formUrl, campaign.campaign_name]);
+</div>
+${autoHeightScript(`vacademy-form-${campaignId.slice(0, 8)}-${frameSuffix}`)}`;
+    }, [customization, campaignId, formUrl, campaign.campaign_name, frameSuffix]);
 
     // Direct iFrame Embed Code
     const iframeCode = useMemo(() => {
         return `<!-- Vacademy Form Embed - Direct iFrame -->
 <iframe
+  id="vacademy-iframe-${campaignId.slice(0, 8)}-${frameSuffix}"
   src="${formUrl}"
   title="${campaign.campaign_name} Form"
   width="${customization.iframeWidth}"
@@ -187,8 +222,16 @@ export const EmbedCodeDialog = ({ isOpen, onClose, campaign }: EmbedCodeDialogPr
   frameborder="0"
   style="border: none; border-radius: 8px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);"
   allow="clipboard-write"
-></iframe>`;
-    }, [formUrl, campaign.campaign_name, customization.iframeWidth, customization.iframeHeight]);
+></iframe>
+${autoHeightScript(`vacademy-iframe-${campaignId.slice(0, 8)}-${frameSuffix}`)}`;
+    }, [
+        formUrl,
+        campaign.campaign_name,
+        campaignId,
+        frameSuffix,
+        customization.iframeWidth,
+        customization.iframeHeight,
+    ]);
 
     const updateCustomization = (key: keyof EmbedCustomization, value: string) => {
         setCustomization((prev) => ({ ...prev, [key]: value }));

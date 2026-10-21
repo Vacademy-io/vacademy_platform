@@ -30,6 +30,7 @@ import { HOLISTIC_INSTITUTE_ID } from "@/constants/urls";
 import { applyTabBranding } from "@/utils/branding";
 import { useInstituteFeatureStore } from "@/stores/insititute-feature-store";
 import { hasLearnerSession } from "@/lib/auth/session-guard";
+import { isPasswordlessLandingRoute } from "@/lib/auth/passwordless-landing-routes";
 import { getSubdomain } from "@/helpers/helper";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
 import { loadLearnerTrackingSettings } from "@/services/learner-tracking-settings";
@@ -93,6 +94,7 @@ const PUBLIC_ROUTES = [
   "/admission/payment", // Public admission payment links shared by institutes
   "/pay/invoice", // Shareable invoice payment links
   "/leaderboard", // Public shareable course leaderboard
+  "/site-assistant-embed", // Site Assistant iframe on institutes' own websites
 ];
 
 // Marketplace / external-payment route prefixes that are hidden when the app
@@ -125,6 +127,9 @@ const isReaderBlockedPath = (pathname: string): boolean =>
 // lib/auth/session-guard) so "is this learner signed in?" has one definition.
 const isAuthenticated = hasLearnerSession;
 
+// The ?lc= login code this page load has already exchanged (see beforeLoad).
+let exchangedLoginCode: string | null = null;
+
 // Helper function to check if a route is public
 const isPublicRoute = (pathname: string): boolean => {
   // Explicitly exclude /my-files routes - they always require authentication
@@ -143,15 +148,10 @@ const isPublicRoute = (pathname: string): boolean => {
   // Check for exact matches and startsWith matches
   const directMatch = PUBLIC_ROUTES.some((route) => pathname.startsWith(route));
 
-  // Special handling for dynamic routes
-  const isDynamicLiveClassRoute =
-    /^\/study-library\/live-class\/[^/]+\/?$/.test(pathname);
-
-  // Passwordless "edit your profile" landing (/user-profile/edit/<username>).
-  // It signs the learner in itself, so it must render for signed-out visitors.
-  // /user-profile/edit alone stays protected.
-  const isProfileEditUsernameRoute =
-    /^\/user-profile\/edit\/[^/]+\/?$/.test(pathname);
+  // Passwordless landings deeper than two segments (live-class, profile edit).
+  // They sign the learner in themselves, so they must render signed out.
+  // Shared with useDomainRouting so the two checks cannot drift apart.
+  const isPasswordlessLanding = isPasswordlessLandingRoute(pathname);
 
   // Course catalogue dynamic routes - any single path segment (tagName)
   const isCourseCatalogueRoute =
@@ -215,8 +215,7 @@ const isPublicRoute = (pathname: string): boolean => {
 
   const result =
     directMatch ||
-    isDynamicLiveClassRoute ||
-    isProfileEditUsernameRoute ||
+    isPasswordlessLanding ||
     isCourseCatalogueRoute ||
     isCourseDetailsRoute;
 
@@ -224,8 +223,7 @@ const isPublicRoute = (pathname: string): boolean => {
     pathname,
     pathSegments,
     directMatch,
-    isDynamicLiveClassRoute,
-    isProfileEditUsernameRoute,
+    isPasswordlessLanding,
     isCourseCatalogueRoute,
     isCourseDetailsRoute,
     result,
@@ -842,8 +840,11 @@ const RootComponent = () => {
   // around rather than posing an integrity problem.
   const isLiveTestActive = useLiveTestStore((s) => s.isActive);
   const hideLiveTestChrome = useLiveTestStore((s) => s.hideAppChrome);
-  const suppressAppChrome = isLiveTestActive && hideLiveTestChrome;
-  const hideChatbot = pathname.startsWith("/admission") || isLiveTestActive;
+  // The Site Assistant iframe (public/site-assistant.js) sits on someone
+  // else's website: nothing of the app's own chrome may paint in it.
+  const isSiteAssistantEmbed = pathname.startsWith("/site-assistant-embed");
+  const suppressAppChrome = (isLiveTestActive && hideLiveTestChrome) || isSiteAssistantEmbed;
+  const hideChatbot = pathname.startsWith("/admission") || isLiveTestActive || isSiteAssistantEmbed;
 
   // ── Sentry: tag events with the current route. Navigation breadcrumbs
   // come from the SDK's built-in history instrumentation; a custom one here
@@ -974,7 +975,17 @@ export const Route = createRootRouteWithContext<{
     // back to their own trusted-login form (which shows "link expired" once the
     // institute requires a code).
     const loginCode = urlParams.get("lc");
-    if (loginCode && typeof window !== "undefined" && !(urlAccessToken && urlRefreshToken)) {
+    if (
+      loginCode &&
+      loginCode !== exchangedLoginCode &&
+      typeof window !== "undefined" &&
+      !(urlAccessToken && urlRefreshToken)
+    ) {
+      // Once per page. The redirect thrown below re-runs this beforeLoad while
+      // the URL still carries ?lc= (location.replace has not landed yet), and a
+      // second exchange is a second trusted login, which deletes the refresh
+      // token the first one just stored.
+      exchangedLoginCode = loginCode;
       const cleanUrl = new URL(window.location.href);
       cleanUrl.searchParams.delete("lc");
       const cleanPath = `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`;

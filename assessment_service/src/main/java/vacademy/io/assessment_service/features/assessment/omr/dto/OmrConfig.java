@@ -11,7 +11,7 @@ import lombok.NoArgsConstructor;
 import java.util.Date;
 
 /**
- * OMR settings of one assessment, stored as {@code assessment.omr_config} (V58).
+ * OMR settings of one assessment, stored as {@code assessment.omr_config} (V60).
  *
  * <p>{@code rollDigits}, {@code density} and {@code layoutVersion} are written when the
  * sets are generated and describe the sheets that were printed; the admin sets only

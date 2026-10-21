@@ -245,13 +245,17 @@ public class WorkflowAiCatalogController {
                 List.of("ssigm_list", "mapping_count"),
                 "ssigm_list[]: mapping_id, user_id, expiry_date, full_name, mobile_number, email, username, package_session_id (snake_case)"));
         q.add(query("getUpcomingAutopayCharges",
-                List.of("packageSessionIds"), List.of("daysAhead"),
+                List.of("packageSessionIds"), List.of("daysAhead", "trialOnly"),
                 List.of("autopayDueList", "autopayDueCount"),
                 "autopayDueList[]: userPlanId, userId, name, mobileNumber, username, nextChargeAt, "
-                        + "endDate, chargeDate ('11 Aug 2026' label). THE audience for pre-charge notices "
-                        + "('we auto-deduct tomorrow'): plans whose next charge is exactly daysAhead days "
-                        + "away (default 1), autopay still ON — cancelled learners excluded. Use this, "
-                        + "NOT ssigm expiryDate (that is the batch ACCESS window, a different date)."));
+                        + "endDate, chargeDate ('11 Aug 2026' label), isTrial. THE audience for pre-charge "
+                        + "notices ('we auto-deduct tomorrow'): plans whose next charge is exactly daysAhead "
+                        + "days away (default 1), autopay still ON — cancelled learners excluded. Use this, "
+                        + "NOT ssigm expiryDate (that is the batch ACCESS window, a different date). "
+                        + "trialOnly=true keeps only trials ('your free trial ends tomorrow'), false keeps "
+                        + "only paying members ('your plan renews tomorrow'), omitted keeps both — a trial's "
+                        + "upcoming charge is its FIRST charge and a member's is a RENEWAL, so one wording "
+                        + "cannot serve both; split the workflow rather than reword one template."));
         q.add(query("getManualRenewalDuePlans",
                 List.of("packageSessionIds"), List.of("daysAhead", "graceDays"),
                 List.of("manualRenewalList", "manualRenewalCount"),

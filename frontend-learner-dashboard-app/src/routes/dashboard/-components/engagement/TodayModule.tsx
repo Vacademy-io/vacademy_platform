@@ -38,6 +38,7 @@ import { UpNextRow, useUpNextOutcomeStore } from "./UpNextRow";
 import { BatchLegend, TaskRow, type TaskBatch } from "./TaskRow";
 import { TodayComplete } from "./TodayComplete";
 import { ComingUpLine, dayLabel, groupComingUp } from "./ComingUpLine";
+import { TutorBuddyLine } from "@/components/chatbot/moments/TutorBuddyLine";
 
 /**
  * "Today": the learner's daily tasks as one compact dashboard module (learner
@@ -538,6 +539,9 @@ export function TodayModule({
         compact={slot === "rail"}
         iconWeight={iconWeight}
       />
+
+      {/* One timely line from the tutor; renders nothing when it has none. */}
+      <TutorBuddyLine />
 
       {view.batches && (
         <BatchLegend batches={[...view.batches.values()]} label={t("today.batchesAria")} />

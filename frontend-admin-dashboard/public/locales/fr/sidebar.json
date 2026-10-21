@@ -56,6 +56,11 @@
     "finance": "Finance",
     "followUps": "Relances",
     "inAppMessages": "Messages dans l'application",
+    "callingDashboard": "Tableau de bord des appels",
+    "meetingsDashboard": "Tableau de bord des réunions",
+    "messagingDashboard": "Tableau de bord de la messagerie",
+    "instituteOverview": "Vue d'ensemble de l'établissement",
+    "lmsDashboard": "Tableau de bord LMS",
     "institutePulse": "Pouls de l'établissement",
     "instructorCopilot": "Copilote formateur",
     "interactiveClass": "Cours interactif",
@@ -102,6 +107,7 @@
     "payroll": "Paie",
     "people": "Personnel",
     "productPages": "Pages produit",
+    "siteAssistant": "Assistant du site",
     "blog": "Blog",
     "provisions": "Provisions",
     "questionsBanksAndPapers": "Banques de questions et sujets",
@@ -138,5 +144,8 @@
     "whatsappTemplates": "Modèles WhatsApp",
     "workflows": "Workflows",
     "dailyEngagement": "Engagement quotidien",
-    "leadLookup": "Vérifier un prospect"
+    "leadLookup": "Vérifier un prospect",
+    "contactsDashboard": "Tableau de bord des contacts",
+    "automationDashboard": "Tableau de bord des automatisations",
+    "engagementDashboard": "Tableau de bord de l’engagement"
 }

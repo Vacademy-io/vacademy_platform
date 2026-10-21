@@ -24,11 +24,36 @@ import {
     type PaperDigitiseEstimate,
 } from '@/services/paper-digitise';
 import { usePaperDigitise } from '../-hooks/use-paper-digitise';
+import { getInstituteId } from '@/constants/helper';
+import { getCopyCheckConfig } from '@/routes/assessment/assessment-list/assessment-details/$assessmentId/$examType/$assesssmentType/$assessmentTab/-services/copy-intake-services';
+import {
+    toCopyCheckConfig,
+    useCopyCheckSettings,
+} from '@/components/common/ai-copy-check/CopyCheckSettingsFields';
+import { CopyCheckCriteriaPanel } from '@/components/common/ai-copy-check/CopyCheckCriteriaPanel';
+import {
+    COPY_CHECK_CRITERIA_KEY,
+    criteriaToCopyCheckRubric,
+    saveCopyCheckConfig,
+    saveCopyCheckCriteria,
+    toRubric,
+} from '@/services/copy-check-criteria';
+import type { RubricJson } from '@/routes/assessment/create-assessment/$assessmentId/$examtype/-services/criteria-services';
 import {
     PaperDigitiseReviewDialog,
     type ReviewedChoice,
     type ReviewedQuestion,
 } from './paper-digitise-review-dialog';
+
+/** A stored criteria JSON, or null when there is none or it does not parse. */
+const parseJson = (json: string | null | undefined): unknown => {
+    if (!json) return null;
+    try {
+        return JSON.parse(json);
+    } catch {
+        return null;
+    }
+};
 
 type Step =
     | { kind: 'closed' }
@@ -85,6 +110,12 @@ export const EnableAiChecking = ({
     // Bank ids already saved for this exact set — a retry after the adopt call
     // failed must not file the same paper into the bank twice.
     const savedRef = useRef<{ key: string; ids: string[] } | null>(null);
+    const instituteId = getInstituteId() ?? '';
+    // How the AI will check the sheets, set in the review: this test's own settings,
+    // else the institute's defaults.
+    const [aiSettings, setAiSettings] = useCopyCheckSettings(state.phase === 'review', () =>
+        getCopyCheckConfig(assessmentId, instituteId)
+    );
 
     const { data: gradability } = useQuery({
         queryKey: ['AI_GRADABILITY', assessmentId],
@@ -182,10 +213,19 @@ export const EnableAiChecking = ({
     ) => {
         setStep({ kind: 'adopting' });
         try {
-            const questions = accepted.map(({ index, marks }) => {
+            const questions = accepted.map(({ index, marks, criteria: edited }) => {
                 const dto = paper.questions[index]!;
+                // Criteria the teacher wrote in the review replace the paper read's.
+                let criteria = edited
+                    ? JSON.stringify(
+                          criteriaToCopyCheckRubric(
+                              edited,
+                              marks,
+                              toRubric(parseJson(dto.evaluation_criteria_json), marks)
+                          )
+                      )
+                    : dto.evaluation_criteria_json ?? null;
                 // Marks corrected on review → the rubric's maximum must follow.
-                let criteria = dto.evaluation_criteria_json ?? null;
                 try {
                     const parsed = criteria ? JSON.parse(criteria) : null;
                     if (parsed && typeof parsed === 'object' && Number(parsed.max_marks) !== marks) {
@@ -241,6 +281,28 @@ export const EnableAiChecking = ({
                 })),
                 choiceGroups
             );
+            // The criteria the teacher saw in the review are what the AI marks by, and the
+            // settings go with the test. Neither may undo the enable: a failure here only
+            // says where to set them again.
+            const rubrics: Record<string, RubricJson> = {};
+            questions.forEach((q, i) => {
+                // No usable criteria: the AI writes them on the first check.
+                const rubric = toRubric(parseJson(q.dto.evaluation_criteria_json), q.marks);
+                if (rubric && rubric.rubric.length > 0) rubrics[ids[i]!] = rubric;
+            });
+            const followUps: Promise<unknown>[] = [];
+            if (Object.keys(rubrics).length > 0)
+                followUps.push(saveCopyCheckCriteria(assessmentId, rubrics));
+            if (instituteId) {
+                followUps.push(
+                    saveCopyCheckConfig(assessmentId, instituteId, toCopyCheckConfig(aiSettings))
+                );
+            }
+            const settled = await Promise.allSettled(followUps);
+            if (settled.some((r) => r.status === 'rejected')) {
+                toast.warning(t('retrofit.criteriaNotSaved'));
+            }
+            queryClient.invalidateQueries({ queryKey: [COPY_CHECK_CRITERIA_KEY, assessmentId] });
             abandon();
             queryClient.invalidateQueries({ queryKey: ['AI_GRADABILITY', assessmentId] });
             queryClient.invalidateQueries({ queryKey: ['GET_QUESTIONS_DATA_FOR_SECTIONS'] });
@@ -502,6 +564,8 @@ export const EnableAiChecking = ({
                 }}
                 secondaryLabel={t('form.cancel')}
                 primaryLabel={(count) => t('retrofit.enableWithQuestions', { count })}
+                aiSettings={aiSettings}
+                onAiSettingsChange={setAiSettings}
             />
 
             {/* Done: what changed, and the sheets that can be checked right now */}
@@ -560,6 +624,14 @@ export const EnableAiChecking = ({
                         )}
                         <li className="text-caption text-neutral-500">{t('retrofit.doneFuture')}</li>
                     </ul>
+                )}
+                {step.kind === 'done' && (
+                    <div className="mt-4">
+                        <CopyCheckCriteriaPanel
+                            assessmentId={assessmentId}
+                            subject={aiSettings.subject}
+                        />
+                    </div>
                 )}
             </MyDialog>
         </>

@@ -81,6 +81,37 @@ public interface AiCallQueueItemRepository extends JpaRepository<AiCallQueueItem
             """, nativeQuery = true)
     int cancelIfQueued(@Param("id") String id, @Param("reason") String reason);
 
+    /**
+     * Cancel every call still waiting for one AI agent of the institute: the items that name
+     * it by id, and VACADEMY_AI items that name it only by its agent name (a CALL_AI node
+     * authored with the name). Used when the agent is turned off or deleted, so none of them
+     * is dialled with the generic built-in persona. QUEUED only: an item already claimed is
+     * being dialled (the drain job's own check covers the race).
+     */
+    @Modifying
+    @Transactional
+    @Query(value = """
+            UPDATE ai_call_queue
+               SET status = 'CANCELLED', status_reason = :reason, updated_at = NOW()
+             WHERE institute_id = :instituteId AND status = 'QUEUED'
+               AND (campaign_id = :agentId
+                    OR ((campaign_id IS NULL OR campaign_id = '') AND provider = 'VACADEMY_AI'
+                        AND LOWER(campaign_name) = LOWER(CAST(:agentName AS text))))
+            """, nativeQuery = true)
+    int cancelQueuedForAgent(@Param("instituteId") String instituteId, @Param("agentId") String agentId,
+                             @Param("agentName") String agentName, @Param("reason") String reason);
+
+    /** How many calls are waiting (or being dialled right now) for one AI agent; same match as above. */
+    @Query(value = """
+            SELECT COUNT(*) FROM ai_call_queue
+             WHERE institute_id = :instituteId AND status IN ('QUEUED', 'DISPATCHING')
+               AND (campaign_id = :agentId
+                    OR ((campaign_id IS NULL OR campaign_id = '') AND provider = 'VACADEMY_AI'
+                        AND LOWER(campaign_name) = LOWER(CAST(:agentName AS text))))
+            """, nativeQuery = true)
+    long countWaitingForAgent(@Param("instituteId") String instituteId, @Param("agentId") String agentId,
+                              @Param("agentName") String agentName);
+
     /** The queue item a public API call created (subject_id = the call id). */
     java.util.Optional<AiCallQueueItem> findFirstByInstituteIdAndSubjectIdOrderByCreatedAtDesc(
             String instituteId, String subjectId);

@@ -168,6 +168,13 @@ public interface StudentSessionInstituteGroupMappingRepository
    * cancelled are naturally excluded. charge_date_label is preformatted for messages
    * ("11 Aug 2026") and is likewise rendered in the invite's zone, so the date a learner
    * reads matches the date they are charged.
+   *
+   * <p>{@code is_trial} is returned so callers can split the audience: a trial's upcoming
+   * charge is its FIRST charge ("your free trial ends tomorrow") while a member's is a
+   * RENEWAL ("your plan renews tomorrow"). Both used to arrive here indistinguishable, so a
+   * single workflow greeted both with one wording — SuchBliss was telling paying members
+   * their free trial was ending. Filtered by the {@code trialOnly} param in
+   * {@code QueryServiceImpl.getUpcomingAutopayCharges}, which defaults to returning both.
    */
   @Query(value = """
       SELECT DISTINCT ON (up.id)
@@ -181,7 +188,8 @@ public interface StudentSessionInstituteGroupMappingRepository
           to_char(up.next_charge_at AT TIME ZONE 'UTC'
                   AT TIME ZONE coalesce(jsonb_extract_path_text(cast(ei.setting_json as jsonb),
                                         'setting', 'AUTOPAY_SETTING', 'TRIAL_TIMEZONE'), 'UTC'),
-                  'DD Mon YYYY') AS charge_date_label
+                  'DD Mon YYYY') AS charge_date_label,
+          up.is_trial AS is_trial
       FROM user_plan up
       JOIN student_session_institute_group_mapping ssigm
         ON ssigm.user_plan_id = up.id AND ssigm.status = 'ACTIVE'
@@ -268,6 +276,60 @@ public interface StudentSessionInstituteGroupMappingRepository
   boolean existsActiveMembership(
       @Param("userId") String userId,
       @Param("packageSessionIds") List<String> packageSessionIds);
+
+  /**
+   * Package sessions in which this plan currently holds a live membership. Same
+   * membership rule as {@link #existsActiveMembership}. Used to scope first-payment
+   * side effects (inventory) to what the payment actually activated, rather than
+   * every session the invite maps.
+   */
+  @Query(value = """
+      SELECT DISTINCT m.package_session_id FROM student_session_institute_group_mapping m
+      WHERE m.user_plan_id = :userPlanId
+        AND m.status = 'ACTIVE'
+        AND (m.type IS NULL OR m.type NOT IN ('ABANDONED_CART', 'PAYMENT_FAILED'))
+      """, nativeQuery = true)
+  List<String> findActivePackageSessionIdsByUserPlanId(@Param("userPlanId") String userPlanId);
+
+  /**
+   * A learner's live memberships in the given package sessions, whatever plan they hang
+   * off. Access-pass sync uses the user_plan_id on each row to tell a course the pass
+   * granted from one the learner holds through a separate purchase.
+   */
+  @Query("""
+      SELECT m FROM StudentSessionInstituteGroupMapping m
+      WHERE m.userId = :userId
+        AND m.packageSession.id IN :packageSessionIds
+        AND m.status = 'ACTIVE'
+        AND (m.type IS NULL OR m.type NOT IN ('ABANDONED_CART', 'PAYMENT_FAILED'))
+      """)
+  List<StudentSessionInstituteGroupMapping> findActiveMembershipsForUserInPackageSessions(
+      @Param("userId") String userId,
+      @Param("packageSessionIds") List<String> packageSessionIds);
+
+  /**
+   * Live sub-org memberships stamped with the sub-org (admin "add member", the root
+   * admin's own rows). One half of a B2B access pass's roster; the other half is
+   * {@link #findActiveRowsViaSubOrgInvite} (self-enrollees through SUBORG_LEARNER links
+   * carry no sub_org_id). Two queries, not an OR across columns.
+   */
+  @Query("""
+      SELECT m FROM StudentSessionInstituteGroupMapping m
+      WHERE m.subOrg.id = :subOrgId
+        AND m.status = 'ACTIVE'
+        AND (m.type IS NULL OR m.type NOT IN ('ABANDONED_CART', 'PAYMENT_FAILED'))
+      """)
+  List<StudentSessionInstituteGroupMapping> findActiveRowsBySubOrgId(@Param("subOrgId") String subOrgId);
+
+  @Query(value = """
+      SELECT m.* FROM student_session_institute_group_mapping m
+      JOIN user_plan up ON up.id = m.user_plan_id
+      JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
+      WHERE ei.sub_org_id = :subOrgId
+        AND m.status = 'ACTIVE'
+        AND (m.type IS NULL OR m.type NOT IN ('ABANDONED_CART', 'PAYMENT_FAILED'))
+      """, nativeQuery = true)
+  List<StudentSessionInstituteGroupMapping> findActiveRowsViaSubOrgInvite(@Param("subOrgId") String subOrgId);
 
   /**
    * Learners who must PAY MANUALLY to continue: their plan ends within the next

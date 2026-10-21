@@ -348,6 +348,7 @@ _STYLE_COLOR = {
     "score": _WRONG,
     "feedback": _WRONG,
     "deduction_reason": _WRONG,
+    "language": _WRONG,
 }
 
 
@@ -1152,6 +1153,67 @@ def _draw_brace(page: Any, top: float, bottom: float, x: float, colour,
     _hand_line(page, fitz.Point(x, bottom),
                fitz.Point(x + hook, bottom + hook * 0.7),
                colour, w, rng, wobble=0.15, overshoot=0.0)
+
+
+def _draw_language(page: Any, rect: Any, ann: dict[str, Any], line_h: float,
+                   page_boxes: list, write_correction: bool = True) -> None:
+    """One language correction: a short rule under the wrong words and, when
+    `write_correction`, the right words written small just above them.
+
+    The layout has row boxes, not word boxes, so the words are found along the
+    row's measured ink by where they sit in the row's text (`span`, fractions
+    of the text). The correction goes where it touches no writing and no other
+    remark - above the words, else below them; with room for neither the rule
+    stands alone and the answer's feedback carries the correction.
+    """
+    import fitz
+
+    try:
+        f0, f1 = (float(v) for v in (ann.get("span") or [0.0, 1.0])[:2])
+    except (TypeError, ValueError):
+        return
+    f0 = max(0.0, min(1.0, f0))
+    f1 = max(f0, min(1.0, f1))
+    ink = _INK_SPAN[0]
+    a = max(ink[0], rect.x0) if ink else rect.x0
+    b = min(ink[1], rect.x1) if ink else rect.x1
+    if b - a < 20.0:
+        a, b = rect.x0, rect.x1
+    x0 = a + (b - a) * f0
+    x1 = a + (b - a) * f1
+    if x1 - x0 < 10.0:
+        x1 = min(b, x0 + 10.0)
+        x0 = max(a, x1 - 10.0)
+    rng = _hand_rng("language", round(x0, 1), round(rect.y0, 1), round(x1 - x0, 1))
+    drop = rect.y1 + rng.uniform(1.5, 3.0)
+    saved = _ROW_SLOPE[0]
+    _ROW_SLOPE[0] = 0.0
+    _hand_line(page, fitz.Point(x0, drop), fitz.Point(x1, drop), _STYLE_COLOR["language"], 1.2, rng,
+               wobble=0.4, overshoot=1.0)
+    _ROW_SLOPE[0] = saved
+
+    text = _latin1(" ".join(str(ann.get("text") or "").split()))
+    if not write_correction or not text:
+        return
+    size = max(6.0, min(11.0, line_h * 0.5))
+    width = _pen_text_width(text, size)
+    height = size * 1.15
+    sheet = _CLIP[0]
+    left = x0
+    if sheet is not None and left + width > sheet.x1 - 4.0:
+        left = max(sheet.x0 + 4.0, sheet.x1 - 4.0 - width)
+    for top in (rect.y0 - height - 0.5, drop + 1.5):
+        box = fitz.Rect(left, top, left + width, top + height)
+        if sheet is not None and not sheet.contains(box):
+            continue
+        if _ink_under(_INK_MAP[0], box) > 0.06:
+            continue
+        if any(box.intersects(o) for o in page_boxes):
+            continue
+        _pen_text(page, fitz.Point(box.x0, box.y1 - size * 0.25), text, size,
+                  _STYLE_COLOR["language"], rng, max_x=box.x1 + size, rise=0.0, tilt=0.0)
+        page_boxes.append(box)
+        return
 
 
 def _draw_mark(page: Any, rect: Any, style: str, bounds: Any = None,
@@ -3157,6 +3219,10 @@ _PANEL_RULE = (0.80, 0.80, 0.80)
 _PANEL_FEEDBACK_CHARS = 180
 
 
+# Where language_feedback.py starts the "Language:" paragraph of a feedback.
+_LANGUAGE_PARAGRAPH = "\n\nLanguage: "
+
+
 def _panel_status(verdict: dict[str, Any]) -> str:
     if (verdict.get("status") or "").upper() == "FAILED":
         return "Needs review"
@@ -3211,7 +3277,8 @@ def _draw_comment_panels(doc: Any, panels: dict[int, Any],
                          anchors: dict[tuple[int, int], float],
                          notes: dict[tuple[int, int], list[str]],
                          verdicts: list[dict[str, Any]],
-                         labels: dict[str, str]) -> None:
+                         labels: dict[str, str],
+                         language: Optional[dict[tuple[int, int], list[str]]] = None) -> None:
     """Type each page's remarks into the panel beside it, level with the answer
     they are about: "Q4(iv): Partial" and the remark below it.
 
@@ -3233,11 +3300,15 @@ def _draw_comment_panels(doc: Any, panels: dict[int, Any],
                 continue
             verdict = verdicts[v_idx]
             said = notes.get((p, v_idx)) or []
+            fixes = (language or {}).get((p, v_idx)) or []
             first = first_page.get(v_idx) == pno
-            if not first and not said:
+            if not first and not said and not fixes:
                 continue
             if first and not said and verdict.get("feedback"):
-                said = [_short_feedback(str(verdict["feedback"]))]
+                # The grader's own words; the language list is typed below.
+                said = [_short_feedback(str(verdict["feedback"]).split(_LANGUAGE_PARAGRAPH)[0])]
+            if fixes:
+                said = list(said) + ["Language: " + "; ".join(fixes)]
             label = _panel_label(verdict, labels)
             heading = f"{label}: {_panel_status(verdict)}" if first else f"{label} (contd.)"
             entries.append((y, v_idx, _latin1(heading), [_latin1(s) for s in said if s]))
@@ -3875,6 +3946,8 @@ def build_annotated_pdf(
     # (page_no, verdict index) -> top of its first mark / its remarks, in order.
     panel_anchor: dict[tuple[int, int], float] = {}
     panel_notes: dict[tuple[int, int], list[str]] = {}
+    # (page, verdict) -> its language corrections, "wrong -> right" (OUTSIDE only).
+    panel_language: dict[tuple[int, int], list[str]] = {}
     verdict_index = {id(v): i for i, v in enumerate(verdicts)}
     if outside:
         # The panel is plain white paper of its own, not a continuation of the
@@ -4096,7 +4169,7 @@ def build_annotated_pdf(
     _PRIORITY = {"score": 0, "summary": 0, "deduction_reason": 1,
                  "strike": 2, "strikethrough": 2, "cross": 2, "circle": 2,
                  "brace": 3, "underline": 4, "feedback": 5, "margin_note": 5,
-                 "region_note": 5, "tick": 6}
+                 "region_note": 5, "tick": 6, "language": 7}
     ordered: list = []
     total_override: list = [None]      # a 'total' annotation, if enforce.py sent one
     # A page's typical line height: the median of its row boxes, in points.
@@ -4272,6 +4345,21 @@ def build_annotated_pdf(
                 rect = fitz.Rect(rect.x0, rect.y0, rect.x1,
                                  max(rect.y1, float(ink_bottom) * sy))
             style = (ann.get("style") or "margin_note").strip().lower()
+            if style == "language":
+                # A language correction: the wrong words underlined where they
+                # sit, the correction written above them - or, on the comments-
+                # outside template, listed in the panel beside the answer.
+                _draw_language(page, rect, ann, float(_LINE_H[0] or rect.height or 14.0),
+                               occupied.setdefault(page_id, []), write_correction=not outside)
+                if outside and ann.get("text") and ann.get("anchor_text"):
+                    key = (page_no, verdict_index[id(verdict)])
+                    panel_anchor[key] = min(panel_anchor.get(key, rect.y0), rect.y0)
+                    fix = f"{ann['anchor_text']} \u2192 {ann['text']}"
+                    said = panel_language.setdefault(key, [])
+                    if fix not in said:
+                        said.append(fix)
+                drawn += 1
+                continue
             if style == "total":
                 # enforce.py's grand total: drawn once, below the Page No box,
                 # by the block after this loop - never as a row annotation.
@@ -4437,7 +4525,7 @@ def build_annotated_pdf(
     _CLIP[0] = None
     if outside:
         _draw_comment_panels(doc, panels, panel_anchor, panel_notes, verdicts,
-                             question_labels or {})
+                             question_labels or {}, panel_language)
     _SCAN_W[0] = None
     if append_summary:
         _append_summary(doc, verdicts, overall)

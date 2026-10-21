@@ -12,6 +12,8 @@ import {
     Warning,
 } from '@phosphor-icons/react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
 import {
     AlertDialog,
     AlertDialogAction,
@@ -42,6 +44,9 @@ import {
     AI_CALLING_KEYS_QUERY_KEY,
     AI_CALLING_WEBHOOK_QUERY_KEY,
     buildIssueAiCallingKeyPayload,
+    canManageAgents,
+    canManageCounsellors,
+    canPlaceHumanCalls,
     deleteAiCallingWebhook,
     fetchAgentsForApi,
     fetchAiCallingKeys,
@@ -57,7 +62,24 @@ import {
     type IssuedAiCallingKey,
 } from '../-services/ai-calling-api';
 
-const EMPTY_FORM: IssueAiCallingKeyInput = { name: '', expiryDate: '' };
+const EMPTY_FORM: IssueAiCallingKeyInput = {
+    name: '',
+    expiryDate: '',
+    humanCalls: false,
+    manageCounsellors: false,
+    manageAgents: false,
+};
+
+/** The opt-in scope checkboxes of the create-key dialog, in display order. */
+const OPTIONAL_SCOPES = [
+    { field: 'humanCalls', id: 'ai-calling-key-human-calls', i18n: 'humanCalls' },
+    {
+        field: 'manageCounsellors',
+        id: 'ai-calling-key-manage-counsellors',
+        i18n: 'manageCounsellors',
+    },
+    { field: 'manageAgents', id: 'ai-calling-key-manage-agents', i18n: 'manageAgents' },
+] as const;
 
 const FORM_ERROR_KEYS: Record<string, string> = {
     name_required: 'apiCard.keys.errors.nameRequired',
@@ -406,6 +428,23 @@ export function AiCallingApiCard() {
                                                             })}
                                                         </div>
                                                     )}
+                                                    {canPlaceHumanCalls(k) && (
+                                                        <div className="text-caption text-neutral-500">
+                                                            {t('apiCard.keys.humanCallsBadge')}
+                                                        </div>
+                                                    )}
+                                                    {canManageCounsellors(k) && (
+                                                        <div className="text-caption text-neutral-500">
+                                                            {t(
+                                                                'apiCard.keys.manageCounsellorsBadge'
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                    {canManageAgents(k) && (
+                                                        <div className="text-caption text-neutral-500">
+                                                            {t('apiCard.keys.manageAgentsBadge')}
+                                                        </div>
+                                                    )}
                                                 </td>
                                                 <td className="whitespace-nowrap px-4 py-2.5 font-mono text-caption text-neutral-600">
                                                     {k.prefix ? `${k.prefix}…` : '-'}
@@ -651,6 +690,26 @@ export function AiCallingApiCard() {
                             setForm((p) => ({ ...p, expiryDate: e.target.value }))
                         }
                     />
+                    {OPTIONAL_SCOPES.map((scope) => (
+                        <div key={scope.id} className="flex items-start gap-2">
+                            <Checkbox
+                                id={scope.id}
+                                checked={Boolean(form[scope.field])}
+                                onCheckedChange={(c) =>
+                                    setForm((p) => ({ ...p, [scope.field]: c === true }))
+                                }
+                                className="mt-0.5"
+                            />
+                            <Label htmlFor={scope.id} className="flex flex-col gap-0.5">
+                                <span className="text-sm text-neutral-800">
+                                    {t(`apiCard.keys.${scope.i18n}Label`)}
+                                </span>
+                                <span className="text-xs font-normal text-neutral-500">
+                                    {t(`apiCard.keys.${scope.i18n}Hint`)}
+                                </span>
+                            </Label>
+                        </div>
+                    ))}
                     <p className="text-caption text-neutral-500">{t('apiCard.keys.formHint')}</p>
                     {formError && (
                         <p role="alert" className="text-sm text-danger-600">

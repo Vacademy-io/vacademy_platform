@@ -284,7 +284,7 @@ const APP_ROUTE_SEGMENTS = new Set([
   "kyc-complete", "leaderboard", "learner-invitation-response", "learning-centre", "live-class-guest",
   "login", "logout", "m", "my-files", "my-mentors", "my-reports", "parent", "pay", "payment-result",
   "planning", "privacy-policy", "product-pages", "profile", "referral", "register", "reports",
-  "session-terminated", "signup", "study-library", "sub-org-learners", "sub-org-registration",
+  "session-terminated", "signup", "site-assistant-embed", "study-library", "sub-org-learners", "sub-org-registration",
   "subscriptions", "terms-and-conditions", "try", "un", "user-profile", "verify",
   "branding-image", "assets", "icons", "images", "svgs", "vendor",
 ]);

@@ -34,7 +34,7 @@ One endpoint per account receives every event. To send results to several system
 | `call.not_connected` | A call ended without connecting: `no_answer`, `busy`, `failed`, `canceled` or `expired`. |
 | `webhook.test` | Sent only when you click **Send test event** or call `POST /v1/webhook/test`. |
 
-Each call produces **exactly one** of `call.completed` or `call.not_connected`. See [Event payloads](/webhooks/events).
+Each call produces **exactly one** of `call.completed` or `call.not_connected`. See [Event payloads](/webhooks/events). A [human call](/concepts/human-calls) produces exactly one of `human_call.completed` or `human_call.not_connected`, plus `human_call.analysis_ready` when you asked for analysis.
 
 ## Responding
 

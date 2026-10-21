@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { openInBrowser } from "@/lib/open-in-browser";
 import { formatDate } from "@/lib/formatters";
@@ -1039,6 +1039,12 @@ export function DashboardComponent() {
   const statCardLayout: StatCardLayout =
     statCards.length === 1 ? "row" : "stack";
 
+  // The rail is "on screen" only when some rail widget is switched on AND one
+  // of them actually rendered (most return null on a quiet day). Measured from
+  // the DOM below; while it is empty the main column takes the full width.
+  const railRef = useRef<HTMLDivElement>(null);
+  const [railHasContent, setRailHasContent] = useState(true);
+
   // MAIN column (lg:col-span-2): continue learning, stats row, progress
   // insights, custom widget, commerce. Commerce is hidden for the play
   // (K-12) audience.
@@ -1214,6 +1220,17 @@ export function DashboardComponent() {
   // renders when the institute has live announcements, so it would strand an
   // empty rail on most days — it moves to the top of the main column instead.
   const hasRail = railWidgets.length > 0;
+  const showRail = hasRail && railHasContent;
+  // Re-checked whenever a rail widget mounts, loads or empties itself.
+  useLayoutEffect(() => {
+    const el = railRef.current;
+    if (!el) return;
+    const check = () => setRailHasContent(Array.from(el.children).some((c) => c.childNodes.length > 0));
+    check();
+    const observer = new MutationObserver(check);
+    observer.observe(el, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [hasRail]);
 
   return (
     // One task runner for the whole page, mounted ABOVE the Today module so a
@@ -1324,13 +1341,13 @@ export function DashboardComponent() {
             <div
               className={cn(
                 "grid grid-cols-1 gap-4 lg:gap-6 items-start",
-                hasRail && "lg:grid-cols-3"
+                showRail && "lg:grid-cols-3"
               )}
             >
               <div
                 className={cn(
                   "space-y-4 lg:space-y-6",
-                  hasRail && "lg:col-span-2"
+                  showRail && "lg:col-span-2"
                 )}
               >
                 {/* Without a rail, announcements lead the main column */}
@@ -1346,7 +1363,12 @@ export function DashboardComponent() {
               </div>
 
               {hasRail && (
-                <div className="space-y-4 lg:col-span-1 lg:space-y-6">
+                // Stays mounted while empty (hidden) so a widget that loads
+                // something later brings the column back.
+                <div
+                  ref={railRef}
+                  className={cn("space-y-4 lg:col-span-1 lg:space-y-6", !railHasContent && "hidden")}
+                >
                   {/* Institute announcements pin to the top of the rail */}
                   <DashboardPinsPanel maxPins={3} />
                   {railWidgets.map((w) => (

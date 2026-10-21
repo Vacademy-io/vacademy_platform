@@ -26,5 +26,17 @@
         "partial": "आंशिक",
         "failed": "विफल",
         "pending": "लंबित"
+    },
+    "subtitle": "इस सूची को भेजे गए संदेश",
+    "sendMessage": "संदेश भेजें",
+    "summary": {
+        "sent": "भेजे गए संदेश",
+        "sentDetail": "अब तक इस सूची को",
+        "recipients": "प्राप्तकर्ता",
+        "accepted": "स्वीकृत",
+        "acceptedDetail": "{{total}} में से {{accepted}} स्वीकृत",
+        "failed": "विफल",
+        "latest_one": "पिछली {{count}} बार भेजने में",
+        "latest_other": "पिछली {{count}} बार भेजने में"
     }
 }

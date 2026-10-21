@@ -356,15 +356,29 @@ public class AiCallingApiService {
     }
 
     public Map<String, Object> listAgents(AiCallingApiAuth.Principal p) {
+        return listAgents(p, false);
+    }
+
+    /**
+     * GET /v1/agents: the agents a call can name (enabled, not inbound-only); with
+     * {@code includeDisabled} every agent of the account, turned off and inbound-only ones too.
+     * v1.3 added enabled, direction, voice, tts_model and updated_at (additive).
+     */
+    public Map<String, Object> listAgents(AiCallingApiAuth.Principal p, boolean includeDisabled) {
         List<Map<String, Object>> data = new ArrayList<>();
         for (AiAgent a : agentRepository.findByInstituteIdOrderByCreatedAtDesc(p.instituteId())) {
-            if (!Boolean.TRUE.equals(a.getEnabled())) continue;
-            if ("INBOUND".equalsIgnoreCase(a.getDirection())) continue;
+            if (!includeDisabled && !Boolean.TRUE.equals(a.getEnabled())) continue;
+            if (!includeDisabled && "INBOUND".equalsIgnoreCase(a.getDirection())) continue;
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("id", a.getId());
             m.put("object", "agent");
             m.put("name", a.getName());
             m.put("language", a.getLanguage());
+            m.put("enabled", Boolean.TRUE.equals(a.getEnabled()));
+            m.put("direction", a.getDirection() == null ? "outbound" : a.getDirection().toLowerCase(Locale.ROOT));
+            m.put("voice", a.getVoice());
+            m.put("tts_model", a.getTtsModel());
+            m.put("updated_at", a.getUpdatedAt() == null ? null : a.getUpdatedAt().toInstant().toString());
             Set<String> used = placeholders(a.getOpeningLine(), a.getSystemPrompt());
             m.put("uses_contact_name", used.contains("name") || used.contains("lead_name"));
             List<String> vars = new ArrayList<>();

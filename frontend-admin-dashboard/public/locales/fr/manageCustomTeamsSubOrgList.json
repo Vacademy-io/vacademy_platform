@@ -40,5 +40,8 @@
     },
     "table": {
         "sortBy": "Trier par {{label}}"
+    },
+    "planCounts": {
+        "all": "All"
     }
 }

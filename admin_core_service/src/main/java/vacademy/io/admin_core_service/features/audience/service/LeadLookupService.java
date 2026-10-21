@@ -151,6 +151,7 @@ public class LeadLookupService {
                                     .mode(blankToNull(f.getFollowUpMode()))
                                     .comments(blankToNull(f.getContent()))
                                     .studentResponse(blankToNull(f.getStudentResponse()))
+                                    .interestLevel(blankToNull(f.getInterestLevel()))
                                     .closerReason(blankToNull(f.getCloserReason()))
                                     .closedAt(f.getClosedAt())
                                     .createdAt(f.getCreatedAt())

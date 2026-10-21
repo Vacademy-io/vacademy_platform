@@ -104,7 +104,11 @@
         "stopHeader": "Stop (no retry)",
         "removeAria": "Remove {{disposition}}",
         "addOutcomePlaceholder": "Add a custom outcome (e.g. Wrong Number)",
-        "addOutcome": "Add outcome"
+        "addOutcome": "Add outcome",
+        "otherwiseHeader": "Otherwise",
+        "otherwiseRetry": "Retry, then assign after max retries",
+        "otherwiseRetryOnly": "Retry until max retries",
+        "customBadge": "custom"
     },
     "assignmentCard": {
         "title": "Counsellor Assignment",
@@ -175,7 +179,16 @@
                 "expiryInPast": "Pick a date after today.",
                 "generic": "Check the form and try again."
             },
-            "notCopiedWarning": "You have not copied the key. Close again to discard it; it cannot be shown again."
+            "notCopiedWarning": "You have not copied the key. Close again to discard it; it cannot be shown again.",
+            "humanCallsLabel": "Can ring counsellors (human calls)",
+            "humanCallsHint": "Lets this key list your counsellors' names and emails and connect them to contacts by phone (human_calls:read, human_calls:write). Keys cannot be changed later.",
+            "humanCallsBadge": "Human calls",
+            "manageCounsellorsLabel": "Can manage counsellors",
+            "manageCounsellorsHint": "Lets this key add counsellors (each gets a dashboard login and a welcome email), change their name, mobile number and Airtel extension, and deactivate them (counsellors:manage). It never touches admins or other staff. Keys cannot be changed later.",
+            "manageCounsellorsBadge": "Manages counsellors",
+            "manageAgentsLabel": "Can manage AI agents",
+            "manageAgentsHint": "Lets this key create, edit, turn on or off and delete AI agents, choose the default agent and which agent answers an inbound number (agents:manage). Keys cannot be changed later.",
+            "manageAgentsBadge": "Manages AI agents"
         },
         "agents": {
             "title": "Agent ids",
@@ -212,5 +225,19 @@
             "rotateTitle": "Create a new signing secret?",
             "rotateDescription": "Every delivery from now on is signed with the new secret. Until your server uses it, its signature checks will fail and events will be retried. Update your server right after copying the new secret."
         }
+    },
+    "header": {
+        "title": "AI Calling Settings",
+        "description": "AI-first calling: who the AI calls, from which line, how often it retries, and what happens after each outcome.",
+        "unsaved": "Unsaved changes",
+        "aiAgents": "AI Agents",
+        "disabledBanner": "AI calling is off. Switch it on in the AI calling tab to set up retries, outcomes and assignment."
+    },
+    "tabs": {
+        "general": "AI calling",
+        "agents": "Agents & campaigns",
+        "retries": "Retries & shifts",
+        "outcomes": "Outcome → action",
+        "assignment": "Assignment"
     }
 }

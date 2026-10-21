@@ -6,7 +6,8 @@
         "opened": "Ouverts",
         "clicked": "Cliqués",
         "bounced": "Rejetés",
-        "inbound": "Réponses entrantes"
+        "inbound": "Réponses entrantes",
+        "complaints": "Plaintes"
     },
     "waStats": {
         "out": "WhatsApp sortants",
@@ -29,5 +30,14 @@
     "batchesCompleted_one": "Lots terminés ({{count}} j)",
     "batchesCompleted_many": "Lots terminés ({{count}} j)",
     "batchesCompleted_other": "Lots terminés ({{count}} j)",
-    "viewStat": "Voir {{label}}"
+    "viewStat": "Voir {{label}}",
+    "rates": {
+        "ofSent": "{{rate}} des envois",
+        "open": "{{rate}} taux d'ouverture",
+        "click": "{{rate}} taux de clic",
+        "bounce": "{{rate}} taux de rebond",
+        "complaints": "Signalés comme spam"
+    },
+    "windowLabel_one": "Dernières 24 heures",
+    "windowLabel_other": "{{count}} derniers jours"
 }

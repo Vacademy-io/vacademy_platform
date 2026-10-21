@@ -131,10 +131,10 @@ function InfoCard({ a }: { a: Announcement }) {
         },
     ];
     return (
-        <dl className="divide-y divide-neutral-100 rounded-lg border border-neutral-200">
+        <dl className="divide-y divide-neutral-100 rounded-xl border border-neutral-200 bg-white shadow-sm">
             {rows.map((r) => (
                 <div key={r.label} className="grid grid-cols-3 gap-3 px-4 py-3">
-                    <dt className="text-body text-neutral-500">{r.label}</dt>
+                    <dt className="text-caption font-semibold text-neutral-500">{r.label}</dt>
                     <dd className="col-span-2 text-body text-neutral-800">{r.value}</dd>
                 </div>
             ))}
@@ -150,7 +150,7 @@ function ContentCard({ a, loading }: { a: Announcement; loading: boolean }) {
         [a.content?.type, raw]
     );
     return (
-        <section className="rounded-lg border border-neutral-200 p-4">
+        <section className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
             <h4 className="mb-2 text-subtitle font-semibold text-neutral-800">
                 {t('detailsDialog.content')}
             </h4>
@@ -183,7 +183,7 @@ function RecipientsCard({ a, loading }: { a: Announcement; loading: boolean }) {
     const describe = useDescribeRecipient(names);
 
     return (
-        <section className="flex h-full flex-col rounded-lg border border-neutral-200">
+        <section className="flex h-full flex-col rounded-xl border border-neutral-200 bg-white shadow-sm">
             <div className="flex items-center gap-2 border-b border-neutral-100 px-4 py-3">
                 <UsersThree className="size-5 text-primary-500" />
                 <h4 className="text-subtitle font-semibold text-neutral-800">

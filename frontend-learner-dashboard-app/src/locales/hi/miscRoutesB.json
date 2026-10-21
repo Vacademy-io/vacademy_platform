@@ -572,7 +572,24 @@
         "description": "इस सदस्यता के लिए हमारे पास कोई कार्ड सहेजा नहीं है। अभी भुगतान करने के लिए कार्ड दर्ज करें — हम इसे सुरक्षित रूप से सहेज लेंगे ताकि आगे का नवीनीकरण एक टैप में हो जाए।",
         "loadingForm": "सुरक्षित कार्ड फ़ॉर्म लोड हो रहा है..."
       },
-      "autopayDefaultNotice": "आगे के नवीनीकरण इसी कार्ड से स्वतः लिए जाएंगे। आप इस पेज से कभी भी ऑटो-पे बंद कर सकते हैं।"
+      "autopayDefaultNotice": "आगे के नवीनीकरण इसी कार्ड से स्वतः लिए जाएंगे। आप इस पेज से कभी भी ऑटो-पे बंद कर सकते हैं।",
+      "renew": {
+        "title": "Renew your membership",
+        "greeting": "Hi {{name}},",
+        "intro": "Thank you for learning with us. We'd love to have you back.",
+        "duration_month_one": "1 month",
+        "duration_month_other": "{{count}} months",
+        "duration_day_one": "1 day",
+        "duration_day_other": "{{count}} days",
+        "priceCaption": "{{currency}} for {{period}}",
+        "endsOn": "Your membership ends on {{date}}.",
+        "endedOn": "Your membership ended on {{date}}.",
+        "endsNoDate": "Your membership is ending.",
+        "endedNoDate": "Your membership has ended.",
+        "cta": "Pay {{amount}} and renew now",
+        "secureNote": "Secure card payment. We'll email your receipt straight away.",
+        "support": "Questions about your renewal? Email <mail>{{email}}</mail> and we'll sort it out."
+      }
     },
     "paymentReturn": {
       "confirmingTitle": "आपका भुगतान सत्यापित किया जा रहा है…",

@@ -25,7 +25,9 @@
     "sections": {
         "stepAccess": "صلاحية الوصول للخطوة (من يمكنه عرض/تعديل هذه الخطوة)",
         "formFields": "حقول النموذج",
-        "loadingFields": "جارٍ تحميل الحقول الحالية…"
+        "loadingFields": "جارٍ تحميل الحقول الحالية…",
+        "step": "Step",
+        "formFieldsHint": "Attach existing custom fields or create new ones."
     },
     "actions": {
         "cancel": "إلغاء",
@@ -42,5 +44,9 @@
     "schema": {
         "stepNameRequired": "اسم الخطوة مطلوب",
         "stepNameMaxLength": "يجب ألا يتجاوز 150 حرفًا"
+    },
+    "switchHints": {
+        "optional": "Admins can skip it with a reason.",
+        "createStudent": "Shows the {{course}} choice and the auto-complete option."
     }
 }

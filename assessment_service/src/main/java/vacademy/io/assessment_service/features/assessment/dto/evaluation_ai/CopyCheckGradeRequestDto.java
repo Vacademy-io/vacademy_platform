@@ -1,11 +1,13 @@
 package vacademy.io.assessment_service.features.assessment.dto.evaluation_ai;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import vacademy.io.assessment_service.features.assessment.service.evaluation_ai.CopyCheckConfig;
 
 import java.util.List;
 import java.util.Map;
@@ -51,6 +53,13 @@ public class CopyCheckGradeRequestDto {
     /** OUTSIDE = remarks in a panel beside the copy; null keeps them on the copy. */
     @JsonProperty("comment_placement")
     private String commentPlacement;
+
+    /**
+     * The assessment's own AI checking settings, read while the request is built;
+     * dispatch merges the institute default into exam_context. Never sent.
+     */
+    @JsonIgnore
+    private CopyCheckConfig.Settings copyCheckSettings;
 
     // ---- Partner API fields (AI_EVALUATION_PUBLIC_API.md 10.3, 10.8, C4). All null on
     // ---- dashboard runs, and NON_NULL keeps them out of the JSON, so a dashboard

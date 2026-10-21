@@ -68,6 +68,15 @@ public class AuthServiceRoutes {
 
     public static final String GET_USER_BY_EMAIL = "/auth-service/internal/user/by-email";
 
+    /** Every (institute, role, status) row of one user. Query param: userId. */
+    public static final String USER_ROLE_MEMBERSHIPS = "/auth-service/internal/v1/user-roles/memberships";
+
+    /**
+     * Pause (DISABLED) / restore (ACTIVE) only the named roles of one user in one institute.
+     * Query params: instituteId, userId, status; body: JSON array of role names.
+     */
+    public static final String USER_ROLE_STATUS_INTERNAL = "/auth-service/internal/v1/user-roles/role-status";
+
     // ── Organization teams (hybrid: flat teams + user-to-user inside) ──────
     // organization_team is the team list. organization_team_member has
     // one row per (team, user) PLUS parent_user_id which captures who that

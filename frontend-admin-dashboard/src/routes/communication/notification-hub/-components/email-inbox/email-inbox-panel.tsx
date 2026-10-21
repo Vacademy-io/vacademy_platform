@@ -13,8 +13,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { Button } from '@/components/ui/button';
-import { Separator } from '@/components/ui/separator';
+import { MyButton } from '@/components/design-system/button';
 import { cn } from '@/lib/utils';
 import { getInstituteId } from '@/constants/helper';
 import {
@@ -234,7 +233,7 @@ export function EmailInboxPanel() {
     };
 
     return (
-        <div className="flex flex-col h-full bg-background">
+        <div className="flex h-full flex-col gap-3 p-3 sm:p-4">
             <HeaderBar
                 senders={senders}
                 senderFilter={senderFilter}
@@ -248,7 +247,7 @@ export function EmailInboxPanel() {
             />
 
             {/* Two-pane layout. On mobile only one pane shows at a time (driven by selectedEmail). */}
-            <div className="flex flex-1 min-h-0 overflow-hidden">
+            <div className="flex min-h-0 flex-1 overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
                 <EmailConversationList
                     conversations={conversations}
                     selectedEmail={selectedEmail}
@@ -343,37 +342,24 @@ function HeaderBar({
 }) {
     const { t } = useTranslation('communicationEmailInboxPanel');
     return (
-        <header className="px-4 py-3 border-b bg-card shrink-0">
-            <div className="flex items-start justify-between gap-4 mb-3">
-                <div className="flex items-start gap-2.5 min-w-0">
-                    <Tray size={20} className="text-primary mt-0.5 shrink-0" />
-                    <div className="min-w-0">
-                        <h3 className="text-sm font-semibold text-foreground">{t('title')}</h3>
-                        <p className="text-xs text-muted-foreground truncate">
-                            {t('subtitle')}
-                        </p>
-                    </div>
-                </div>
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={onRefresh}
-                    className="h-8 w-8 shrink-0"
-                    title={t('refresh')}
-                >
-                    <ArrowClockwise size={16} />
-                </Button>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-3">
-                <SenderSelect
-                    senders={senders}
-                    value={senderFilter}
-                    onChange={onSenderChange}
-                />
-                <Separator orientation="vertical" className="h-6" />
-                <DirectionFilter value={directionFilter} onChange={onDirectionChange} />
-            </div>
+        <header className="flex shrink-0 flex-wrap items-center gap-3">
+            <SenderSelect senders={senders} value={senderFilter} onChange={onSenderChange} />
+            <DirectionFilter value={directionFilter} onChange={onDirectionChange} />
+            <p className="hidden min-w-0 flex-1 items-center gap-1.5 truncate text-caption text-neutral-500 lg:flex">
+                <Tray size={14} className="shrink-0 text-neutral-400" />
+                <span className="truncate">{t('subtitle')}</span>
+            </p>
+            <MyButton
+                buttonType="secondary"
+                scale="medium"
+                layoutVariant="icon"
+                onClick={onRefresh}
+                className="ml-auto shrink-0 lg:ml-0"
+                title={t('refresh')}
+                aria-label={t('refresh')}
+            >
+                <ArrowClockwise size={16} />
+            </MyButton>
         </header>
     );
 }
@@ -391,9 +377,9 @@ function SenderSelect({
     const empty = senders.length === 0;
     return (
         <div className="flex items-center gap-2 min-w-0 flex-1 sm:flex-none">
-            <span className="text-xs text-muted-foreground shrink-0">{t('inboxFor')}</span>
+            <span className="shrink-0 text-xs font-medium text-neutral-500">{t('inboxFor')}</span>
             <Select value={value} onValueChange={onChange} disabled={empty}>
-                <SelectTrigger className="h-8 text-xs w-full sm:w-[260px]">{/* design-lint-ignore: preserves original desktop sender-select width */}
+                <SelectTrigger className="h-9 w-full bg-white text-xs sm:w-64">
                     <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -429,16 +415,18 @@ function DirectionFilter({
         },
     ];
     return (
-        <div className="inline-flex rounded-md border bg-muted/40 p-0.5">
+        <div className="inline-flex rounded-lg border border-neutral-200 bg-white p-0.5">
             {options.map((o) => (
                 <button
                     key={o.value}
                     onClick={() => onChange(o.value)}
+                    type="button"
+                    aria-pressed={value === o.value}
                     className={cn(
-                        'flex items-center gap-1 px-2.5 h-7 text-xs rounded transition',
+                        'flex h-7 items-center gap-1 rounded-md px-2.5 text-xs font-medium transition',
                         value === o.value
-                            ? 'bg-background text-foreground shadow-sm border border-border'
-                            : 'text-muted-foreground hover:text-foreground'
+                            ? 'bg-primary-500 text-white'
+                            : 'text-neutral-600 hover:bg-neutral-100'
                     )}
                 >
                     {o.icon}

@@ -108,3 +108,26 @@ describe("unchanged behaviour", () => {
     expect(canPrintPdfSlide(data, ["STUDENT"])).toBe(false);
   });
 });
+
+describe("Docs and Audio downloads", () => {
+  it("are off for every role until Content Protection switches them on", () => {
+    for (const roles of [["ADMIN"], ["TEACHER"], ["STUDENT"], ["CUSTOM_ROLE"], []]) {
+      expect(canDownloadSlideType(null, "DOCUMENT_DOC", roles)).toBe(false);
+      expect(canDownloadSlideType(null, "AUDIO", roles)).toBe(false);
+    }
+  });
+
+  it("follow the role's own switch once set", () => {
+    const data: SlideDownloadPermissionData = {
+      version: 1,
+      slideTypes: {
+        DOCUMENT_DOC: { roles: { LEARNER: true } },
+        AUDIO: { roles: { TEACHER: true } },
+      },
+    };
+    expect(canDownloadSlideType(data, "DOCUMENT_DOC", ["STUDENT"])).toBe(true);
+    expect(canDownloadSlideType(data, "DOCUMENT_DOC", ["ADMIN"])).toBe(false);
+    expect(canDownloadSlideType(data, "AUDIO", ["TEACHER"])).toBe(true);
+    expect(canDownloadSlideType(data, "AUDIO", ["STUDENT"])).toBe(false);
+  });
+});

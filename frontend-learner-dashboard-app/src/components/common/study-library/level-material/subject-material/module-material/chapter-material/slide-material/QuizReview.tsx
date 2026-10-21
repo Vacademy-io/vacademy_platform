@@ -4,7 +4,10 @@ import type { ScoreCard } from "./quiz-viewer";
 import { isMultiSelectQuestion, partialCreditFraction } from "./quiz-scoring";
 import type { QuizAttemptLog, QuizSideEntry } from "@/services/study-library/tracking-api/get-quiz-slide-activity-logs";
 import { getPublicUrl } from "@/services/upload_file";
-import { isRichTextEmpty } from "@/lib/utils";
+import { isRichTextEmpty, parseHtmlToString } from "@/lib/utils";
+import { WhyWrongButton } from "@/components/chatbot/moments/WhyWrongButton";
+import { SelectionAskZone } from "@/components/chatbot/moments/SelectionAskPill";
+import { readWhyWrongPart } from "@/components/chatbot/moments/tutor-moments";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { RoleTerms, SystemTerms } from "@/types/naming-settings";
 
@@ -823,7 +826,7 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
           }[answerStatus];
 
           return (
-            <div key={q.id} className="p-6 rounded-xl border border-gray-200 bg-gray-50 shadow-sm rich-text-content">
+            <div key={q.id} data-why-wrong-scope className="p-6 rounded-xl border border-gray-200 bg-gray-50 shadow-sm rich-text-content">
               <div className="mb-2 flex items-center justify-between gap-2">
                 <span className="text-xs text-gray-500 font-medium">{t("quizReview.questionNumber", { number: idx + 1 })}</span>
                 <span className={`shrink-0 rounded-full border px-2.5 py-0.5 text-xs font-semibold tabular-nums ${marksBadgeClass}`}>
@@ -868,7 +871,7 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
                       </span>
                     )}
                   </div>
-                  <div className={`w-full rounded-lg border p-3 flex flex-col gap-2 ${yourAnswerStyles.box}`}>
+                  <div data-why-wrong="yours" className={`w-full rounded-lg border p-3 flex flex-col gap-2 ${yourAnswerStyles.box}`}>
                     {!hasUserAnswer ? (
                       <span className="text-gray-500 italic text-sm">{t("quizReview.noAnswerSelected")}</span>
                     ) : isMCQ && userAnswerWithIndex
@@ -892,7 +895,7 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
                 {showCorrectAnswers && correctAnswers.length > 0 && (
                   <div className="flex-1 space-y-1">
                     <div className="text-xs font-semibold text-green-800 flex items-center"><CheckIcon />{t("quizReview.correctAnswerLabel")}</div>
-                    <div className="w-full rounded-lg bg-green-50 border border-green-200 p-3 flex flex-col gap-2">
+                    <div data-why-wrong="correct" className="w-full rounded-lg bg-green-50 border border-green-200 p-3 flex flex-col gap-2">
                       {isMCQ && correctAnswerWithIndex
                         ? correctAnswerWithIndex.map(({ id, idx }) => (
                             <span key={id as string} className="text-green-900 text-sm flex items-center">
@@ -909,11 +912,25 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
                   </div>
                 )}
               </div>
+              {/* The key is on screen here, so the tutor may explain the mistake. */}
+              {showCorrectAnswers &&
+                correctAnswers.length > 0 &&
+                (answerStatus === 'wrong' || answerStatus === 'partial') && (
+                  <WhyWrongButton
+                    className="mb-3"
+                    getDetails={(button) => ({
+                      question: parseHtmlToString(questionText),
+                      yourAnswer: readWhyWrongPart(button, "yours"),
+                      correctAnswer: readWhyWrongPart(button, "correct"),
+                      explanation: isRichTextEmpty(explanation) ? null : parseHtmlToString(explanation),
+                    })}
+                  />
+                )}
               {showCorrectAnswers && !isRichTextEmpty(explanation) && (
-                <div className="mt-2 p-4 bg-gray-100 border border-gray-300 rounded-lg space-y-1">
+                <SelectionAskZone className="mt-2 p-4 bg-gray-100 border border-gray-300 rounded-lg space-y-1">
                   <div className="text-xs font-semibold text-gray-700">{t("quizReview.explanationLabel")}</div>
                   <div className="text-sm text-gray-800" dangerouslySetInnerHTML={{ __html: explanation }} />
-                </div>
+                </SelectionAskZone>
               )}
               {feedbackEntry && (
                 <InstructorFeedbackPanel

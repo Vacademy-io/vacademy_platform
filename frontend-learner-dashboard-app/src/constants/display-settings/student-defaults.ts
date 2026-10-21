@@ -205,6 +205,7 @@ export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {
     showInstructors: false,
     // New defaults
     showCourseConfiguration: true,
+    hideTags: false,
     showCourseContentPrefixes: true,
     courseOverview: { visible: true, showSlidesData: true },
     slidesView: {
@@ -229,6 +230,10 @@ export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {
       // Matches the admin default and the quiz viewer's `?? true` fallback.
       showReportAndCorrectAnswers: true,
     },
+    assignment: {
+      hideAttemptsAllowed: false,
+      hideRepeatedTitle: false,
+    },
   },
   allCourses: {
     tabs: [
@@ -238,6 +243,8 @@ export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {
     ],
     defaultTab: "InProgress",
     hideInstructorName: false,
+    pageSize: 10,
+    showAllEnrolledOnDashboard: false,
   },
   notifications: {
     allowSystemAlerts: true,

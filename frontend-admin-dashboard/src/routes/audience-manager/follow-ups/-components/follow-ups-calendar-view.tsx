@@ -176,10 +176,13 @@ export function FollowUpsCalendarView({
                         <CaretRight className="size-4" />
                     </MyButton>
                 </div>
-                <MyButton buttonType="secondary" scale="small" onClick={goToday}>
-                    <CalendarBlank className="size-4" />
-                    {t('nav.today')}
-                </MyButton>
+                <div className="flex flex-wrap items-center gap-3">
+                    <CalendarLegend />
+                    <MyButton buttonType="secondary" scale="small" onClick={goToday}>
+                        <CalendarBlank className="size-4" />
+                        {t('nav.today')}
+                    </MyButton>
+                </div>
             </div>
 
             {error ? (
@@ -400,4 +403,24 @@ function safeParseDate(dateStr: string | undefined): Date {
     if (!dateStr) return new Date();
     const d = parse(dateStr, 'yyyy-MM-dd', new Date());
     return Number.isNaN(d.getTime()) ? new Date() : d;
+}
+
+/** Bucket colour key for the grid pills. */
+function CalendarLegend() {
+    const { t } = useTranslation('crmPages');
+    const items: Array<[string, string]> = [
+        ['bg-danger-500', t('followUps.agenda.overdue')],
+        ['bg-warning-500', t('followUps.agenda.today')],
+        ['bg-info-500', t('followUps.legend.upcoming')],
+    ];
+    return (
+        <div className="hidden items-center gap-3 text-caption text-neutral-500 md:flex">
+            {items.map(([dot, label]) => (
+                <span key={label} className="inline-flex items-center gap-1.5">
+                    <span className={cn('size-2 rounded-full', dot)} aria-hidden="true" />
+                    {label}
+                </span>
+            ))}
+        </div>
+    );
 }

@@ -921,6 +921,22 @@ export const buildComponentTemplates = (t: TFunction): Record<string, Omit<Compo
         },
     },
 
+    // Published access passes (one purchase → several courses) as cards. Reads
+    // them live from the public access-pass API; `tag` narrows to one tag.
+    accessPassGrid: {
+        type: 'accessPassGrid',
+        enabled: true,
+        props: {
+            title: t('accessPassGrid.title'),
+            subtitle: t('accessPassGrid.subtitle'),
+            tag: '',
+            columns: 3,
+            buyLabel: t('accessPassGrid.buyLabel'),
+            showCourses: true,
+            showPrice: true,
+        },
+    },
+
     // Admin-curated folders (Class → Subject → …) from a shared library in
     // Manage Pages → Folders; a product page inside the open folder shows its
     // courses with add-to-cart. Only the library id is stored — the tree is

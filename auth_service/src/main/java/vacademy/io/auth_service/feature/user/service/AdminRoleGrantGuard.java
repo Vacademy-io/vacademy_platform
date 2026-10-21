@@ -42,6 +42,16 @@ public class AdminRoleGrantGuard {
 
     /** Throws 403 when {@code roleNames} grants ADMIN (any case) and the caller is not ADMIN of {@code instituteId}. */
     public void requireAdminToGrantAdmin(CustomUserDetails caller, String instituteId, Collection<String> roleNames) {
+        requireAdminFor(caller, instituteId, roleNames, "Only an admin of this institute can grant the ADMIN role");
+    }
+
+    /** The same rule for taking ADMIN away (DELETE /user-roles/remove-user-roles). */
+    public void requireAdminToRemoveAdmin(CustomUserDetails caller, String instituteId, Collection<String> roleNames) {
+        requireAdminFor(caller, instituteId, roleNames, "Only an admin of this institute can remove the ADMIN role");
+    }
+
+    private void requireAdminFor(CustomUserDetails caller, String instituteId, Collection<String> roleNames,
+                                 String message) {
         if (roleNames == null || roleNames.stream().noneMatch(ADMIN_ROLE::equalsIgnoreCase)) {
             return;
         }
@@ -49,7 +59,7 @@ public class AdminRoleGrantGuard {
                 || userRoleRepository.findFirstByUserIdAndInstituteIdAndRoleNamesAndStatuses(
                         caller.getUserId(), instituteId, ADMIN_ROLE_ROWS,
                         UserRoleService.ACCESS_GRANTING_STATUSES).isEmpty()) {
-            throw new VacademyException(HttpStatus.FORBIDDEN, "Only an admin of this institute can grant the ADMIN role");
+            throw new VacademyException(HttpStatus.FORBIDDEN, message);
         }
     }
 }

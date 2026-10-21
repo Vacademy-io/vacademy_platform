@@ -23,6 +23,8 @@ export interface EnrolledCourse {
 // Dashboard-sized page: the widget lists a handful and links to the catalogue
 // for the rest, so paging through every enrollment would be wasted work.
 const PAGE_SIZE = 12;
+// "Show every enrolled course" (allCourses.showAllEnrolledOnDashboard): one wide page per bucket.
+const ALL_PAGE_SIZE = 200;
 
 const searchBody = (type: "PROGRESS" | "COMPLETED") => ({
   status: [] as string[],
@@ -42,12 +44,13 @@ const fetchBucket = async (
   instituteId: string,
   type: "PROGRESS" | "COMPLETED",
   signal?: AbortSignal,
+  size: number = PAGE_SIZE,
 ): Promise<CoursePackage[]> => {
   const response = await authenticatedAxiosInstance.post(
     urlPublicCourseDetails,
     searchBody(type),
     {
-      params: { instituteId, page: 0, size: PAGE_SIZE },
+      params: { instituteId, page: 0, size },
       headers: { accept: "*/*", "Content-Type": "application/json" },
       signal,
     },
@@ -105,10 +108,12 @@ const STATE_RANK: Record<EnrolledCourseState, number> = {
 export const fetchEnrolledCourses = async (
   instituteId: string,
   signal?: AbortSignal,
+  opts?: { all?: boolean },
 ): Promise<EnrolledCourse[]> => {
+  const size = opts?.all ? ALL_PAGE_SIZE : PAGE_SIZE;
   const [progress, completed] = await Promise.allSettled([
-    fetchBucket(instituteId, "PROGRESS", signal),
-    fetchBucket(instituteId, "COMPLETED", signal),
+    fetchBucket(instituteId, "PROGRESS", signal, size),
+    fetchBucket(instituteId, "COMPLETED", signal, size),
   ]);
   if (progress.status === "rejected" && completed.status === "rejected") {
     throw progress.reason;

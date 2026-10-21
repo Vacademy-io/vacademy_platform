@@ -43,6 +43,17 @@
             "variableCount_other": "{{count}} वेरिएबल",
             "rowCount_one": "{{count}} पंक्ति",
             "rowCount_other": "{{count}} पंक्तियाँ"
-        }
+        },
+        "charCount": "{{count}} / 1024 अक्षर",
+        "removeVariable": "वेरिएबल हटाएँ"
+    },
+    "proposalCount_one": "{{count}} प्रस्ताव",
+    "proposalCount_other": "{{count}} प्रस्ताव",
+    "flow": {
+        "propose": "AI सुझाता है",
+        "approve": "आप संपादित और स्वीकृत करते हैं",
+        "submit": "Meta को सबमिट",
+        "meta": "Meta स्वीकृत करता है",
+        "send": "इंजन भेज सकता है"
     }
 }

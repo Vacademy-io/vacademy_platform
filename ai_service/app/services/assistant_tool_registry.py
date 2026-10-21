@@ -2512,6 +2512,7 @@ def _load_feature_tools() -> None:
         "assistant_tools_course_structure",
         "assistant_tools_learners", "assistant_tools_learner_enroll", "assistant_tools_learner_edit",
         "assistant_tools_learner_report",
+        "assistant_tools_sub_orgs", "assistant_tools_sub_org_edit", "assistant_tools_sub_org_enroll",
         "assistant_tools_crm_leads", "assistant_tools_crm_lead_edit", "assistant_tools_crm_team",
         "assistant_tools_crm_calls", "assistant_tools_crm_meetings", "assistant_tools_crm_messages",
         "assistant_tools_crm_reports",

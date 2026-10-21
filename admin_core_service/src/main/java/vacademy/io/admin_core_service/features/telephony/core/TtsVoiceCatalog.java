@@ -670,7 +670,8 @@ public final class TtsVoiceCatalog {
         if (raw == null) return null;
         String m = raw.trim().toLowerCase(Locale.ROOT);
         if (m.isEmpty()) return null;
-        if (m.equals("muga") || m.startsWith("silk-muga") || m.startsWith("silk_muga")) return null;
+        // Any spelling of Muga ("silk muga" with a space used to fall through to Mulberry below).
+        if (m.contains("muga")) return null;
         if (m.equals(MODEL_RUMIK) || m.startsWith("rumik") || m.startsWith("silk")
                 || m.startsWith("mulberry")) return MODEL_RUMIK;
         // v4 BEFORE v3: "sarvam_v4" also startsWith("sarvam"), and running a v4 voice

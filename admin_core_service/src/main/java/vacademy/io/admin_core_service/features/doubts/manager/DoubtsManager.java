@@ -227,6 +227,59 @@ public class DoubtsManager {
     }
 
     /**
+     * A doubt raised on the learner's behalf by the learner AI chatbot (ai_service, internal HMAC
+     * call), after the learner agreed to send their question to a teacher. Goes through the same
+     * {@link #createNewDoubt} as the learner app, so routing, notifications and the DOUBT_RAISED
+     * workflow all fire. The caller supplies the learner identity from its authenticated chat
+     * session and has already picked one of the learner's ACTIVE batches.
+     *
+     * <p>The text is ALWAYS escaped (it is model-written plain text, also for SLIDE doubts, whose
+     * html_text is otherwise stored raw), and an unknown type falls back to the institute's first
+     * learner-selectable type rather than failing the hand-off.
+     */
+    public String createDoubtForLearner(String userId, String instituteId, String batchId,
+                                        String slideId, String type, String text) {
+        if (!StringUtils.hasText(userId) || !StringUtils.hasText(instituteId)) {
+            throw new VacademyException("userId and instituteId are required");
+        }
+        if (!StringUtils.hasText(text)) {
+            throw new VacademyException("Query text is required");
+        }
+        String trimmed = text.trim();
+        if (trimmed.length() > 4000) {
+            trimmed = trimmed.substring(0, 4000);
+        }
+        List<DoubtManagementSettingDataDto.QueryTypeConfig> selectable =
+                learnerSelectableTypes(loadDoubtManagementSettingByInstitute(instituteId));
+        String requested = StringUtils.hasText(type) ? type.trim() : DEFAULT_TYPE;
+        String canonicalKey = selectable.stream()
+                .filter(t -> requested.equalsIgnoreCase(t.getKey()))
+                .map(DoubtManagementSettingDataDto.QueryTypeConfig::getKey)
+                .findFirst()
+                .orElseGet(() -> selectable.stream()
+                        .filter(t -> DEFAULT_TYPE.equalsIgnoreCase(t.getKey()))
+                        .map(DoubtManagementSettingDataDto.QueryTypeConfig::getKey)
+                        .findFirst()
+                        .orElse(selectable.get(0).getKey()));
+        boolean onSlide = StringUtils.hasText(slideId);
+        DoubtsDto request = DoubtsDto.builder()
+                .userId(userId)
+                .instituteId(instituteId)
+                .batchId(StringUtils.hasText(batchId) ? batchId : null)
+                .source(onSlide ? DoubtsSourceEnum.SLIDE.name() : DoubtsSourceEnum.GENERAL.name())
+                .sourceId(onSlide ? slideId : "")
+                .type(canonicalKey)
+                // GENERAL text is escaped by createNewDoubt; SLIDE html is stored as-is, so
+                // escape it here — this text is model-written, never editor HTML.
+                .htmlText(onSlide
+                        ? org.springframework.web.util.HtmlUtils.htmlEscape(trimmed).replace("\n", "<br>")
+                        : trimmed)
+                .parentLevel(0)
+                .build();
+        return createNewDoubt(request, userId);
+    }
+
+    /**
      * GENERAL queries (the "?" dialog + the unauthenticated guest endpoint) carry PLAIN TEXT from a
      * textarea — but it lands in the {@code html_text} column that the admin renders with
      * dangerouslySetInnerHTML. HTML-escape it so a guest can't inject {@code <img onerror=…>}/script

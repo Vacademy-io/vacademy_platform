@@ -72,6 +72,39 @@ public class InstituteApiAuditWriter {
         repository.save(row.build());
     }
 
+    /**
+     * A change made through a public API key rather than a signed-in user: the actor is
+     * {@code api:<keyId>} (no user exists behind a key). Same row shape as {@link #record}.
+     */
+    public void recordApi(String instituteId,
+                          String keyId,
+                          String entityType,
+                          String entityId,
+                          String action,
+                          String description,
+                          Map<String, Object> payload,
+                          Map<String, Object> before) {
+        AdminActivityLog.AdminActivityLogBuilder row = AdminActivityLog.builder()
+                .instituteId(instituteId)
+                .actorId(truncate("api:" + keyId, 255))
+                .actorName("API key")
+                .entityType(entityType)
+                .entityId(truncate(entityId, 255))
+                .action(truncate(action, 64))
+                .description(description)
+                .requestPayload(json(payload))
+                .beforePayload(json(before))
+                .responseStatus(200);
+        HttpServletRequest request = currentRequest();
+        if (request != null) {
+            row.httpMethod(request.getMethod())
+                    .endpoint(truncate(request.getRequestURI(), 512))
+                    .ipAddress(truncate(clientIp(request), 64))
+                    .userAgent(truncate(request.getHeader("User-Agent"), 512));
+        }
+        repository.save(row.build());
+    }
+
     private static String json(Map<String, Object> value) {
         if (value == null) {
             return null;

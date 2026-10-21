@@ -18,6 +18,8 @@ import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { BASE_URL } from '@/constants/urls';
 import { toast } from 'sonner';
 import { MyButton } from '@/components/design-system/button';
+import { ArrowLeft, GraduationCap } from '@phosphor-icons/react';
+import { ScreenHeader, StatusPill } from '@/components/shared/crm-enhance/screen-header';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import {
@@ -631,59 +633,83 @@ export default function AdmissionFormWizard() {
     };
 
     return (
-        <div className="flex h-full flex-col rounded-lg bg-gray-50/50 p-6 font-sans">
-            <div className="mb-6 flex items-center justify-between">
-                <h1 className="flex items-center gap-3 text-2xl font-bold text-gray-800">
+        <div className="flex h-full flex-col rounded-lg bg-neutral-50 p-6 font-sans">
+            <ScreenHeader
+                className="mb-6"
+                back={
                     <button
+                        type="button"
                         onClick={() => navigate({ to: '/admissions/admission-list' })}
-                        className="rounded-md p-1 transition-colors hover:bg-gray-200"
-                        title={t('backToAdmissionList')}
+                        className="inline-flex w-fit items-center gap-1.5 text-caption font-semibold text-neutral-500 hover:text-primary-500"
                     >
-                        <svg
-                            className="h-5 w-5 text-gray-600"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                        >
-                            <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth="2"
-                                d="M10 19l-7-7m0 0l7-7m-7 7h18"
-                            ></path>
-                        </svg>
+                        <ArrowLeft className="size-4" />
+                        {t('backToAdmissionList')}
                     </button>
-                    {t('pageTitle')}
-                </h1>
-                <div className="flex items-center gap-2">
-                    <MyButton
-                        onClick={handleDownloadPdf}
-                        buttonType="secondary"
-                        scale="medium"
-                        disable={isGeneratingPdf}
-                        className="flex items-center gap-1.5"
-                    >
-                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                        {isGeneratingPdf ? t('downloadingPdf') : t('downloadPdf')}
-                    </MyButton>
-                    <MyButton
-                        onClick={handlePrint}
-                        buttonType="secondary"
-                        scale="medium"
-                        className="flex items-center gap-1.5"
-                    >
-                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-                        </svg>
-                        {t('print')}
-                    </MyButton>
-                </div>
-            </div>
+                }
+                icon={GraduationCap}
+                title={t('pageTitle')}
+                badge={
+                    admissionTrackingId || sourceTrackingId ? (
+                        <StatusPill tone="info">
+                            {admissionTrackingId
+                                ? t('trackingLabel.admission')
+                                : sourceTrackingLabel}
+                            {': '}
+                            {admissionTrackingId || sourceTrackingId}
+                        </StatusPill>
+                    ) : null
+                }
+                actions={
+                    <div className="flex items-center gap-2">
+                        <MyButton
+                            onClick={handleDownloadPdf}
+                            buttonType="secondary"
+                            scale="medium"
+                            disable={isGeneratingPdf}
+                            className="flex items-center gap-1.5"
+                        >
+                            <svg
+                                className="size-4"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                            >
+                                <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth="2"
+                                    d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                                />
+                            </svg>
+                            {isGeneratingPdf ? t('downloadingPdf') : t('downloadPdf')}
+                        </MyButton>
+                        <MyButton
+                            onClick={handlePrint}
+                            buttonType="secondary"
+                            scale="medium"
+                            className="flex items-center gap-1.5"
+                        >
+                            <svg
+                                className="size-4"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                            >
+                                <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth="2"
+                                    d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"
+                                />
+                            </svg>
+                            {t('print')}
+                        </MyButton>
+                    </div>
+                }
+            />
 
             {/* Stepper Tabs */}
-            <div className="hide-scrollbar mb-8 w-full overflow-x-auto rounded-t-lg border-b border-gray-200 bg-white shadow-sm">
+            <div className="hide-scrollbar mb-6 w-full overflow-x-auto rounded-xl border border-neutral-200 bg-white shadow-sm">
                 <div className="flex w-max min-w-full">
                     {STEPS.map((step) => {
                         const isActive = currentStep === step.id;
@@ -695,20 +721,20 @@ export default function AdmissionFormWizard() {
                                 className={`flex-1 whitespace-nowrap border-b-2 px-6 py-4 text-center text-sm font-medium transition-colors
                                 ${
                                     isActive
-                                        ? 'border-primary text-primary bg-primary/5'
+                                        ? 'border-primary-500 bg-primary-50 text-primary-600'
                                         : isCompleted
-                                          ? 'border-primary/50 text-gray-700 hover:bg-gray-50'
-                                          : 'border-transparent text-gray-400 hover:bg-gray-50 hover:text-gray-600'
+                                          ? 'border-primary-200 text-neutral-700 hover:bg-neutral-50'
+                                          : 'border-transparent text-neutral-400 hover:bg-neutral-50 hover:text-neutral-600'
                                 }`}
                             >
                                 <span
                                     className={`mr-2 inline-flex h-6 w-6 items-center justify-center rounded-full text-xs
                                     ${
                                         isActive
-                                            ? 'bg-primary text-white'
+                                            ? 'bg-primary-500 text-white'
                                             : isCompleted
-                                              ? 'bg-primary/20 text-primary'
-                                              : 'bg-gray-100 text-gray-500'
+                                              ? 'bg-success-50 text-success-600'
+                                              : 'bg-neutral-100 text-neutral-500'
                                     }`}
                                 >
                                     {isCompleted ? '✓' : step.id}
@@ -721,7 +747,7 @@ export default function AdmissionFormWizard() {
             </div>
 
             {/* Step Content */}
-            <div className="flex-1 overflow-y-auto rounded-lg border border-gray-100 bg-white p-6 shadow-sm">
+            <div className="flex-1 overflow-y-auto rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
                 {currentStep === 1 && (
                     <Step1StudentDetails
                         formData={formData}
@@ -769,11 +795,11 @@ export default function AdmissionFormWizard() {
 
             {/* Footer Navigation - hidden on Fee Assignment step */}
             {currentStep !== 6 && (
-                <div className="mt-6 flex justify-between rounded-lg border border-gray-100 bg-white p-4 shadow-sm">
+                <div className="mt-6 flex justify-between rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
                     <MyButton
                         onClick={prevStep}
                         disabled={currentStep === 1}
-                        className="rounded-lg border border-gray-300 px-6 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
+                        buttonType="secondary"
                     >
                         {t('previous')}
                     </MyButton>
@@ -784,8 +810,8 @@ export default function AdmissionFormWizard() {
                             disabled={isSubmitting}
                             className={`rounded-lg px-6 py-2.5 text-sm font-medium text-white shadow-sm transition-colors ${
                                 isSubmitting
-                                    ? 'cursor-not-allowed bg-green-400'
-                                    : 'bg-green-600 hover:bg-green-700'
+                                    ? 'cursor-not-allowed bg-success-400'
+                                    : 'bg-success-600 hover:bg-success-700'
                             }`}
                         >
                             {isSubmitting ? t('submitting') : t('submitAdmission')}

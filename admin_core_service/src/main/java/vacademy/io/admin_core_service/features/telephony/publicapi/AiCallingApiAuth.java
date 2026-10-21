@@ -22,8 +22,10 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * <p>Keys: {@code vak_call_…} institute API keys (hashed, product {@code ai_calling},
  * issued in Settings). The first-generation {@code vak_live_…} keys (ai_call_api_key,
- * stored in plaintext) are still accepted with every scope, so nothing that used them
- * breaks; new keys are only issued as {@code vak_call_}.
+ * stored in plaintext) are still accepted with the default AI calling scopes, so nothing
+ * that used them breaks; new keys are only issued as {@code vak_call_}. They never get the
+ * human_calls scopes: those let a key ring staff phones and list staff, and must be granted
+ * explicitly on a new key.
  *
  * <p>Sent as {@code X-API-Key: <key>} or {@code Authorization: Bearer <key>}.
  */
@@ -60,6 +62,20 @@ public class AiCallingApiAuth {
         }
         rateLimit(p.keyId());
         return p;
+    }
+
+    /**
+     * As {@link #authenticate}, for routes several scopes may reach (e.g. reading a counsellor:
+     * human_calls:read or counsellors:manage). Passes when the key holds any of them.
+     */
+    public Principal authenticateAny(HttpServletRequest request, String... anyOf) {
+        Principal p = authenticate(request, null);
+        for (String s : anyOf) {
+            if (p.has(s)) return p;
+        }
+        throw new AiCallingApiException(HttpStatus.FORBIDDEN, "insufficient_scope",
+                "This API key needs one of these scopes: " + String.join(", ", anyOf) + ".",
+                Map.of("required_scope", anyOf[0], "accepted_scopes", List.of(anyOf)));
     }
 
     private Principal current(String key, String ip) {

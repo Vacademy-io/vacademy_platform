@@ -7,13 +7,25 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ColumnDef } from '@tanstack/react-table';
-import { Lock, Plus, Path, PencilSimple, TrashSimple } from '@phosphor-icons/react';
+import {
+    CheckCircle,
+    Hourglass,
+    Lock,
+    Plus,
+    Path,
+    PauseCircle,
+    PencilSimple,
+    TrashSimple,
+} from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { MyButton } from '@/components/design-system/button';
 import { MyTable } from '@/components/design-system/table';
 import { MyDialog } from '@/components/design-system/dialog';
+import { StatStrip } from '@/components/shared/crm-enhance';
+import { SettingsQuickAccessButton } from '@/components/settings/quick-access/SettingsQuickAccessButton';
+import { SettingsTabs } from '@/routes/settings/-constants/terms';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { useOnboardingSettings } from '@/hooks/use-onboarding-settings';
@@ -21,6 +33,7 @@ import { CreateFlowDialog } from './create-flow-dialog';
 import {
     archiveOnboardingFlow,
     fetchOnboardingFlows,
+    fetchOnboardingStatusCounts,
     onboardingFlowsKey,
     type OnboardingFlowDTO,
 } from '../-services/onboarding-service';
@@ -44,7 +57,7 @@ function StatusBadge({ status, t }: { status: string; t: TFunction }) {
 }
 
 export function OnboardingFlowsPage() {
-    const { t } = useTranslation('audienceManagerOnboardingFlowsPage');
+    const { t, i18n } = useTranslation('audienceManagerOnboardingFlowsPage');
     const setNavHeading = useNavHeadingStore((s) => s.setNavHeading);
     useEffect(() => {
         setNavHeading(<h1 className="text-lg">{t('navHeading.onboarding')}</h1>);
@@ -65,6 +78,16 @@ export function OnboardingFlowsPage() {
         staleTime: 60 * 1000,
     });
 
+    // Instance counts for the summary cards: one grouped request, the same cache entry
+    // as the Dashboard tab's count cards (all flows).
+    const countsQuery = useQuery({
+        queryKey: ['onboarding-status-counts', instituteId, null],
+        queryFn: () => fetchOnboardingStatusCounts(instituteId),
+        enabled: !!instituteId && onboardingEnabled,
+        staleTime: 5 * 60 * 1000,
+        refetchOnWindowFocus: false,
+    });
+
     const { mutate: archiveFlow, isPending: isArchiving } = useMutation({
         mutationFn: (flowId: string) => archiveOnboardingFlow(flowId),
         onSuccess: () => {
@@ -82,29 +105,27 @@ export function OnboardingFlowsPage() {
             {
                 accessorKey: 'name',
                 header: t('columns.name'),
-                size: 280,
+                size: 520,
                 cell: ({ row }) => (
-                    <button
-                        type="button"
-                        onClick={() =>
-                            navigate({
-                                to: '/audience-manager/onboarding/$flowId',
-                                params: { flowId: row.original.id },
-                            })
-                        }
-                        className="text-left text-body font-medium text-primary-600 hover:underline"
-                    >
-                        {row.original.name}
-                    </button>
-                ),
-            },
-            {
-                accessorKey: 'description',
-                header: t('columns.description'),
-                size: 560,
-                cell: ({ row }) => (
-                    <div className="truncate text-body text-neutral-600" title={row.original.description ?? ''}>
-                        {row.original.description || '—'}
+                    <div className="flex min-w-0 flex-col gap-0.5 py-1">
+                        <button
+                            type="button"
+                            onClick={() =>
+                                navigate({
+                                    to: '/audience-manager/onboarding/$flowId',
+                                    params: { flowId: row.original.id },
+                                })
+                            }
+                            className="w-fit text-left text-body font-medium text-primary-600 hover:underline"
+                        >
+                            {row.original.name}
+                        </button>
+                        <span
+                            className="truncate text-caption text-neutral-500"
+                            title={row.original.description ?? ''}
+                        >
+                            {row.original.description || '—'}
+                        </span>
                     </div>
                 ),
             },
@@ -117,10 +138,47 @@ export function OnboardingFlowsPage() {
             {
                 id: 'stepCount',
                 header: t('columns.steps'),
-                size: 100,
-                cell: ({ row }) => (
-                    <div className="text-body text-neutral-700">{row.original.steps?.length ?? 0}</div>
-                ),
+                size: 160,
+                cell: ({ row }) => {
+                    const count = row.original.steps?.length ?? 0;
+                    return count === 0 ? (
+                        <span className="text-caption text-neutral-400">
+                            {t('columns.noSteps')}
+                        </span>
+                    ) : (
+                        <div className="flex items-center gap-2 text-body text-neutral-700">
+                            <span className="flex gap-0.5" aria-hidden>
+                                {Array.from({ length: Math.min(count, 8) }, (_, i) => (
+                                    <span
+                                        key={i}
+                                        className="size-1.5 rounded-full bg-primary-400"
+                                    />
+                                ))}
+                            </span>
+                            <span className="tabular-nums">{count}</span>
+                        </div>
+                    );
+                },
+            },
+            {
+                id: 'updated',
+                header: t('columns.updated'),
+                size: 140,
+                cell: ({ row }) => {
+                    const v = row.original.updated_at ?? row.original.created_at;
+                    const d = v ? new Date(v) : null;
+                    return (
+                        <span className="text-caption text-neutral-600">
+                            {d && !Number.isNaN(d.getTime())
+                                ? d.toLocaleDateString(i18n.language, {
+                                      day: 'numeric',
+                                      month: 'short',
+                                      year: 'numeric',
+                                  })
+                                : '—'}
+                        </span>
+                    );
+                },
             },
             {
                 id: 'actions',
@@ -152,7 +210,7 @@ export function OnboardingFlowsPage() {
                 ),
             },
         ],
-        [navigate, t]
+        [navigate, t, i18n.language]
     );
 
     if (settingsLoading) {
@@ -182,18 +240,81 @@ export function OnboardingFlowsPage() {
     // list once deleted, since fetchOnboardingFlows(instituteId) with no status returns every
     // status and there's no separate "show archived" toggle in v1.
     const flows = (flowsQuery.data ?? []).filter((f) => f.status !== 'ARCHIVED');
+    const activeFlows = flows.filter((f) => f.status === 'ACTIVE').length;
+    const draftFlows = flows.filter((f) => f.status === 'DRAFT').length;
+    const counts = countsQuery.data;
+    const countsLoading = countsQuery.isLoading;
 
     return (
         <div className="flex flex-col gap-4 p-2">
             <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="flex flex-col gap-1">
-                    <h1 className="text-h1 font-medium text-neutral-900">{t('page.title')}</h1>
-                    <p className="text-subtitle text-neutral-500">{t('page.subtitle')}</p>
+                <div className="flex min-w-0 items-start gap-3">
+                    <span className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-500">
+                        <Path size={22} weight="duotone" />
+                    </span>
+                    <div className="flex flex-col gap-1">
+                        <h1 className="text-h2 font-semibold text-neutral-900">
+                            {t('page.title')}
+                        </h1>
+                        <p className="text-body text-neutral-500">{t('page.subtitle')}</p>
+                    </div>
                 </div>
-                <MyButton buttonType="primary" scale="medium" onClick={() => setCreateOpen(true)}>
-                    <Plus size={16} weight="bold" /> {t('actions.createFlow')}
-                </MyButton>
+                <div className="flex flex-wrap items-center gap-2">
+                    <SettingsQuickAccessButton
+                        settingsKey={SettingsTabs.OnboardingSettings}
+                        label={t('actions.settings')}
+                    />
+                    <MyButton
+                        buttonType="primary"
+                        scale="medium"
+                        onClick={() => setCreateOpen(true)}
+                    >
+                        <Plus size={16} weight="bold" /> {t('actions.createFlow')}
+                    </MyButton>
+                </div>
             </div>
+
+            {instituteId && !flowsQuery.isError && (
+                <StatStrip
+                    items={[
+                        {
+                            key: 'active',
+                            icon: Path,
+                            label: t('summary.activeFlows'),
+                            value: flowsQuery.isLoading ? undefined : activeFlows,
+                            detail: flowsQuery.isLoading
+                                ? undefined
+                                : t('summary.drafts', { count: draftFlows }),
+                            loading: flowsQuery.isLoading,
+                        },
+                        {
+                            key: 'inProgress',
+                            icon: Hourglass,
+                            tint: 'info',
+                            label: t('summary.inProgress'),
+                            value: counts ? counts.IN_PROGRESS ?? 0 : undefined,
+                            detail: t('summary.inProgressDetail'),
+                            loading: countsLoading,
+                        },
+                        {
+                            key: 'completed',
+                            icon: CheckCircle,
+                            tint: 'success',
+                            label: t('summary.completed'),
+                            value: counts ? counts.COMPLETED ?? 0 : undefined,
+                            loading: countsLoading,
+                        },
+                        {
+                            key: 'abandoned',
+                            icon: PauseCircle,
+                            tint: 'warning',
+                            label: t('summary.abandoned'),
+                            value: counts ? counts.ABANDONED ?? 0 : undefined,
+                            loading: countsLoading,
+                        },
+                    ]}
+                />
+            )}
 
             {!instituteId ? (
                 <div className="rounded-lg border border-warning-200 bg-warning-50 p-4 text-body text-warning-700">
@@ -218,7 +339,15 @@ export function OnboardingFlowsPage() {
                     </MyButton>
                 </div>
             ) : (
-                <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm">
+                <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-200 px-4 py-3">
+                        <div>
+                            <h2 className="text-subtitle font-semibold text-neutral-900">
+                                {t('table.title')}
+                            </h2>
+                            <p className="text-caption text-neutral-500">{t('table.subtitle')}</p>
+                        </div>
+                    </div>
                     <MyTable<OnboardingFlowDTO>
                         data={{
                             content: flows,

@@ -35,6 +35,12 @@ public class UserWithRolesDTO {
     private String authorDescription;
     private Set<UserRoleDTO> roles;
     private String status;
+    /**
+     * Last successful sign-in (users.last_login_time); null = has never signed in. Set only by
+     * the authenticated Teams listing (see UserService#toUserWithRolesDtoWithPassword), never by
+     * the constructor that also feeds unauthenticated endpoints.
+     */
+    private Date lastLoginTime;
 
     public UserWithRolesDTO() {
         // Default constructor

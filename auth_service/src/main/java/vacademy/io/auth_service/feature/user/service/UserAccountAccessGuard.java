@@ -170,6 +170,29 @@ public class UserAccountAccessGuard {
     }
 
     /**
+     * POST /user-invitation/resend-invitation (emails the member their login details, branded
+     * as {@code instituteId}). Besides super-admin: staff of {@code instituteId} that the target
+     * belongs to, and ADMIN of it when the target is ADMIN there — the same rule as updating an
+     * invitation, minus the email change. The mail only ever goes to the member's own address.
+     */
+    public void requireCanResendLogin(CustomUserDetails caller, String instituteId, String targetUserId) {
+        if (isSuperAdmin(caller)) {
+            return;
+        }
+        Memberships callerRoles = callerMemberships(requireCaller(caller, "Only staff of this institute can resend login details"));
+        if (isBlank(instituteId) || isBlank(targetUserId)) {
+            throw forbidden("Only staff of this institute can resend login details");
+        }
+        Memberships target = targetMemberships(rows(targetUserId));
+        if (!callerRoles.isStaff(instituteId) || !target.belongs.contains(instituteId)) {
+            throw forbidden("Only staff of this institute can resend login details");
+        }
+        if (target.admin.contains(instituteId) && !callerRoles.isAdmin(instituteId)) {
+            throw forbidden("Only an admin of this institute can resend an admin's login details");
+        }
+    }
+
+    /**
      * POST /user-details/update?userId=&instituteId= (profile incl. email and mobile number,
      * plus role rows added / marked DELETED in {@code instituteId}).
      * <ul>

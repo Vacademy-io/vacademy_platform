@@ -307,6 +307,12 @@ public interface UserRepository extends CrudRepository<User, String> {
         @Query("UPDATE User u SET u.lastTokenUpdateTime = CURRENT_TIMESTAMP WHERE u.id IN :userIds")
         void updateLastTokenUpdateTime(@Param("userIds") List<String> userIds);
 
+        /** Stamps a successful sign-in; one narrow UPDATE, no entity load. */
+        @Modifying
+        @Transactional
+        @Query("UPDATE User u SET u.lastLoginTime = CURRENT_TIMESTAMP WHERE u.id = :userId")
+        int updateLastLoginTime(@Param("userId") String userId);
+
         Optional<User> findFirstByEmailOrderByCreatedAtDesc(String email);
 
         /**

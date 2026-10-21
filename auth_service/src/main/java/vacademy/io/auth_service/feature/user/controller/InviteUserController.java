@@ -2,6 +2,7 @@ package vacademy.io.auth_service.feature.user.controller;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.auth_service.feature.user.service.AdminRoleGrantGuard;
 import vacademy.io.auth_service.feature.user.service.InviteUserService;
@@ -32,10 +33,20 @@ public class InviteUserController {
     }
 
 
+    /**
+     * "Resend login details". The institute is the one the email is branded as and whose roles
+     * it lists; the caller must be its staff and the member must belong to it. Dashboards
+     * built before the instituteId param send only the clientId header the axios client always
+     * attaches, so that is the fallback.
+     */
     @PostMapping("/resend-invitation")
     public ResponseEntity<String> resendInvitation(@RequestParam String userId,
+                                                   @RequestParam(required = false) String instituteId,
+                                                   @RequestHeader(value = "clientId", required = false) String clientId,
                                                    @RequestAttribute("user") CustomUserDetails customUserDetails) {
-        String response = inviteUserService.resendInvitation(userId, customUserDetails);
+        String institute = StringUtils.hasText(instituteId) ? instituteId : clientId;
+        userAccountAccessGuard.requireCanResendLogin(customUserDetails, institute, userId);
+        String response = inviteUserService.resendInvitation(userId, institute, customUserDetails);
         return ResponseEntity.ok(response);
     }
 

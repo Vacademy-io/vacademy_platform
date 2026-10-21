@@ -24,9 +24,14 @@ import vacademy.io.common.auth.service.UserService;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 public class RoleService {
@@ -69,6 +74,101 @@ public class RoleService {
         userRoleRepository.saveAll(userRoles);
         userService.updateLastTokenUpdatedTime(List.of(addRolesToUserDTO.getUserId()));
         return "Roles added successfully";
+    }
+
+    /**
+     * What {@link #grantActiveRoles} did, by role name. A role can appear in more than one
+     * list when the name resolves to a built-in role and this institute's custom role.
+     */
+    public record RoleGrant(List<String> added, List<String> activated, List<String> alreadyActive,
+            List<String> paused, List<String> unknown) {
+        public boolean changed() {
+            return !added.isEmpty() || !activated.isEmpty();
+        }
+    }
+
+    /**
+     * Makes {@code user} an ACTIVE holder of {@code roleNames} in ONE institute — the grant
+     * behind every team invite. Per role, against the user's rows in {@code instituteId} only:
+     * <ul>
+     *   <li>already ACTIVE: nothing (no duplicate row);</li>
+     *   <li>INVITED (an invite from before members were active on creation): turned ACTIVE;</li>
+     *   <li>DISABLED / INACTIVE: left paused — an invite never re-enables access an admin
+     *       paused; that is "Enable access";</li>
+     *   <li>none, or only removed rows (DELETED, CANCEL, ...): a new ACTIVE row.</li>
+     * </ul>
+     * Names resolve to the built-in role and this institute's own custom role of that name
+     * ({@link #rolesUsableIn}), never another institute's. Unknown names are reported, not
+     * created.
+     */
+    @Transactional
+    public RoleGrant grantActiveRoles(User user, String instituteId, Collection<String> roleNames) {
+        if (user == null || user.getId() == null || instituteId == null || instituteId.isBlank()) {
+            throw new VacademyException(HttpStatus.BAD_REQUEST, "user and institute are required to grant roles");
+        }
+        List<String> names = distinctNames(roleNames);
+        List<String> added = new ArrayList<>();
+        List<String> activated = new ArrayList<>();
+        List<String> alreadyActive = new ArrayList<>();
+        List<String> paused = new ArrayList<>();
+        if (names.isEmpty()) {
+            return new RoleGrant(added, activated, alreadyActive, paused, List.of());
+        }
+        List<Role> roles = rolesUsableIn(roleRepository.findByNameIn(names), instituteId);
+        Set<String> resolved = new HashSet<>();
+        roles.forEach(r -> resolved.add(r.getName()));
+        List<String> unknown = names.stream().filter(n -> !resolved.contains(n)).toList();
+
+        List<UserRole> here = new ArrayList<>();
+        for (UserRole ur : userRoleRepository.findByUser(user)) {
+            if (instituteId.equals(ur.getInstituteId()) && ur.getRole() != null) {
+                here.add(ur);
+            }
+        }
+        List<UserRole> toSave = new ArrayList<>();
+        for (Role role : roles) {
+            List<UserRole> rows = here.stream()
+                    .filter(ur -> Objects.equals(ur.getRole().getId(), role.getId()))
+                    .toList();
+            if (rows.stream().anyMatch(ur -> UserRoleStatus.ACTIVE.name().equals(ur.getStatus()))) {
+                alreadyActive.add(role.getName());
+                continue;
+            }
+            List<UserRole> invited = rows.stream()
+                    .filter(ur -> UserRoleStatus.INVITED.name().equals(ur.getStatus()))
+                    .toList();
+            if (!invited.isEmpty()) {
+                invited.forEach(ur -> ur.setStatus(UserRoleStatus.ACTIVE.name()));
+                toSave.addAll(invited);
+                activated.add(role.getName());
+                continue;
+            }
+            if (rows.stream().anyMatch(ur -> PAUSED_STATUSES.contains(ur.getStatus()))) {
+                paused.add(role.getName());
+                continue;
+            }
+            toSave.add(createUserRole(user, role, Optional.of(UserRoleStatus.ACTIVE.name()), instituteId));
+            added.add(role.getName());
+        }
+        if (!toSave.isEmpty()) {
+            userRoleRepository.saveAll(toSave);
+            // Same as addRolesToUser: an existing account's open sessions pick up the new
+            // institute on their next token refresh.
+            userService.updateLastTokenUpdatedTime(List.of(user.getId()));
+            evictCachedIdentities(instituteId, List.of(user.getId()));
+        }
+        return new RoleGrant(added, activated, alreadyActive, paused, unknown);
+    }
+
+    private static List<String> distinctNames(Collection<String> roleNames) {
+        if (roleNames == null) {
+            return List.of();
+        }
+        return roleNames.stream()
+                .filter(n -> n != null && !n.isBlank())
+                .map(String::trim)
+                .collect(Collectors.toCollection(LinkedHashSet::new))
+                .stream().toList();
     }
 
     private User getUserById(String userId) {

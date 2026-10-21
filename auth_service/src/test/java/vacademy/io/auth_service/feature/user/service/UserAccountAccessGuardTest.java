@@ -368,4 +368,38 @@ class UserAccountAccessGuardTest {
         assertThrows(VacademyException.class, () -> guard.requireStaffOf(caller("teacher"), B));
         assertThrows(VacademyException.class, () -> guard.requireStaffOf(null, A));
     }
+
+    // ---- resend login details -----------------------------------------------------------
+
+    @Test
+    void resendNeedsStaffOfTheInstituteTheMemberBelongsTo() {
+        role("teacher", A, "TEACHER");
+        role("learner", A, "STUDENT");
+        role("member", A, "COUNSELLOR");
+        role("elsewhere", B, "COUNSELLOR");
+        assertDoesNotThrow(() -> guard.requireCanResendLogin(caller("teacher"), A, "member"));
+        // A learner, an outsider and a member of another institute are all refused.
+        assertThrows(VacademyException.class, () -> guard.requireCanResendLogin(caller("learner"), A, "member"));
+        assertThrows(VacademyException.class, () -> guard.requireCanResendLogin(caller("stranger"), A, "member"));
+        assertThrows(VacademyException.class, () -> guard.requireCanResendLogin(caller("teacher"), A, "elsewhere"));
+        assertThrows(VacademyException.class, () -> guard.requireCanResendLogin(caller("teacher"), B, "elsewhere"));
+        assertThrows(VacademyException.class, () -> guard.requireCanResendLogin(caller("teacher"), null, "member"));
+        assertThrows(VacademyException.class, () -> guard.requireCanResendLogin(null, A, "member"));
+    }
+
+    @Test
+    void onlyAnAdminMayResendAnAdminsLoginDetails() {
+        role("teacher", A, "TEACHER");
+        role("admin", A, "ADMIN");
+        role("otherAdmin", A, "ADMIN", "INVITED");
+        assertThrows(VacademyException.class, () -> guard.requireCanResendLogin(caller("teacher"), A, "otherAdmin"));
+        assertDoesNotThrow(() -> guard.requireCanResendLogin(caller("admin"), A, "otherAdmin"));
+    }
+
+    @Test
+    void aRemovedMemberIsNotResentLoginDetails() {
+        role("admin", A, "ADMIN");
+        role("gone", A, "TEACHER", "DELETED");
+        assertThrows(VacademyException.class, () -> guard.requireCanResendLogin(caller("admin"), A, "gone"));
+    }
 }

@@ -262,24 +262,42 @@ public class UserService {
             userDTO.setEmail(user.getEmail());
             return user;
         } else {
-            User user = new User();
-            user.setUsername(userDTO.getUsername());
-            user.setPassword(userDTO.getPassword());
-            user.setEmail(normalizedEmail);
-            user.setFullName(userDTO.getFullName());
-            user.setAddressLine(userDTO.getAddressLine());
-            user.setCity(userDTO.getCity());
-            user.setPinCode(userDTO.getPinCode());
-            user.setMobileNumber(userDTO.getMobileNumber());
-            user.setDateOfBirth(userDTO.getDateOfBirth());
-            user.setGender(userDTO.getGender());
-            user.setRootUser(true);
-            user.setAuthorSubtitle(userDTO.getAuthorSubtitle());
-            user.setAuthorDescription(userDTO.getAuthorDescription());
-            User savedUser = userRepository.save(user);
-            userDTO.setId(savedUser.getId());
-            return user;
+            return createNewUserFromUserDto(userDTO);
         }
+    }
+
+    /**
+     * The newest account registered with this email (lower-cased, as accounts are stored),
+     * or empty for a blank email — a blank email must never "match" whichever account
+     * happens to have none.
+     */
+    public Optional<User> findExistingUserByEmail(String email) {
+        if (!StringUtils.hasText(email)) {
+            return Optional.empty();
+        }
+        return userRepository.findFirstByEmailOrderByCreatedAtDesc(email.trim().toLowerCase());
+    }
+
+    /** Always a NEW account from the DTO (no lookup by email); sets the DTO's id. */
+    public User createNewUserFromUserDto(UserDTO userDTO) {
+        String normalizedEmail = userDTO.getEmail() != null ? userDTO.getEmail().toLowerCase() : null;
+        User user = new User();
+        user.setUsername(userDTO.getUsername());
+        user.setPassword(userDTO.getPassword());
+        user.setEmail(normalizedEmail);
+        user.setFullName(userDTO.getFullName());
+        user.setAddressLine(userDTO.getAddressLine());
+        user.setCity(userDTO.getCity());
+        user.setPinCode(userDTO.getPinCode());
+        user.setMobileNumber(userDTO.getMobileNumber());
+        user.setDateOfBirth(userDTO.getDateOfBirth());
+        user.setGender(userDTO.getGender());
+        user.setRootUser(true);
+        user.setAuthorSubtitle(userDTO.getAuthorSubtitle());
+        user.setAuthorDescription(userDTO.getAuthorDescription());
+        User savedUser = userRepository.save(user);
+        userDTO.setId(savedUser.getId());
+        return user;
     }
 
     public List<UserRole> addUserRoles(String instituteId, List<String> roles, User user, String status) {
@@ -366,6 +384,8 @@ public class UserService {
     private UserWithRolesDTO toUserWithRolesDtoWithPassword(User user) {
         UserWithRolesDTO dto = new UserWithRolesDTO(user);
         dto.setPassword(user.getPassword());
+        // Lets the Teams page tag members who have never signed in ("Not signed in yet").
+        dto.setLastLoginTime(user.getLastLoginTime());
         return dto;
     }
 

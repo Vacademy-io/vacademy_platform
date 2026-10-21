@@ -6,7 +6,8 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
- * HTML bodies for the team-invitation email and its reminder.
+ * HTML bodies for the team welcome email (new account), its "login details" resend, and the
+ * no-credentials note for an account that already exists.
  *
  * Both share one layout. It is a table-based, fully inline-styled email on purpose:
  * Gmail's own stylesheet ({@code .ii a[href] {color:#15c}}) outranks any class in a
@@ -25,6 +26,10 @@ public class InviteUserEmailBody {
     private static final String MONO_STACK =
             "SFMono-Regular, Menlo, Consolas, 'Liberation Mono', 'Courier New', monospace";
 
+    /**
+     * A new account, ready to use: the member is ACTIVE from the moment the admin adds them,
+     * so this is a welcome with login details, not an invitation waiting to be accepted.
+     */
     public static String createInviteUserEmail(
             String name,
             String username,
@@ -37,45 +42,93 @@ public class InviteUserEmailBody {
         String institute = escape(instituteName);
         String roleText = formatRoles(roles);
         return render(
-                "Your " + institute + " account is ready — sign in with the credentials inside.",
-                "Team invitation",
-                "You've been invited to join " + institute,
+                "Your " + institute + " account is ready — sign in with the details inside.",
+                "Welcome",
+                "Your account at " + institute + " is ready",
                 "Hi " + escape(firstName(name)) + ", " + institute + " has added you to its team as "
                         + "<strong style=\"color:#111827;\">" + roleText + "</strong>. "
-                        + "Your account has been created — use the credentials below to sign in for the first time.",
-                "Accept invitation",
+                        + "Your account is ready — sign in with the details below.",
+                "Sign in",
                 username, password, roles, themeColor, instituteName, adminLoginUrl
         );
     }
 
+    /**
+     * Login details again ("Resend login details"), for a member who has not signed in yet.
+     * Same layout as the welcome; nothing in it suggests an invite is pending.
+     */
     public static String createReminderEmail(String name, String username, String password, List<String> roles,
                                              String themeColor, String instituteName, String adminLoginUrl) {
         String institute = escape(instituteName);
         String roleText = formatRoles(roles);
         return render(
-                "Your invitation from " + institute + " is still waiting.",
-                "Reminder",
-                "Your invitation to " + institute + " is still waiting",
-                "Hi " + escape(firstName(name)) + ", you were invited to join " + institute + " as "
-                        + "<strong style=\"color:#111827;\">" + roleText + "</strong> but haven't signed in yet. "
-                        + "Your credentials are below — accept whenever you're ready.",
-                "Accept invitation",
+                "Your " + institute + " login details — your account is ready to use.",
+                "Login details",
+                "Your login details for " + institute,
+                "Hi " + escape(firstName(name)) + ", you're on the " + institute + " team as "
+                        + "<strong style=\"color:#111827;\">" + roleText + "</strong>. "
+                        + "Your account is ready — sign in with the details below whenever you like.",
+                "Sign in",
                 username, password, roles, themeColor, instituteName, adminLoginUrl
         );
     }
 
-    /** Subject line for the initial invitation. */
-    public static String inviteSubject(String instituteName) {
-        return "You're invited to join " + instituteName;
+    /**
+     * For an account that already exists — added to one more institute, or reminded after it
+     * has signed in before. Carries NO password: the stored one belongs to the member (they may
+     * have changed it) and is never mailed out. The username is shown as a memory aid.
+     *
+     * @param justAdded true when this institute has just added them (invite), false for a
+     *                  sign-in reminder
+     */
+    public static String createExistingAccountEmail(String name, String username, List<String> roles,
+                                                    String themeColor, String instituteName, String adminLoginUrl,
+                                                    boolean justAdded) {
+        String institute = escape(instituteName);
+        String roleText = formatRoles(roles);
+        String hi = "Hi " + escape(firstName(name)) + ", ";
+        String asRoles = "<strong style=\"color:#111827;\">" + roleText + "</strong>";
+        String intro = justAdded
+                ? hi + institute + " has added you to its team as " + asRoles + ". "
+                        + "Sign in with the login you already use — your username and password haven't changed."
+                : hi + "you're on the " + institute + " team as " + asRoles + ". "
+                        + "Sign in with the username and password you already use.";
+        return render(
+                justAdded
+                        ? "You've been added to " + institute + " — sign in with your existing login."
+                        : "Sign in to " + institute + " with your existing login.",
+                justAdded ? "Team update" : "Sign in",
+                justAdded ? "You've been added to " + institute : "Sign in to " + institute,
+                intro,
+                "Sign in",
+                credentialRows(true, false), username, null, roles, themeColor, instituteName, adminLoginUrl
+        );
     }
 
-    /** Subject line for the reminder. */
+    /** Subject line for a new account's welcome. */
+    public static String inviteSubject(String instituteName) {
+        return "Your " + instituteName + " account is ready";
+    }
+
+    /** Subject line for "Resend login details". */
     public static String reminderSubject(String instituteName) {
-        return "Reminder: your invitation to join " + instituteName;
+        return "Your login details for " + instituteName;
+    }
+
+    /** Subject line for an existing account added to (or reminded of) an institute. */
+    public static String existingAccountSubject(String instituteName, boolean justAdded) {
+        return justAdded ? "You've been added to " + instituteName : "Sign in to " + instituteName;
     }
 
     private static String render(String preheader, String eyebrow, String headline, String intro, String ctaLabel,
                                  String username, String password, List<String> roles,
+                                 String themeColor, String instituteName, String adminLoginUrl) {
+        return render(preheader, eyebrow, headline, intro, ctaLabel, credentialRows(true, true),
+                username, password, roles, themeColor, instituteName, adminLoginUrl);
+    }
+
+    private static String render(String preheader, String eyebrow, String headline, String intro, String ctaLabel,
+                                 String credentialRows, String username, String password, List<String> roles,
                                  String themeColor, String instituteName, String adminLoginUrl) {
         String theme = resolveThemeColor(themeColor);
         String institute = escape(instituteName);
@@ -87,6 +140,7 @@ public class InviteUserEmailBody {
                 .replace("{{headline}}", headline)
                 .replace("{{intro}}", intro)
                 .replace("{{ctaLabel}}", ctaLabel)
+                .replace("{{credentialRows}}", credentialRows)
                 .replace("{{institute}}", institute)
                 .replace("{{username}}", escape(username))
                 .replace("{{password}}", escape(password))
@@ -97,6 +151,36 @@ public class InviteUserEmailBody {
                 .replace("{{font}}", FONT_STACK)
                 .replace("{{mono}}", MONO_STACK)
                 .replace("{{year}}", String.valueOf(java.time.Year.now().getValue()));
+    }
+
+    private static final String USERNAME_ROW = """
+                                            <tr>
+                                              <td style="padding:14px 0;border-bottom:1px solid #e5e7eb;">
+                                                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                                                  <tr>
+                                                    <td width="168" valign="middle" style="width:168px;font-family:{{font}};font-size:11px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;color:#6b7280;">Username</td>
+                                                    <td valign="middle" style="font-family:{{mono}};font-size:16px;font-weight:600;color:#111827;">{{username}}</td>
+                                                  </tr>
+                                                </table>
+                                              </td>
+                                            </tr>
+            """;
+
+    private static final String PASSWORD_ROW = """
+                                            <tr>
+                                              <td style="padding:14px 0;border-bottom:1px solid #e5e7eb;">
+                                                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                                                  <tr>
+                                                    <td width="168" valign="middle" style="width:168px;font-family:{{font}};font-size:11px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;color:#6b7280;">Password</td>
+                                                    <td valign="middle" style="font-family:{{mono}};font-size:16px;font-weight:600;color:#111827;">{{password}}</td>
+                                                  </tr>
+                                                </table>
+                                              </td>
+                                            </tr>
+            """;
+
+    private static String credentialRows(boolean withUsername, boolean withPassword) {
+        return (withUsername ? USERNAME_ROW : "") + (withPassword ? PASSWORD_ROW : "");
     }
 
     // Institutes store either a hex code or a colour name in institute_theme_code; anything
@@ -263,26 +347,7 @@ public class InviteUserEmailBody {
                                   <tr>
                                     <td style="padding:6px 20px 0 20px;">
                                       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                                        <tr>
-                                          <td style="padding:14px 0;border-bottom:1px solid #e5e7eb;">
-                                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                                              <tr>
-                                                <td width="168" valign="middle" style="width:168px;font-family:{{font}};font-size:11px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;color:#6b7280;">Username</td>
-                                                <td valign="middle" style="font-family:{{mono}};font-size:16px;font-weight:600;color:#111827;">{{username}}</td>
-                                              </tr>
-                                            </table>
-                                          </td>
-                                        </tr>
-                                        <tr>
-                                          <td style="padding:14px 0;border-bottom:1px solid #e5e7eb;">
-                                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                                              <tr>
-                                                <td width="168" valign="middle" style="width:168px;font-family:{{font}};font-size:11px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;color:#6b7280;">Password</td>
-                                                <td valign="middle" style="font-family:{{mono}};font-size:16px;font-weight:600;color:#111827;">{{password}}</td>
-                                              </tr>
-                                            </table>
-                                          </td>
-                                        </tr>
+                                        {{credentialRows}}
                                         <tr>
                                           <td style="padding:14px 0 12px 0;">
                                             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
@@ -331,7 +396,7 @@ public class InviteUserEmailBody {
                       <!-- Footer -->
                       <tr>
                         <td align="center" style="padding:20px 24px 0 24px;font-family:{{font}};font-size:12px;line-height:18px;color:#9ca3af;">
-                          This invitation was sent to you by {{institute}}.<br>
+                          This email was sent to you by {{institute}}.<br>
                           &copy; {{year}} {{institute}}. All rights reserved.
                         </td>
                       </tr>

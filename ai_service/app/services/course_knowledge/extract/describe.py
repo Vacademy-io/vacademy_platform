@@ -30,7 +30,7 @@ from sqlalchemy.orm import Session
 from ...kb.parsing import youtube_video_id
 from ...tutor.slide_source import _hash, html_to_text
 from . import documents, questions
-from .types import EXTRACTOR_VERSION, Segment, SlideRef
+from .types import EXTRACTOR_VERSION, SCORM_EXTRACTOR_VERSION, Segment, SlideRef
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +93,7 @@ def content_hash(ref: SlideRef) -> str:
     """Changes when the published body, pointer, title or description changes."""
     inline = [s.text for s in ref.inline_segments]
     published: Dict[str, Any] = {"pointer": [ref.pointer_kind, ref.pointer_key], "inline": inline}
-    for key in ("url", "launch_url", "launch_path", "video_description", "note"):
+    for key in ("url", "launch_url", "launch_path", "video_description", "note", "extractor"):
         if ref.extras.get(key):
             published[key] = ref.extras[key]
     return _hash(EXTRACTOR_VERSION, ref.source_type, ref.doc_type, ref.title, ref.description, published)
@@ -224,6 +224,7 @@ def _scorm(ref: SlideRef, row: Optional[tuple]) -> None:
     if (launch_path or "").strip():
         ref.extras["launch_path"] = launch_path.strip()
     ref.extras["text_kind"] = "scorm"
+    ref.extras["extractor"] = f"scorm-v{SCORM_EXTRACTOR_VERSION}"
 
 
 def _inline(ref: SlideRef, segs: List[Segment], text_kind: str) -> None:

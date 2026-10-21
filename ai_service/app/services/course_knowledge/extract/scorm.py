@@ -20,7 +20,7 @@ from urllib.parse import unquote, urljoin, urlsplit
 from ...tutor.slide_source import html_to_text
 from . import cache
 from .documents import fetch_https, within_prefix
-from .types import Extraction, Segment, SlideRef
+from .types import SCORM_EXTRACTOR_VERSION, Extraction, Segment, SlideRef
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,24 @@ MAX_TOTAL_BYTES = 5 * 1024 * 1024
 MAX_MANIFEST_BYTES = 1024 * 1024
 FETCH_TIMEOUT = 10.0
 MIN_TEXT_CHARS = 200
-SCRIPTED_NOTE = "Interactive package draws its text with scripts: only the title is used"
+SCRIPTED_NOTE = "Interactive package shows its text as images or draws it with scripts: only the title is used"
+
+# The fallback page authoring tools (iSpring, Articulate, Captivate) put in the HTML for
+# browsers they do not support. It is not lesson text: iSpring packages render every
+# slide's text as images, so without this filter they read as READY with only this.
+_BOILERPLATE_RE = re.compile(
+    r"page not available|this browser is not supported|browser is not supported|"
+    r"to view this (?:page|content|presentation)[^.]*?(?:browsers?|below)[^.]*\.?|"
+    r"please use one of (?:these|the following) browsers[^.]*\.?|"
+    r"(?:google )?chrome|mozilla firefox|firefox|microsoft edge|safari|opera|internet explorer|"
+    r"javascript is (?:disabled|required)[^.]*\.?|enable javascript[^.]*\.?|loading\.{0,3}",
+    re.IGNORECASE,
+)
+
+
+def strip_boilerplate(text: str) -> str:
+    """The page text without the unsupported-browser fallback wording."""
+    return re.sub(r"\s+", " ", _BOILERPLATE_RE.sub(" ", text or "")).strip()
 
 _HREF_RE = re.compile(r"<(?:[\w-]+:)?(?:resource|file)\b[^>]*?\bhref\s*=\s*[\"']([^\"']+)[\"']", re.IGNORECASE)
 
@@ -74,7 +91,7 @@ def allowed_pages(root: str, hrefs: List[str], launch_path: Optional[str]) -> Li
 
 
 async def extract_scorm(ref: SlideRef) -> Extraction:
-    key = ref.pointer_key or ""
+    key = f"v{SCORM_EXTRACTOR_VERSION}:{ref.pointer_key or ''}"
     hit = await asyncio.to_thread(cache.get, "scorm", key)
     if hit is not None:
         if hit.segments:
@@ -115,11 +132,13 @@ async def extract_scorm(ref: SlideRef) -> Extraction:
         fetched += 1
         total += len(data)
         body = html_to_text(data.decode("utf-8", errors="replace"))
+        if body and len(strip_boilerplate(body)) < 40:
+            body = ""   # only the unsupported-browser fallback page
         if body:
             name = unquote(posixpath.basename(urlsplit(url).path)) or f"page {idx}"
             segs.append(Segment(text=body, anchor="page", page=idx, label=name))
 
-    if sum(len(s.text) for s in segs) < MIN_TEXT_CHARS:
+    if sum(len(strip_boilerplate(s.text)) for s in segs) < MIN_TEXT_CHARS:
         if fetched:
             # Only a package that was actually read is remembered as empty; a
             # failed fetch is tried again next time.
@@ -129,4 +148,4 @@ async def extract_scorm(ref: SlideRef) -> Extraction:
     return Extraction(ref.slide_id, "scorm", segments=segs, status="READY")
 
 
-__all__ = ["extract_scorm", "package_root", "manifest_hrefs", "allowed_pages", "SCRIPTED_NOTE"]
+__all__ = ["extract_scorm", "package_root", "manifest_hrefs", "allowed_pages", "strip_boilerplate", "SCRIPTED_NOTE"]

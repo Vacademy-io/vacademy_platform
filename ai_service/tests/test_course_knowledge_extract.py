@@ -946,3 +946,36 @@ def test_pg_pdf_extract_holds_no_session_during_network(Session, pg_db, monkeypa
     assert ext.status == "NEEDS_PAID" and ext.paid_need.units == 1
     assert seen == [("url", 0), ("download", 0)] and pg_db["open"] == 0
     assert cache.get("file", ref.pointer_key).probe["scanned_page_numbers"] == [2]
+
+
+# ── SCORM fallback-page boilerplate (pilot 2026-10-21: iSpring packages render text as images) ──
+
+def test_scorm_strip_boilerplate_drops_unsupported_browser_page():
+    from app.services.course_knowledge.extract.scorm import strip_boilerplate
+
+    page = ("LM1 - What is Rajaswala Paricharya? | राजस्वला परिचर्या क्या है? Rajaswala Paricharya-LM1 "
+            "Page Not Available This browser is not supported To view this content, please use one of "
+            "these browsers: Chrome, Mozilla Firefox, Microsoft Edge, Safari")
+    left = strip_boilerplate(page)
+    assert "browser" not in left.lower() and "Chrome" not in left
+    assert "राजस्वला परिचर्या" in left and len(left) < 200
+
+
+def test_scorm_strip_boilerplate_keeps_real_lesson_text():
+    from app.services.course_knowledge.extract.scorm import strip_boilerplate
+
+    text = "Menstrual care in Ayurveda rests on rest, warm food and avoiding exertion during the first three days. " * 3
+    assert strip_boilerplate(text) == " ".join(text.split())
+
+
+def test_scorm_lessons_hash_and_cache_carry_the_scorm_extractor_version():
+    from app.services.course_knowledge.extract import describe
+    from app.services.course_knowledge.extract.types import SCORM_EXTRACTOR_VERSION, SlideRef
+
+    ref = SlideRef(slide_id="s1", source_type="SCORM", title="LM1", description=None, status="PUBLISHED",
+                   doc_type=None, pointer_kind=None, pointer_key=None)
+    describe._scorm(ref, ("sc1", "https://cdn.example/scorm/x/vacademy_player_v2.html", None, "file-1"))
+    assert ref.extras["extractor"] == f"scorm-v{SCORM_EXTRACTOR_VERSION}"
+    before = describe.content_hash(ref)
+    ref.extras["extractor"] = "scorm-v1"
+    assert describe.content_hash(ref) != before

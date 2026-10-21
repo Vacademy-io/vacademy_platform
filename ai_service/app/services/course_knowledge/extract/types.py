@@ -16,6 +16,9 @@ from typing import Any, Dict, List, Optional, Union
 # course_extract_cache key and of every lesson's content hash, so a bump
 # re-extracts every lesson on its next index.
 EXTRACTOR_VERSION = 1
+# SCORM-only extractor revision: part of SCORM lessons' content hash and cache key, so a
+# better SCORM reader re-indexes SCORM lessons without orphaning other types' paid caches.
+SCORM_EXTRACTOR_VERSION = 2
 
 ANCHORS = ("none", "page", "time", "step", "question", "element")
 POINTER_KINDS = ("file", "youtube", "ai_video", "deck", "scorm", "inline", "none")

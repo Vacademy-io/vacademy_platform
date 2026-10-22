@@ -552,6 +552,12 @@ export const useChatbot = () => {
    * Stays set across a reconnect until a replay has completed.
    */
   const hydratePendingRef = useRef(false);
+  /**
+   * Set from attaching a stream until its first status event. A new chat's
+   * greeting arrives before that status, so a queued prompt waits for it and
+   * lands below the greeting rather than above it.
+   */
+  const firstStatusPendingRef = useRef(false);
 
   /** Show an AI usage limit inline (one bubble; a repeat of the same text is not re-added). */
   const showUsageLimit = useCallback((body: AiUsageLimitBody) => {
@@ -609,6 +615,7 @@ export const useChatbot = () => {
         eventSourceRef.current.close();
         eventSourceRef.current = null;
       }
+      firstStatusPendingRef.current = true;
 
       const showCreditsExhausted = () => {
         setIsCreditsExhausted(true);
@@ -712,6 +719,7 @@ export const useChatbot = () => {
       const handleStatus = (raw: string) => {
         // The server sends its first status right after the transcript replay.
         hydratePendingRef.current = false;
+        firstStatusPendingRef.current = false;
         const statusData = JSON.parse(raw);
         setAiStatus(statusData.ai_status);
         if (statusData.session_status === "CLOSED") {
@@ -1539,10 +1547,11 @@ export const useChatbot = () => {
   useEffect(() => {
     if (!pendingPromptRef.current || !sessionId || isInitializing || voiceMode) return;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    // An opened chat replays its transcript first; send after it, so the new
-    // question lands below the history.
+    // An opened chat replays its transcript, and a new one sends its greeting,
+    // before the stream's first status; send after that, so the question lands
+    // below them.
     const trySend = (attempt: number) => {
-      if (hydratePendingRef.current && attempt < 20) {
+      if ((hydratePendingRef.current || firstStatusPendingRef.current) && attempt < 40) {
         timer = setTimeout(() => trySend(attempt + 1), 250);
         return;
       }

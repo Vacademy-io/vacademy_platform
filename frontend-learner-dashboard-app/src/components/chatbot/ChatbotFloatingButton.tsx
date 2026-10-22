@@ -13,6 +13,8 @@ import { cn } from "@/lib/utils";
 import { useChatbotAvatarUrl } from "@/services/chatbot-settings";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { LauncherPeek } from "./LauncherPeek";
+import { usePlayTheme } from "@/hooks/use-play-theme";
+import { useCleanerPlayTheme } from "@/hooks/use-cleaner-play-theme";
 
 // Fallbacks when the institute hasn't configured launcher_settings
 const DEFAULT_NUDGE_INTERVAL_S = 120; // reveal the pill once every 2 minutes
@@ -57,6 +59,10 @@ export const ChatbotFloatingButton = () => {
   // Move button higher on video/slide pages to avoid overlapping player controls
   const isOnVideoPage = location.pathname.includes("/slides") || location.pathname.includes("/content");
   const isNativePlatform = Capacitor.getPlatform() === "android" || Capacitor.getPlatform() === "ios";
+  // Play themes show a bottom tab bar below md (layout-container PlayBottomNav).
+  const isPlayTheme = usePlayTheme();
+  const isCleanerPlayTheme = useCleanerPlayTheme();
+  const hasBottomTabBar = isPlayTheme || isCleanerPlayTheme;
 
   const [isHovered, setIsHovered] = useState(false);
   const [activeMessageIndex, setActiveMessageIndex] = useState(0);
@@ -269,6 +275,7 @@ export const ChatbotFloatingButton = () => {
           // While a quiz is being taken, float higher so the button never covers
           // the quiz Next/Finish controls in the bottom-right corner
           (isQuizActive ? "bottom-40" : isOnVideoPage ? "bottom-20" : "bottom-6"),
+        !hasCustomPosition && !isQuizActive && hasBottomTabBar && "max-md:bottom-24",
         !hasCustomPosition && isNativePlatform && "mb-10"
       )}
     >

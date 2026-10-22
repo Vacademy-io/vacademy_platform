@@ -562,8 +562,13 @@ export function DashboardComponent() {
     }
   }, [batchId, refetchLiveSessions]);
 
+  // Its own effect with `t`: run once on mount, the title could be set before
+  // the translations loaded and stay as the raw key.
   useEffect(() => {
     setNavHeading(t("dashboardPage.pageTitle"));
+  }, [setNavHeading, t]);
+
+  useEffect(() => {
     const initializeDashboard = async () => {
       setIsLoading(true);
       try {

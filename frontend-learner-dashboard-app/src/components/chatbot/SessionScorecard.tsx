@@ -153,7 +153,7 @@ export const SessionScorecard: React.FC<SessionScorecardProps> = ({
         <div className="flex gap-3 pt-2">
           <Button
             variant="outline"
-            className="flex-1 border-white/10 text-white/70 hover:bg-white/10 hover:text-white"
+            className="flex-1 border-white/10 bg-transparent text-white/70 hover:bg-white/10 hover:text-white"
             onClick={onClose}
           >
             {t("sessionScorecard.close")}

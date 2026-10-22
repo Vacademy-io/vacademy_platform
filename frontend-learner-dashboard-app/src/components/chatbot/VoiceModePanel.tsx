@@ -513,8 +513,10 @@ export const VoiceModePanel: React.FC<VoiceModePanelProps> = ({
             state={voiceState === "connecting" ? "processing" : voiceState}
             audioLevel={currentAudioLevel}
           />
-          <p className="text-white/50 text-xs mt-2">{hint}</p>
-          {notice && <p className="text-amber-300/80 text-xs mt-1">{notice}</p>}
+          <p className="text-white/50 text-xs mt-2 px-6 text-center">{hint}</p>
+          {notice && (
+            <p className="text-amber-300/80 text-xs mt-1 max-w-sm px-6 text-center">{notice}</p>
+          )}
         </div>
 
         {/* Live captions. Not a live region: the tutor's lines are already spoken

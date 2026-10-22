@@ -243,7 +243,8 @@
         },
         "goToMyCourses": "{{courses}} पर जाएँ",
         "redirecting": "आपको अगले पेज पर ले जा रहे हैं…",
-        "redirectNow": "अभी जारी रखें"
+        "redirectNow": "अभी जारी रखें",
+        "loggingIn": "आपको लॉग इन किया जा रहा है…"
     },
     "planTiles": {
         "coursesIncluded": "{{count}} {{courses}} शामिल",

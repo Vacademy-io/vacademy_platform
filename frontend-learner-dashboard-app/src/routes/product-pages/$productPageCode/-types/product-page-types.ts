@@ -199,6 +199,12 @@ export interface ProductPageSettings {
     afterPaymentRedirectDelaySeconds?: number;
     showLoginButton?: boolean;
     successPageContent?: string;
+    /**
+     * Log a brand-new buyer straight into their dashboard once the payment
+     * goes through. Off by default; accounts that existed before the checkout
+     * still sign in themselves (the server decides who qualifies).
+     */
+    autoLoginAfterPayment?: boolean;
     courseFinder?: ProductPageCourseFinder;
 }
 
@@ -236,6 +242,13 @@ export interface ProductPageEnrollResponse {
     razorpay_key_id: string | null;
     access_token: string | null;
     refresh_token: string | null;
+    /** One-time code for autoLoginAfterPayment; swap it via exchangeProductPageLoginCode. */
+    login_code?: string | null;
+}
+
+export interface ProductPageLoginCodeExchangeResponse {
+    access_token: string;
+    refresh_token: string;
 }
 
 export interface CouponValidateResponse {

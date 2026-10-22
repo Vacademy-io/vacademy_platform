@@ -254,6 +254,12 @@ async def _course_shadow_probe(
     """Shadow mode: run the turn's ambient course retrieval and log how it went.
     Never injects anything and never raises (except cancellation)."""
     started = time.monotonic()
+    from .course_knowledge import shadow_events
+
+    async def keep(**fields: Any) -> None:
+        # Pod logs reset on every deploy; the row keeps the go-live numbers.
+        await asyncio.to_thread(shadow_events.record, institute_id=institute_id, session_id=session_id, **fields)
+
     try:
         from .course_knowledge import learner_tool, prompt_blocks, retrieval
 
@@ -264,11 +270,13 @@ async def _course_shadow_probe(
         # unrolled so an empty result still reports its latency and reason.
         scope = await learner_tool._scope(user_id, institute_id, context_meta)
         if scope.is_empty:
+            total_ms = int((time.monotonic() - started) * 1000)
             logger.info(
                 "course_kb.shadow session=%s inst=%s open=0 hits=0 signposts=0 refs=0 top=- "
                 "latency_ms=0 total_ms=%d error=no_lessons",
-                session_id, institute_id, int((time.monotonic() - started) * 1000),
+                session_id, institute_id, total_ms,
             )
+            await keep(total_ms=total_ms, error="no_lessons")
             return
         result = await retrieval.search_course(scope=scope, query=q, mode=retrieval.MODE_AMBIENT)
         block_chars = len(prompt_blocks.format_course_block(result)) if not result.is_empty else 0
@@ -276,15 +284,23 @@ async def _course_shadow_probe(
         raise
     except Exception as e:  # noqa: BLE001 - a probe must never surface
         logger.warning(f"course_kb.shadow probe failed for session {session_id}: {e}")
+        await keep(total_ms=int((time.monotonic() - started) * 1000), error="probe_failed")
         return
     top = result.top_similarity
+    total_ms = int((time.monotonic() - started) * 1000)
     logger.info(
         "course_kb.shadow session=%s inst=%s open=%d hits=%d signposts=%d refs=%d top=%s "
         "latency_ms=%d total_ms=%d truncated=%s block_chars=%d leak_blocked=%d error=%s",
         session_id, institute_id, len(scope.open_ids()), len(result.hits), len(result.signposts),
         len(result.kb_hits), f"{top:.3f}" if top is not None else "-", result.latency_ms,
-        int((time.monotonic() - started) * 1000), result.truncated, block_chars,
+        total_ms, result.truncated, block_chars,
         result.leak_blocked, result.error or "-",
+    )
+    await keep(
+        open_lessons=len(scope.open_ids()), hits=len(result.hits), signposts=len(result.signposts),
+        kb_refs=len(result.kb_hits), top_similarity=top, latency_ms=int(result.latency_ms or 0), total_ms=total_ms,
+        truncated=bool(result.truncated), block_chars=block_chars, leak_blocked=int(result.leak_blocked or 0),
+        error=result.error,
     )
 
 

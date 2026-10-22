@@ -214,7 +214,11 @@ const EnabledView = ({
 
             {status.links_enabled && <LinkedKnowledgeCard packageId={packageId} />}
 
-            <CoverageLessonTable packageId={packageId} lessons={coverage.lessons} />
+            <CoverageLessonTable
+                packageId={packageId}
+                lessons={coverage.lessons}
+                canUsePaid={status.can_manage && status.paid_available}
+            />
 
             <SearchPreviewCard packageId={packageId} />
 

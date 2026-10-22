@@ -419,7 +419,7 @@ def test_quote_sums_per_lesson_ceilings(api, world, Session, monkeypatch):
     assert lesson["reason"] == "Scanned PDF · 1 page need reading"
     assert set(lesson) == {
         "slide_id", "title", "chapter_id", "chapter_name", "source_type", "doc_type", "state", "reason",
-        "units", "credits", "credits_charged", "chunk_count", "anchor_kind", "updated_at",
+        "units", "credits", "credits_charged", "chunk_count", "anchor_kind", "updated_at", "kept_transcript",
     }
 
 

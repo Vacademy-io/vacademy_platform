@@ -62,6 +62,8 @@ const coverageMock = vi.fn();
 const processMock = vi.fn();
 const scanMock = vi.fn();
 const putMock = vi.fn();
+const keptMock = vi.fn();
+const useKeptMock = vi.fn();
 
 const httpError = (status: number, data: unknown) =>
     Object.assign(new Error(`HTTP ${status}`), {
@@ -74,12 +76,14 @@ vi.mock('@/lib/auth/axiosInstance', () => ({
         get: async (url: string) => {
             if (url.endsWith('/course-knowledge/v1/status')) return { data: await statusMock() };
             if (url.endsWith('/coverage')) return { data: await coverageMock() };
+            if (url.endsWith('/kept-transcript')) return { data: await keptMock(url) };
             if (url.includes('/credits/v1/')) return { data: { current_balance: '1200' } };
             throw new Error(`GET ${url}`);
         },
         post: async (url: string, body: unknown) => {
             if (url.endsWith('/process')) return { data: await processMock(body) };
             if (url.endsWith('/scan')) return { data: await scanMock() };
+            if (url.endsWith('/use-kept-transcript')) return { data: await useKeptMock(url, body) };
             throw new Error(`POST ${url}`);
         },
         put: async (url: string, body: unknown) => {
@@ -197,6 +201,8 @@ beforeEach(() => {
     processMock.mockReset();
     scanMock.mockReset();
     putMock.mockReset();
+    keptMock.mockReset();
+    useKeptMock.mockReset();
 });
 
 describe('AiKnowledgeTab', () => {
@@ -362,6 +368,64 @@ describe('AiKnowledgeTab', () => {
             screen.getByText('Paid processing is not available for your institute yet.')
         ).toBeInTheDocument();
         expect(screen.queryByRole('button', { name: /process for/i })).toBeNull();
+    });
+
+    it('lets an admin use a transcript the speech check rejected', async () => {
+        statusMock.mockResolvedValue(status());
+        coverageMock.mockResolvedValue(
+            coverage({
+                lessons: [
+                    lesson({
+                        slide_id: 's9',
+                        title: 'Morning chanting',
+                        source_type: 'VIDEO',
+                        doc_type: null,
+                        state: 'CANT_READ',
+                        reason: 'The recording has no clear speech',
+                        kept_transcript: { minutes: 74, credits: 37 },
+                    }),
+                ],
+            })
+        );
+        keptMock.mockResolvedValue({
+            slide_id: 's9',
+            minutes: 74,
+            credits: 37,
+            words: 5120,
+            preview: 'Om namah shivaya, today we chant',
+        });
+        useKeptMock.mockResolvedValue({ slide_id: 's9', queued: true, credits_charged: 37 });
+        renderTab();
+        fireEvent.click(await screen.findByRole('button', { name: /use transcript/i }));
+        expect(await screen.findByText('Om namah shivaya, today we chant')).toBeInTheDocument();
+        expect(screen.getByText('74 minutes')).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Use it · 37 credits' }));
+        await waitFor(() =>
+            expect(useKeptMock).toHaveBeenCalledWith(
+                expect.stringContaining('/packages/pkg-1/lessons/s9/use-kept-transcript'),
+                { expected_credits: 37 }
+            )
+        );
+    });
+
+    it('hides the kept transcript action from teachers', async () => {
+        statusMock.mockResolvedValue(status({ can_manage: false }));
+        coverageMock.mockResolvedValue(
+            coverage({
+                lessons: [
+                    lesson({
+                        slide_id: 's9',
+                        source_type: 'VIDEO',
+                        doc_type: null,
+                        state: 'CANT_READ',
+                        kept_transcript: { minutes: 74, credits: 37 },
+                    }),
+                ],
+            })
+        );
+        renderTab();
+        await screen.findByText('Lessons');
+        expect(screen.queryByRole('button', { name: /use transcript/i })).toBeNull();
     });
 
     it('starts the free scan when lessons are not scanned yet', async () => {

@@ -94,6 +94,29 @@ export interface CourseCoverageLesson {
     chunk_count: number;
     anchor_kind: string | null;
     updated_at: string | null;
+    /** "No clear speech" with the transcript kept: what using it anyway costs. */
+    kept_transcript?: CourseKeptTranscriptPrice | null;
+}
+
+export interface CourseKeptTranscriptPrice {
+    minutes: number;
+    credits: number;
+}
+
+/** GET /packages/{id}/lessons/{slide_id}/kept-transcript */
+export interface CourseKeptTranscript {
+    slide_id: string;
+    minutes: number;
+    credits: number;
+    words: number;
+    preview: string;
+}
+
+/** POST /packages/{id}/lessons/{slide_id}/use-kept-transcript (202). */
+export interface CourseUseKeptTranscriptResult {
+    slide_id: string;
+    queued: boolean;
+    credits_charged: number;
 }
 
 /** GET /packages/{id}/coverage */
@@ -216,6 +239,28 @@ export const retryCourseLesson = async (
     return res.data;
 };
 
+export const getKeptTranscript = async (
+    packageId: string,
+    slideId: string
+): Promise<CourseKeptTranscript> => {
+    const res = await authenticatedAxiosInstance.get<CourseKeptTranscript>(
+        `${packagePath(packageId)}/lessons/${encodeURIComponent(slideId)}/kept-transcript`
+    );
+    return res.data;
+};
+
+export const applyKeptTranscript = async (
+    packageId: string,
+    slideId: string,
+    expectedCredits: number
+): Promise<CourseUseKeptTranscriptResult> => {
+    const res = await authenticatedAxiosInstance.post<CourseUseKeptTranscriptResult>(
+        `${packagePath(packageId)}/lessons/${encodeURIComponent(slideId)}/use-kept-transcript`,
+        { expected_credits: expectedCredits }
+    );
+    return res.data;
+};
+
 export const previewCourseSearch = async (
     packageId: string,
     query: string
@@ -330,6 +375,25 @@ export const useRetryCourseLesson = (packageId: string) => {
     const invalidate = useInvalidateCoverage(packageId);
     return useMutation({
         mutationFn: (slideId: string) => retryCourseLesson(packageId, slideId),
+        onSuccess: async () => {
+            await invalidate();
+        },
+    });
+};
+
+export const useKeptTranscript = (packageId: string, slideId: string | null) =>
+    useQuery({
+        queryKey: [...courseCoverageQueryKey(packageId), 'kept-transcript', slideId],
+        queryFn: () => getKeptTranscript(packageId, slideId as string),
+        enabled: !!packageId && !!slideId,
+        retry: noRetryOn4xx,
+    });
+
+export const useUseKeptTranscript = (packageId: string) => {
+    const invalidate = useInvalidateCoverage(packageId);
+    return useMutation({
+        mutationFn: ({ slideId, expectedCredits }: { slideId: string; expectedCredits: number }) =>
+            applyKeptTranscript(packageId, slideId, expectedCredits),
         onSuccess: async () => {
             await invalidate();
         },

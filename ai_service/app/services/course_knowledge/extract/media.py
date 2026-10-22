@@ -65,6 +65,10 @@ NO_SPEECH_NOTE = "The recording has no clear speech (music or silence): add what
 NO_FALLBACK_NOTE = ("YouTube didn't give us the captions (it is blocking our server). Add what this lesson "
                     "teaches or upload the video; the captions are read again once access is restored.")
 OVER_APPROVED_NOTE = "Over the approved amount"
+# A transcript the speech check rejected is kept under its own pointer kind (never
+# read as the lesson's text) so an admin who knows the recording does have speech
+# can use it without paying for a second transcription (kept_transcript.py).
+HELD_POINTER_KIND = "held_file"
 
 
 # ── time windows ─────────────────────────────────────────────────────────────
@@ -287,6 +291,17 @@ class _NoSpeech(Exception):
     pass
 
 
+async def _hold(ref: SlideRef, segs: List[Segment], units: int, model: str, cost_usd: float,
+                probe: dict) -> Extraction:
+    """No clear speech: keep the transcript for an admin's "use it anyway", charge nothing."""
+    kept = await asyncio.to_thread(
+        cache.put, HELD_POINTER_KIND, ref.pointer_key, "PAID", segs,
+        {**probe, "units": int(units), "model": model, "cost_usd": float(cost_usd or 0.0)},
+    )
+    detail = {"kept_transcript": {"units": int(units)}} if kept else {}
+    return Extraction(ref.slide_id, "transcript", status="EMPTY", note=NO_SPEECH_NOTE, detail=detail)
+
+
 class _Requote(Exception):
     def __init__(self, need: PaidNeed, note: str) -> None:
         super().__init__(note)
@@ -328,13 +343,15 @@ async def _via_openrouter(ref: SlideRef, permit: PaidPermit, limit: int, need: P
         raise _Requote(_need(ref, real, False),
                        f"The recording is {real} min long, over the approved {limit} min") from exc
     body = (result.text or "").strip()
-    if not body or not source_text.looks_like_speech(body, result.duration_seconds):
+    if not body:
         raise _NoSpeech()
     segs = _transcript_segments(result.segments or [], body)
     units = _billable_minutes(ref.length_ms, result.duration_seconds, limit)
-    return await _finish(ref, permit, segs, body, units, f"openrouter:{model}", result.cost_usd,
-                         {"seconds": round(float(result.duration_seconds or 0.0), 1), "chunks": result.chunks,
-                          "language": result.language, "provider": "openrouter"})
+    probe = {"seconds": round(float(result.duration_seconds or 0.0), 1), "chunks": result.chunks,
+             "language": result.language, "provider": "openrouter"}
+    if not source_text.looks_like_speech(body, result.duration_seconds):
+        return await _hold(ref, segs, units, f"openrouter:{model}", result.cost_usd, probe)
+    return await _finish(ref, permit, segs, body, units, f"openrouter:{model}", result.cost_usd, probe)
 
 
 def _pending_job(file_id: str) -> Optional[str]:
@@ -406,11 +423,15 @@ async def _via_render(ref: SlideRef, permit: PaidPermit, limit: int, need: PaidN
             resp.raise_for_status()
             body = resp.text.strip()
     duration = status.get("duration_seconds")
-    if not body or not source_text.looks_like_speech(body, duration):
+    if not body:
         await asyncio.to_thread(source_text._close_job, file_id, "FAILED")
         return Extraction(ref.slide_id, "transcript", status="EMPTY", note=NO_SPEECH_NOTE)
     segs = _transcript_segments(pieces, body)
     units = _billable_minutes(ref.length_ms, duration, limit)
+    if not source_text.looks_like_speech(body, duration):
+        await asyncio.to_thread(source_text._close_job, file_id, "FAILED")
+        return await _hold(ref, segs, units, source_text.TRANSCRIPTION_MODEL, 0.0,
+                           {"seconds": duration, "provider": "render", "job_id": job_id})
     result = await _finish(ref, permit, segs, body, units, source_text.TRANSCRIPTION_MODEL, 0.0,
                            {"seconds": duration, "provider": "render", "job_id": job_id})
     await asyncio.to_thread(source_text._close_job, file_id, "SUCCESS")
@@ -419,5 +440,5 @@ async def _via_render(ref: SlideRef, permit: PaidPermit, limit: int, need: PaidN
 
 __all__ = [
     "extract_youtube", "extract_ai_video", "LEGACY_NO_CAPTIONS_NOTE", "extract_upload", "time_windows", "needed_minutes",
-    "NO_CAPTIONS_NOTE", "NO_SPEECH_NOTE", "NO_FALLBACK_NOTE",
+    "NO_CAPTIONS_NOTE", "NO_SPEECH_NOTE", "NO_FALLBACK_NOTE", "HELD_POINTER_KIND",
 ]

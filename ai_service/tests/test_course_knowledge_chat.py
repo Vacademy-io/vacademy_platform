@@ -551,6 +551,9 @@ def test_shadow_mode_probes_and_logs_but_never_injects(monkeypatch, patched, cap
 
     world = World(user_meta={"caller_verified": True})
     course = Course(monkeypatch, world, active=True, mode="shadow")
+    from app.services.course_knowledge import shadow_events
+    kept = []
+    monkeypatch.setattr(shadow_events, "record", lambda **kw: kept.append(kw) or True)
     llm = ScriptedLLM([{"content": "Answer [1]."}])
     with caplog.at_level(logging.INFO, logger=mod.logger.name):
         _run(patched(world, llm))
@@ -563,6 +566,9 @@ def test_shadow_mode_probes_and_logs_but_never_injects(monkeypatch, patched, cap
     assert len(shadow_logs) == 1
     assert "hits=2" in shadow_logs[0] and "top=0.710" in shadow_logs[0] and "latency_ms=12" in shadow_logs[0]
     assert "signposts=0" in shadow_logs[0]
+    # The same numbers are kept as a row (pod logs reset on every deploy).
+    assert len(kept) == 1 and kept[0]["hits"] == 2 and kept[0]["latency_ms"] == 12
+    assert kept[0]["institute_id"] == "inst-1" and kept[0]["session_id"] == "sess-1" and kept[0]["error"] is None
     assert not mod._SHADOW_TASKS
 
 
@@ -574,12 +580,16 @@ def test_shadow_probe_failure_is_swallowed(monkeypatch, patched, caplog):
         raise RuntimeError("vector index offline")
 
     monkeypatch.setattr(retrieval, "search_course", broken)
+    from app.services.course_knowledge import shadow_events
+    kept = []
+    monkeypatch.setattr(shadow_events, "record", lambda **kw: kept.append(kw) or True)
     llm = ScriptedLLM([{"content": "Answer."}])
     with caplog.at_level(logging.WARNING, logger=mod.logger.name):
         events = _run(patched(world, llm))
     assert world.of_type("assistant")[-1].content == "Answer."
     assert not [e for e in events if e["event"] == "error"]
     assert any("course_kb.shadow probe failed" in r.getMessage() for r in caplog.records)
+    assert [k["error"] for k in kept] == ["probe_failed"]
 
 
 # ── 8. the Sources card needs [n] markers ────────────────────────────────────

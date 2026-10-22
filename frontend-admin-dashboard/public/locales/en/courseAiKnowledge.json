@@ -232,5 +232,20 @@
             "conflict": "This knowledge base is already linked to the course.",
             "notEnabled": "Knowledge base links are not available yet."
         }
+    },
+    "kept": {
+        "action": "Use transcript",
+        "title": "Use the transcript anyway?",
+        "body": "We transcribed “{{title}}” but it looked like music or silence, so the AI isn't using it and nothing was charged. If the recording does have speech (chanting, a talk over music), read the start below and use it.",
+        "loading": "Loading the transcript…",
+        "failed": "Could not use the transcript. Try again.",
+        "minutes_one": "{{count}} minute",
+        "minutes_other": "{{count}} minutes",
+        "words_one": "{{count}} word",
+        "words_other": "{{count}} words",
+        "price": "You pay the usual transcription price once. The lesson is not transcribed again.",
+        "use": "Use it · {{credits}} credits",
+        "using": "Using…",
+        "queued": "The AI will read this lesson in a minute"
     }
 }

@@ -238,5 +238,20 @@
             "conflict": "Cette base de connaissances est déjà liée au cours.",
             "notEnabled": "Les liens de bases de connaissances ne sont pas encore disponibles."
         }
+    },
+    "kept": {
+        "action": "Utiliser la transcription",
+        "title": "Utiliser quand même la transcription ?",
+        "body": "Nous avons transcrit « {{title}} », mais cela ressemblait à de la musique ou du silence : l'IA ne l'utilise pas et rien n'a été facturé. Si l'enregistrement contient bien de la parole (chant, discours sur fond musical), lisez le début ci-dessous et utilisez-la.",
+        "loading": "Chargement de la transcription…",
+        "failed": "Impossible d'utiliser la transcription. Réessayez.",
+        "minutes_one": "{{count}} minute",
+        "minutes_other": "{{count}} minutes",
+        "words_one": "{{count}} mot",
+        "words_other": "{{count}} mots",
+        "price": "Vous payez une seule fois le prix habituel de la transcription. La leçon n'est pas retranscrite.",
+        "use": "L'utiliser · {{credits}} crédits",
+        "using": "En cours…",
+        "queued": "L'IA lira cette leçon d'ici une minute"
     }
 }

@@ -34,7 +34,8 @@ Then, platform-wide:
      budget's cap to what it charged and detaches the finished rows; runs
      that ended otherwise (CANCELLED) get their remaining rows detached too,
      and their budget closed once nothing is in flight;
-  e) purges DONE / SKIPPED rows older than 7 days and FAILED older than 30.
+  e) purges DONE / SKIPPED rows older than 7 days and FAILED older than 30,
+     and shadow-mode results older than 30 days (shadow_events.py).
 
 Only DB work happens while the session is open (billing.charge is DB-only:
 record_tool_billing plus a ledger read); there is no network call.
@@ -52,7 +53,7 @@ from sqlalchemy.orm import Session
 
 from ... import db as app_db
 from ...db import db_session
-from . import billing, budget, caption_requeue, flags, store
+from . import billing, budget, caption_requeue, flags, shadow_events, store
 from .extract.types import PaidDelivered
 from .queue import enqueue_slides
 from .tree import _VISIBLE_CHAIN
@@ -388,7 +389,7 @@ def run_once(captions_ok: bool = False) -> Dict[str, Any]:
     captions_ok: the caption canary passed just before this sweep (the worker
     runs it before calling here); without it step f) is skipped."""
     summary: Dict[str, Any] = {"locked": False, "institutes": 0, "drift": 0, "gone": 0, "charges": 0,
-                               "captions": 0, "runs_closed": 0, "purged": 0, "errors": 0}
+                               "captions": 0, "runs_closed": 0, "purged": 0, "shadow_purged": 0, "errors": 0}
     with _sweep_lock() as locked:
         if not locked:
             return summary
@@ -411,7 +412,8 @@ def run_once(captions_ok: bool = False) -> Dict[str, Any]:
             except Exception:  # noqa: BLE001 - one institute never stops the sweep
                 summary["errors"] += 1
                 logger.exception("course knowledge sweep: institute %s failed", institute_id)
-        for key, step in (("runs_closed", _close_runs), ("purged", _purge)):
+        for key, step in (("runs_closed", _close_runs), ("purged", _purge),
+                          ("shadow_purged", shadow_events.purge)):
             try:
                 with _step() as db:
                     summary[key] = step(db)

@@ -103,6 +103,7 @@ def charge(
     run_id: Optional[str],
     slide_id: str,
     pointer: Any = None,
+    manual: Optional[bool] = None,
 ) -> Optional[Decimal]:
     """Charge what an extraction delivered, once per idempotency key, and
     return the credits the ledger holds for that key. None when nothing was
@@ -117,7 +118,8 @@ def charge(
     recorded, credits = _read_back(key)
     if recorded:
         return credits
-    manual = bool(run_id)
+    # An admin's action is metered to them even without a run (a kept transcript used).
+    manual = bool(run_id) if manual is None else manual
     record_tool_billing(
         tool_key=delivered.tool_key,
         tool_params=delivered.tool_params,

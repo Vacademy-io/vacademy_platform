@@ -106,6 +106,10 @@ class LessonCoverage:
     tool_key: Optional[str] = None
     approx: bool = False
     pointer: Optional[Tuple[str, str]] = None
+    # "No clear speech" with the transcript kept: minutes to charge if the admin
+    # uses it anyway (kept_transcript.py), priced in compute_coverage.
+    kept_minutes: Optional[int] = None
+    kept_credits: Decimal = _ZERO
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -114,6 +118,8 @@ class LessonCoverage:
             "state": self.state, "reason": self.reason, "units": self.units,
             "credits": num(self.credits), "credits_charged": num(self.credits_charged),
             "chunk_count": self.chunk_count, "anchor_kind": self.anchor_kind, "updated_at": self.updated_at,
+            "kept_transcript": ({"minutes": self.kept_minutes, "credits": num(self.kept_credits)}
+                                if self.kept_minutes else None),
         }
 
 
@@ -342,6 +348,12 @@ def _from_source(lesson: LessonCoverage, src: store.SourceRow) -> None:
         lesson.state, lesson.reason = STATE_PROCESSING, note or TRANSCRIBING_REASON
     elif state in ("UNSUPPORTED", "EMPTY"):
         lesson.state, lesson.reason = STATE_CANT_READ, note or CANT_READ_REASON
+        kept = meta.get("kept_transcript") if state == "EMPTY" else None
+        if isinstance(kept, dict):
+            try:
+                lesson.kept_minutes = max(1, int(kept.get("units") or 1))
+            except (TypeError, ValueError):
+                lesson.kept_minutes = None
     elif state == "FAILED":
         lesson.state, lesson.reason = STATE_FAILED, note or FAILED_REASON
     else:
@@ -413,7 +425,13 @@ def compute_coverage(
             lesson.state, lesson.reason = STATE_FAILED, (q_error or FAILED_REASON)[:300]
 
     _media_needs(db, lessons)
-    quote = _quote(db, lessons, setting, estimator or Estimator(db, institute_id))
+    estimator = estimator or Estimator(db, institute_id)
+    for lesson in lessons:
+        if lesson.state == STATE_CANT_READ and lesson.kept_minutes:
+            lesson.kept_credits = estimator.credits(TOOL_TRANSCRIBE_MINUTE, lesson.kept_minutes)
+        else:
+            lesson.kept_minutes = None
+    quote = _quote(db, lessons, setting, estimator)
     return Coverage(package_id=package_id, lessons=lessons, quote=quote)
 
 

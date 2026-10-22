@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import type { ColumnDef } from '@tanstack/react-table';
 import { toast } from 'sonner';
-import { ArrowClockwise, ListChecks } from '@phosphor-icons/react';
+import { ArrowClockwise, ListChecks, Microphone } from '@phosphor-icons/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { MyButton } from '@/components/design-system/button';
 import { ChipToggleGroup } from '@/components/design-system/chips';
@@ -17,6 +17,7 @@ import {
     type CourseCoverageLesson,
     type CourseLessonState,
 } from '@/services/course-knowledge';
+import { KeptTranscriptDialog } from './KeptTranscriptDialog';
 
 const NAMESPACE = 'courseAiKnowledge';
 const PAGE_SIZE = 10;
@@ -97,15 +98,22 @@ const stateLabel = (t: TFunction, state: CourseLessonState) =>
 interface CoverageLessonTableProps {
     packageId: string;
     lessons: CourseCoverageLesson[];
+    /** Admin with paid processing available: may use a kept transcript. */
+    canUsePaid?: boolean;
 }
 
 /**
  * Every lesson of the course with what the AI can read in it. Coverage
  * already carries the whole course, so filtering and paging are local.
  */
-export const CoverageLessonTable = ({ packageId, lessons }: CoverageLessonTableProps) => {
+export const CoverageLessonTable = ({
+    packageId,
+    lessons,
+    canUsePaid = false,
+}: CoverageLessonTableProps) => {
     const { t } = useTranslation(NAMESPACE);
     const [filter, setFilter] = useState<StateFilter>('ALL');
+    const [keptLesson, setKeptLesson] = useState<CourseCoverageLesson | null>(null);
     const [page, setPage] = useState(0);
     const { mutateAsync: retryMutate } = useRetryCourseLesson(packageId);
 
@@ -230,21 +238,37 @@ export const CoverageLessonTable = ({ packageId, lessons }: CoverageLessonTableP
             {
                 id: 'action',
                 header: t('table.columns.action'),
-                cell: ({ row }) =>
-                    row.original.state === 'FAILED' ? (
-                        <MyButton
-                            buttonType="text"
-                            scale="small"
-                            onAsyncClick={() => retryLesson(row.original.slide_id)}
-                            loadingText={t('table.retry')}
-                        >
-                            <ArrowClockwise className="size-3.5" />
-                            {t('table.retry')}
-                        </MyButton>
-                    ) : null,
+                cell: ({ row }) => {
+                    if (row.original.state === 'FAILED') {
+                        return (
+                            <MyButton
+                                buttonType="text"
+                                scale="small"
+                                onAsyncClick={() => retryLesson(row.original.slide_id)}
+                                loadingText={t('table.retry')}
+                            >
+                                <ArrowClockwise className="size-3.5" />
+                                {t('table.retry')}
+                            </MyButton>
+                        );
+                    }
+                    if (row.original.state === 'CANT_READ' && row.original.kept_transcript && canUsePaid) {
+                        return (
+                            <MyButton
+                                buttonType="text"
+                                scale="small"
+                                onClick={() => setKeptLesson(row.original)}
+                            >
+                                <Microphone className="size-3.5" />
+                                {t('kept.action')}
+                            </MyButton>
+                        );
+                    }
+                    return null;
+                },
             },
         ],
-        [t, retryLesson]
+        [t, retryLesson, canUsePaid]
     );
 
     const pageRows = filtered.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE);
@@ -303,6 +327,14 @@ export const CoverageLessonTable = ({ packageId, lessons }: CoverageLessonTableP
                     </>
                 )}
             </CardContent>
+            <KeptTranscriptDialog
+                packageId={packageId}
+                slideId={keptLesson?.slide_id ?? null}
+                title={keptLesson?.title ?? null}
+                onOpenChange={(open) => {
+                    if (!open) setKeptLesson(null);
+                }}
+            />
         </Card>
     );
 };

@@ -43,7 +43,7 @@ from sqlalchemy.orm import Session
 from ..db import db_dependency, db_session
 from ..services.ai_billing import UC, metering_user, preflight_tool_credits
 from ..services.course_knowledge import (
-    access, billing, budget, coverage, flags, retrieval, runs, settings_store, tree,
+    access, billing, budget, coverage, flags, kept_transcript, retrieval, runs, settings_store, tree,
 )
 from ..services.course_knowledge.auth import CkStaff, ck_staff, require_manage
 from ..services.course_knowledge.settings_store import CourseKnowledgeSetting
@@ -313,6 +313,67 @@ def post_retry(
         raise _error(status.HTTP_404_NOT_FOUND, "lesson_not_found", "Lesson not found in this course")
     queued = runs.retry_lesson(db, staff.institute_id, slide_id)
     return {"slide_id": slide_id, "queued": queued > 0}
+
+
+def _kept_or_404(db: Session, staff: CkStaff, package_id: str, slide_id: str) -> kept_transcript.Kept:
+    if slide_id not in _visible_lessons(db, staff.institute_id, package_id):
+        raise _error(status.HTTP_404_NOT_FOUND, "lesson_not_found", "Lesson not found in this course")
+    kept = kept_transcript.find(db, staff.institute_id, slide_id)
+    if kept is None:
+        raise _error(status.HTTP_404_NOT_FOUND, "no_kept_transcript",
+                     "This lesson has no kept transcript. Read it again to transcribe it.")
+    return kept
+
+
+@router.get("/packages/{package_id}/lessons/{slide_id}/kept-transcript",
+            summary="The transcript the speech check rejected, with its price")
+def get_kept_transcript(
+    package_id: str,
+    slide_id: str,
+    staff: CkStaff = Depends(ck_staff),
+    db: Session = Depends(db_dependency),
+) -> Dict[str, Any]:
+    _require_available(staff)
+    _require_package(db, staff, package_id)
+    return _kept_or_404(db, staff, package_id, slide_id).to_dict()
+
+
+@router.post("/packages/{package_id}/lessons/{slide_id}/use-kept-transcript", status_code=status.HTTP_202_ACCEPTED,
+             summary="Use a rejected transcript anyway (charges its minutes once)")
+def post_use_kept_transcript(
+    package_id: str,
+    slide_id: str,
+    payload: ProcessRequest,
+    staff: CkStaff = Depends(ck_staff),
+    db: Session = Depends(db_dependency),
+) -> Dict[str, Any]:
+    require_manage(staff)
+    _require_available(staff)
+    _require_enabled(db, staff)
+    _require_package(db, staff, package_id)
+    kept = _kept_or_404(db, staff, package_id, slide_id)
+    if kept.credits > Decimal(str(payload.expected_credits)):
+        raise _error(status.HTTP_409_CONFLICT, "QUOTE_CHANGED",
+                     f"The amount changed to {coverage.num(kept.credits)} credits.", credits=coverage.num(kept.credits))
+    if not flags.paid_enabled():
+        raise _error(status.HTTP_403_FORBIDDEN, "paid_not_available",
+                     "Paid processing is not available for your institute yet.")
+    meter = metering_user(staff.user_id, surface="ADMIN_APP")
+    estimate = preflight_tool_credits(
+        db, tool_key=kept_transcript.TOOL_TRANSCRIBE_MINUTE,
+        tool_params=billing.tool_params(kept_transcript.TOOL_TRANSCRIBE_MINUTE, kept.units),
+        institute_id=staff.institute_id, metering=meter, use_case=UC.COURSE_KNOWLEDGE,
+    )
+    wallet = coverage.balance(db, staff.institute_id, kept.credits)
+    if wallet["sufficient"] is False and not estimate.get("plan_covered"):
+        raise _insufficient(kept.credits, Decimal(str(wallet["current_balance"])))
+    # Release the request's connection before the short sessions use() opens.
+    db.commit()
+    try:
+        credits = kept_transcript.use(staff.institute_id, kept, staff.user_id)
+    except kept_transcript.KeptError as exc:
+        raise _error(status.HTTP_503_SERVICE_UNAVAILABLE, "kept_transcript_failed", str(exc)) from exc
+    return {"slide_id": slide_id, "queued": True, "credits_charged": coverage.num(credits)}
 
 
 def _preview_scope(institute_id: str, package_id: str) -> Optional[access.ResolvedScope]:

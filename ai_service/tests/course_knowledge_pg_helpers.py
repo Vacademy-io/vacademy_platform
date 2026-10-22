@@ -3,7 +3,7 @@
 pg_session_factory() creates a scratch database, enables pgvector, creates
 minimal stubs of the tables the KB migrations touch but do not create (and of
 the admin_core course tables the course-knowledge SQL reads), then applies the
-real Flyway files V435, V443, V445, V517 and V600, each in one transaction like
+real Flyway files V435, V443, V445, V517, V600 and V602, each in one transaction like
 Flyway. Driver: SQLAlchemy + psycopg 3 (the prod driver, where INSERT .. ON
 CONFLICT reports rowcount -1: decide from RETURNING).
 
@@ -41,7 +41,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
 MIGRATIONS = Path(__file__).resolve().parents[2] / "admin_core_service/src/main/resources/db/migration"
-KB_MIGRATIONS = ("V435", "V443", "V445", "V517", "V600")
+KB_MIGRATIONS = ("V435", "V443", "V445", "V517", "V600", "V602")
 
 # Pre-existing tables the KB migrations INSERT into / ALTER / read (V435 fold-in of
 # knowledge_base_items + content_embeddings, the ai_token_usage CHECK swap, the

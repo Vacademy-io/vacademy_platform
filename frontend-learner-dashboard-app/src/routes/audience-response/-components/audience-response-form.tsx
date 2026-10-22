@@ -68,7 +68,13 @@ import {
   FORM_TEXT_ALIGN_CLASS,
   FORM_WIDTH_CLASS,
 } from "../-utils/form-appearance-styles";
+import {
+  BACKDROP_TEMPLATES,
+  FORM_TEMPLATE_LOOK,
+  isShellTemplate,
+} from "../-utils/form-template-styles";
 import { AudienceFormHero } from "./audience-form-hero";
+import { AudienceFormTemplateShell } from "./audience-form-template-shell";
 import { usePostSubmitRedirect } from "../-utils/use-post-submit-redirect";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
@@ -451,9 +457,21 @@ const AudienceResponseForm = ({
     [appearance]
   );
 
-  const cardVariant = FORM_CARD_VARIANT[appearance.cardStyle];
-  const cardClass = FORM_CARD_CLASS[appearance.cardStyle];
-  const columnClass = FORM_WIDTH_CLASS[appearance.width];
+  // Whole-page template. Anything but `standard` owns the layout, background,
+  // card and width; `standard` leaves all four to the individual knobs, which
+  // is the page exactly as it rendered before templates existed.
+  const shellTemplate = isShellTemplate(appearance.template)
+    ? appearance.template
+    : null;
+  const look = shellTemplate ? FORM_TEMPLATE_LOOK[shellTemplate] : null;
+  const cardVariant = look?.cardVariant ?? FORM_CARD_VARIANT[appearance.cardStyle];
+  const cardClass = look?.card ?? FORM_CARD_CLASS[appearance.cardStyle];
+  const columnClass = look?.column ?? FORM_WIDTH_CLASS[appearance.width];
+  const pageClass = look?.page ?? FORM_BACKGROUND_CLASS[appearance.background];
+  // These templates paint the cover image behind the heading, so the heading
+  // block must not draw it a second time above itself.
+  const coverOnBackdrop =
+    shellTemplate !== null && BACKDROP_TEMPLATES.includes(shellTemplate);
 
   /**
    * Sticky branding bar — identical on the form and the thank-you screen.
@@ -466,7 +484,8 @@ const AudienceResponseForm = ({
         AUDIENCE_FORM_HOOKS.header,
         // Solid, not translucent-blurred: a hairline-bordered white bar is the
         // standard header for a page whose whole job is one form.
-        "sticky top-0 z-30 border-b border-border bg-card"
+        "sticky top-0 z-30 border-b border-border bg-card",
+        look?.header
       )}
     >
       <div className={cn("mx-auto w-full px-page py-3", columnClass)}>
@@ -540,7 +559,7 @@ const AudienceResponseForm = ({
           AUDIENCE_FORM_HOOKS.page,
           AUDIENCE_FORM_HOOKS.success,
           "min-h-screen w-full",
-          FORM_BACKGROUND_CLASS[appearance.background]
+          pageClass
         )}
       >
         {customCss && <style>{customCss}</style>}
@@ -671,7 +690,10 @@ const AudienceResponseForm = ({
     />
   ) : (
     <AudienceFormHero
-      appearance={appearance}
+      appearance={
+        coverOnBackdrop ? { ...appearance, coverImageUrl: "" } : appearance
+      }
+      tone={look?.heroTone}
       campaignName={campaignData.campaign_name}
       campaignDescription={campaignData.description}
       campaignObjective={campaignData.campaign_objective}
@@ -948,7 +970,8 @@ const AudienceResponseForm = ({
                   AUDIENCE_FORM_HOOKS.submit,
                   "w-full sm:w-auto",
                   appearance.accent !== "primary" &&
-                    FORM_ACCENT_BUTTON_CLASS[appearance.accent]
+                    FORM_ACCENT_BUTTON_CLASS[appearance.accent],
+                  look?.submit
                 )}
               >
                 <span className="inline-flex items-center gap-2">
@@ -974,63 +997,73 @@ const AudienceResponseForm = ({
   const footerNoteHtml = appearance.footerNote.trim()
     ? sanitizePostSubmitHtml(appearance.footerNote)
     : "";
+  const footer = footerNoteHtml && (
+    <div
+      className={cn(
+        AUDIENCE_FORM_HOOKS.footer,
+        "mx-auto mt-8 max-w-2xl text-center text-caption text-muted-foreground",
+        FORM_RICH_TEXT_CLASS,
+        look?.footer
+      )}
+      dangerouslySetInnerHTML={{ __html: footerNoteHtml }}
+    />
+  );
 
   return (
     <div
       ref={embedHeightRef}
-      className={cn(
-        AUDIENCE_FORM_HOOKS.page,
-        "min-h-screen w-full",
-        FORM_BACKGROUND_CLASS[appearance.background]
-      )}
+      className={cn(AUDIENCE_FORM_HOOKS.page, "min-h-screen w-full", pageClass)}
     >
       {/* Admin-authored CSS. Rendered by React so it is torn down with the
           route — a global stylesheet would follow the visitor around the SPA. */}
       {customCss && <style>{customCss}</style>}
       {header}
 
-      <main className="px-page py-8 sm:py-12">
-        <div className={cn("mx-auto w-full", columnClass)}>
-          {appearance.layout === "split" && showHero ? (
-            // Two columns from `lg` up: the pitch stays in view while a long
-            // form scrolls beside it.
-            <div className="grid gap-section lg:grid-cols-12">
-              <div className="lg:col-span-5">
-                <div className="lg:sticky lg:top-24">{hero}</div>
+      {shellTemplate ? (
+        <AudienceFormTemplateShell
+          template={shellTemplate}
+          columnClass={columnClass}
+          coverImageUrl={appearance.coverImageUrl}
+          logoFileId={instituteData?.institute_logo_file_id ?? null}
+          hero={showHero ? hero : null}
+          formCard={formCard}
+          footer={footer}
+        />
+      ) : (
+        <main className="px-page py-8 sm:py-12">
+          <div className={cn("mx-auto w-full", columnClass)}>
+            {appearance.layout === "split" && showHero ? (
+              // Two columns from `lg` up: the pitch stays in view while a long
+              // form scrolls beside it.
+              <div className="grid gap-section lg:grid-cols-12">
+                <div className="lg:col-span-5">
+                  <div className="lg:sticky lg:top-24">{hero}</div>
+                </div>
+                <div className="lg:col-span-7">{formCard}</div>
               </div>
-              <div className="lg:col-span-7">{formCard}</div>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-section">
-              {!showHero ? null : appearance.layout === "classic" ? (
-                // The pre-2026-08 shape: the pitch in its own card.
-                <ModernCard
-                  variant={cardVariant}
-                  padding="lg"
-                  rounded="lg"
-                  className={cardClass}
-                >
-                  {hero}
-                </ModernCard>
-              ) : (
-                hero
-              )}
-              {formCard}
-            </div>
-          )}
+            ) : (
+              <div className="flex flex-col gap-section">
+                {!showHero ? null : appearance.layout === "classic" ? (
+                  // The pre-2026-08 shape: the pitch in its own card.
+                  <ModernCard
+                    variant={cardVariant}
+                    padding="lg"
+                    rounded="lg"
+                    className={cardClass}
+                  >
+                    {hero}
+                  </ModernCard>
+                ) : (
+                  hero
+                )}
+                {formCard}
+              </div>
+            )}
 
-          {footerNoteHtml && (
-            <div
-              className={cn(
-                AUDIENCE_FORM_HOOKS.footer,
-                "mx-auto mt-8 max-w-2xl text-center text-caption text-muted-foreground",
-                FORM_RICH_TEXT_CLASS
-              )}
-              dangerouslySetInnerHTML={{ __html: footerNoteHtml }}
-            />
-          )}
-        </div>
-      </main>
+            {footer}
+          </div>
+        </main>
+      )}
     </div>
   );
 };

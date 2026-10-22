@@ -52,6 +52,12 @@ interface AudienceFormHeroProps {
   campaignDescription?: string | null;
   campaignObjective?: string | null;
   objectiveLabel: string;
+  /**
+   * `inverse` sets the copy in white for templates that put the heading on a
+   * brand-coloured or dark surface. Chips and the objective box turn into
+   * translucent white panes so they read on any brand colour.
+   */
+  tone?: "default" | "inverse";
   className?: string;
 }
 
@@ -61,8 +67,10 @@ export const AudienceFormHero = ({
   campaignDescription,
   campaignObjective,
   objectiveLabel,
+  tone = "default",
   className,
 }: AudienceFormHeroProps) => {
+  const inverse = tone === "inverse";
   // Rich text from the admin's editor wins; otherwise the plain override, else
   // the campaign's own name — which is all this page showed before.
   // `showHeadline: false` drops the heading outright — override and name alike.
@@ -104,7 +112,7 @@ export const AudienceFormHero = ({
           className={cn(
             "inline-flex w-fit items-center gap-1.5 rounded-full px-3 py-1 text-caption font-semibold uppercase tracking-wide-08",
             FORM_SELF_ALIGN_CLASS[align],
-            FORM_ACCENT_SOFT_CLASS[appearance.accent]
+            inverse ? "bg-white/15 text-white" : FORM_ACCENT_SOFT_CLASS[appearance.accent]
           )}
         >
           <Sparkle className="size-3.5" weight="fill" aria-hidden="true" />
@@ -121,13 +129,19 @@ export const AudienceFormHero = ({
           aria-level={1}
           className={cn(
             "text-h2 font-semibold text-foreground sm:text-h1",
-            FORM_RICH_TEXT_CLASS
+            FORM_RICH_TEXT_CLASS,
+            inverse && "text-white [&_a]:text-white"
           )}
           dangerouslySetInnerHTML={{ __html: headlineHtml }}
         />
       ) : (
         headline && (
-          <h1 className="text-h2 font-semibold text-foreground sm:text-h1">
+          <h1
+            className={cn(
+              "text-h2 font-semibold text-foreground sm:text-h1",
+              inverse && "text-white"
+            )}
+          >
             {headline}
           </h1>
         )
@@ -137,7 +151,8 @@ export const AudienceFormHero = ({
         <div
           className={cn(
             "text-body leading-relaxed text-muted-foreground sm:text-subtitle",
-            FORM_RICH_TEXT_CLASS
+            FORM_RICH_TEXT_CLASS,
+            inverse && "text-white/85 [&_a]:text-white"
           )}
           dangerouslySetInnerHTML={{ __html: bodyHtml }}
         />
@@ -147,20 +162,35 @@ export const AudienceFormHero = ({
         // text-start: a boxed icon + label row reads wrong centred, whatever
         // alignment the heading above it uses. Logical, not text-left, so an
         // RTL page keeps its natural edge.
-        <div className="flex items-start gap-3 rounded-lg border border-border bg-card p-card text-start">
+        <div
+          className={cn(
+            "flex items-start gap-3 rounded-lg border border-border bg-card p-card text-start",
+            inverse && "border-white/20 bg-white/10"
+          )}
+        >
           {/* Muted, not accent-coloured: the brand colour on this page belongs
               to the submit button. A second coloured element next to it reads
               as a second call to action. */}
           <Target
-            className="mt-0.5 size-5 shrink-0 text-muted-foreground"
+            className={cn(
+              "mt-0.5 size-5 shrink-0 text-muted-foreground",
+              inverse && "text-white/80"
+            )}
             weight="regular"
             aria-hidden="true"
           />
           <div className="flex flex-col gap-1">
-            <p className="text-caption font-semibold uppercase tracking-wide-08 text-muted-foreground">
+            <p
+              className={cn(
+                "text-caption font-semibold uppercase tracking-wide-08 text-muted-foreground",
+                inverse && "text-white/80"
+              )}
+            >
               {objectiveHeading}
             </p>
-            <p className="text-body text-foreground">{objective}</p>
+            <p className={cn("text-body text-foreground", inverse && "text-white")}>
+              {objective}
+            </p>
           </div>
         </div>
       )}
@@ -172,10 +202,16 @@ export const AudienceFormHero = ({
             return (
               <li
                 key={highlight.id}
-                className="flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-caption text-foreground"
+                className={cn(
+                  "flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-caption text-foreground",
+                  inverse && "border-white/25 bg-white/10 text-white"
+                )}
               >
                 <HighlightIcon
-                  className={cn("size-4", FORM_ACCENT_TEXT_CLASS[appearance.accent])}
+                  className={cn(
+                    "size-4",
+                    inverse ? "text-white" : FORM_ACCENT_TEXT_CLASS[appearance.accent]
+                  )}
                   weight="duotone"
                   aria-hidden="true"
                 />

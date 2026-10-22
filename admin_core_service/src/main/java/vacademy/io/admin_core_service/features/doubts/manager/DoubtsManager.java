@@ -11,6 +11,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
+import vacademy.io.admin_core_service.core.security.InstituteAccessValidator;
 import vacademy.io.admin_core_service.features.doubts.dtos.AllDoubtsResponse;
 import vacademy.io.admin_core_service.features.doubts.dtos.DoubtActivityDto;
 import vacademy.io.admin_core_service.features.doubts.dtos.DoubtsDto;
@@ -39,6 +40,7 @@ import vacademy.io.admin_core_service.features.slide.service.SlideMetaDataServic
 import vacademy.io.admin_core_service.features.suborg.service.SubOrgStaffLookupService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.core.standard_classes.ListService;
+import vacademy.io.common.exceptions.ForbiddenException;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.ArrayList;
@@ -49,6 +51,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.UnaryOperator;
 
 @Slf4j
 @Component
@@ -81,6 +84,9 @@ public class DoubtsManager {
     @Autowired
     SubOrgStaffLookupService subOrgStaffLookupService;
 
+    @Autowired
+    InstituteAccessValidator instituteAccessValidator;
+
     /**
      * Lenient on purpose: this mapper reads a settings blob the admin frontend owns and extends.
      * Jackson's default is to THROW on an unknown property, and the caller swallows that into
@@ -108,7 +114,44 @@ public class DoubtsManager {
             return ResponseEntity.ok(updateDoubt(doubtId, request, actorUserId, isStaffViewer(userDetails)));
         }
 
-        return ResponseEntity.ok(createNewDoubt(request, actorUserId));
+        // The body's user_id is client-controlled: resolve who the doubt is raised as once the
+        // doubt's institute is known (see resolveAuthorUserId).
+        return ResponseEntity.ok(createNewDoubt(request, actorUserId,
+                instituteId -> resolveAuthorUserId(userDetails, request.getUserId(), instituteId)));
+    }
+
+    /**
+     * Who an authenticated {@code doubts/create} call raises the doubt as. The body's
+     * {@code user_id} is kept only when the caller is STAFF of the institute the doubt belongs to
+     * (a teacher/admin raising it on a learner's behalf); everyone else — learners, staff of
+     * another institute, or a doubt whose institute can't be resolved — raises it as themselves.
+     * A mismatch is not rejected (the learner app may echo a stale id), just overridden and logged.
+     *
+     * <p>Staff is {@link InstituteAccessValidator#requireInstituteStaff}: no root-user bypass
+     * (learners are created as root users), membership via the clientId-header authorities, and a
+     * learner role only counts as staff alongside ADMIN or COUNSELLOR.
+     */
+    String resolveAuthorUserId(CustomUserDetails caller, String requestedUserId, String instituteId) {
+        String callerUserId = caller == null ? null : caller.getUserId();
+        if (!StringUtils.hasText(requestedUserId) || requestedUserId.equals(callerUserId)) {
+            return callerUserId;
+        }
+        if (StringUtils.hasText(instituteId) && isInstituteStaff(caller, instituteId)) {
+            return requestedUserId;
+        }
+        log.warn("doubts/create: caller {} sent user_id {} without staff access to institute {} — "
+                + "raising the doubt as the caller", callerUserId, requestedUserId, instituteId);
+        return callerUserId;
+    }
+
+    private boolean isInstituteStaff(CustomUserDetails caller, String instituteId) {
+        if (caller == null) return false;
+        try {
+            instituteAccessValidator.requireInstituteStaff(caller, instituteId);
+            return true;
+        } catch (VacademyException | ForbiddenException e) {
+            return false;
+        }
     }
 
     /**
@@ -314,11 +357,18 @@ public class DoubtsManager {
         return createNewDoubt(request, null);
     }
 
-    /**
-     * @param actorUserId the authenticated caller (learner, staff) — recorded on the CREATED row and
-     *                    as the actor of any assignees they picked by hand. {@code null} for guests.
-     */
+    /** Guest + internal (HMAC) paths: the request's user id was set server-side, so it is kept. */
     private String createNewDoubt(DoubtsDto request, String actorUserId) {
+        return createNewDoubt(request, actorUserId, instituteId -> request.getUserId());
+    }
+
+    /**
+     * @param actorUserId        the authenticated caller (learner, staff) — recorded on the CREATED row and
+     *                           as the actor of any assignees they picked by hand. {@code null} for guests.
+     * @param authorForInstitute maps the doubt's resolved institute (may be null) to the user id the
+     *                           doubt is raised as.
+     */
+    private String createNewDoubt(DoubtsDto request, String actorUserId, UnaryOperator<String> authorForInstitute) {
         boolean isReply = StringUtils.hasText(request.getParentId());
 
         // Resolve type / institute / batch up-front — needed for per-type routing, the admin
@@ -361,7 +411,7 @@ public class DoubtsManager {
 
         Doubts doubts = Doubts.builder()
                 .status(DoubtStatusEnum.ACTIVE.name())
-                .userId(request.getUserId())
+                .userId(authorForInstitute.apply(instituteId))
                 .source(request.getSource())
                 .sourceId(request.getSourceId())
                 .type(type)

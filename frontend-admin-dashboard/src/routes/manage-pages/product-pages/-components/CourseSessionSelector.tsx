@@ -558,13 +558,14 @@ export const CourseSessionSelector = ({
             paymentPlanPrice: 0,
             currency: '',
             preselected: false,
-            displayOrder: mappingRows.length,
+            displayOrder: 0,
         });
     };
 
     const handleSelectAll = () => {
         const unselected = allSessions.filter((s) => !selectedSessionIds.has(s.package_session_id));
-        unselected.forEach((session, i) => {
+        // onAdd puts each row first, so add in reverse to keep the list's order at the top.
+        [...unselected].reverse().forEach((session, i) => {
             onAdd({
                 rowId: `new-${Date.now()}-${i}-${session.package_session_id}`,
                 packageSessionId: session.package_session_id,
@@ -576,7 +577,7 @@ export const CourseSessionSelector = ({
                 paymentPlanPrice: 0,
                 currency: '',
                 preselected: false,
-                displayOrder: mappingRows.length + i,
+                displayOrder: 0,
             });
         });
     };

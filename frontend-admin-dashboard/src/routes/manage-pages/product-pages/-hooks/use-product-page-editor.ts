@@ -128,9 +128,12 @@ export const useProductPageEditor = (productPageId: string) => {
         markDirty();
     }, [markDirty]);
 
+    /** A newly added course goes FIRST (position 1); the rest shift down one. */
     const addRowWithData = useCallback(
         (row: MappingRow) => {
-            setMappingRows((prev) => [...prev, { ...row, displayOrder: prev.length }]);
+            setMappingRows((prev) =>
+                [row, ...prev].map((r, i) => (r.displayOrder === i ? r : { ...r, displayOrder: i }))
+            );
             markDirty();
         },
         [markDirty]

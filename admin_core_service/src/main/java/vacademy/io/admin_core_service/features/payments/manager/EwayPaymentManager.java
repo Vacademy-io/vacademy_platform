@@ -190,7 +190,7 @@ public class EwayPaymentManager implements PaymentServiceStrategy {
      *
      * <p>Different endpoint, same account: the Direct calls above post a card we collected to
      * {@code /Transaction}, whereas this posts only the ORDER to
-     * {@code /CreateAccessCodeShared} and lets eWay collect the card on its own page. Nothing
+     * {@code /AccessCodesShared} and lets eWay collect the card on its own page. Nothing
      * is charged here -- eWay charges when the learner submits, and the outcome is read back
      * with {@link #getSharedAccessCodeResult(String, Map)} after the redirect.
      *
@@ -238,7 +238,9 @@ public class EwayPaymentManager implements PaymentServiceStrategy {
                 .encodeToString((apiKey + ":" + password).getBytes());
 
         EwaySharedPageResponseDTO response = webClient.post()
-                .uri(baseUrl + "/CreateAccessCodeShared")
+                // REST path. "CreateAccessCodeShared" is the legacy RPC name and only resolves with a
+                // ".json" suffix -- without it eWay answers 404 and pay-to-continue fails.
+                .uri(baseUrl + "/AccessCodesShared")
                 .header("Authorization", authHeader)
                 .header("Content-Type", "application/json")
                 .bodyValue(transaction)

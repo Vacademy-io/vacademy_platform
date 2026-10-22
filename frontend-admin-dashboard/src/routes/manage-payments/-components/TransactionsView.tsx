@@ -323,6 +323,8 @@ export function TransactionsView() {
     // INR — a UK institute with only free plans read ₹0. With every figure at zero no money backs
     // that pick, so the institute's own currency is shown, as on the home Dashboard. Once any
     // money exists the server's currency stands: an Indian institute charging in USD must read $.
+    // The server picks it from live plans only, so a window with payments but no live plan (a past
+    // year whose learners owe nothing) gets none back — the institute's currency fills that gap.
     const instituteCurrency = resolveInstituteCurrency(instituteDetails);
     const billingHasMoney =
         !!billingSummary &&
@@ -359,6 +361,7 @@ export function TransactionsView() {
                       currency:
                           (!billingHasMoney && billingSummary.currency && instituteCurrency) ||
                           billingSummary.currency ||
+                          instituteCurrency ||
                           '',
                   }
                 : null,

@@ -26,7 +26,7 @@ import { ShareQrDialog } from '../share-qr-dialog/ShareQrDialog';
 import { EmbedCodeDialog } from '../embed-code-dialog/EmbedCodeDialog';
 import { ApiIntegrationDialog } from '../api-integration-dialog/ApiIntegrationDialog';
 
-/** Wizard steps the edit buttons here open on (see CreateCampaignForm). */
+/** Form sections the edit buttons here scroll to (see CreateCampaignForm). */
 const STEP_FIELDS = 1;
 const STEP_AFTER_SUBMIT = 2;
 

@@ -60,7 +60,8 @@
         "instituteContextUnavailable": "سياق المؤسسة غير متاح. يُرجى تحديث الصفحة والمحاولة مرة أخرى.",
         "uploadImageFailed": "فشل تحميل صورة الحملة",
         "customFieldsMustBeArray": "يجب أن تكون بيانات JSON للحقول المخصصة عبارة عن مصفوفة.",
-        "customFieldsInvalidJson": "يجب أن تكون الحقول المخصصة بصيغة JSON صالحة."
+        "customFieldsInvalidJson": "يجب أن تكون الحقول المخصصة بصيغة JSON صالحة.",
+        "startDateInPast": "لا يمكن أن يكون تاريخ البدء قبل اليوم."
     },
     "actions": {
         "reset": "إعادة تعيين",

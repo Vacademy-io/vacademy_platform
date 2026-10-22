@@ -60,7 +60,8 @@
         "instituteContextUnavailable": "इंस्टिट्यूट संदर्भ उपलब्ध नहीं है। कृपया पेज रीफ्रेश करके फिर से प्रयास करें।",
         "uploadImageFailed": "कैंपेन इमेज अपलोड करने में विफल",
         "customFieldsMustBeArray": "कस्टम फ़ील्ड्स की JSON एक ऐरे होनी चाहिए।",
-        "customFieldsInvalidJson": "कस्टम फ़ील्ड्स मान्य JSON में होने चाहिए।"
+        "customFieldsInvalidJson": "कस्टम फ़ील्ड्स मान्य JSON में होने चाहिए।",
+        "startDateInPast": "प्रारंभ तिथि आज से पहले की नहीं हो सकती।"
     },
     "actions": {
         "reset": "रीसेट करें",

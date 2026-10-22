@@ -278,6 +278,8 @@ export interface ProductPageSettings {
     afterPaymentRedirectDelaySeconds?: number;
     showLoginButton?: boolean;
     successPageContent?: string;
+    /** Log a buyer whose account the checkout created straight into their dashboard. */
+    autoLoginAfterPayment?: boolean;
 }
 
 export const DEFAULT_PRODUCT_PAGE_SETTINGS: ProductPageSettings = {
@@ -292,6 +294,7 @@ export const DEFAULT_PRODUCT_PAGE_SETTINGS: ProductPageSettings = {
     afterPaymentRedirectDelaySeconds: 3,
     showLoginButton: true,
     successPageContent: '',
+    autoLoginAfterPayment: false,
 };
 
 export interface ProductPageCouponRequest {

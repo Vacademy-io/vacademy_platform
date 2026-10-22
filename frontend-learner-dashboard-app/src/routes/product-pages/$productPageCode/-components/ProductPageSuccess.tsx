@@ -29,6 +29,9 @@ const PAYMENT_SUCCESS_TARGET_ORIGINS = [
   "http://localhost:3000",
 ];
 
+/** A course with one class and one session names both "default"; that says nothing to a buyer. */
+const isDefaultName = (name?: string | null) => name?.trim().toLowerCase() === "default";
+
 export const ProductPageSuccess = ({ pageData }: ProductPageSuccessProps) => {
   const { t } = useTranslation("productPages");
   const course = getTerminology(ContentTerms.Course, SystemTerms.Course);
@@ -177,7 +180,11 @@ export const ProductPageSuccess = ({ pageData }: ProductPageSuccessProps) => {
           // Class and session sit on the meta line because a parent buying for
           // two children needs to see WHICH child each row is for; the plan's
           // validity joins them rather than owning a line of its own.
-          const meta = [m.level_name, m.session_name, accessLabel(m.payment_plan?.validity_in_days)]
+          const meta = [
+            isDefaultName(m.level_name) ? "" : m.level_name,
+            isDefaultName(m.session_name) ? "" : m.session_name,
+            accessLabel(m.payment_plan?.validity_in_days),
+          ]
             .filter(Boolean)
             .join(" · ");
           return (

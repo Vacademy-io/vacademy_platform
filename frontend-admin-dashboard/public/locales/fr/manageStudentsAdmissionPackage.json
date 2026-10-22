@@ -1,0 +1,56 @@
+{
+    "package": "Forfait",
+    "toggle": {
+        "label": "Inscrire en forfait",
+        "hint": "Facturer ces cours ensemble : une remise sur le total, un échéancier, un paiement à l’inscription et un reçu d’inscription."
+    },
+    "total": "Total du forfait",
+    "discount": {
+        "heading": "Remise du forfait",
+        "type": "Type",
+        "none": "Aucune remise",
+        "flat": "Montant fixe (₹)",
+        "percentage": "% du total",
+        "value": "Valeur",
+        "reason": "Motif",
+        "reasonPlaceholder": "ex. Offre d’inscription",
+        "splitLabel": "Répartir la remise sur les échéances",
+        "split": {
+            "EVEN": "À parts égales",
+            "FIRST": "Première échéance",
+            "LAST": "Dernière échéance",
+            "CUSTOM": "Personnalisée"
+        },
+        "byFee": "Chaque cours reçoit une part de la remise proportionnelle à ses frais."
+    },
+    "summary": "{{total}} − {{off}} de remise = {{net}} pour le forfait",
+    "schedule": {
+        "heading": "Échéances du forfait",
+        "hint": "Chaque échéance est répartie entre les cours selon leurs frais ; chaque cours reçoit ses propres échéances correspondantes."
+    },
+    "payment": {
+        "heading": "Paiement à l’inscription",
+        "skip": "Ne pas enregistrer de paiement",
+        "offline": "Enregistrer un paiement hors ligne",
+        "amount": "Montant",
+        "amountHint": "Première échéance {{first}} · total du forfait {{net}}",
+        "receiptHint": "Un seul reçu d’inscription liste tous les cours du forfait."
+    },
+    "errors": {
+        "blocked": "Certains cours ne peuvent pas faire partie d’un forfait (voir ci-dessus).",
+        "loading": "Chargement des frais des cours…",
+        "paymentAmount": "Saisissez le montant payé à l’inscription.",
+        "paymentTooMuch": "Le paiement dépasse le total du forfait ({{net}})."
+    },
+    "preview": {
+        "heading": "Forfait d’inscription",
+        "course": "Cours",
+        "fee": "Frais",
+        "discount": "Remise",
+        "toPay": "À payer",
+        "paidNow": "Payé",
+        "total": "Forfait",
+        "installments": "Échéances : {{list}}",
+        "receipt": "Un seul reçu d’inscription listera tous ces cours."
+    }
+}

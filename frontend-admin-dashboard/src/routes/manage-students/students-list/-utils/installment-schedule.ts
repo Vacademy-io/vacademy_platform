@@ -336,3 +336,35 @@ export const setToPay = (
 };
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/**
+ * The rows a schedule should carry for a discount split EVEN / FIRST / LAST, or null when they
+ * already do (CUSTOM is the admin's own and is only cleared when the discount goes away).
+ * Shared by the enrollment fee panel and the admission package.
+ */
+export const respreadScheduleDiscounts = (
+    schedule: InstallmentSchedule,
+    generated: InstallmentScheduleRow[],
+    wanted: number,
+    split: 'EVEN' | 'FIRST' | 'LAST' | 'CUSTOM',
+    hasDiscount: boolean,
+    amountsEditable: boolean
+): InstallmentScheduleRow[] | null => {
+    if (split === 'CUSTOM' && hasDiscount) return null;
+    const base = schedule.rows ?? generated;
+    if (base.length === 0) return null;
+    const gross = base.map((r, k) => r.amount ?? generated[k]?.amount ?? 0);
+    const want =
+        wanted > 0
+            ? spreadDiscount(gross, wanted, split === 'CUSTOM' ? 'EVEN' : split)
+            : gross.map(() => 0);
+    const same = base.every(
+        (r, k) => Math.round((r.discount ?? 0) * 100) === Math.round((want[k] ?? 0) * 100)
+    );
+    if (same) return null;
+    return base.map((r, k) => ({
+        due_date: r.due_date,
+        amount: amountsEditable ? r.amount ?? null : null,
+        discount: want[k] || null,
+    }));
+};

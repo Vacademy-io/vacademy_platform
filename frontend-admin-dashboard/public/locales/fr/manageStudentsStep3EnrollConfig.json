@@ -51,5 +51,12 @@
             "runs": "Global — sa condition correspond à ce {{term}}",
             "unknown": "Global — se déclenche uniquement si l'apprenant remplit sa condition"
         }
+    },
+    "package": {
+        "blockers": {
+            "multiFee": "{{course}} : son plan facture plusieurs frais (ou des frais d’avance), il ne peut donc pas suivre l’échéancier d’un forfait. Inscrivez-le séparément.",
+            "notPaid": "{{course}} : un cours gratuit ou par abonnement ne peut pas faire partie d’un forfait."
+        },
+        "inPackage": "Fait partie du forfait d’inscription (frais {{fee}}). Remise, échéances et paiement se règlent sur le forfait ci-dessous."
     }
 }

@@ -13,6 +13,7 @@ import {
     LinkNewGuardianRequest,
 } from '../../../-hooks/useParentLink';
 import {
+    AdmissionPackageState,
     BulkAssignRequest,
     BulkAssignResponse,
     BulkEnrollOptions,
@@ -27,6 +28,7 @@ import { Step2CourseSelector } from './steps/Step2CourseSelector';
 import { Step3EnrollConfig } from './steps/Step3EnrollConfig';
 import { Step4SubOrg } from './steps/Step4SubOrg';
 import { Step4Preview } from './steps/Step4Preview';
+import { toAdmissionPackageRequest } from '../components/AdmissionPackagePanel';
 import { cn } from '@/lib/utils';
 import {
     getAdminDiscountValidationError,
@@ -185,6 +187,12 @@ export const BulkAssignDialog = ({
         paymentDate: '',
     });
     const [previewResponse, setPreviewResponse] = useState<BulkAssignResponse | null>(null);
+    // Two or more courses enrolled as one admission package (Step 3); null = each on its own.
+    const [admissionPackage, setAdmissionPackage] = useState<AdmissionPackageState | null>(null);
+    const packageOn = !!admissionPackage?.enabled && selectedPackageSessions.length >= 2;
+    useEffect(() => {
+        if (admissionPackage && selectedPackageSessions.length < 2) setAdmissionPackage(null);
+    }, [admissionPackage, selectedPackageSessions.length]);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     // Inline per-chip errors from a failed guardian-link resolution (Step 1, 'existing' chips only).
@@ -224,7 +232,7 @@ export const BulkAssignDialog = ({
                 // DEFAULT invite and otherwise enrolls through a new free one.
                 enroll_invite_id: ps.enrollInviteId ?? ps.autoResolvedInviteId ?? null,
                 access_days: ps.accessDays ?? null,
-                cpo_config: ps.cpoConfig
+                cpo_config: !packageOn && ps.cpoConfig
                     ? {
                           ...ps.cpoConfig,
                           // discount_split is the wizard's own; the rows already carry the result.
@@ -238,7 +246,7 @@ export const BulkAssignDialog = ({
                       }
                     : null,
                 // Omitted entirely when "No discount" so the request is unchanged from before.
-                ...(toAdminDiscountPayload(ps.adminDiscount)
+                ...(!packageOn && toAdminDiscountPayload(ps.adminDiscount)
                     ? { admin_discount: toAdminDiscountPayload(ps.adminDiscount) }
                     : {}),
                 // Only org-associated batches carry a sub-org; sending it for a normal batch
@@ -273,12 +281,21 @@ export const BulkAssignDialog = ({
                 // Only with an actual payment: the fields preselect a mode on their own. And only
                 // while the shared fields are shown — hidden ones (every course records its
                 // payment in its own fee panel) must not reach a payment the admin never saw.
-                ...((options.paymentDate || options.transactionId) &&
+                ...(!packageOn &&
+                (options.paymentDate || options.transactionId) &&
                 selectedPackageSessions.some((ps) => !ps.ownsPayment)
                     ? { payment_details: toOfflinePaymentDetailsPayload(options.paymentDetails) }
                     : {}),
                 dry_run: dryRun,
             },
+            ...(packageOn && admissionPackage
+                ? {
+                      admission_package: toAdmissionPackageRequest(
+                          admissionPackage,
+                          selectedPackageSessions.reduce((sum, ps) => sum + (ps.packageFee ?? 0), 0)
+                      ),
+                  }
+                : {}),
         };
     };
 
@@ -581,6 +598,7 @@ export const BulkAssignDialog = ({
         setSelectedPackageSessions(buildInitialSelection());
         setOptions({ duplicateHandling: 'SKIP', notifyLearners: false, sendCredentials: false, transactionId: '', paymentDate: '' });
         setPreviewResponse(null);
+        setAdmissionPackage(null);
         setGuardianLinkErrors({});
         onOpenChange(false);
     };
@@ -595,6 +613,11 @@ export const BulkAssignDialog = ({
         }
         if (currentStep === 'courses') return selectedPackageSessions.length > 0;
         // An admin discount that's half filled in (no value / no reason) must not be sent.
+        if (currentStep === 'config' && packageOn)
+            return (
+                !admissionPackage?.error &&
+                selectedPackageSessions.every((ps) => ps.packageFee != null && !ps.inviteNeedsChoice)
+            );
         if (currentStep === 'config')
             return (
                 selectedPackageSessions.every(
@@ -735,6 +758,8 @@ export const BulkAssignDialog = ({
                             options={options}
                             onOptionsChange={setOptions}
                             numberingUserId={numberingUserId}
+                            admissionPackage={admissionPackage}
+                            onAdmissionPackageChange={setAdmissionPackage}
                         />
                     )}
                     {currentStep === 'suborg' && (

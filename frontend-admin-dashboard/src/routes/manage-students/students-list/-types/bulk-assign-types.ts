@@ -202,6 +202,52 @@ export interface BulkAssignRequest {
     user_filter?: UserFilterDTO | null;
     assignments: AssignmentItem[];
     options?: AssignOptions;
+    /** Enroll the courses together as one admission package. */
+    admission_package?: AdmissionPackageRequest | null;
+}
+
+/**
+ * Several courses enrolled together: one schedule, one discount, one payment at admission and
+ * one admission receipt. The backend splits it across the courses in proportion to their fees
+ * (AdmissionPackageSplitter); courses then carry no cpo_config / admin_discount of their own.
+ */
+export interface AdmissionPackageRequest {
+    /** For the record (type, value, reason); the rows' discounts are what count. */
+    discount?: DiscountSpec | null;
+    rows: { due_date: string; amount: number; discount: number }[];
+    payment_mode: 'SKIP' | 'OFFLINE';
+    payment_amount?: number | null;
+    payment_reference?: string | null;
+    payment_details?: OfflinePaymentDetails | null;
+}
+
+/** Wizard state of the admission package (Step 3). */
+export interface AdmissionPackageState {
+    enabled: boolean;
+    discount: DiscountSpec | null;
+    schedule: InstallmentSchedule;
+    payment_mode: 'SKIP' | 'OFFLINE';
+    payment_amount: number | null;
+    payment_details?: OfflinePaymentDetails | null;
+    /** What blocks Preview (translated); null when the package is ready. Wizard-only. */
+    error?: string | null;
+}
+
+/** How the backend split the package (dry run and real run). */
+export interface AdmissionPackagePreview {
+    fee_total: number;
+    discount_total: number;
+    net_total: number;
+    paid_at_admission: number;
+    courses: {
+        package_session_id: string;
+        fee: number;
+        discount: number;
+        net: number;
+        paid_at_admission: number;
+        rows: { due_date: string; amount: number; discount: number }[];
+    }[];
+    admission_package_ids?: string[];
 }
 
 export interface DeassignOptions {
@@ -258,6 +304,7 @@ export interface BulkAssignResponse {
         re_enrolled: number;
     };
     results: AssignResultItem[];
+    admission_package?: AdmissionPackagePreview | null;
 }
 
 export interface DeassignResultItem {
@@ -449,6 +496,13 @@ export interface SelectedPackageSession {
     adminDiscount?: AdminDiscountRequest;
     /** Server rejection of the discount (e.g. invalid coupon); blocks Preview while set. */
     adminDiscountError?: string | null;
+
+    /**
+     * Admission package (wizard-only): this course's fee as the package sees it, or why it
+     * cannot be part of a package. Both undefined until the invite resolves.
+     */
+    packageFee?: number | null;
+    packageBlocker?: string | null;
 
     /**
      * True when `package_session.is_org_associated` — enrolling into it requires choosing the

@@ -74,6 +74,74 @@ const fmtScheduleDate = (iso: string) => {
     });
 };
 
+/** The admission package as the backend split it: courses, totals and the package installments. */
+const PackageSummary = ({
+    pkg,
+    courseName,
+}: {
+    pkg: NonNullable<BulkAssignResponse['admission_package']>;
+    courseName: (packageSessionId: string) => string;
+}) => {
+    const { t } = useTranslation('manageStudentsAdmissionPackage');
+    const money = (n: number) => `₹${fmtAmount(n)}`;
+    // Package installments: every course's part of each due date, to pay (after discount).
+    const byDate = new Map<string, number>();
+    for (const c of pkg.courses) {
+        for (const r of c.rows) {
+            byDate.set(r.due_date, (byDate.get(r.due_date) ?? 0) + (r.amount - r.discount));
+        }
+    }
+    const installments = [...byDate.entries()].sort(([a], [b]) => a.localeCompare(b));
+    return (
+        <div className="rounded-lg border border-primary-200 bg-primary-50/40 p-4">
+            <p className="mb-2 text-sm font-semibold text-neutral-800">{t('preview.heading')}</p>
+            <table className="w-full text-xs">
+                <thead className="text-neutral-500">
+                    <tr>
+                        <th className="py-1 text-start font-medium">{t('preview.course')}</th>
+                        <th className="py-1 text-end font-medium">{t('preview.fee')}</th>
+                        <th className="py-1 text-end font-medium">{t('preview.discount')}</th>
+                        <th className="py-1 text-end font-medium">{t('preview.toPay')}</th>
+                        <th className="py-1 text-end font-medium">{t('preview.paidNow')}</th>
+                    </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-100">
+                    {pkg.courses.map((c) => (
+                        <tr key={c.package_session_id}>
+                            <td className="py-1 text-neutral-700">{courseName(c.package_session_id)}</td>
+                            <td className="py-1 text-end tabular-nums">{money(c.fee)}</td>
+                            <td className="py-1 text-end tabular-nums text-success-700">
+                                {c.discount > 0 ? `−${money(c.discount)}` : '—'}
+                            </td>
+                            <td className="py-1 text-end tabular-nums">{money(c.net)}</td>
+                            <td className="py-1 text-end tabular-nums">
+                                {c.paid_at_admission > 0 ? money(c.paid_at_admission) : '—'}
+                            </td>
+                        </tr>
+                    ))}
+                    <tr className="font-semibold">
+                        <td className="py-1">{t('preview.total')}</td>
+                        <td className="py-1 text-end tabular-nums">{money(pkg.fee_total)}</td>
+                        <td className="py-1 text-end tabular-nums text-success-700">
+                            {pkg.discount_total > 0 ? `−${money(pkg.discount_total)}` : '—'}
+                        </td>
+                        <td className="py-1 text-end tabular-nums">{money(pkg.net_total)}</td>
+                        <td className="py-1 text-end tabular-nums">
+                            {pkg.paid_at_admission > 0 ? money(pkg.paid_at_admission) : '—'}
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+            <p className="mt-2 text-xs text-neutral-600">
+                {t('preview.installments', {
+                    list: installments.map(([d, amt]) => `${fmtScheduleDate(d)} ${money(amt)}`).join(' · '),
+                })}
+            </p>
+            {pkg.paid_at_admission > 0 && <p className="mt-1 text-xs text-neutral-500">{t('preview.receipt')}</p>}
+        </div>
+    );
+};
+
 export const Step4Preview = ({ previewResponse, selectedPackageSessions }: Props) => {
     const { t } = useTranslation('manageStudentsStep4Preview');
     const { summary, results } = previewResponse;
@@ -117,6 +185,13 @@ export const Step4Preview = ({ previewResponse, selectedPackageSessions }: Props
                     className="bg-danger-50 text-danger-700 border-danger-200"
                 />
             </div>
+
+            {previewResponse.admission_package && (
+                <PackageSummary
+                    pkg={previewResponse.admission_package}
+                    courseName={(id) => courseMap[id]?.courseName ?? id}
+                />
+            )}
 
             {summary.re_enrolled > 0 && (
                 <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-sm text-blue-700">

@@ -51,5 +51,12 @@
             "runs": "Global — its condition matches this {{term}}",
             "unknown": "Global — fires only if the learner matches its condition"
         }
+    },
+    "package": {
+        "blockers": {
+            "multiFee": "{{course}}: its fee plan bills more than one fee (or pays upfront), so it cannot follow a package schedule. Enroll it on its own.",
+            "notPaid": "{{course}}: free or subscription courses cannot be part of a package."
+        },
+        "inPackage": "Part of the admission package (fee {{fee}}). Discount, schedule and payment are set on the package below."
     }
 }

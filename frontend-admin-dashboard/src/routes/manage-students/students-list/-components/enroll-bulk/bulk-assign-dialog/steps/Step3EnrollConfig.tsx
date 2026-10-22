@@ -9,7 +9,14 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { BulkEnrollOptions, SelectedPackageSession } from '../../../../-types/bulk-assign-types';
+import {
+    AdmissionPackageState,
+    BulkEnrollOptions,
+    SelectedPackageSession,
+} from '../../../../-types/bulk-assign-types';
+import { AdmissionPackagePanel } from '../../components/AdmissionPackagePanel';
+import { useCPOFullDetails } from '@/routes/financial-management/fee-plans/-services/cpo-service';
+import { formatInr, partsFromFeeTypes } from '@/routes/manage-students/students-list/-utils/installment-schedule';
 import { InvitePickerDropdown } from '../../components/InvitePickerDropdown';
 import { CpoEnrollmentConfigPanel } from '../../components/CpoEnrollmentConfigPanel';
 import { useResolvedInviteDetails } from '../../../../-hooks/useResolvedInviteDetails';
@@ -63,6 +70,9 @@ interface Props {
      * to all of them.
      */
     numberingUserId?: string | null;
+    /** Admission package (two or more courses); null = each course on its own. */
+    admissionPackage: AdmissionPackageState | null;
+    onAdmissionPackageChange: (next: AdmissionPackageState | null) => void;
 }
 
 interface CourseConfigRowProps {
@@ -70,9 +80,11 @@ interface CourseConfigRowProps {
     numbering: NumberingTarget;
     ps: SelectedPackageSession;
     onUpdate: (patch: Partial<SelectedPackageSession>) => void;
+    /** Part of an admission package: the package carries its discount, schedule and payment. */
+    inPackage: boolean;
 }
 
-const CourseConfigRow = ({ instituteId, numbering, ps, onUpdate }: CourseConfigRowProps) => {
+const CourseConfigRow = ({ instituteId, numbering, ps, onUpdate, inPackage }: CourseConfigRowProps) => {
     const { t } = useTranslation('manageStudentsStep3EnrollConfig');
     const { data: resolved } = useResolvedInviteDetails({
         instituteId,
@@ -95,12 +107,53 @@ const CourseConfigRow = ({ instituteId, numbering, ps, onUpdate }: CourseConfigR
     const canPayInInstallments =
         resolved?.paymentOption?.type === 'ONE_TIME' && (resolvedPlan?.actual_price ?? 0) > 0;
     const oneTimeInstallments = canPayInInstallments && ps.cpoConfig != null;
+    // What this course brings to an admission package: its fee, or why it cannot follow a
+    // package schedule (the backend checks the same in AdmissionPackageService).
+    const { data: cpoDetails } = useCPOFullDetails(cpoId, isCpo && !!cpoId);
+    const packageFit = useMemo((): { fee: number | null; blocker: string | null } | undefined => {
+        if (!resolved) return undefined;
+        const type = resolved.paymentOption?.type;
+        if (type === 'CPO') {
+            if (!cpoDetails) return undefined;
+            const parts = partsFromFeeTypes(cpoDetails.fee_types);
+            return parts.length === 1 && parts[0]!.split && parts[0]!.total > 0
+                ? { fee: parts[0]!.total, blocker: null }
+                : { fee: null, blocker: t('package.blockers.multiFee', { course: ps.courseName }) };
+        }
+        if (type === 'ONE_TIME' && (resolvedPlan?.actual_price ?? 0) > 0) {
+            return { fee: resolvedPlan!.actual_price, blocker: null };
+        }
+        return { fee: null, blocker: t('package.blockers.notPaid', { course: ps.courseName }) };
+    }, [resolved, cpoDetails, resolvedPlan, ps.courseName, t]);
+    useEffect(() => {
+        const fee = packageFit?.fee ?? null;
+        const blocker = packageFit?.blocker ?? null;
+        if ((ps.packageFee ?? null) !== fee || (ps.packageBlocker ?? null) !== blocker) {
+            onUpdate({ packageFee: fee, packageBlocker: blocker });
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [packageFit?.fee, packageFit?.blocker]);
+
     // Unknown until the invite resolves; the shared payment fields stay shown meanwhile.
-    const ownsPayment = resolved ? isCpo || oneTimeInstallments : undefined;
+    const ownsPayment = inPackage ? true : resolved ? isCpo || oneTimeInstallments : undefined;
     useEffect(() => {
         if (ps.ownsPayment !== ownsPayment) onUpdate({ ownsPayment });
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [ownsPayment]);
+
+    // Joining a package clears what this course had of its own: the package replaces it.
+    useEffect(() => {
+        if (inPackage && (ps.cpoConfig || ps.adminDiscount)) {
+            onUpdate({
+                cpoConfig: undefined,
+                cpoScheduleError: null,
+                cpoPaymentError: null,
+                adminDiscount: undefined,
+                adminDiscountError: null,
+            });
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [inPackage]);
 
     // In Auto mode, send the invite this row shows (the backend only finds DEFAULT invites by
     // itself) and block Preview while there are several to choose from.
@@ -207,7 +260,15 @@ const CourseConfigRow = ({ instituteId, numbering, ps, onUpdate }: CourseConfigR
                 <p className="mt-2 text-caption text-neutral-500">{t('courseInviteSection.noInvite')}</p>
             )}
 
-            {canPayInInstallments && (
+            {inPackage && (
+                <p className="mt-3 rounded-md border border-primary-100 bg-primary-50 px-3 py-2 text-xs text-primary-700">
+                    {t('package.inPackage', {
+                        fee: ps.packageFee != null ? formatInr(ps.packageFee) : '…',
+                    })}
+                </p>
+            )}
+
+            {!inPackage && canPayInInstallments && (
                 <div className="mt-3 flex items-center justify-between gap-3 rounded-md border border-neutral-100 bg-neutral-50 p-3">
                     <div>
                         <Label className="text-sm font-medium text-neutral-700">
@@ -241,7 +302,7 @@ const CourseConfigRow = ({ instituteId, numbering, ps, onUpdate }: CourseConfigR
                 </div>
             )}
 
-            {canDiscount && resolvedPlan && !oneTimeInstallments && (
+            {!inPackage && canDiscount && resolvedPlan && !oneTimeInstallments && (
                 <div className="mt-3 rounded-md border border-neutral-100 bg-neutral-50 p-3">
                     <AdminDiscountField
                         value={ps.adminDiscount ?? EMPTY_ADMIN_DISCOUNT}
@@ -258,7 +319,7 @@ const CourseConfigRow = ({ instituteId, numbering, ps, onUpdate }: CourseConfigR
                 </div>
             )}
 
-            {isCpo && cpoId && (
+            {!inPackage && isCpo && cpoId && (
                 <CpoEnrollmentConfigPanel
                     cpoId={cpoId}
                     value={ps.cpoConfig}
@@ -269,7 +330,7 @@ const CourseConfigRow = ({ instituteId, numbering, ps, onUpdate }: CourseConfigR
                 />
             )}
 
-            {oneTimeInstallments && resolvedPlan && (
+            {!inPackage && oneTimeInstallments && resolvedPlan && (
                 <CpoEnrollmentConfigPanel
                     cpoId={null}
                     oneTimePrice={{ amount: resolvedPlan.actual_price, currency: resolvedPlan.currency }}
@@ -291,6 +352,8 @@ export const Step3EnrollConfig = ({
     options,
     onOptionsChange,
     numberingUserId,
+    admissionPackage,
+    onAdmissionPackageChange,
 }: Props) => {
     // A new enrolment has no plan yet, so the field is always asked (when the institute has it).
     const numbering = useMemo<NumberingTarget>(() => ({ userId: numberingUserId ?? null }), [numberingUserId]);
@@ -327,10 +390,19 @@ export const Step3EnrollConfig = ({
                             numbering={numbering}
                             ps={ps}
                             onUpdate={(patch) => updateSession(ps.packageSessionId, patch)}
+                            inPackage={!!admissionPackage?.enabled}
                         />
                     ))}
                 </div>
             </div>
+
+            {/* Two or more courses: enroll them as one admission package. */}
+            <AdmissionPackagePanel
+                courses={selectedPackageSessions}
+                value={admissionPackage}
+                onChange={onAdmissionPackageChange}
+                numbering={numbering}
+            />
 
             {/* Global options */}
             <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4">

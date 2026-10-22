@@ -1352,6 +1352,9 @@ _ONCE_RE = re.compile(r"^vcc_[A-Za-z0-9_-]{30,80}$")
 #: Spent single-use confirmations per user per hour, by purpose (crm.<tool>.<action>).
 CAPS: Dict[str, int] = {
     "crm.crm_send.send": 20,
+    "crm.crm_send.send_email": 30,
+    "crm.crm_payment_reminders.send_installment_reminder": 10,
+    "crm.crm_payment_reminders.send_invoice_reminder": 10,
     "crm.crm_dial.call": 30,
     "crm.crm_dial.ai_call": 20,
     "crm.crm_ai_campaign.start": 3,

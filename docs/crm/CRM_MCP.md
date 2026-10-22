@@ -2,7 +2,8 @@
 
 The CRM tools of the Vacademy MCP server let institute staff — admins, sales managers, counsellors — work the CRM
 from Claude, ChatGPT, Cursor or Claude Code: find and work leads, log calls and follow-ups, assign leads, place
-human and AI calls, book meetings, send an approved WhatsApp template, and read the CRM reports.
+human and AI calls, book meetings, send an approved WhatsApp template or an email, see dues and send fee reminders,
+and read the CRM reports, build custom reports and follow the live activity feed.
 
 * Server plumbing, gates, OAuth: `ai_service/MCP_SERVER_GUIDE.md` (§1a covers the CRM tools).
 * Public docs: `vacademy-docs/mcp-server/` (the "MCP server" product of the Vacademy docs site, published from Vacademy-io/docs). Tool pages are generated: `cd ai_service && python scripts/gen_mcp_docs.py`.
@@ -23,11 +24,13 @@ human and AI calls, book meetings, send an approved WhatsApp template, and read 
 | CRM: Meetings | `crm_meetings` | my / team meetings, a lead's meetings, free slots, booking pages | – |
 | | `crm_meetings_edit` | book a meeting, log its outcome | opt-in, outbound |
 | CRM: Messages | `crm_messages` | message history, WhatsApp inbox, templates, can_message, escalations | – |
-| | `crm_send` | send an approved WhatsApp template to one lead, quota | opt-in, outbound |
-| CRM: Reports | `crm_reports` | overview, sources, campaigns, funnel, status changes, counsellors, workload, targets, calling, AI calling, follow-up aging, SLA breaches, stalled, unassigned, meetings, activity, revenue, UTM | – |
+| | `crm_send` | send an approved WhatsApp template or an email (institute template, or subject + body) to one lead, quota | opt-in, outbound |
+| CRM: Reports | `crm_reports` | overview, sources, campaigns, funnel, status changes, counsellors, workload, targets, calling, AI calling, follow-up aging, SLA breaches, stalled, unassigned, meetings, activity, revenue, UTM, custom reports (`custom_options`, `custom`), live activity (`live_feed`, `live_counts`) | – |
+| CRM: Payments | `crm_collections` | a lead's dues, who owes, due soon, converted but not paid, failed checkouts, collections (admins) | – |
+| | `crm_payment_reminders` | installment and invoice reminders (admins, ≤50 per batch), quota | opt-in, outbound |
 
 Not in v1: meeting cancel / reschedule and meeting outcomes as statuses, the engagement copilot inbox, onboarding
-flows, payment reminders, collections reports, target editing, connector management, retrying an automation run,
+flows, target editing, connector management, retrying an automation run,
 pausing / blasting a whole lead list, scheduled digest sends. There are no deals / pipeline value, call scripts,
 lead attachments or lead merge in the CRM, so the tools do not offer them.
 
@@ -50,7 +53,8 @@ lead attachments or lead merge in the CRM, so the tools do not offer them.
    (`mcp_crm_confirm`) and counted against hourly per-user caps. Notes and follow-ups apply directly.
 6. **Outbound safety.** Opted-out people, DND / wrong-number outcomes, recent AI calls (60 min), the per-lead daily
    AI-call limit and the institute's calling hours are checked by the tool before a call or campaign; a campaign
-   always sends an explicit lead list. Messages are approved WhatsApp templates only, to one lead at a time.
+   always sends an explicit lead list. Messages (an approved WhatsApp template or an email) go to one lead at a time; email always honours the
+   institute's unsubscribe list. Fee reminders are admin-only and go out through the institute's own reminder automations.
 7. **PII.** Lists mask phone and email; one lead's `get` shows full contact; bulk contact goes out only as a
    private, expiring CSV link. Text written by leads or staff is returned inside `lead_content`.
 8. **Numbers carry their definition** — window, timezone, what is counted — because dashboard widgets count

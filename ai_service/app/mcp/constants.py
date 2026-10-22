@@ -66,8 +66,10 @@ MCP_EXPOSED_TOOLS: Tuple[str, ...] = (
     "crm_meetings",         # READ:  meetings (mine / team / a lead's), free slots, booking pages
     "crm_meetings_edit",    # WRITE: outbound — book a meeting for a lead (they get the invite); log a meeting's outcome
     "crm_messages",         # READ:  a lead's WhatsApp / email history, inbox, approved templates, escalations
-    "crm_send",             # WRITE: outbound — one approved WhatsApp template to one lead; single-use confirm token
-    "crm_reports",          # READ:  CRM reports, each figure with its window and definition
+    "crm_send",             # WRITE: outbound — one approved WhatsApp template or one email to one lead; single-use confirm token
+    "crm_reports",          # READ:  CRM reports, custom reports and the live activity feed, each figure with its definition
+    "crm_collections",      # READ:  a lead's dues, who owes, what falls due, converted-not-paid, failed checkouts, collections
+    "crm_payment_reminders",  # WRITE: outbound, admins only — fee reminders for unpaid installments / pending invoices
 )
 
 #: WRITE tools this server may expose, with the property that makes each safe
@@ -212,9 +214,18 @@ MCP_ALLOWED_WRITE_TOOLS: Dict[str, str] = {
         "booking"
     ),
     "crm_send": (
-        "outbound, single-use confirmed: sends ONE approved WhatsApp template to ONE lead in the caller's scope, to "
-        "the number on the lead's record (never a number typed in the chat); refuses opted-out leads; needs a "
-        "single-use confirm_token from a preview of that exact message and counts toward an hourly cap per user"
+        "outbound, single-use confirmed: sends ONE approved WhatsApp template or ONE email (an institute email "
+        "template or a subject and body written with the user) to ONE lead in the caller's scope, to the number or "
+        "address on the lead's record (never one typed in the chat); refuses opted-out leads and addresses on the "
+        "institute's email unsubscribe list; needs a single-use confirm_token from a preview of that exact message "
+        "and counts toward an hourly cap per user (WhatsApp and email counted separately)"
+    ),
+    "crm_payment_reminders": (
+        "outbound, admins only, single-use confirmed: reminds at most 50 unpaid installments or pending invoices "
+        "verified to belong to this institute through admin-core's own reminder endpoints (the institute's "
+        "installment-due automations; the invoice's in-app alert and email); refuses paid, cancelled and waived "
+        "bills, inactive enrolments and opted-out people; the apply sends exactly the previewed items, re-checked; "
+        "capped at 50 reminders per user per hour"
     ),
 }
 
@@ -257,8 +268,10 @@ MCP_TOOL_GROUP_LABELS: Dict[str, str] = {
     "crm_meetings": "CRM meetings: view",
     "crm_meeting_edits": "CRM meetings: book and log",
     "crm_messages": "CRM messages: view",
-    "crm_messaging_outbound": "CRM messages: send WhatsApp",
+    "crm_messaging_outbound": "CRM messages: send WhatsApp and email",
     "crm_reports": "CRM reports: view",
+    "crm_collections": "CRM payments: view dues and collections",
+    "crm_payment_reminders": "CRM payments: send fee reminders",
 }
 
 #: One plain sentence per group for the settings page. The registry's tool
@@ -448,14 +461,27 @@ MCP_TOOL_GROUP_SUMMARIES: Dict[str, str] = {
         "lead can be messaged, and conversations escalated to staff."
     ),
     "crm_messaging_outbound": (
-        "Let the connected AI app send one of your approved WhatsApp templates to one lead at a time. Each message is "
-        "shown to you first and sent only after you confirm; opted-out leads are refused and sends per hour are "
-        "capped. Turned on separately."
+        "Let the connected AI app send one of your approved WhatsApp templates, or an email (one of your email "
+        "templates or one written with you), to one lead at a time. Each message is shown to you first and sent only "
+        "after you confirm; opted-out leads and unsubscribed addresses are refused and sends per hour are capped. "
+        "Turned on separately."
     ),
     "crm_reports": (
         "See CRM reports — lead sources and campaigns, the funnel, counsellor performance and workload, calling and "
         "AI calling, follow-up ageing, SLA breaches, meetings and revenue — each figure with its date range and how "
-        "it is counted. Each user sees the figures for the leads they can see."
+        "it is counted — plus custom reports the AI app builds (your own breakdowns and metrics) and the live "
+        "activity feed (what happened in the last hour or today). Each user sees the figures for the leads they "
+        "can see."
+    ),
+    "crm_collections": (
+        "See what a lead owes, who is overdue, what falls due soon, converted leads who have not paid and failed "
+        "checkouts — for the people behind the leads each user can see. Admins also see money collected, by day, "
+        "method, course and counsellor."
+    ),
+    "crm_payment_reminders": (
+        "Let the connected AI app send fee reminders for unpaid installments or pending invoices — through your "
+        "installment-due automations or the invoice reminder. Admins only; shown to you first and sent only after "
+        "you confirm, at most 50 an hour. Turned on separately."
     ),
 }
 
@@ -481,7 +507,9 @@ MCP_TOOL_AREAS: Dict[str, Dict[str, str]] = {
     "crm_calls": {"label": "CRM: Calls", "summary": "Calls, transcripts and callbacks; calling leads and AI campaigns."},
     "crm_meetings": {"label": "CRM: Meetings", "summary": "Counselling meetings, free slots and booking pages."},
     "crm_messages": {"label": "CRM: Messages", "summary": "Lead WhatsApp and email history, inbox and templates."},
-    "crm_reports": {"label": "CRM: Reports", "summary": "Sources, funnel, counsellors, calling, follow-ups and SLAs."},
+    "crm_reports": {"label": "CRM: Reports",
+                    "summary": "Sources, funnel, counsellors, calling, follow-ups, SLAs, custom reports, live activity."},
+    "crm_payments": {"label": "CRM: Payments", "summary": "Dues, overdue fees, collections and fee reminders."},
 }
 
 #: group key → where it sits on the settings page.
@@ -541,8 +569,11 @@ MCP_TOOL_PLACEMENT: Dict[str, Dict[str, str]] = {
                           "sub_label": "Book meetings and log outcomes"},
     "crm_messages": {"area": "crm_messages", "level": "view"},
     "crm_messaging_outbound": {"area": "crm_messages", "level": "edit", "risk": "outbound",
-                               "sub_label": "Send WhatsApp templates"},
+                               "sub_label": "Send WhatsApp templates and emails"},
     "crm_reports": {"area": "crm_reports", "level": "view"},
+    "crm_collections": {"area": "crm_payments", "level": "view"},
+    "crm_payment_reminders": {"area": "crm_payments", "level": "edit", "risk": "outbound",
+                              "sub_label": "Send fee reminders"},
 }
 
 #: Groups an admin turns on ONE BY ONE: the settings page never switches them
@@ -555,7 +586,7 @@ MCP_OPT_IN_GROUPS = frozenset({"website_data_edits", "website_publish",
                                "sub_org_edits", "sub_org_enrollments",
                                "crm_lead_activity", "crm_lead_edits", "crm_team_edits", "crm_lead_intake",
                                "crm_calling_outbound", "crm_ai_campaigns", "crm_meeting_edits",
-                               "crm_messaging_outbound"})
+                               "crm_messaging_outbound", "crm_payment_reminders"})
 
 #: Roles that must NEVER reach this server, even if an admin lists them. The MCP
 #: surface is staff-only by product decision.

@@ -1,10 +1,11 @@
 """
 The CRM messaging tools over MCP: ``crm_messages`` (read) and ``crm_send``
-(outbound: one approved WhatsApp template to one lead).
+(outbound: one approved WhatsApp template, or one email, to one lead).
 
 Counsellors ask "what did we send Priya, did she reply?", "who is waiting on
-us on WhatsApp?", "send her the brochure template". The model finds the lead
-with crm_leads(action='find'), then reads or sends here.
+us on WhatsApp?", "send her the brochure template", "email her the fee
+details". The model finds the lead with crm_leads(action='find'), then reads
+or sends here.
 
 Reads (crm_messages):
 
@@ -17,24 +18,42 @@ Reads (crm_messages):
   hand-overs. Callers whose dashboard scope is narrower than the institute see
   only conversations whose number belongs to a lead they can see;
 * templates — APPROVED WhatsApp templates (language, header kind, variables)
-  plus the email templates, read-only;
+  plus the institute's email templates (id, subject, variables), exactly as
+  crm_send takes them;
 * can_message — the pre-flight for one lead: opted out?, a usable WhatsApp
-  number?, WhatsApp configured?, the 24-hour window, sends left this hour.
+  number?, WhatsApp configured?, the 24-hour window; a usable email address?,
+  on the unsubscribe list?, the email sender and its daily limit; sends left
+  this hour.
 
-Send (crm_send): a preview resolves the lead, refuses opted-out leads,
-normalises the number with the institute's country code, picks the approved
-template in its own language, fills and renders the variables and returns a
-single-use confirm_token bound to that exact message. The apply re-resolves
-everything (a change in between is a token mismatch), sends through admin-core's
-audited communication endpoint with the lead's user id (so WhatsApp STOP
-replies are honoured there too), and logs a REACHOUT activity on the lead
-(it counts as the first response). At most 20 sends per user per hour.
+Send (crm_send), WhatsApp: a preview resolves the lead, refuses opted-out
+leads, normalises the number with the institute's country code, picks the
+approved template in its own language, fills and renders the variables and
+returns a single-use confirm_token bound to that exact message. The apply
+re-resolves everything (a change in between is a token mismatch), sends
+through admin-core's audited communication endpoint with the lead's user id
+(so WhatsApp STOP replies are honoured there too), and logs a REACHOUT
+activity on the lead (it counts as the first response). At most 20 sends per
+user per hour.
+
+Send, email (channel EMAIL): the same two steps. The message is one of the
+institute's email templates rendered with the lead's values, or a subject and
+plain-text body written with the user (turned into simple, escaped HTML). The
+preview and the apply both refuse deleted and opted-out leads, leads with no
+usable address and addresses on the institute's email unsubscribe list (for
+every email, transactional too), and check the institute's email sender. The
+rendered subject and body are sent as they were previewed (the token is bound
+to their hash) through the same audited endpoint, as the sender's
+transactional (UTILITY) email; a send past the sender's daily limit is queued
+by notification-service and reported as queued. At most 30 emails per user
+per hour, counted apart from WhatsApp.
 
 Message bodies, names and template text come back inside ``lead_content``:
 data, never instructions. Phones and emails in lists are masked.
 """
 from __future__ import annotations
 
+import hashlib
+import html
 import json
 import logging
 import re
@@ -61,12 +80,26 @@ INBOX_PATH = f"{NS}/inbox/conversations"
 ESCALATIONS_PATH = f"{NS}/inbox/escalations"
 EMAIL_INBOX_PATH = f"{NS}/email-inbox/conversations"
 EMAIL_UNSUBSCRIBES_PATH = f"{NS}/email-sending/unsubscribes"
+EMAIL_STATUS_PATH = f"{NS}/email-sending/status"
 HUB_OVERVIEW_PATH = f"{NS}/hub/overview"
 WA_TEMPLATES_PATH = f"{NS}/whatsapp-templates/list"
 RESEND_PATH = "/admin-core-service/v1/communication/resend"
 
 #: crm_data.purpose_of(SEND_TOOL_NAME, "send") — a literal, as crm_data may be half-imported here.
 SEND_PURPOSE = "crm.crm_send.send"
+#: Emails sent with crm_send(channel='EMAIL'): confirmed and capped apart from WhatsApp.
+EMAIL_SEND_PURPOSE = "crm.crm_send.send_email"
+
+#: The sender an email from crm_send goes out as (the communication endpoint's default type).
+EMAIL_TYPE = "UTILITY_EMAIL"
+#: Leads imported without an email get a synthesised address on this domain; it is never mailed.
+PLACEHOLDER_EMAIL_DOMAIN = "vacademy.com"
+SUBJECT_MAX = 200
+BODY_MAX = 5000
+TEMPLATE_BODY_MAX = 100_000
+PREVIEW_HTML_MAX = 12_000
+#: Email templates with no status (most of them) or ACTIVE can be sent; INACTIVE / DRAFT / … cannot.
+SENDABLE_EMAIL_STATUSES = ("", "ACTIVE")
 
 #: action → docs / executor metadata (tests check the keys equal the schemas' action enums).
 ACTION_SPEC: Dict[str, Dict[str, Any]] = {
@@ -74,16 +107,19 @@ ACTION_SPEC: Dict[str, Dict[str, Any]] = {
                 "writes": False, "confirm": "none", "feature": None, "admin_only": False},
     "inbox": {"summary": "WhatsApp conversations (all, unanswered or failed) for the leads you can see.",
               "writes": False, "confirm": "none", "feature": FEATURE_WHATSAPP, "admin_only": False},
-    "templates": {"summary": "Approved WhatsApp templates (language, header, variables) and email templates.",
+    "templates": {"summary": "Approved WhatsApp templates (language, header, variables) and email templates "
+                             "(id, subject, variables) you can send with crm_send.",
                   "writes": False, "confirm": "none", "feature": None, "admin_only": False},
-    "can_message": {"summary": "Pre-flight for one lead: opt-out, WhatsApp number and channel, 24-hour window, "
-                               "sends left this hour.",
+    "can_message": {"summary": "Pre-flight for one lead: opt-out; WhatsApp number, channel and 24-hour window; email "
+                               "address, unsubscribe list and sender limits; sends left this hour.",
                     "writes": False, "confirm": "none", "feature": None, "admin_only": False},
     "escalations": {"summary": "Chatbot conversations handed over to staff, for the leads you can see.",
                     "writes": False, "confirm": "none", "feature": FEATURE_WHATSAPP, "admin_only": False},
-    "send": {"summary": "Send one approved WhatsApp template to one lead (preview, then confirm).",
-             "writes": True, "confirm": "single_use", "feature": FEATURE_WHATSAPP, "admin_only": False},
-    "quota": {"summary": "WhatsApp sends you have left this hour.",
+    # The plan feature depends on the channel (communications.whatsapp / communications.email): checked in send.
+    "send": {"summary": "Send one approved WhatsApp template, or one email (a template or a written subject and "
+                        "body), to one lead (preview, then confirm).",
+             "writes": True, "confirm": "single_use", "feature": None, "admin_only": False},
+    "quota": {"summary": "WhatsApp sends and emails you have left this hour.",
               "writes": False, "confirm": "none", "feature": None, "admin_only": False},
 }
 READ_ACTIONS = ("history", "inbox", "templates", "can_message", "escalations")
@@ -125,10 +161,14 @@ READ_SCHEMA: Dict[str, Any] = {
             "hand-over is open; FAILED = a message was not delivered.\n"
             "- templates (channel?: WHATSAPP | EMAIL | ALL; query?: part of a name; limit?): the APPROVED WhatsApp "
             "templates you can send with crm_send (name, language, category, header kind and sample file, the "
-            "variables to fill) and the email templates (listed for reference; email is not sent from here).\n"
-            "- can_message (lead_id | phone | email; template?; language?): before offering to message a lead — "
-            "opted out?, a usable WhatsApp number?, WhatsApp configured?, the 24-hour reply window, the email on "
-            "file, sends left this hour. When template is given, also checks it and lists the variables it needs.\n"
+            "variables to fill) and the email templates (template_id, name, subject, the variables to fill and "
+            "which of them the tool fills itself, not_sendable when it cannot be sent) for "
+            "crm_send(channel='EMAIL', template=template_id).\n"
+            "- can_message (lead_id | phone | email; channel?: WHATSAPP | EMAIL | ALL; template?; language?): before "
+            "offering to message a lead — opted out?; WhatsApp: a usable number?, WhatsApp configured?, the 24-hour "
+            "reply window; email: a usable address?, on the institute's unsubscribe list?, the sender address and "
+            "its daily limit; sends left this hour. When template is given, also checks it (a WhatsApp template, or "
+            "with channel EMAIL an email template's template_id or name) and lists the variables it needs.\n"
             "- escalations (status?: PENDING | RESOLVED | ALL; limit?; offset?): conversations the chatbot handed "
             "over to a person, with the lead_id when known. PENDING lists the oldest waiting first; RESOLVED and "
             "ALL list the newest first.\n"
@@ -146,9 +186,11 @@ READ_SCHEMA: Dict[str, Any] = {
                 "status": {"type": "string", "enum": list(ESCALATION_STATUSES),
                            "description": "escalations: default PENDING."},
                 "channel": {"type": "string", "enum": ["WHATSAPP", "EMAIL", "ALL"],
-                            "description": "templates: default ALL."},
+                            "description": "templates / can_message: default ALL."},
                 "query": {"type": "string", "description": "templates: part of a template name."},
-                "template": {"type": "string", "description": "can_message: a WhatsApp template name to check."},
+                "template": {"type": "string", "description": "can_message: a WhatsApp template name to check (with "
+                                                              "channel EMAIL: an email template's template_id or "
+                                                              "name)."},
                 "language": {"type": "string", "description": "can_message: the template's language code when it "
                                                               "is approved in several languages."},
                 "limit": {"type": "integer", "description": "Rows to return (default 20, max 50)."},
@@ -165,21 +207,32 @@ SEND_SCHEMA: Dict[str, Any] = {
     "function": {
         "name": SEND_TOOL_NAME,
         "description": (
-            "Send ONE approved WhatsApp template to ONE lead you can see in the CRM. It goes to the number on the "
-            "lead's record (never a number typed in the chat). Opted-out leads are refused. Pick the template with "
-            "crm_messages(action='templates') and check the lead with crm_messages(action='can_message').\n"
+            "Send ONE message to ONE lead you can see in the CRM: an approved WhatsApp template (channel WHATSAPP, "
+            "the default) or an email (channel EMAIL). It goes to the number or email address on the lead's record "
+            "(never one typed in the chat). Opted-out leads are refused, and so are email addresses on the "
+            "institute's unsubscribe list. Pick a template with crm_messages(action='templates') and check the lead "
+            "with crm_messages(action='can_message').\n"
             "Two steps, always:\n"
-            "1. send (lead_id | phone | email, template, language? — only when the template exists in several "
+            "1. send WITHOUT confirm_token: a preview of the exact message (the rendered text comes inside "
+            "lead_content), the recipient, the checks it passed and what happens next. Nothing is sent.\n"
+            "   WHATSAPP: lead_id | phone | email, template, language? — only when the template exists in several "
             "languages, variables?: {variable: value}, button_value? — only when templates marks a link button "
-            "needs_button_value) WITHOUT confirm_token: a preview of the exact message (the "
-            "rendered text comes inside lead_content), the masked number, what happens next. Nothing is sent. "
-            "Variables called name / full_name / first_name … are filled from the lead's name when you leave them "
-            "out; ask the user for any other missing value — never invent fees, dates or links. Returns a "
-            "confirm_token (single use, 10 minutes).\n"
+            "needs_button_value.\n"
+            "   EMAIL: lead_id | phone | email, channel='EMAIL', and EITHER template (an email template's "
+            "template_id or name from templates) with variables? and subject? (replaces the template's subject), OR "
+            "subject (≤200 characters) + body (plain text, ≤5000 characters; a blank line starts a new paragraph) "
+            "written with the user. The preview shows the rendered subject and body, the lead's address, the sender "
+            "address and the sender's daily limit.\n"
+            "   Variables called name / full_name / first_name … are filled from the lead's name (email variables "
+            "from the lead's email, institute_name … from the institute) when you leave them out; ask the user for "
+            "any other missing value — never invent fees, dates or links. Returns a confirm_token (single use, 10 "
+            "minutes).\n"
             "2. Show the preview to the user. Only on a clear yes, call send again with the SAME arguments plus the "
             "confirm_token. The message is sent and a 'message sent' activity is logged on the lead.\n"
-            "'Sent' means WhatsApp's provider accepted it; delivery shows later in crm_messages(action='history'). "
-            "At most 20 sends per user per hour.\n"
+            "'Sent' means the provider accepted it; delivery shows later in crm_messages(action='history'). An email "
+            "past the sender's daily limit is queued for the next sending window (the reply says so; do not send it "
+            "again). send_outcome_unknown means it may have gone out: check history, never resend blindly. At most "
+            "20 WhatsApp sends and 30 emails per user per hour.\n"
             "- quota: how many sends you have left this hour."
         ),
         "parameters": {
@@ -187,10 +240,20 @@ SEND_SCHEMA: Dict[str, Any] = {
             "properties": {
                 "action": {"type": "string", "enum": list(SEND_ACTIONS)},
                 **_LEAD_PROPS,
-                "template": {"type": "string", "description": "send: the approved WhatsApp template's name."},
-                "language": {"type": "string", "description": "send: the template's language code, e.g. en, hi."},
+                "channel": {"type": "string", "enum": list(CHANNELS),
+                            "description": "send: WHATSAPP (default) or EMAIL."},
+                "template": {"type": "string", "description": "send: WHATSAPP — the approved template's name; "
+                                                              "EMAIL — an email template's template_id (or name)."},
+                "language": {"type": "string", "description": "send (WHATSAPP): the template's language code, e.g. "
+                                                              "en, hi."},
                 "variables": {"type": "object", "additionalProperties": {"type": "string"},
                               "description": "send: template variable → value, by the names templates lists."},
+                "subject": {"type": "string",
+                            "description": "send (EMAIL): the subject — with body for a written email, or to replace "
+                                           "a template's subject. At most 200 characters."},
+                "body": {"type": "string",
+                         "description": "send (EMAIL): a written email's text (plain text, at most 5000 characters; a "
+                                        "blank line starts a new paragraph). Not with template."},
                 "button_value": {"type": "string",
                                  "description": "send: the value that fills the variable in the template's link "
                                                 "button (the {{1}} part of its link). Ask the user; never invent it."},
@@ -474,15 +537,6 @@ def _template_entry(t: Dict[str, Any]) -> Dict[str, Any]:
     return {k: v for k, v in entry.items() if v is not None}
 
 
-_EMAIL_TEMPLATES_SQL = """
-SELECT t.id, t.name, t.subject, t.status, t.template_category, t.updated_at
-FROM templates t
-WHERE t.institute_id = :inst AND upper(t.type) = 'EMAIL'
-ORDER BY t.updated_at DESC NULLS LAST, t.id
-LIMIT :lim
-"""
-
-
 def _pick_template(approved: List[Dict[str, Any]], name: Any,
                    language: Any = None) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
     """The approved template by name (exact, else case-insensitive) and language; else the refusal."""
@@ -558,6 +612,276 @@ def render(t: Dict[str, Any], values: Dict[str, str]) -> str:
             key = names[int(key) - 1]
         return values.get(key, m.group(0))
     return _PLACEHOLDER_RE.sub(sub, str(t.get("bodyText") or ""))
+
+
+# ── email ────────────────────────────────────────────────────────────────
+
+#: Every email template with the {{variables}} its subject and body use, in order (the body only up to the
+#: size crm_send sends).
+_EMAIL_TEMPLATES_SQL = r"""
+SELECT t.id, t.name, t.subject, t.status, t.template_category, t.content_type, t.updated_at,
+       length(t.content) AS body_chars,
+       ARRAY(SELECT m[1]
+             FROM regexp_matches(COALESCE(t.subject, '') || ' '
+                                 || left(COALESCE(t.content, ''), CAST(:maxlen AS integer)),
+                                 '\{\{\s*([^{}]+?)\s*\}\}', 'g') AS m) AS placeholders
+FROM templates t
+WHERE t.institute_id = :inst AND upper(t.type) = 'EMAIL'
+ORDER BY t.updated_at DESC NULLS LAST, t.id
+LIMIT :lim
+"""
+
+#: One email template by id or name (names are not unique), with its body when it is small enough to send.
+_EMAIL_TEMPLATE_SQL = """
+SELECT t.id, t.name, t.subject, t.status, t.content_type, length(t.content) AS body_chars,
+       CASE WHEN length(t.content) <= :maxlen THEN t.content END AS content
+FROM templates t
+WHERE t.institute_id = :inst AND upper(t.type) = 'EMAIL' AND (t.id = :ref OR lower(t.name) = :lname)
+ORDER BY t.updated_at DESC NULLS LAST, t.id
+LIMIT 10
+"""
+
+_INSTITUTE_SQL = "SELECT name, email, mobile_number, website_url, address_line FROM institutes WHERE id = :inst"
+
+#: Email template variables the tool fills itself (lower-cased name → what fills it).
+_EMAIL_AUTOFILL: Dict[str, str] = {
+    **{n: "name" for n in NAME_VARIABLES | {"fullname", "studentname", "leadname", "learnername", "recipient_name",
+                                            "recipientname", "parent_name", "parentname", "firstname"}},
+    "first_name": "first_name", "firstname": "first_name",
+    **{n: "email" for n in ("email", "student_email", "lead_email", "learner_email", "user_email")},
+    "institute_name": "institute_name", "institutename": "institute_name", "institute_email": "institute_email",
+    "institute_phone": "institute_phone", "institute_mobile": "institute_phone",
+    "institute_website": "institute_website", "institute_address": "institute_address",
+}
+
+_BODY_CTRL_RE = re.compile(r"[\x00-\x08\x0b-\x1f\x7f​-‏‪-‮⁦-⁩]")
+
+
+def mailable(email: Any) -> bool:
+    """A real address: well formed and not a synthesised placeholder."""
+    e = str(email or "").strip().lower()
+    return ld.valid_email(e) and not e.endswith("@" + PLACEHOLDER_EMAIL_DOMAIN)
+
+
+def _is_plain(content_type: Any) -> bool:
+    return str(content_type or "").strip().lower() in ("text/plain", "text", "plain")
+
+
+def text_to_html(text: str) -> str:
+    """Plain text → simple HTML: every character escaped, a blank line starts a paragraph, a newline is a break."""
+    paragraphs = [p for p in re.split(r"\n[ \t]*\n", text.strip()) if p.strip()]
+    inner = "".join('<p style="margin:0 0 12px">' + html.escape(p.strip()).replace("\n", "<br>") + "</p>"
+                    for p in paragraphs)
+    return ('<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.5;color:#222222">'
+            + inner + "</div>")
+
+
+def html_to_text(markup: str) -> str:
+    """What a reader sees of an HTML body, as text (for the preview)."""
+    s = re.sub(r"(?s)<!--.*?-->", " ", markup)
+    s = re.sub(r"(?is)<(script|style|head|title)\b.*?</\1\s*>", " ", s)
+    s = re.sub(r"(?i)<br\s*/?>", "\n", s)
+    s = re.sub(r"(?i)</(p|div|tr|li|h[1-6]|table|blockquote|section)\s*>", "\n", s)
+    s = html.unescape(re.sub(r"<[^>]+>", " ", s))
+    lines = [re.sub(r"[ \t ]+", " ", ln).strip() for ln in s.splitlines()]
+    out: List[str] = []
+    for ln in lines:
+        if ln or (out and out[-1]):
+            out.append(ln)
+    return "\n".join(out).strip()
+
+
+def email_template_variables(subject: Any, content: Any) -> List[str]:
+    """The {{variables}} of a subject and body, in order, each once."""
+    found = _PLACEHOLDER_RE.findall(str(subject or "") + " " + str(content or ""))
+    return list(dict.fromkeys(p.strip() for p in found if p.strip()))
+
+
+def email_template_problem(row: Dict[str, Any]) -> Optional[str]:
+    """Why crm_send cannot send this email template, or None."""
+    status = str(row.get("status") or "").strip().upper()
+    if status not in SENDABLE_EMAIL_STATUSES:
+        return f"This email template is {status.lower()}, not active. Pick an active template."
+    size = int(row.get("body_chars") or 0)
+    if size <= 0:
+        return "This email template has no body. Pick another template."
+    if size > TEMPLATE_BODY_MAX:
+        return (f"This email template is too large to send from here ({size} characters). Send it from the CRM "
+                f"dashboard, or pick another template.")
+    return None
+
+
+def institute_values(ctx: ToolContext) -> Dict[str, str]:
+    """The institute's own name / email / phone / website / address for template variables — memoised per call."""
+    cached = getattr(ctx, "_crm_institute_values", None)
+    if cached is not None:
+        return cached
+    found, ok = cd.rows(ctx, _INSTITUTE_SQL, {"inst": ctx.principal.institute_id})
+    row = found[0] if found else {}
+    values = {k: v for k, v in (("institute_name", cd.clean(row.get("name"))),
+                                ("institute_email", cd.clean(row.get("email"))),
+                                ("institute_phone", cd.clean(row.get("mobile_number"))),
+                                ("institute_website", cd.clean(row.get("website_url"), 300)),
+                                ("institute_address", cd.clean(row.get("address_line"), 300))) if v}
+    if ok:
+        try:
+            setattr(ctx, "_crm_institute_values", values)
+        except Exception:  # noqa: BLE001
+            pass
+    return values
+
+
+def _autofill(name: str, lead: Dict[str, Any], inst: Dict[str, str]) -> Optional[str]:
+    kind = _EMAIL_AUTOFILL.get(name.strip().lower())
+    if kind is None:
+        return None
+    full = cd.clean(lead.get("parent_name"))
+    if kind == "first_name":
+        return full.split(" ")[0] if full else None
+    if kind == "name":
+        return full
+    if kind == "email":
+        email = str(lead.get("parent_email") or "").strip()
+        return email if mailable(email) else None
+    return inst.get(kind)
+
+
+def fill_email_variables(names: List[str], given: Any, lead: Dict[str, Any],
+                         inst: Dict[str, str]) -> Tuple[Dict[str, str], List[str], Optional[Dict[str, Any]]]:
+    """
+    ``(values by variable name, autofilled names, refusal)`` for an email
+    template. Given names match exactly, else ignoring case; the lead's name and
+    email and the institute's details fill their variables when left out;
+    anything else missing is refused so the model asks the user.
+    """
+    if given is not None and not isinstance(given, dict):
+        return {}, [], cd.err("invalid_argument", message="variables is an object: {variable: value}.")
+    by_lower = {n.lower(): n for n in names}
+    values: Dict[str, str] = {}
+    unknown: List[str] = []
+    for key, value in (given or {}).items():
+        k = str(key).strip()
+        k = k if k in names else by_lower.get(k.lower(), "")
+        if not k:
+            unknown.append(str(key))
+            continue
+        v = cd.clean(value, 1000)
+        if v and ("{{" in v or "}}" in v):
+            return {}, [], cd.err("invalid_argument", variable=k,
+                                  message="A variable's value cannot contain {{ or }}.")
+        if v:
+            values[k] = v
+    if unknown:
+        return {}, [], cd.err("invalid_argument", unknown_variables=unknown, variables=names,
+                              message="These are not variables of this template.")
+    autofilled: List[str] = []
+    for n in names:
+        if n not in values:
+            v = _autofill(n, lead, inst)
+            if v:
+                values[n] = v
+                autofilled.append(n)
+    missing = [n for n in names if n not in values]
+    if missing:
+        return {}, [], cd.err("missing_argument", needs=missing, variables=names,
+                              message="Ask the user for these template values; never make them up.")
+    return {n: values[n] for n in names}, autofilled, None
+
+
+def render_email(text: Any, values: Dict[str, str], *, escape: bool) -> str:
+    """Fill the {{variables}}; values are HTML-escaped when the text is HTML."""
+    def sub(m: "re.Match[str]") -> str:
+        v = values.get(m.group(1).strip())
+        if v is None:
+            return m.group(0)
+        return html.escape(v) if escape else v
+    return _PLACEHOLDER_RE.sub(sub, str(text or ""))
+
+
+def _one_line(value: Any) -> str:
+    return cd.clean(value, 100_000) or ""
+
+
+def _written_text(value: Any) -> str:
+    text = str(value or "").replace("\r\n", "\n").replace("\r", "\n")
+    return _BODY_CTRL_RE.sub("", text).strip()
+
+
+async def _email_template_rows(ctx: ToolContext) -> Optional[List[Dict[str, Any]]]:
+    found, ok = cd.rows(ctx, _EMAIL_TEMPLATES_SQL, {"inst": ctx.principal.institute_id, "lim": 200,
+                                                    "maxlen": TEMPLATE_BODY_MAX})
+    return found if ok else None
+
+
+def _email_template_entry(r: Dict[str, Any]) -> Dict[str, Any]:
+    names = list(dict.fromkeys(str(p).strip() for p in (r.get("placeholders") or []) if str(p or "").strip()))
+    entry = {"template_id": r["id"], "name": cd.clean(r.get("name")), "status": r.get("status"),
+             "category": r.get("template_category"), "updated_at": cd.iso(r.get("updated_at")),
+             "variables": names,
+             "filled_automatically": [n for n in names if n.strip().lower() in _EMAIL_AUTOFILL] or None,
+             "not_sendable": email_template_problem(r),
+             "content": cd.lead_content({"subject": r.get("subject")}, limit=200)}
+    return {k: v for k, v in entry.items() if v is not None}
+
+
+async def _pick_email_template(ctx: ToolContext, ref: str) -> Tuple[Optional[Dict[str, Any]],
+                                                                    Optional[Dict[str, Any]]]:
+    """The email template by template_id, else by name (exact, else ignoring case); else the refusal."""
+    found, ok = cd.rows(ctx, _EMAIL_TEMPLATE_SQL, {"inst": ctx.principal.institute_id, "ref": ref,
+                                                   "lname": ref.lower(), "maxlen": TEMPLATE_BODY_MAX})
+    if not ok:
+        return None, cd.err("query_failed", message="The email templates could not be loaded right now.")
+    by_id = [r for r in found if r.get("id") == ref]
+    if by_id:
+        return by_id[0], None
+    same = [r for r in found if r.get("name") == ref] or found
+    if not same:
+        listed = await _email_template_rows(ctx) or []
+        return None, cd.err("unknown_template",
+                            available=[{"template_id": r["id"], "name": cd.clean(r.get("name"))}
+                                       for r in listed if not email_template_problem(r)][:40],
+                            message="No email template of this institute has that id or name. Pick one from the "
+                                    "available list.")
+    if len(same) > 1:
+        return None, cd.err("ambiguous_template",
+                            candidates=[{"template_id": r["id"], "name": cd.clean(r.get("name"))} for r in same],
+                            message="Several email templates have this name. Ask the user which, then pass its "
+                                    "template_id.")
+    return same[0], None
+
+
+async def _sender_status(ctx: ToolContext) -> Optional[Dict[str, Any]]:
+    """The institute's transactional email sender: from address, daily limit, sent today; None when unreadable."""
+    data = await cd.nc(ctx, "GET", f"{EMAIL_STATUS_PATH}/{ctx.principal.institute_id}",
+                       params={"emailType": EMAIL_TYPE})
+    if not isinstance(data, dict) or cd.is_error(data):
+        return None
+    return data
+
+
+def _sending_limits(status: Dict[str, Any]) -> Tuple[Dict[str, Any], bool]:
+    """(what to show, whether a send now is queued behind the sender's daily limit)."""
+    cap = int(status.get("maxPerDay") or 0)
+    sent = int(status.get("sentToday") or 0)
+    paused = bool(status.get("pausedToday"))
+    queued_now = paused or (cap > 0 and sent >= cap)
+    shown: Dict[str, Any] = {"email_type": "UTILITY_EMAIL (the institute's transactional sender)",
+                             "max_per_day": cap or "no limit", "sent_today": sent,
+                             "waiting_in_queue": int(status.get("deferredPending") or 0)}
+    if paused:
+        shown["paused_today"] = True
+    if cap or paused:
+        shown["next_window"] = status.get("nextWindow")
+    return shown, queued_now
+
+
+def _email_preview_block(subject: str, markup: str, text: str) -> Tuple[Dict[str, Any], Optional[int]]:
+    """The email as lead_content (subject, text, and the HTML when it is short enough), and the HTML size if cut."""
+    block: Dict[str, Any] = {"subject": subject, "text": text}
+    if len(markup) <= PREVIEW_HTML_MAX:
+        block["html"] = markup
+        return cd.lead_content(block, limit=PREVIEW_HTML_MAX), None
+    return cd.lead_content(block, limit=PREVIEW_HTML_MAX), len(markup)
 
 
 # ── scope for conversation lists ─────────────────────────────────────────
@@ -839,18 +1163,17 @@ async def _action_templates(args: Dict[str, Any], ctx: ToolContext) -> Dict[str,
         if not cd.feature_on(ctx, FEATURE_EMAIL):
             notes.append("Email is not part of this institute's plan.")
         else:
-            found, ok = cd.rows(ctx, _EMAIL_TEMPLATES_SQL, {"inst": ctx.principal.institute_id, "lim": 200})
-            if not ok:
+            found = await _email_template_rows(ctx)
+            if found is None:
                 notes.append("Email templates could not be loaded right now.")
             else:
                 rows = [r for r in found if not q or q in str(r.get("name") or "").lower()]
                 out["email"] = {
-                    "templates": [{"template_id": r["id"], "name": cd.clean(r.get("name")), "status": r.get("status"),
-                                   "category": r.get("template_category"), "updated_at": cd.iso(r.get("updated_at")),
-                                   "content": cd.lead_content({"subject": r.get("subject")}, limit=200)}
-                                  for r in rows[:limit]],
+                    "templates": [_email_template_entry(r) for r in rows[:limit]],
                     "count": len(rows), "more": len(rows) > limit,
-                    "note": "Listed for reference: email is sent from the CRM dashboard, not by crm_send.",
+                    "note": ("Send one with crm_send(channel='EMAIL', template=<template_id>, variables={...}). "
+                             "filled_automatically variables come from the lead's and the institute's records when "
+                             "left out; ask the user for the rest."),
                 }
     if notes:
         out["notes"] = notes
@@ -873,23 +1196,9 @@ async def _email_unsubscribed(ctx: ToolContext, email: str) -> Optional[bool]:
     return None
 
 
-async def _action_can_message(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
-    lead = await _lead(ctx, args)
-    if cd.is_error(lead):
-        return lead
-    inst = ctx.principal.institute_id
-    opt = opted_out(ctx, lead)
-    quota = cd.quota(ctx, SEND_PURPOSE)
-    out: Dict[str, Any] = {"lead": _lead_identity(lead),
-                           "opted_out": opt if opt is not None else "unknown",
-                           "sends_left_this_hour": quota["remaining"]}
-    reasons: List[str] = []
-    if lead.get("audience_status") != "ACTIVE":
-        reasons.append("The lead was deleted in the CRM.")
-    if opt:
-        reasons.append("The lead opted out of messages in this institute.")
-    elif opt is None:
-        reasons.append("The opt-out status could not be checked right now.")
+async def _whatsapp_can_message(ctx: ToolContext, lead: Dict[str, Any], args: Dict[str, Any], reasons: List[str],
+                                inst: str) -> Dict[str, Any]:
+    """The WhatsApp half of can_message: the same checks crm_send makes for a template."""
     wa: Dict[str, Any] = {}
     if not cd.feature_on(ctx, FEATURE_WHATSAPP):
         reasons.append("WhatsApp is not part of this institute's plan.")
@@ -932,17 +1241,88 @@ async def _action_can_message(args: Dict[str, Any], ctx: ToolContext) -> Dict[st
                        "window is open; crm_send sends approved templates.")
     if reasons:
         wa["why_not"] = reasons
-    out["whatsapp"] = wa
+    return wa
+
+
+async def _email_can_message(ctx: ToolContext, lead: Dict[str, Any], base_reasons: List[str],
+                             template_ref: Optional[str]) -> Dict[str, Any]:
+    """The email half of can_message: the same checks crm_send(channel='EMAIL') makes."""
     email = str(lead.get("parent_email") or "").strip()
     em: Dict[str, Any] = {"address": cd.mask_email(email) if email else None}
-    if ld.valid_email(email) and cd.feature_on(ctx, FEATURE_EMAIL):
-        em["unsubscribed"] = await _email_unsubscribed(ctx, email)
-        if em["unsubscribed"] is None:
-            em["unsubscribed"] = "unknown"
-    em["note"] = "Email is sent from the CRM dashboard, not by crm_send."
-    out["email"] = em
-    out["note"] = ("WhatsApp STOP replies are checked again when sending; 'sent' means the provider accepted the "
-                   "message, delivery shows later in history.")
+    reasons = list(base_reasons)
+    if not cd.feature_on(ctx, FEATURE_EMAIL):
+        reasons.append("Email is not part of this institute's plan.")
+        em["available"] = False
+    else:
+        if not mailable(email):
+            reasons.append("This lead has no usable email address on record.")
+        else:
+            unsubscribed = await _email_unsubscribed(ctx, email)
+            em["unsubscribed"] = "unknown" if unsubscribed is None else unsubscribed
+            if unsubscribed:
+                reasons.append("This address is on the institute's email unsubscribe list.")
+            elif unsubscribed is None:
+                reasons.append("The email unsubscribe list could not be checked right now.")
+        status = await _sender_status(ctx)
+        if status is None:
+            reasons.append("The institute's email sender could not be checked right now.")
+        else:
+            em["from"] = cd.clean(status.get("fromEmail"), 200)
+            if not em["from"]:
+                reasons.append("No email sender is set up for this institute.")
+            em["sending_limits"], queued_now = _sending_limits(status)
+            if queued_now:
+                em["queued_now"] = ("The sender's daily limit is reached (or sending is paused today): an email now "
+                                    "is queued for the next sending window.")
+        if template_ref:
+            tpl, refusal = await _pick_email_template(ctx, template_ref)
+            if refusal:
+                em["template"] = refusal
+                reasons.append(refusal["message"])
+            else:
+                names = email_template_variables(tpl.get("subject"), tpl.get("content"))
+                inst = institute_values(ctx)
+                em["template"] = {"template_id": tpl["id"], "name": cd.clean(tpl.get("name")), "variables": names,
+                                  "filled_automatically": [n for n in names if _autofill(n, lead, inst)] or None}
+                problem = email_template_problem(tpl)
+                if problem:
+                    em["template"]["not_sendable"] = problem
+                    reasons.append(problem)
+                em["template"] = {k: v for k, v in em["template"].items() if v is not None}
+    em["email_sends_left_this_hour"] = cd.quota(ctx, EMAIL_SEND_PURPOSE)["remaining"]
+    em["can_send_email"] = not reasons
+    if reasons:
+        em["why_not"] = reasons
+    em["note"] = ("crm_send(channel='EMAIL') sends one email to this address: an email template or a subject and "
+                  "body written with the user.")
+    return em
+
+
+async def _action_can_message(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
+    channel = str(args.get("channel") or "ALL").strip().upper()
+    if channel not in ("WHATSAPP", "EMAIL", "ALL"):
+        return cd.err("invalid_argument", message="channel is WHATSAPP, EMAIL or ALL.")
+    lead = await _lead(ctx, args)
+    if cd.is_error(lead):
+        return lead
+    inst = ctx.principal.institute_id
+    opt = opted_out(ctx, lead)
+    out: Dict[str, Any] = {"lead": _lead_identity(lead), "opted_out": opt if opt is not None else "unknown"}
+    base: List[str] = []
+    if lead.get("audience_status") != "ACTIVE":
+        base.append("The lead was deleted in the CRM.")
+    if opt:
+        base.append("The lead opted out of messages in this institute.")
+    elif opt is None:
+        base.append("The opt-out status could not be checked right now.")
+    if channel in ("WHATSAPP", "ALL"):
+        out["sends_left_this_hour"] = cd.quota(ctx, SEND_PURPOSE)["remaining"]
+        out["whatsapp"] = await _whatsapp_can_message(ctx, lead, args, list(base), inst)
+    if channel in ("EMAIL", "ALL"):
+        out["email"] = await _email_can_message(ctx, lead, base,
+                                                str(args.get("template") or "").strip() if channel == "EMAIL" else None)
+    out["note"] = ("Opt-outs, WhatsApp STOP replies and the email unsubscribe list are checked again when sending; "
+                   "'sent' means the provider accepted the message, delivery shows later in history.")
     return out
 
 
@@ -1018,6 +1398,21 @@ def _send_warnings(tpl: Dict[str, Any]) -> List[str]:
 
 
 async def _action_send(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
+    channel = str(args.get("channel") or "WHATSAPP").strip().upper()
+    if channel not in CHANNELS:
+        return cd.err("invalid_argument", message="channel is WHATSAPP or EMAIL.")
+    feature = FEATURE_EMAIL if channel == "EMAIL" else FEATURE_WHATSAPP
+    if not cd.feature_on(ctx, feature):
+        return cd.err("module_not_enabled", feature=feature)
+    if channel == "EMAIL":
+        return await _send_email(args, ctx)
+    if args.get("subject") or args.get("body"):
+        return cd.err("invalid_argument", message="subject and body are for channel EMAIL. A WhatsApp message is an "
+                                                  "approved template.")
+    return await _send_whatsapp(args, ctx)
+
+
+async def _send_whatsapp(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
     built = await _build_send(ctx, args)
     if cd.is_error(built):
         return built
@@ -1102,13 +1497,232 @@ async def _action_send(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]
                                      request=built["request"], preview=preview, apply=apply)
 
 
+def _written_email(args: Dict[str, Any]) -> Dict[str, Any]:
+    """A subject and plain-text body written with the user → ``{subject, html, text}`` or a refusal."""
+    if args.get("variables"):
+        return cd.err("invalid_argument", message="variables are for email templates. Write the values into the "
+                                                  "subject and body.")
+    subject, text = _one_line(args.get("subject")), _written_text(args.get("body"))
+    needs = [k for k, v in (("subject", subject), ("body", text)) if not v]
+    if needs:
+        return cd.err("missing_argument", needs=needs,
+                      message="Pass template (an email template), or subject and body written with the user.")
+    if len(subject) > SUBJECT_MAX or len(text) > BODY_MAX:
+        return cd.err("invalid_argument", message=f"subject is at most {SUBJECT_MAX} characters and body at most "
+                                                  f"{BODY_MAX}.")
+    if "{{" in subject + text or "}}" in subject + text:
+        return cd.err("invalid_argument", message="A written email has no template variables: write the values out "
+                                                  "instead of {{...}}.")
+    return {"subject": subject, "html": text_to_html(text), "text": text}
+
+
+async def _template_email(ctx: ToolContext, args: Dict[str, Any], ref: str,
+                          lead: Dict[str, Any]) -> Dict[str, Any]:
+    """An email template rendered for the lead → ``{subject, html, text, template, autofilled}`` or a refusal."""
+    if args.get("body"):
+        return cd.err("invalid_argument", message="Pass either template or a written body, not both.")
+    tpl, refusal = await _pick_email_template(ctx, ref)
+    if refusal:
+        return refusal
+    problem = email_template_problem(tpl)
+    if problem:
+        return cd.err("template_not_supported", template_id=tpl["id"], message=problem)
+    subject_src = tpl.get("subject")
+    if args.get("subject"):
+        subject_src = _one_line(args.get("subject"))
+        if len(subject_src) > SUBJECT_MAX or "{{" in subject_src or "}}" in subject_src:
+            return cd.err("invalid_argument", message=f"subject is plain text of at most {SUBJECT_MAX} characters.")
+    if not _one_line(subject_src):
+        return cd.err("missing_argument", needs=["subject"],
+                      message="This email template has no subject. Ask the user for one and pass subject.")
+    content = str(tpl.get("content") or "")
+    names = email_template_variables(subject_src, content)
+    values, autofilled, refusal = fill_email_variables(names, args.get("variables"), lead, institute_values(ctx))
+    if refusal:
+        return refusal
+    subject = _one_line(render_email(subject_src, values, escape=False))
+    if len(subject) > 2 * SUBJECT_MAX:
+        return cd.err("invalid_argument", message="The subject is too long once its variables are filled.")
+    if _is_plain(tpl.get("content_type")):
+        text = _written_text(render_email(content, values, escape=False))
+        markup = text_to_html(text)
+    else:
+        markup = render_email(content, values, escape=True)
+        text = html_to_text(markup)
+    return {"subject": subject, "html": markup, "text": text, "autofilled": autofilled,
+            "template": {"template_id": tpl["id"], "name": cd.clean(tpl.get("name"))}}
+
+
+async def _build_email(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Everything an email send needs, resolved now (both on preview and on
+    apply): ``{lead, email, subject, html, text, template, autofilled, sender,
+    request}`` or a refusal. Every guardrail runs here, so the apply checks
+    them all again.
+    """
+    for key in ("language", "button_value"):
+        if args.get(key):
+            return cd.err("invalid_argument", message=f"{key} is for WhatsApp templates; leave it out for an email.")
+    lead = await _lead(ctx, args)
+    if cd.is_error(lead):
+        return lead
+    if lead.get("audience_status") != "ACTIVE":
+        return cd.err("lead_deleted", lead_id=lead["lead_id"],
+                      message="This lead was deleted in the CRM and cannot be emailed.")
+    opt = opted_out(ctx, lead)
+    if opt is None:
+        return cd.err("query_failed", message="The lead's opt-out status could not be checked, so nothing is sent.")
+    if opt:
+        return cd.err("opted_out", lead_id=lead["lead_id"],
+                      message="This lead opted out of messages in this institute. Nothing was sent.")
+    email = str(lead.get("parent_email") or "").strip()
+    if not mailable(email):
+        return cd.err("no_email", lead_id=lead["lead_id"],
+                      message="This lead has no usable email address on record. Add it on the lead first.")
+    ref = str(args.get("template") or args.get("template_name") or "").strip()
+    built = await _template_email(ctx, args, ref, lead) if ref else _written_email(args)
+    if cd.is_error(built):
+        return built
+    unsubscribed = await _email_unsubscribed(ctx, email)
+    if unsubscribed is None:
+        return cd.err("query_failed", message="The institute's email unsubscribe list could not be checked, so "
+                                              "nothing is sent.")
+    if unsubscribed:
+        return cd.err("unsubscribed", lead_id=lead["lead_id"],
+                      message="This address is on the institute's email unsubscribe list. Nothing was sent.")
+    sender = await _sender_status(ctx)
+    if sender is None:
+        return cd.err("query_failed", message="The institute's email sender could not be checked, so nothing is "
+                                              "sent.")
+    sender_from = cd.clean(sender.get("fromEmail"), 200)
+    if not sender_from:
+        return cd.err("email_not_configured", message="No email sender is set up for this institute.")
+    digest = hashlib.sha256((built["subject"] + "\x00" + built["html"]).encode("utf-8")).hexdigest()
+    template = built.get("template")
+    request = {"action": "send", "channel": "EMAIL", "lead_id": lead["lead_id"],
+               "lead_user_id": lead.get("lead_user_id"), "to": email.lower(), "from": sender_from.lower(),
+               "template_id": template["template_id"] if template else None, "content_sha256": digest}
+    return {**built, "lead": lead, "email": email, "template": template, "autofilled": built.get("autofilled") or [],
+            "sender": sender, "sender_from": sender_from, "request": request}
+
+
+async def _send_email(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
+    built = await _build_email(ctx, args)
+    if cd.is_error(built):
+        return built
+    lead, template = built["lead"], built["template"]
+
+    async def preview() -> Dict[str, Any]:
+        quota = cd.quota(ctx, EMAIL_SEND_PURPOSE)
+        limits, queued_now = _sending_limits(built["sender"])
+        message, html_chars = _email_preview_block(built["subject"], built["html"], built["text"])
+        shown: Dict[str, Any] = {
+            "lead": _lead_identity(lead), "channel": "EMAIL",
+            "to": f"{built['email']} (the address on the lead's record)",
+            "from": built["sender_from"],
+            "template": template,
+            "email": message,
+            "html_characters": html_chars,
+            "autofilled": built["autofilled"] or None,
+            "checks": {"lead_in_your_scope": True, "lead_active": True, "opted_out": False, "usable_address": True,
+                       "on_unsubscribe_list": False, "sender_set_up": True},
+            "sending_limits": limits,
+            "after_sending": [
+                "A 'message sent' activity is logged on the lead (it counts as the first response).",
+                "The dashboard's activity log records the email under your name.",
+                "It goes out from the institute's transactional email sender shown in 'from'.",
+            ],
+            "email_sends_left_this_hour": quota["remaining"],
+        }
+        warnings = []
+        if html_chars:
+            warnings.append(f"The template's HTML ({html_chars} characters) is sent in full; the preview shows its "
+                            f"text.")
+        if queued_now:
+            warnings.append("The sender's daily limit is reached (or sending is paused today): the email will be "
+                            "queued and go out when the next sending window opens.")
+        if built["sender"].get("unsubscribeFooter"):
+            warnings.append("The sender adds an unsubscribe link to the email's footer.")
+        if quota["remaining"] <= 0:
+            warnings.append("No emails left this hour: confirming will be refused until an earlier email is an hour "
+                            "old.")
+        if warnings:
+            shown["warnings"] = warnings
+        shown["_summary"] = {"lead_id": lead["lead_id"], "channel": "EMAIL",
+                             "template_id": template["template_id"] if template else None}
+        return {k: v for k, v in shown.items() if v is not None}
+
+    async def apply(summary: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        if (summary or {}).get("lead_id") != lead["lead_id"]:
+            return cd.err("confirm_token_mismatch")
+        body: Dict[str, Any] = {
+            "instituteId": ctx.principal.institute_id, "channel": "EMAIL", "recipient": built["email"],
+            "recipientName": cd.clean(lead.get("parent_name")), "variables": {}, "variablesChanged": False,
+            "emailSubject": built["subject"], "emailBody": built["html"],
+        }
+        if template:
+            body["templateName"] = template["name"]          # names the template in the audit row
+        if lead.get("lead_user_id"):
+            body["recipientUserId"] = lead["lead_user_id"]
+        resp = await cd.ac(ctx, "POST", RESEND_PATH, body=body)
+        if cd.is_error(resp):
+            status = resp.get("status")
+            # No answer, or a server-side failure: the email may already be on its way.
+            if resp.get("error") == "request_failed" or not isinstance(status, int) or status >= 500:
+                return cd.err("send_outcome_unknown", lead_id=lead["lead_id"], status=status,
+                              message="The email may or may not have gone out. Check crm_messages(action='history') "
+                                      "for this lead before trying again; do not resend blindly.")
+            return cd.err("admin_core_rejected", status=status,
+                          message="The email was not sent: " + str(resp.get("message") or "send refused"))
+        resp = resp if isinstance(resp, dict) else {}
+        result = next((r for r in resp.get("results") or [] if isinstance(r, dict)), {})
+        status = str(result.get("status") or resp.get("status") or "").upper()
+        if status == "SKIPPED_UNSUBSCRIBED":
+            return cd.err("unsubscribed", lead_id=lead["lead_id"],
+                          message="The lead has unsubscribed from this institute's emails. Nothing was sent.")
+        if status == "SKIPPED_BLOCKED":
+            return cd.err("email_blocked", lead_id=lead["lead_id"],
+                          message="The lead's address is blocked after earlier bounces. Nothing was sent; correct "
+                                  "the address on the lead first.")
+        if int(resp.get("accepted") or 0) < 1 or int(resp.get("failed") or 0) > 0 or result.get("success") is False:
+            return cd.err("send_failed", status=status or None, provider_error=cd.clean(result.get("error"), 300),
+                          message="The email was not sent.")
+        queued = status == "DEFERRED"
+        out: Dict[str, Any] = {"sent": not queued, "queued": queued or None, "lead_id": lead["lead_id"],
+                               "channel": "EMAIL", "to": cd.mask_email(built["email"]),
+                               "template": template["name"] if template else None, "status": status or "SENT",
+                               "delivery": ("Queued behind the sender's daily limit: it goes out when the next "
+                                            "sending window opens. Do not send it again." if queued else
+                                            "Accepted for sending. Delivery, a bounce or a reply shows in "
+                                            "crm_messages(action='history').")}
+        what = f"the email template '{template['name']}'" if template else "an email"
+        logged = await cd.write_activity(
+            ctx, lead, "REACHOUT",
+            f"{'Queued' if queued else 'Sent'} {what} through the AI assistant. Subject: {built['subject']}",
+            {"channel": "EMAIL", "template": template["name"] if template else None,
+             "template_id": template["template_id"] if template else None, "status": status or "SENT", "via": "MCP"},
+            title=f"Email {'queued' if queued else 'sent'}: {built['subject']}")
+        if cd.is_error(logged):
+            out["activity_logged"] = False
+            out["note"] = "The email was accepted, but the activity could not be logged on the lead."
+        else:
+            out["activity_logged"] = True
+        return {k: v for k, v in out.items() if v is not None}
+
+    return await cd.preview_or_apply(ctx, args, purpose=EMAIL_SEND_PURPOSE, confirm="single_use",
+                                     request=built["request"], preview=preview, apply=apply)
+
+
 async def _action_quota(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
     s = await cd.scope(ctx)
     if cd.is_error(s):
         return s
-    q = cd.quota(ctx, SEND_PURPOSE)
-    return {"whatsapp_sends": {"used_last_hour": q["used_last_hour"], "cap_per_hour": q["cap_per_hour"],
-                               "remaining": q["remaining"]}}
+    out: Dict[str, Any] = {}
+    for key, purpose in (("whatsapp_sends", SEND_PURPOSE), ("email_sends", EMAIL_SEND_PURPOSE)):
+        q = cd.quota(ctx, purpose)
+        out[key] = {"used_last_hour": q["used_last_hour"], "cap_per_hour": q["cap_per_hour"],
+                    "remaining": q["remaining"]}
+    return out
 
 
 # ── executors ────────────────────────────────────────────────────────────
@@ -1177,11 +1791,12 @@ MESSAGE_TOOLS: Dict[str, ToolSpec] = {
 def _register() -> None:
     from .assistant_tool_registry import ASSISTANT_TOOLS, GROUP_LABELS
     ASSISTANT_TOOLS.update(MESSAGE_TOOLS)
-    GROUP_LABELS.update({READ_GROUP_KEY: "CRM messages: view", SEND_GROUP_KEY: "CRM messages: send WhatsApp"})
+    GROUP_LABELS.update({READ_GROUP_KEY: "CRM messages: view", SEND_GROUP_KEY: "CRM messages: send WhatsApp and email"})
 
 
 _register()
 
 __all__ = ["MESSAGE_TOOLS", "ACTION_SPEC", "READ_TOOL_NAME", "SEND_TOOL_NAME", "READ_GROUP_KEY", "SEND_GROUP_KEY",
-           "READ_SCHEMA", "SEND_SCHEMA", "SEND_PURPOSE", "execute_crm_messages", "execute_crm_send", "wa_id",
-           "template_variables", "fill_variables", "render", "opted_out"]
+           "READ_SCHEMA", "SEND_SCHEMA", "SEND_PURPOSE", "EMAIL_SEND_PURPOSE", "execute_crm_messages",
+           "execute_crm_send", "wa_id", "template_variables", "fill_variables", "render", "opted_out", "mailable",
+           "text_to_html", "html_to_text", "email_template_variables", "fill_email_variables", "render_email"]

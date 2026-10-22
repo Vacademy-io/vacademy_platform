@@ -35,6 +35,8 @@ CRM_TOOLS = (
     ("crm_messages", "crm_messages", "assistant_tools_crm_messages"),
     ("crm_send", "crm_messaging_outbound", "assistant_tools_crm_messages"),
     ("crm_reports", "crm_reports", "assistant_tools_crm_reports"),
+    ("crm_collections", "crm_collections", "assistant_tools_crm_money"),
+    ("crm_payment_reminders", "crm_payment_reminders", "assistant_tools_crm_money"),
 )
 CRM_TOOL_NAMES = tuple(t for t, _, _ in CRM_TOOLS)
 CRM_GROUP = {t: g for t, g, _ in CRM_TOOLS}
@@ -87,6 +89,7 @@ def test_exposed_set_is_the_documented_one():
         "crm_meetings", "crm_meetings_edit",
         "crm_messages", "crm_send",
         "crm_reports",
+        "crm_collections", "crm_payment_reminders",
     )
     assert CRM_TOOL_NAMES == MCP_EXPOSED_TOOLS[-len(CRM_TOOL_NAMES):]
 
@@ -295,7 +298,8 @@ def test_website_publish_is_an_opt_in_live_capability_no_existing_connection_has
         "website_data_edits", "website_publish", "course_structure_edits", "learner_enrollments",
         "learner_profile_edits", "sub_org_edits", "sub_org_enrollments",
         "crm_lead_activity", "crm_lead_edits", "crm_team_edits", "crm_lead_intake",
-        "crm_calling_outbound", "crm_ai_campaigns", "crm_meeting_edits", "crm_messaging_outbound"]
+        "crm_calling_outbound", "crm_ai_campaigns", "crm_meeting_edits", "crm_messaging_outbound",
+        "crm_payment_reminders"]
     keys_loaded = {ASSISTANT_TOOLS[n].key() for n in loaded(MCP_EXPOSED_TOOLS) if n in ASSISTANT_TOOLS}
     assert [c["key"] for c in adapter.tool_catalog() if c["opt_in"]] == [k for k in opt_in_keys if k in keys_loaded]
     from app.mcp.constants import MCP_OPT_IN_GROUPS
@@ -360,10 +364,10 @@ def test_every_live_or_outbound_group_is_opt_in():
     assert all(MCP_TOOL_PLACEMENT[k]["risk"] == "live" for k in LIVE_NOT_OPT_IN_LEGACY)
 
 
-def test_crm_groups_sit_in_the_five_crm_areas_with_opt_in_edits():
+def test_crm_groups_sit_in_the_crm_areas_with_opt_in_edits():
     from app.mcp.constants import (MCP_OPT_IN_GROUPS, MCP_TOOL_AREAS, MCP_TOOL_GROUP_LABELS,
                                    MCP_TOOL_GROUP_SUMMARIES, MCP_TOOL_PLACEMENT)
-    crm_areas = ["crm_leads", "crm_calls", "crm_meetings", "crm_messages", "crm_reports"]
+    crm_areas = ["crm_leads", "crm_calls", "crm_meetings", "crm_messages", "crm_reports", "crm_payments"]
     assert [a for a in MCP_TOOL_AREAS if a.startswith("crm_")] == crm_areas
     expected = {
         "crm_leads": ("crm_leads", "view", None), "crm_lead_activity": ("crm_leads", "edit", "live_additive"),
@@ -375,6 +379,8 @@ def test_crm_groups_sit_in_the_five_crm_areas_with_opt_in_edits():
         "crm_messages": ("crm_messages", "view", None),
         "crm_messaging_outbound": ("crm_messages", "edit", "outbound"),
         "crm_reports": ("crm_reports", "view", None),
+        "crm_collections": ("crm_payments", "view", None),
+        "crm_payment_reminders": ("crm_payments", "edit", "outbound"),
     }
     assert set(CRM_GROUP.values()) == set(expected)
     for key, (area, level, risk) in expected.items():
@@ -392,13 +398,13 @@ def test_crm_groups_sit_in_the_five_crm_areas_with_opt_in_edits():
 def test_crm_write_tools_carry_a_safety_property_and_reads_none():
     writes = [t for t in CRM_TOOL_NAMES if MCP_TOOL_PLACEMENT_LEVEL(CRM_GROUP[t]) == "edit"]
     assert writes == ["crm_lead_activity", "crm_lead_edit", "crm_team_edit", "crm_lead_intake", "crm_dial",
-                      "crm_ai_campaign", "crm_meetings_edit", "crm_send"]
+                      "crm_ai_campaign", "crm_meetings_edit", "crm_send", "crm_payment_reminders"]
     for tool in CRM_TOOL_NAMES:
         assert (tool in MCP_ALLOWED_WRITE_TOOLS) == (tool in writes), tool
     for tool in writes:
         reason = MCP_ALLOWED_WRITE_TOOLS[tool]
         assert "confirm" in reason and ("scope" in reason or "institute" in reason), tool
-    for tool in ("crm_dial", "crm_ai_campaign", "crm_send"):
+    for tool in ("crm_dial", "crm_ai_campaign", "crm_send", "crm_payment_reminders"):
         assert MCP_ALLOWED_WRITE_TOOLS[tool].startswith("outbound, ") and "single-use" in MCP_ALLOWED_WRITE_TOOLS[tool]
 
 

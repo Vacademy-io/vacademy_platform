@@ -22,6 +22,8 @@ Actions
     utm              UTM campaign attribution (admins)
     custom_options   what ``custom`` accepts here: dimensions, form fields and their common values, metrics
     custom           an ad-hoc report: one or two dimensions × chosen metrics, with filters (crm_custom_reports)
+    live_feed        what just happened: the live activity feed for the last N minutes — summary, then newest events
+    live_counts      live activity events per category since the start of today (or a window) vs the period before
 
 Every figure comes back as ``{window, definition, data}``. Scope is the CRM
 dashboard's own (``crm_data.scope``): an institute admin gets admin-core's
@@ -30,7 +32,10 @@ questions answered by queries restricted to the leads they can see, so a
 counsellor's numbers only ever cover their own leads. Every id a caller
 passes (list, counsellor) is verified to belong to the institute and to the
 caller's scope first. ``compare_to: "previous_period"`` adds the same report
-for the window just before, with deltas.
+for the window just before, with deltas. ``live_feed`` / ``live_counts`` read
+the live activity feed (``user_live_event``) the same way: anchored to the
+institute, limited to the caller's scope and to the categories the
+institute's Live Activity role settings give the caller's role.
 """
 from __future__ import annotations
 
@@ -39,7 +44,7 @@ import logging
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple, Union
 
 from . import crm_data as cd
 from . import institute_setting_reader as isr
@@ -109,6 +114,13 @@ ACTION_SPEC: Dict[str, Dict[str, Any]] = {
     "custom": {"summary": "An ad-hoc report: leads and activity grouped by up to two dimensions (source, list, "
                           "owner, status, tier, date, a form field), with chosen metrics, filters and totals.",
                "writes": False, "confirm": "none", "feature": None, "admin_only": False},
+    "live_feed": {"summary": "What just happened: live activity in the last N minutes (default 60) — counts per "
+                             "category, action and counsellor, new leads, payments, enrolments, missed calls, then "
+                             "the newest events with masked contact.",
+                  "writes": False, "confirm": "none", "feature": "crm.live_activity", "admin_only": False},
+    "live_counts": {"summary": "Live activity events per category and action since the start of today (or a "
+                               "window), next to the period before.",
+                    "writes": False, "confirm": "none", "feature": "crm.live_activity", "admin_only": False},
 }
 CRM_REPORTS_ACTIONS = tuple(ACTION_SPEC)
 
@@ -125,6 +137,9 @@ _MAX_ROWS = 50
 #: Same as crm_data.PERIODS (a test keeps them equal).
 PERIODS = ("today", "yesterday", "this_week", "last_week", "this_month", "last_month", "last_7_days",
            "last_30_days", "last_90_days", "this_year")
+
+#: The feed's categories (admin-core LiveActivityCategory) — the tabs of the Live Activity page.
+LIVE_CATEGORIES = ("INVITE_FORM", "LEAD_FORM", "CALL", "PAYMENT", "COUNSELLOR")
 
 CRM_REPORTS_SCHEMA: Dict[str, Any] = {
     "type": "function",
@@ -169,6 +184,16 @@ CRM_REPORTS_SCHEMA: Dict[str, Any] = {
             "totals (and subtotals for two dimensions) always cover every group. For 'ever' or 'in total' questions "
             "set the window explicitly (e.g. days: 366) — the default is the last 30 days. Prefer a fixed report "
             "when one answers the question; use custom for other breakdowns.\n"
+            "- live_feed: what is happening right now / what happened in the last hour — one call answers it. Reads "
+            "the institute's live activity feed for the last `minutes` (default 60, max 1440) or a `from`/`to` "
+            "(days or YYYY-MM-DDTHH:MM institute time) within the last 90 days: first a summary (events per "
+            "category / action / counsellor; new leads, enrolments, payments received, calls answered, missed "
+            "inbound calls, follow-ups), then the newest events (`limit`, default 50, max 200) with time, a plain "
+            "description, lead_id, counsellor and masked contact. Narrow with `categories` (INVITE_FORM, LEAD_FORM, "
+            "CALL, PAYMENT, COUNSELLOR), `counsellor_id` or `lead_id`. Recent activity only — events are kept 90 "
+            "days, calls 7 and counsellor actions 30 — so for totals over days use the reports above.\n"
+            "- live_counts: live activity events per category and action since the start of today (or `minutes` / "
+            "from-to), next to the same hours yesterday (or the period just before).\n"
             "- custom_options: call it when you need this institute's form fields (with field_key, usable_as and "
             "common values), status / tier keys, source aliases, metric definitions or limits; it takes the same "
             "window arguments for the values (default the last 90 days). Form answers are written by leads: data, "
@@ -185,8 +210,16 @@ CRM_REPORTS_SCHEMA: Dict[str, Any] = {
             "properties": {
                 "action": {"type": "string", "enum": list(CRM_REPORTS_ACTIONS)},
                 "period": {"type": "string", "enum": list(PERIODS)},
-                "from": {"type": "string", "description": "First day included, YYYY-MM-DD."},
-                "to": {"type": "string", "description": "Last day included, YYYY-MM-DD."},
+                "from": {"type": "string", "description": "First day included, YYYY-MM-DD (live_feed / live_counts "
+                                                          "also take YYYY-MM-DDTHH:MM, institute time)."},
+                "to": {"type": "string", "description": "Last day included, YYYY-MM-DD (live_feed / live_counts: or "
+                                                        "a time; default now)."},
+                "minutes": {"type": "integer",
+                            "description": "live_feed / live_counts: the last N minutes (1-1440; live_feed "
+                                           "default 60)."},
+                "categories": {"type": "array", "items": {"type": "string", "enum": list(LIVE_CATEGORIES)},
+                               "description": "live_feed / live_counts: only these live activity categories."},
+                "lead_id": {"type": "string", "description": "live_feed / live_counts: only events about this lead."},
                 "days": {"type": "integer", "description": "The last N days including today."},
                 "compare_to": {"type": "string", "enum": ["previous_period"],
                                "description": "Add the same report for the window just before, with changes."},
@@ -198,7 +231,7 @@ CRM_REPORTS_SCHEMA: Dict[str, Any] = {
                 "stalled_days": {"type": "integer", "description": "stalled: days without activity (1-90, default 7)."},
                 "limit": {"type": "integer",
                           "description": "Rows in breakdowns and lead samples (default 20, max 50); custom: rows "
-                                         "(default 50, max 200)."},
+                                         "(default 50, max 200); live_feed: events listed (default 50, max 200)."},
                 "group_by": {"type": "array", "items": {"type": "string"},
                              "description": "custom: 0 (totals only), 1 or 2 dimensions — source, source_alias, "
                                             "list, owner, status, tier, created_day (day), created_week (week), "
@@ -1626,17 +1659,630 @@ async def _custom(rq: _Req) -> Result:
     return await ccr.run_custom(rq, compare=str(rq.args.get("compare_to") or "").strip().lower() == "previous_period")
 
 
+# ── live activity (admin-core's live activity feed, table user_live_event) ──
+
+#: How long admin-core keeps events (live-activity.retention: 90 days, CALL 7, COUNSELLOR 30).
+LIVE_RETENTION_DAYS = {"INVITE_FORM": 90, "LEAD_FORM": 90, "CALL": 7, "PAYMENT": 90, "COUNSELLOR": 30}
+LIVE_MAX_DAYS = 90
+LIVE_DEFAULT_MINUTES = 60
+LIVE_MAX_MINUTES = 1440
+LIVE_DEFAULT_ROWS = 50
+LIVE_MAX_ROWS = 200
+_LIVE = frozenset({"live_feed", "live_counts"})
+
+#: ROLE_DISPLAY_SETTINGS.liveActivityRoleAccess = {"ROLE": ["CALL", ...]} narrows the categories a role sees
+#: (admin-core LiveActivityAccessService): ADMIN sees all; nothing configured for the caller's roles = all.
+_ROLE_DISPLAY_SETTINGS = "ROLE_DISPLAY_SETTINGS"
+_LIVE_ROLE_ACCESS = "liveActivityRoleAccess"
+
+_ENUM_RE = re.compile(r"^[A-Z][A-Z_]{0,63}$")
+_CURRENCY_RE = re.compile(r"^[A-Za-z]{3,5}$")
+
+_LIVE_TEXT = {
+    "FORM_NEXT": "Filled the enrolment invite form",
+    "REACHED_PAYMENT": "Reached the payment step of an enrolment",
+    "ENROLLED": "Completed an enrolment",
+    "LEAD_SUBMITTED": "New lead: submitted a lead form",
+    "CALL_QUEUED": "Call started",
+    "CALL_RINGING": "Call ringing on the counsellor's phone",
+    "CALL_CONNECTED": "Call connected",
+    "CALL_ENDED": "Call ended",
+    "PAYMENT_SUCCEEDED": "Payment received",
+    "PAYMENT_FAILED": "Payment failed",
+    "RENEWAL_SUCCEEDED": "Renewal charged",
+    "RENEWAL_FAILED": "Renewal failed",
+    "STATUS_CHANGED": "Counsellor changed their availability status",
+    "LEAD_TRANSFERRED_IN": "Counsellor received reassigned leads",
+    "LEAD_TRANSFERRED_OUT": "Counsellor's leads were transferred away",
+    "NOTE_ADDED": "Call outcome logged",
+    "FOLLOWUP_CREATED": "Follow-up scheduled",
+    "FOLLOWUP_CLOSED": "Follow-up closed",
+}
+_CALL_END_TEXT = {"COMPLETED": "answered", "NO_ANSWER": "no answer", "BUSY": "busy", "FAILED": "failed",
+                  "CANCELLED": "cancelled"}
+
+_LIVE_DEFS: Dict[str, str] = {
+    "live_feed": ("Events from the institute's live activity feed (the Live Activity page) that happened in the "
+                  "window. It shows what happened recently; it is not an authoritative count — for totals use "
+                  "overview, sources, calling, ai_calling, activity, revenue or custom, which count from the "
+                  "CRM's own records."),
+    "retention": ("Events are kept 90 days; calls only 7 days and counsellor actions 30 days. Older events are "
+                  "deleted, so a window reaching further back undercounts those categories."),
+    "categories": ("INVITE_FORM: enrolment invite funnel (form filled, reached payment, enrolled). LEAD_FORM: a "
+                   "lead form was submitted. CALL: call started / ringing / connected / ended (one call gives "
+                   "several events). PAYMENT: payment received or failed. COUNSELLOR: follow-up scheduled or "
+                   "closed, call outcome logged, counsellor availability changed, leads reassigned."),
+    "lead_id": ("The lead an event is about: the submitted lead, the call's or follow-up's lead, or for payments and "
+                "enrolments the person's latest lead in this institute. Events with no lead have none."),
+    "counsellor": ("counsellor = the staff member on the event (who called, scheduled, logged; AI calls have "
+                   "none); lead_owner = the lead's counsellor now."),
+    "calls_answered": "Calls that ended COMPLETED.",
+    "missed_inbound_calls": ("Inbound calls that ended without being answered (crm_calls missed_inbound shows which "
+                             "were called back)."),
+    "unanswered_outbound_calls": "Outbound calls that ended with no answer, busy, failed or cancelled.",
+    "payments": "Payment events; amounts are summed per currency.",
+    "time": "Times are in the institute's timezone.",
+    "visibility": ("Only events you can see: an institute admin sees the whole institute; others see events on "
+                   "leads they can see in the CRM plus their own (and their counsellors') calls and actions; "
+                   "list-limited users only events on leads in their lists. Categories follow the institute's Live "
+                   "Activity role settings."),
+}
+
+
+def _live_categories(ctx: ToolContext) -> List[str]:
+    """The categories the caller's role may see — admin-core's LiveActivityAccessService rule."""
+    roles = {str(r).strip().upper() for r in (ctx.principal.roles or []) if r}
+    if "ADMIN" in roles:
+        return list(LIVE_CATEGORIES)
+    try:
+        data = isr.load_institute_setting_data(ctx.db, ctx.principal.institute_id, _ROLE_DISPLAY_SETTINGS) or {}
+    except Exception:  # noqa: BLE001
+        data = {}
+    conf = data.get(_LIVE_ROLE_ACCESS) if isinstance(data, dict) else None
+    if not isinstance(conf, dict) or not conf:
+        return list(LIVE_CATEGORIES)
+    granted = set()
+    for role, cats in conf.items():
+        if role is None or str(role).strip().upper() not in roles or not isinstance(cats, list):
+            continue
+        granted.update(str(c).strip().upper() for c in cats if c is not None)
+    granted &= set(LIVE_CATEGORIES)
+    return [c for c in LIVE_CATEGORIES if c in granted] or list(LIVE_CATEGORIES)
+
+
+def _moment(value: Any, tzinfo: Any, *, end: bool) -> Optional[datetime]:
+    """A YYYY-MM-DD day (its start; ``end``: the next day's start) or an ISO time (institute time when no offset)."""
+    text_ = str(value).strip()
+    try:
+        if len(text_) <= 10:
+            d = datetime.strptime(text_, "%Y-%m-%d")
+            if end:
+                d += timedelta(days=1)
+            return d.replace(tzinfo=tzinfo)
+        dt = datetime.fromisoformat(text_.replace("Z", "+00:00").replace(" ", "T"))
+    except (TypeError, ValueError):
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=tzinfo)
+
+
+def _live_window(action: str, args: Dict[str, Any], tz: str) -> Any:
+    """
+    The live window: ``minutes`` (the last N, 1-1440), ``from``/``to`` (days or times), ``period`` / ``days``;
+    default the last 60 minutes (live_feed) or today so far (live_counts). Never beyond now or 90 days back.
+    """
+    tzinfo = cd.zone(tz) or timezone.utc
+    now = datetime.now(timezone.utc).astimezone(tzinfo)
+    minutes = args.get("minutes")
+    if minutes is not None and minutes != "":
+        try:
+            n = int(minutes)
+        except (TypeError, ValueError):
+            return cd.err("invalid_window", message="minutes must be a whole number.")
+        if not 1 <= n <= LIVE_MAX_MINUTES:
+            return cd.err("invalid_window", message=f"minutes is 1-{LIVE_MAX_MINUTES} (use from/to for longer).")
+        start, end, label = now - timedelta(minutes=n), now, f"last {n} minutes"
+    elif args.get("from") or args.get("to"):
+        if not args.get("from"):
+            return cd.err("invalid_window", message="from is needed with to.")
+        start = _moment(args["from"], tzinfo, end=False)
+        end = _moment(args["to"], tzinfo, end=True) if args.get("to") else now
+        if start is None or end is None:
+            return cd.err("invalid_window", message="from / to are YYYY-MM-DD or YYYY-MM-DDTHH:MM (institute time).")
+        label = f"{args['from']} to {args.get('to') or 'now'}"
+    elif args.get("period") or args.get("days") is not None:
+        w = cd.window(args, default_days=1, max_days=LIVE_MAX_DAYS + 1, tz=tz)
+        if cd.is_error(w):
+            return w
+        start, end, label = w.start, w.end, w.label
+    elif action == "live_counts":
+        start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        end, label = now, "today so far"
+    else:
+        start, end, label = now - timedelta(minutes=LIVE_DEFAULT_MINUTES), now, f"last {LIVE_DEFAULT_MINUTES} minutes"
+    end = min(end, now)
+    if start >= end:
+        return cd.err("invalid_window", message="The window is empty: from must be before to, and before now.")
+    if start < now - timedelta(days=LIVE_MAX_DAYS, minutes=5):
+        return cd.err("invalid_window",
+                      message=(f"Live activity keeps events for at most {LIVE_MAX_DAYS} days (calls 7, counsellor "
+                               "actions 30). For older history use the other reports (overview, calling, activity, "
+                               "revenue, custom)."))
+    return cd.Window(start, end, tz, label)
+
+
+def _local(value: Any, tzinfo: Any) -> Optional[str]:
+    if not isinstance(value, datetime):
+        return cd.iso(value)
+    value = value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    return value.astimezone(tzinfo).isoformat(timespec="seconds")
+
+
+def _live_window_dict(w: cd.Window) -> Dict[str, Any]:
+    tzinfo = cd.zone(w.tz) or timezone.utc
+    return {"from": _local(w.start, tzinfo), "to": _local(w.end, tzinfo), "tz": w.tz, "label": w.label,
+            "minutes": int((w.end - w.start).total_seconds() // 60)}
+
+
+def _retention_notes(w: cd.Window, cats: List[str]) -> List[str]:
+    now = datetime.now(timezone.utc)
+    out = []
+    for c in cats:
+        days = LIVE_RETENTION_DAYS.get(c, LIVE_MAX_DAYS)
+        if w.start < now - timedelta(days=days):
+            out.append(f"{c} events are kept {days} days, so {c} counts before "
+                       f"{(now - timedelta(days=days)).date().isoformat()} are incomplete.")
+    return out
+
+
+#: The lead an event is about: the lead itself, the call's or follow-up's lead (anchored to this institute), or
+#: for payments and enrolments the person's latest lead here.
+_LIVE_LEAD_JOINS = """
+    LEFT JOIN LATERAL (SELECT CASE
+        WHEN ev.category = 'LEAD_FORM' THEN ev.entity_id
+        WHEN ev.category = 'CALL' OR ev.action = 'NOTE_ADDED' THEN (
+            SELECT COALESCE(t.response_id, CASE WHEN t.subject_type = 'LEAD' THEN t.subject_id END)
+            FROM telephony_call_log t WHERE t.id = ev.entity_id AND t.institute_id = :inst)
+        WHEN ev.action IN ('FOLLOWUP_CREATED', 'FOLLOWUP_CLOSED') THEN (
+            SELECT f.audience_response_id FROM lead_followup f WHERE f.id = ev.entity_id AND f.institute_id = :inst)
+        WHEN ev.category IN ('PAYMENT', 'INVITE_FORM') AND ev.subject_id IS NOT NULL THEN (
+            SELECT r.id FROM audience_response r JOIN audience ra ON ra.id = r.audience_id AND ra.institute_id = :inst
+            WHERE r.user_id = ev.subject_id ORDER BY r.submitted_at DESC NULLS LAST LIMIT 1)
+        END AS lead_ref) lr ON true
+    LEFT JOIN audience_response ar ON ar.id = lr.lead_ref""" + cd.LEAD_OWNER_LEFT_JOINS.rstrip().replace("\n", "\n    ")
+
+_LIVE_LEAD_COLS = ("CASE WHEN a.id IS NOT NULL THEN ar.id END AS lead_id, "
+                   "CASE WHEN a.id IS NOT NULL THEN ar.audience_id END AS list_id,\n"
+                   "           CASE WHEN a.id IS NOT NULL THEN {owner} END AS owner_id, "
+                   "CASE WHEN a.id IS NOT NULL THEN ar.parent_name END AS lead_name,\n"
+                   "           CASE WHEN a.id IS NOT NULL THEN ar.parent_mobile END AS lead_mobile")
+
+LIVE_CTE = """
+WITH ev AS MATERIALIZED (
+    SELECT e.id, e.occurred_at, e.category, e.action, e.actor_type, e.subject_id, e.entity_id,
+           e.counsellor_user_id, e.counsellor_name, e.subject_name, e.subject_email, e.subject_mobile, e.payload
+    FROM user_live_event e
+    WHERE e.institute_id = :inst AND e.occurred_at >= :w_from AND e.occurred_at < :w_to
+      AND e.category = ANY(:cats){ev_where}{ev_limit}
+), vis AS (
+    SELECT ev.*, {lead_cols}
+    FROM ev{joins}
+    WHERE {visible}
+)"""
+
+LIVE_SUMMARY_SQL = """
+SELECT 'action' AS kind, category AS k1, action AS k2, actor_type AS k3,
+       CASE WHEN category = 'PAYMENT' THEN COALESCE(payload ->> 'currency', '') END AS k4, COUNT(*) AS n,
+       SUM(CASE WHEN category = 'PAYMENT' AND jsonb_typeof(payload -> 'amount') = 'number'
+                THEN (payload ->> 'amount')::numeric END) AS amount
+FROM vis GROUP BY 2, 3, 4, 5
+UNION ALL
+SELECT 'counsellor', counsellor_user_id, category, NULL, NULL, COUNT(*), NULL
+FROM vis WHERE counsellor_user_id IS NOT NULL GROUP BY 2, 3
+UNION ALL
+SELECT 'call_end', COALESCE(payload ->> 'direction', ''), COALESCE(payload ->> 'status', ''), NULL, NULL, COUNT(*),
+       NULL
+FROM vis WHERE action = 'CALL_ENDED' GROUP BY 2, 3
+"""
+
+LIVE_ROWS_SQL = """
+SELECT id AS event_id, occurred_at, category, action, actor_type, entity_id, counsellor_user_id, counsellor_name,
+       subject_name, subject_email, subject_mobile, payload, lead_id, list_id, owner_id, lead_name, lead_mobile
+FROM vis
+ORDER BY occurred_at DESC, id
+LIMIT :lim
+"""
+
+
+def _live_sql(rq: _Req, cats: List[str], lead_id: Optional[str], w: cd.Window, *,
+              rows_mode: bool) -> Tuple[str, Dict[str, Any]]:
+    """
+    ``(sql, params)``: ``vis`` = this institute's events in the window and categories that the caller may see.
+    An institute-wide caller with no lead filter needs no lead lookups for the summary, and only for the
+    newest rows when listing them.
+    """
+    s = rq.scope
+    w_from, w_to = w.utc_naive()
+    params: Dict[str, Any] = {"inst": rq.inst, "w_from": w_from, "w_to": w_to, "cats": list(cats)}
+    ev_where = ""
+    if rq.counsellor_id:
+        ev_where = "\n      AND e.counsellor_user_id = :f_counsellor"
+        params["f_counsellor"] = rq.counsellor_id
+    visible: List[str] = []
+    if not s.whole_institute:
+        pred, sp = cd.scope_sql(s)
+        params.update(sp)
+        on_lead = f"(a.id IS NOT NULL AND {pred})"
+        # Owner-scoped callers also see their own and their counsellors' calls and actions (as calling does).
+        if s.owner_ids is not None and s.list_ids is None:
+            visible.append(f"(ev.counsellor_user_id = ANY(:call_owners) OR {on_lead})")
+            params["call_owners"] = list(s.owner_ids)
+        else:
+            visible.append(on_lead)
+    if lead_id:
+        visible.append("a.id IS NOT NULL AND ar.id = :f_lead")
+        params["f_lead"] = lead_id
+    if rq.list_id:
+        visible.append("a.id IS NOT NULL AND ar.audience_id = :f_list")
+        params["f_list"] = rq.list_id
+    if rq.source_keys:
+        visible.append("a.id IS NOT NULL AND ar.source_type = ANY(:f_sources)")
+        params["f_sources"] = list(rq.source_keys)
+    with_leads = bool(visible) or rows_mode
+    ev_limit = "\n    ORDER BY e.occurred_at DESC, e.id\n    LIMIT :lim" if rows_mode and not visible else ""
+    cte = LIVE_CTE.format(
+        ev_where=ev_where, ev_limit=ev_limit,
+        lead_cols=(_LIVE_LEAD_COLS.format(owner=_owner()) if with_leads else
+                   "NULL::varchar AS lead_id, NULL::varchar AS list_id, NULL::varchar AS owner_id, "
+                   "NULL::varchar AS lead_name, NULL::varchar AS lead_mobile"),
+        joins=_LIVE_LEAD_JOINS if with_leads else "",
+        visible="\n      AND ".join(visible) or "TRUE")
+    return cte + (LIVE_ROWS_SQL if rows_mode else LIVE_SUMMARY_SQL), params
+
+
+def _enum(value: Any) -> str:
+    text_ = str(value or "").strip().upper()
+    return text_ if _ENUM_RE.match(text_) else "OTHER"
+
+
+def _payload(value: Any) -> Dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str) and value.strip():
+        try:
+            parsed = json.loads(value)
+        except ValueError:
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    return {}
+
+
+def _int(value: Any) -> Optional[int]:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return int(value)
+    return None
+
+
+def _money(p: Dict[str, Any]) -> Tuple[Optional[float], Optional[str]]:
+    amount = p.get("amount")
+    amount = round(float(amount), 2) if isinstance(amount, (int, float)) and not isinstance(amount, bool) else None
+    currency = str(p.get("currency") or "").strip().upper()
+    return amount, (currency if _CURRENCY_RE.match(currency) else None)
+
+
+def _duration(seconds: Optional[int]) -> Optional[str]:
+    if seconds is None or seconds < 0:
+        return None
+    return f"{seconds}s" if seconds < 60 else f"{seconds // 60}m {seconds % 60}s"
+
+
+def _describe(action: str, actor: str, p: Dict[str, Any]) -> str:
+    """A short plain sentence built from the event's codes and numbers only — never from free text."""
+    base = _LIVE_TEXT.get(action) or (action.lower().replace("_", " ").capitalize() if action != "OTHER"
+                                      else "Other activity")
+    direction = _enum(p.get("direction"))
+    if action == "CALL_QUEUED":
+        who = "AI" if actor == "AI" else "Counsellor"
+        way = {"INBOUND": "inbound", "OUTBOUND": "outbound"}.get(direction, "")
+        return f"{who} {way} call started".replace("  ", " ")
+    if action == "CALL_ENDED":
+        status = _enum(p.get("status"))
+        if direction == "INBOUND" and status != "COMPLETED":
+            return f"Missed inbound call ({_CALL_END_TEXT.get(status, 'not answered')})"
+        text_ = f"{base}: {_CALL_END_TEXT.get(status, 'ended')}"
+        took = _duration(_int(p.get("durationSeconds"))) if status == "COMPLETED" else None
+        return f"{text_}, {took}" if took else text_
+    if action in ("PAYMENT_SUCCEEDED", "PAYMENT_FAILED", "RENEWAL_SUCCEEDED", "RENEWAL_FAILED"):
+        amount, currency = _money(p)
+        if amount is not None:
+            return f"{base}: {currency + ' ' if currency else ''}{_num(amount)}"
+        return base
+    if action == "STATUS_CHANGED":
+        status = _enum(p.get("status"))
+        return f"{base} to {status}" if status != "OTHER" else base
+    if action in ("LEAD_TRANSFERRED_IN", "LEAD_TRANSFERRED_OUT"):
+        n = _int(p.get("leadCount"))
+        return f"{base} ({n} lead{'s' if n != 1 else ''})" if n is not None else base
+    return base
+
+
+def _live_row(r: Dict[str, Any], display: Dict[str, str], tzinfo: Any) -> Dict[str, Any]:
+    category, action, actor = _enum(r.get("category")), _enum(r.get("action")), _enum(r.get("actor_type"))
+    p = _payload(r.get("payload"))
+    out: Dict[str, Any] = {"time": _local(r.get("occurred_at"), tzinfo), "category": category, "action": action,
+                           "actor": actor, "description": _describe(action, actor, p)}
+    if r.get("lead_id"):
+        out["lead_id"] = r["lead_id"]
+        out["list_id"] = r.get("list_id")
+    name = cd.clean(r.get("subject_name") or r.get("lead_name"))
+    phone = cd.mask_phone(r.get("subject_mobile") or r.get("lead_mobile"))
+    email = cd.mask_email(r.get("subject_email"))
+    for k, v in (("name", name), ("phone", phone), ("email", email)):
+        if v:
+            out[k] = v
+    cid = r.get("counsellor_user_id")
+    if cid:
+        out["counsellor"] = _person(cid, display, r.get("counsellor_name"))
+    if r.get("owner_id") and r.get("owner_id") != cid:
+        out["lead_owner"] = _person(r["owner_id"], display)
+    entity = cd.clean(r.get("entity_id"), 80)
+    free: Dict[str, Any] = {}
+    if category == "LEAD_FORM" and p.get("sourceType"):
+        out["source"] = str(p.get("sourceType"))
+    if category == "PAYMENT":
+        amount, currency = _money(p)
+        out.update({"amount": amount, "currency": currency, "vendor": cd.clean(p.get("vendor"), 30)})
+    if category == "CALL":
+        out["call_id"] = entity
+        out["call"] = {"direction": _enum(p.get("direction")) if p.get("direction") else None,
+                       "status": _enum(p.get("status")) if p.get("status") else None,
+                       "provider": cd.clean(p.get("provider"), 40), "seconds": _int(p.get("durationSeconds")),
+                       "ai": actor == "AI"}
+        if p.get("terminationReason"):
+            free["call_end_reason"] = p.get("terminationReason")
+    if action == "NOTE_ADDED":
+        out["call_id"] = entity
+        out["outcome"] = cd.clean(p.get("dispositionLabel") or p.get("dispositionKey"), 80)
+        if p.get("notes"):
+            free["notes"] = p.get("notes")
+    if action in ("FOLLOWUP_CREATED", "FOLLOWUP_CLOSED"):
+        out["followup_id"] = entity
+    if action == "FORM_NEXT" and p.get("inviteName"):
+        out["invite"] = cd.clean(p.get("inviteName"), 80)
+    if action in ("LEAD_TRANSFERRED_IN", "LEAD_TRANSFERRED_OUT"):
+        out["lead_count"] = _int(p.get("leadCount"))
+    if free:
+        out["lead_content"] = cd.lead_content(free, limit=500)
+    return out
+
+
+def _merge_calls(rows_: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Events of one call (started, ringing, connected, ended) become one row: its latest state."""
+    out: List[Dict[str, Any]] = []
+    seen: Dict[str, Dict[str, Any]] = {}
+    for r in rows_:
+        cid = r.get("call_id") if r.get("category") == "CALL" else None
+        if not cid:
+            out.append(r)
+            continue
+        first = seen.get(cid)
+        if first is None:
+            r["call_events"] = [r["action"]]
+            seen[cid] = r
+            out.append(r)
+            continue
+        first["call_events"].insert(0, r["action"])
+        first["call_started"] = r["time"]
+        for k in ("name", "phone", "lead_id", "list_id", "counsellor", "lead_owner"):
+            if k not in first and k in r:
+                first[k] = r[k]
+    return out
+
+
+def _live_summary(found: List[Dict[str, Any]]) -> Dict[str, Any]:
+    by_category = {c: 0 for c in LIVE_CATEGORIES}
+    actions: Dict[Tuple[str, str], int] = {}
+    ai_calls = 0
+    money: Dict[Tuple[str, str], float] = {}
+    counsellors: Dict[str, Dict[str, Any]] = {}
+    call_end = {"answered": 0, "missed_inbound": 0, "unanswered_outbound": 0}
+    for r in found:
+        kind, n = r.get("kind"), _num(r.get("n"))
+        if kind == "action":
+            cat, act = _enum(r.get("k1")), _enum(r.get("k2"))
+            by_category[cat] = by_category.get(cat, 0) + n
+            actions[(cat, act)] = actions.get((cat, act), 0) + n
+            if act == "CALL_QUEUED" and _enum(r.get("k3")) == "AI":
+                ai_calls += n
+            if cat == "PAYMENT" and r.get("amount") is not None:
+                cur = str(r.get("k4") or "").upper()
+                key = (act, cur if _CURRENCY_RE.match(cur) else "")
+                money[key] = money.get(key, 0.0) + float(r["amount"])
+        elif kind == "counsellor" and r.get("k1"):
+            c = counsellors.setdefault(str(r["k1"]), {"total": 0, "by_category": {}})
+            c["total"] += n
+            c["by_category"][_enum(r.get("k2"))] = n
+        elif kind == "call_end":
+            direction, status = _enum(r.get("k1")), _enum(r.get("k2"))
+            if status == "COMPLETED":
+                call_end["answered"] += n
+            elif direction == "INBOUND":
+                call_end["missed_inbound"] += n
+            else:
+                call_end["unanswered_outbound"] += n
+
+    def count(act: str) -> int:
+        return sum(v for (_, a), v in actions.items() if a == act)
+
+    def amounts(act: str) -> List[Dict[str, Any]]:
+        return [{"currency": cur or None, "amount": round(v, 2)} for (a, cur), v in sorted(money.items())
+                if a == act]
+
+    notable = {
+        "new_leads": count("LEAD_SUBMITTED"), "enrolments": count("ENROLLED"),
+        "reached_payment": count("REACHED_PAYMENT"), "invite_forms_filled": count("FORM_NEXT"),
+        "payments_received": count("PAYMENT_SUCCEEDED"), "payments_received_amount": amounts("PAYMENT_SUCCEEDED"),
+        "payments_failed": count("PAYMENT_FAILED"),
+        "renewals_charged": count("RENEWAL_SUCCEEDED"), "renewals_failed": count("RENEWAL_FAILED"),
+        "calls_started": count("CALL_QUEUED"), "ai_calls_started": ai_calls,
+        "calls_answered": call_end["answered"], "missed_inbound_calls": call_end["missed_inbound"],
+        "unanswered_outbound_calls": call_end["unanswered_outbound"],
+        "call_outcomes_logged": count("NOTE_ADDED"), "followups_scheduled": count("FOLLOWUP_CREATED"),
+        "followups_closed": count("FOLLOWUP_CLOSED"),
+        "lead_reassignments": count("LEAD_TRANSFERRED_IN") + count("LEAD_TRANSFERRED_OUT"),
+    }
+    by_action = [{"category": c, "action": a, "events": v}
+                 for (c, a), v in sorted(actions.items(), key=lambda x: (-x[1], x[0]))]
+    return {"totals": {"events": sum(by_category.values()), **by_category}, "notable": notable,
+            "by_action": by_action, "_counsellors": counsellors}
+
+
+async def _live_prepare(rq: _Req) -> Union[Tuple[List[str], List[str], Optional[str]], Result]:
+    """``(categories, hidden, lead_id)`` after checking the categories and lead asked for."""
+    allowed = _live_categories(rq.ctx)
+    asked = rq.args.get("categories")
+    if isinstance(asked, str):
+        asked = [x for x in asked.split(",")]
+    cats = list(allowed)
+    if asked:
+        if not isinstance(asked, list):
+            return cd.err("invalid_argument", message="categories is a list of: " + ", ".join(LIVE_CATEGORIES))
+        want = [str(x).strip().upper() for x in asked if str(x).strip()]
+        bad = [x for x in want if x not in LIVE_CATEGORIES]
+        if bad:
+            return cd.err("invalid_argument", message="categories are: " + ", ".join(LIVE_CATEGORIES),
+                          invalid=[cd.clean(x, 40) for x in bad[:5]])
+        cats = [c for c in LIVE_CATEGORIES if c in want and c in allowed]
+    hidden = [c for c in LIVE_CATEGORIES if c not in allowed]
+    lead_id = str(rq.args.get("lead_id") or "").strip() or None
+    if lead_id:
+        known = await cd.verify_ids(rq.ctx, "leads", [lead_id])
+        if cd.is_error(known):
+            return known
+    return cats, hidden, lead_id
+
+
+def _live_out(rq: _Req, action: str, data: Dict[str, Any], defs: Dict[str, str], cats: List[str],
+              hidden: List[str], lead_id: Optional[str], notes: List[str]) -> Result:
+    out: Result = {"report": action, "window": _live_window_dict(rq.window), "definition": defs, "data": data,
+                   "basis": "scoped query", "scope": rq.scope.summary(), "categories": cats}
+    if hidden:
+        out["categories_not_visible_for_your_role"] = hidden
+    filters = {k: v for k, v in (("lead_id", lead_id), ("list_id", rq.list_id), ("counsellor_id", rq.counsellor_id),
+                                 ("source_keys", rq.source_keys)) if v}
+    if filters:
+        out["filters"] = filters
+    notes = notes + _retention_notes(rq.window, cats)
+    if notes:
+        out["notes"] = notes
+    return out
+
+
+async def _live_feed(rq: _Req) -> Result:
+    prep = await _live_prepare(rq)
+    if cd.is_error(prep):
+        return prep
+    cats, hidden, lead_id = prep
+    try:
+        lim = int(rq.args.get("limit") or LIVE_DEFAULT_ROWS)
+    except (TypeError, ValueError):
+        lim = LIVE_DEFAULT_ROWS
+    lim = max(1, min(lim, LIVE_MAX_ROWS))
+    notes: List[str] = []
+    if str(rq.args.get("compare_to") or "").strip():
+        notes.append("live_feed has no comparison; live_counts compares with the period before.")
+    defs = {k: _LIVE_DEFS[k] for k in ("live_feed", "retention", "categories", "lead_id", "counsellor",
+                                       "calls_answered", "missed_inbound_calls", "unanswered_outbound_calls",
+                                       "payments", "time", "visibility")}
+    defs["rows"] = ("The newest events first (at most `limit` events); the events of one call are merged into one "
+                    "row showing its latest state, so there can be fewer rows than events.")
+    if not cats:
+        return _live_out(rq, "live_feed", {"totals": {"events": 0}, "notable": {}, "by_action": [],
+                                           "by_counsellor": [], "events": []},
+                         defs, cats, hidden, lead_id, notes + ["None of the asked categories is visible for your role."])
+    sql, params = _live_sql(rq, cats, lead_id, rq.window, rows_mode=False)
+    found = _sql(rq, sql, params, timeout_ms=20000)
+    if found is None:
+        return cd.err("query_failed")
+    summary = _live_summary(found)
+    sql, params = _live_sql(rq, cats, lead_id, rq.window, rows_mode=True)
+    params["lim"] = lim
+    rows_ = _sql(rq, sql, params, timeout_ms=20000)
+    if rows_ is None:
+        return cd.err("query_failed")
+    counsellors = summary.pop("_counsellors")
+    ids = list(counsellors) + [r.get("counsellor_user_id") for r in rows_] + [r.get("owner_id") for r in rows_]
+    display = await _named(rq, ids)
+    for r in rows_:
+        if r.get("counsellor_user_id") and r.get("counsellor_name"):
+            display.setdefault(str(r["counsellor_user_id"]), cd.clean(r.get("counsellor_name")) or "")
+    tzinfo = cd.zone(rq.window.tz) or timezone.utc
+    events = _merge_calls([_live_row(r, display, tzinfo) for r in rows_])
+    by_counsellor = sorted(({"counsellor": _person(uid, display), **v} for uid, v in counsellors.items()),
+                           key=lambda x: -x["total"])
+    by_counsellor, more = _cap(by_counsellor, _MAX_ROWS)
+    data = {**summary, "by_counsellor": by_counsellor, **({"more_counsellors": more} if more else {}),
+            "events": events, "events_listed": len(rows_), "more_events": max(0, summary["totals"]["events"] - len(rows_))}
+    return _live_out(rq, "live_feed", data, defs, cats, hidden, lead_id, notes)
+
+
+def _live_previous(w: cd.Window) -> cd.Window:
+    """Part of a day from midnight → the same hours the day before; any other window → the same length just before."""
+    tzinfo = cd.zone(w.tz) or timezone.utc
+    local = w.start.astimezone(tzinfo)
+    if local == local.replace(hour=0, minute=0, second=0, microsecond=0) and w.end - w.start < timedelta(days=1):
+        return cd.Window(w.start - timedelta(days=1), w.end - timedelta(days=1), w.tz, "the day before, same hours")
+    return cd.Window(w.start - (w.end - w.start), w.start, w.tz, "the period before")
+
+
+async def _live_counts(rq: _Req) -> Result:
+    prep = await _live_prepare(rq)
+    if cd.is_error(prep):
+        return prep
+    cats, hidden, lead_id = prep
+    defs = {k: _LIVE_DEFS[k] for k in ("live_feed", "retention", "categories", "calls_answered",
+                                       "missed_inbound_calls", "unanswered_outbound_calls", "payments", "visibility")}
+    defs["comparison"] = ("previous = the same hours yesterday for 'today so far', else the same length of time "
+                          "just before the window.")
+    prev_w = _live_previous(rq.window)
+    if not cats:
+        return _live_out(rq, "live_counts", {"totals": {"events": 0}}, defs, cats, hidden, lead_id,
+                         ["None of the asked categories is visible for your role."])
+    results = []
+    for w in (rq.window, prev_w):
+        sql, params = _live_sql(rq, cats, lead_id, w, rows_mode=False)
+        found = _sql(rq, sql, params, timeout_ms=20000)
+        if found is None:
+            return cd.err("query_failed")
+        results.append(_live_summary(found))
+    cur, prev = results
+    cur.pop("_counsellors")
+    prev.pop("_counsellors")
+    prev_actions = {(a["category"], a["action"]): a["events"] for a in prev["by_action"]}
+    by_action = [{**a, "previous": prev_actions.pop((a["category"], a["action"]), 0)} for a in cur["by_action"]]
+    by_action += [{"category": c, "action": a, "events": 0, "previous": v} for (c, a), v in prev_actions.items()]
+    data = {"totals": cur["totals"], "notable": cur["notable"], "by_action": by_action,
+            "comparison": {"previous_window": _live_window_dict(prev_w), "previous_totals": prev["totals"],
+                           "changes": _deltas(cur["totals"], prev["totals"]),
+                           "notable_changes": _deltas(cur["notable"], prev["notable"])}}
+    current = _retention_notes(rq.window, cats)
+    notes = ["Previous period: " + n for n in _retention_notes(prev_w, cats) if n not in current]
+    return _live_out(rq, "live_counts", data, defs, cats, hidden, lead_id, notes)
+
+
 _ACTIONS: Dict[str, Callable[[_Req], Awaitable[Result]]] = {
     "overview": _overview, "sources": _sources, "campaigns": _campaigns, "funnel": _funnel,
     "status_changes": _status_changes, "counsellors": _counsellors, "workload": _workload, "targets": _targets,
     "calling": _calling, "ai_calling": _ai_calling, "followup_aging": _followup_aging,
     "sla_breaches": _sla_breaches, "stalled": _stalled, "unassigned": _unassigned, "meetings": _meetings,
     "activity": _activity, "revenue": _revenue, "utm": _utm,
-    "custom_options": _custom_options, "custom": _custom,
+    "custom_options": _custom_options, "custom": _custom, "live_feed": _live_feed, "live_counts": _live_counts,
 }
 
-#: Actions that shape their own result (crm_custom_reports) instead of {report, window, definition, data}.
-_SELF_SHAPED = frozenset({"custom_options", "custom"})
+#: Actions that shape their own result (crm_custom_reports, live activity) instead of
+#: {report, window, definition, data}.
+_SELF_SHAPED = frozenset({"custom_options", "custom", "live_feed", "live_counts"})
 
 
 # ── compare_to ───────────────────────────────────────────────────────────
@@ -1763,7 +2409,8 @@ async def _run(action: str, args: Dict[str, Any], ctx: ToolContext) -> Result:
         return cd.err("admin_only", message="Only an institute admin can see this report.")
     if not s.is_admin and not s.available:
         return cd.err("scope_unavailable")
-    w = cd.window(args, tz=cd.institute_tz(ctx, "reports"))
+    tz = cd.institute_tz(ctx, "reports")
+    w = _live_window(action, args, tz) if action in _LIVE else cd.window(args, tz=tz)
     if cd.is_error(w):
         return w
     kwargs: Dict[str, Any] = {}

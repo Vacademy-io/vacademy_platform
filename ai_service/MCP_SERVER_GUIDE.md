@@ -49,8 +49,10 @@ settings tab has one toggle per feature to manage per role:
 | `crm_meetings` | READ | `crm_meetings` (area "CRM: Meetings") | `my_meetings`, `team_meetings`, `for_lead`, `free_slots`, `booking_pages` |
 | `crm_meetings_edit` | WRITE (outbound, **opt-in**) | `crm_meeting_edits` | `book` (two-step, single-use; invite + calendar to the lead), `log_outcome` |
 | `crm_messages` | READ | `crm_messages` (area "CRM: Messages") | `history`, `inbox`, `templates`, `can_message`, `escalations` |
-| `crm_send` | WRITE (outbound, **opt-in**, single-use, 20/h/user) | `crm_messaging_outbound` | `send` (an APPROVED WhatsApp template to ONE lead), `quota` |
-| `crm_reports` | READ | `crm_reports` (area "CRM: Reports") | `overview`, `sources`, `campaigns`, `funnel`, `status_changes`, `counsellors`, `workload`, `targets`, `calling`, `ai_calling`, `followup_aging`, `sla_breaches`, `stalled`, `unassigned`, `meetings`, `activity`, `revenue` (admin), `utm` (admin), `custom_options`, `custom` (1-2 dimensions incl. lead-form fields × chosen lead / activity metrics, scoped SQL in `crm_custom_reports.py`); `compare_to: previous_period` on every windowed action |
+| `crm_send` | WRITE (outbound, **opt-in**, single-use; 20 WhatsApp + 30 email /h/user) | `crm_messaging_outbound` | `send` (`channel` WHATSAPP: an APPROVED template; EMAIL: an institute email template or subject + body; ONE lead; email honours the unsubscribe list whatever its type), `quota` |
+| `crm_reports` | READ | `crm_reports` (area "CRM: Reports") | `overview`, `sources`, `campaigns`, `funnel`, `status_changes`, `counsellors`, `workload`, `targets`, `calling`, `ai_calling`, `followup_aging`, `sla_breaches`, `stalled`, `unassigned`, `meetings`, `activity`, `revenue` (admin), `utm` (admin), `custom_options`, `custom` (1-2 dimensions incl. lead-form fields × chosen lead / activity metrics, scoped SQL in `crm_custom_reports.py`), `live_feed`, `live_counts` (the live activity feed, `crm.live_activity`); `compare_to: previous_period` on every windowed action |
+| `crm_collections` | READ | `crm_collections` (area "CRM: Payments") | `lead_dues`, `who_owes`, `due_soon`, `collections` (admin), `converted_not_paid`, `abandoned_checkouts` |
+| `crm_payment_reminders` | WRITE (outbound, **opt-in**, single-use, ADMIN only, ≤50 reminders/h/user) | `crm_payment_reminders` | `send_installment_reminder`, `send_invoice_reminder` (≤50 per batch, ids verified, re-read at apply), `quota` |
 
 The allow-list is `MCP_EXPOSED_TOOLS` in `app/mcp/constants.py`. A tool in the
 Assistant registry is **not** reachable over MCP unless it is named there — so
@@ -171,7 +173,7 @@ enables them.
 
 ## 1a. CRM tools
 
-The 13 `crm_*` tools (`app/services/assistant_tools_crm_*.py`) share one
+The 15 `crm_*` tools (`app/services/assistant_tools_crm_*.py`) share one
 foundation, `app/services/crm_data.py`; the design is
 `docs/crm/CRM_MCP.md`. All are `mcp_only` (never offered to the in-product
 assistant) and need module `crm` (`ToolSpec.module_feature`, checked in

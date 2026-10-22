@@ -9,13 +9,16 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
+import vacademy.io.admin_core_service.features.enroll_invite.repository.PackageSessionLearnerInvitationToPaymentOptionRepository;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
+import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionRepository;
 import vacademy.io.admin_core_service.features.invoice.service.InvoiceService;
 import vacademy.io.admin_core_service.features.learner_access.enums.LearnerAccessSourceEnum;
 import vacademy.io.admin_core_service.features.learner_access.service.LearnerAccessService;
 import vacademy.io.admin_core_service.features.offline_payment.service.OfflinePaymentDetailsService;
+import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
 import vacademy.io.admin_core_service.features.timeline.dto.TimelineEventDTO;
 import vacademy.io.admin_core_service.features.timeline.dto.TimelineEventRequestDTO;
 import vacademy.io.admin_core_service.features.timeline.service.TimelineEventService;
@@ -30,6 +33,8 @@ import vacademy.io.admin_core_service.features.user_subscription.repository.User
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.common.institute.entity.Institute;
+import vacademy.io.common.institute.entity.session.PackageSession;
 
 import java.util.Calendar;
 import java.util.Date;
@@ -59,6 +64,9 @@ class AdminManualRenewalServiceTest {
     private TimelineEventService timeline;
     private InvoiceService invoices;
     private AuthService auth;
+    private PackageSessionLearnerInvitationToPaymentOptionRepository invitations;
+    private PackageSessionRepository packageSessions;
+    private StudentSessionRepository studentSessions;
     private AdminManualRenewalService service;
     private UserPlan plan;
     private StudentSessionInstituteGroupMapping lapsed;
@@ -76,8 +84,11 @@ class AdminManualRenewalServiceTest {
         timeline = mock(TimelineEventService.class);
         invoices = mock(InvoiceService.class);
         auth = mock(AuthService.class);
+        invitations = mock(PackageSessionLearnerInvitationToPaymentOptionRepository.class);
+        packageSessions = mock(PackageSessionRepository.class);
+        studentSessions = mock(StudentSessionRepository.class);
         service = new AdminManualRenewalService(planRepo, mappingRepo, paymentLogService, paymentLogRepo,
-                offline, ledger, access, timeline, invoices, auth);
+                offline, ledger, access, timeline, invoices, auth, invitations, packageSessions, studentSessions);
 
         EnrollInvite invite = new EnrollInvite();
         invite.setInstituteId(INST);
@@ -154,7 +165,7 @@ class AdminManualRenewalServiceTest {
         verify(paymentLogService, never()).updatePaymentLog(any(), any(), any(), any());
         verify(offline).apply(eq("pl-1"), any(), eq("admin-1"));
         verify(ledger).recordSettledCharge(eq("u-1"), eq(INST), any(), eq("AUD"), isNull(),
-                eq("USER_PLAN"), eq("up-1"), eq("pl-1"), any());
+                eq("USER_PLAN"), eq("up-1"), eq("pl-1"), eq("Manual renewal: Paid by bank transfer, ref 7781"));
     }
 
     @Test
@@ -269,6 +280,87 @@ class AdminManualRenewalServiceTest {
 
         verify(paymentLogService, never()).createPaymentLog(any(), anyDouble(), any(), any(), any(), any(), any(), any());
         verify(planRepo, never()).save(any());
+    }
+
+    private static StudentSessionInstituteGroupMapping row(String id, String packageSessionId, String institute,
+                                                           String userPlanId, String status) {
+        PackageSession ps = new PackageSession();
+        ps.setId(packageSessionId);
+        Institute inst = new Institute();
+        inst.setId(institute);
+        StudentSessionInstituteGroupMapping m = new StudentSessionInstituteGroupMapping();
+        m.setId(id);
+        m.setUserId("u-1");
+        m.setPackageSession(ps);
+        m.setInstitute(inst);
+        m.setUserPlanId(userPlanId);
+        m.setStatus(status);
+        return m;
+    }
+
+    private void noLinkedAccess() {
+        when(mappingRepo.findByUserPlanIdAndStatus("up-1", "INACTIVE")).thenReturn(List.of());
+        when(invitations.findPackageSessionIdsByEnrollInviteAndStatusIn(any(), eq(List.of("ACTIVE"))))
+                .thenReturn(List.of("ps-1"));
+    }
+
+    @Test
+    @DisplayName("no row linked to the plan: the member's unlinked row for the plan's course is adopted and extended")
+    void adoptsUnlinkedRow() {
+        noLinkedAccess();
+        StudentSessionInstituteGroupMapping imported = row("m-imp", "ps-1", INST, null, "EXPIRED");
+        when(mappingRepo.findAllByUserIdAndPackageSessionIdsAndStatus(eq("u-1"), eq(List.of("ps-1")), anyList()))
+                .thenReturn(List.of(imported));
+
+        ManualRenewalResultDTO result = service.renew("up-1", INST, req(431), admin);
+
+        assertEquals("up-1", imported.getUserPlanId());
+        assertEquals("ACTIVE", imported.getStatus());
+        assertEquals(result.getNewEndDate(), imported.getExpiryDate());
+        assertEquals(1, result.getMappingsUpdated());
+        verify(mappingRepo).save(imported);
+        verify(packageSessions, never()).findById(any());
+    }
+
+    @Test
+    @DisplayName("no row at all for the plan's course: one is created, linked and active until the new end date")
+    void createsMissingRow() {
+        noLinkedAccess();
+        PackageSession ps = new PackageSession();
+        ps.setId("ps-1");
+        when(packageSessions.findById("ps-1")).thenReturn(Optional.of(ps));
+        StudentSessionInstituteGroupMapping other = row("m-other", "ps-9", INST, null, "ACTIVE");
+        other.setInstituteEnrolledNumber("ENR-42");
+        when(studentSessions.findByInstituteIdAndUserIdNative(INST, "u-1")).thenReturn(Optional.of(other));
+
+        ManualRenewalResultDTO result = service.renew("up-1", INST, req(431), admin);
+
+        ArgumentCaptor<StudentSessionInstituteGroupMapping> saved =
+                ArgumentCaptor.forClass(StudentSessionInstituteGroupMapping.class);
+        verify(mappingRepo).save(saved.capture());
+        StudentSessionInstituteGroupMapping created = saved.getValue();
+        assertSame(ps, created.getPackageSession());
+        assertEquals("up-1", created.getUserPlanId());
+        assertEquals("ACTIVE", created.getStatus());
+        assertEquals(result.getNewEndDate(), created.getExpiryDate());
+        assertEquals("PACKAGE_SESSION", created.getType());
+        assertEquals("MANUAL_RENEWAL", created.getSource());
+        assertEquals("ENR-42", created.getInstituteEnrolledNumber());
+        assertEquals(1, result.getMappingsUpdated());
+    }
+
+    @Test
+    @DisplayName("the plan's course held under another membership is refused, not moved, and nothing is written")
+    void courseHeldElsewhere() {
+        noLinkedAccess();
+        when(mappingRepo.findAllByUserIdAndPackageSessionIdsAndStatus(eq("u-1"), eq(List.of("ps-1")), anyList()))
+                .thenReturn(List.of(row("m-x", "ps-1", INST, "up-other", "ACTIVE")));
+
+        assertThrows(VacademyException.class, () -> service.renew("up-1", INST, req(431), admin));
+
+        verify(paymentLogService, never()).createPaymentLog(any(), anyDouble(), any(), any(), any(), any(), any(), any());
+        verify(planRepo, never()).save(any());
+        verify(mappingRepo, never()).save(any());
     }
 
     @Test

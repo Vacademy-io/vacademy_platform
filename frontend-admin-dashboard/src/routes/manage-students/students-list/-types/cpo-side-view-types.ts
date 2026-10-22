@@ -30,6 +30,8 @@ export interface CpoUserPlanSummary {
     installment_count: number;
     start_date?: string | null;
     end_date?: string | null;
+    /** Set when the course was enrolled with others as one admission package. */
+    admission_package_id?: string | null;
 }
 
 /**
@@ -164,4 +166,50 @@ export interface RecordOfflinePaymentRequest {
     generate_invoice?: boolean;
     /** How it was paid (mode, option, reference, proof). */
     payment_details?: OfflinePaymentDetails | null;
+}
+
+/** One admission package in the side view (AdmissionPackageSummaryDTO). */
+export interface AdmissionPackageSummary {
+    id: string;
+    created_at?: string | null;
+    discount_reason?: string | null;
+    currency?: string | null;
+    fee_total: number;
+    discount_total: number;
+    /** What is billed now, after any later change to a course's bills. */
+    net_total: number;
+    paid_total: number;
+    outstanding_total: number;
+    next_due_date?: string | null;
+    next_due_amount?: number | null;
+    courses: AdmissionPackageCourseSummary[];
+    /** Every course's bills on a due date added together. */
+    installments: AdmissionPackageInstallment[];
+}
+
+export interface AdmissionPackageCourseSummary {
+    user_plan_id: string;
+    package_session_id: string;
+    course_name?: string | null;
+    plan_status?: string | null;
+    fee: number;
+    discount: number;
+    net: number;
+    paid: number;
+    outstanding: number;
+}
+
+export interface AdmissionPackageInstallment {
+    due_date: string;
+    amount: number;
+    paid: number;
+    outstanding: number;
+    status: 'PAID' | 'PARTIAL_PAID' | 'OVERDUE' | 'DUE';
+}
+
+/** How a package payment would be shared between the courses. */
+export interface AdmissionPackagePaymentPreview {
+    amount: number;
+    outstanding_total: number;
+    courses: { user_plan_id: string; course_name?: string | null; amount: number }[];
 }

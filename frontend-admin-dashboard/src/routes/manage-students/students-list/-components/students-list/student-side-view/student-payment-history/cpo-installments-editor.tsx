@@ -28,6 +28,7 @@ import type {
 } from '@/routes/manage-students/students-list/-types/cpo-side-view-types';
 import { getCurrencySymbol } from '@/constants/currencies';
 import { serverErrorMessage } from '@/services/payment-logs';
+import { AdmissionPackagesSection } from './admission-package-card';
 
 /**
  * Money for one CPO plan. The currency comes from the plan itself — this used to hard-code
@@ -1127,6 +1128,9 @@ const CpoUserPlanCard = ({ summary, userId }: CardProps) => {
                     <p className="truncate text-sm font-medium text-neutral-800">
                         {summary.cpo_name || summary.payment_option_name || summary.cpo_id}
                     </p>
+                    {summary.admission_package_id && (
+                        <p className="text-2xs font-medium text-primary-600">{t('card.inPackage')}</p>
+                    )}
                     <p className="mt-0.5 text-2xs text-neutral-500">
                         {t('card.installmentCount', { count: summary.installment_count })}
                         {' · '}
@@ -1232,6 +1236,7 @@ export const CpoInstallmentsEditor = ({ userId }: CpoInstallmentsEditorProps) =>
 
     return (
         <div className="space-y-3">
+            <AdmissionPackagesSection userId={userId} />
             {data.map((s) => (
                 <CpoUserPlanCard key={s.user_plan_id} summary={s} userId={userId} />
             ))}

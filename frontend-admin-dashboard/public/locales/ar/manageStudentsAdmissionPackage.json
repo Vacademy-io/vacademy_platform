@@ -52,5 +52,53 @@
         "total": "الباقة",
         "installments": "الأقساط: {{list}}",
         "receipt": "سيذكر إيصال قبول واحد كل هذه الدورات."
+    },
+    "side": {
+        "heading_one": "باقة القبول · {{count}} دورة",
+        "heading_zero": "باقة القبول · بلا دورات",
+        "heading_two": "باقة القبول · دورتان",
+        "heading_few": "باقة القبول · {{count}} دورات",
+        "heading_many": "باقة القبول · {{count}} دورة",
+        "heading_other": "باقة القبول · {{count}} دورات",
+        "net": "الصافي {{amount}}",
+        "paid": "المدفوع {{amount}}",
+        "outstanding": "المتبقي {{amount}}",
+        "nextDue": "القسط التالي {{amount}} مستحق في {{date}}",
+        "left": "متبقٍ {{amount}}",
+        "discountReason": "الخصم: {{reason}}",
+        "installments": "أقساط الباقة",
+        "recordPayment": "+ تسجيل دفعة للباقة",
+        "courses": {
+            "course": "الدورة",
+            "fee": "الرسوم",
+            "discount": "الخصم",
+            "paid": "المدفوع",
+            "left": "المتبقي",
+            "total": "الباقة"
+        },
+        "status": {
+            "PAID": "مدفوع",
+            "PARTIAL_PAID": "مدفوع جزئيًا",
+            "OVERDUE": "متأخر",
+            "DUE": "مستحق"
+        },
+        "pay": {
+            "heading": "دفعة الباقة",
+            "note": "تُسدَّد أقساط الباقة الأقدم أولًا؛ وتُوزَّع الدفعة الجزئية على الدورات بنسبة ما تدين به كل دورة.",
+            "amount": "المبلغ",
+            "date": "التاريخ",
+            "next": "القسط التالي {{amount}}",
+            "all": "كل المستحق {{amount}}",
+            "tooMuch": "أكثر من المتبقي على الباقة ({{amount}}).",
+            "split": "يُوزَّع على",
+            "previewError": "تعذّر حساب التوزيع.",
+            "receipt": "إيصال واحد للباقة",
+            "cancel": "إلغاء",
+            "saving": "جارٍ الحفظ…",
+            "submit": "تسجيل {{amount}}",
+            "amountError": "أدخل مبلغًا موجبًا",
+            "success": "تم تسجيل {{amount}} على الباقة",
+            "error": "تعذّر تسجيل الدفعة"
+        }
     }
 }

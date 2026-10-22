@@ -76,7 +76,8 @@
             "discount": "Remise",
             "paid": "Payé",
             "status": "Statut"
-        }
+        },
+        "inPackage": "Fait partie du forfait d’inscription — enregistrez les paiements sur le forfait ci-dessus."
     },
     "loadingPlans": "Chargement des plans CPO…",
     "loadPlansError": "Impossible de charger les plans CPO.",

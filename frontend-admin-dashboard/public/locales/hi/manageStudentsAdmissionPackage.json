@@ -52,5 +52,49 @@
         "total": "पैकेज",
         "installments": "किस्तें: {{list}}",
         "receipt": "एक प्रवेश रसीद में ये सभी कोर्स होंगे।"
+    },
+    "side": {
+        "heading_one": "प्रवेश पैकेज · {{count}} कोर्स",
+        "heading_other": "प्रवेश पैकेज · {{count}} कोर्स",
+        "net": "कुल देय {{amount}}",
+        "paid": "भुगतान {{amount}}",
+        "outstanding": "बकाया {{amount}}",
+        "nextDue": "अगली किस्त {{amount}}, देय {{date}}",
+        "left": "{{amount}} बाकी",
+        "discountReason": "छूट: {{reason}}",
+        "installments": "पैकेज किस्तें",
+        "recordPayment": "+ पैकेज भुगतान दर्ज करें",
+        "courses": {
+            "course": "कोर्स",
+            "fee": "फीस",
+            "discount": "छूट",
+            "paid": "भुगतान",
+            "left": "बाकी",
+            "total": "पैकेज"
+        },
+        "status": {
+            "PAID": "भुगतान हो गया",
+            "PARTIAL_PAID": "आंशिक भुगतान",
+            "OVERDUE": "अतिदेय",
+            "DUE": "देय"
+        },
+        "pay": {
+            "heading": "पैकेज भुगतान",
+            "note": "पहले सबसे पुरानी पैकेज किस्त चुकती होती है; आंशिक भुगतान कोर्सों में उनके बकाये के अनुपात में बँटता है।",
+            "amount": "राशि",
+            "date": "तारीख",
+            "next": "अगली किस्त {{amount}}",
+            "all": "सारा बकाया {{amount}}",
+            "tooMuch": "पैकेज के बकाये ({{amount}}) से ज़्यादा।",
+            "split": "किसमें जाएगा",
+            "previewError": "बँटवारा नहीं निकल सका।",
+            "receipt": "पैकेज की एक रसीद",
+            "cancel": "रद्द करें",
+            "saving": "सहेज रहे हैं…",
+            "submit": "{{amount}} दर्ज करें",
+            "amountError": "सही राशि लिखें",
+            "success": "पैकेज पर {{amount}} दर्ज हुआ",
+            "error": "भुगतान दर्ज नहीं हो सका"
+        }
     }
 }

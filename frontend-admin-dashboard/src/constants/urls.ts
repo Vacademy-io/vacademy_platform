@@ -1617,6 +1617,12 @@ export const POST_USER_PLAN_OFFLINE_PAYMENT = (userPlanId: string) =>
     `${BASE_URL}/admin-core-service/v1/fee-management/user-plan/${userPlanId}/record-offline-payment`;
 export const POST_SPLIT_INSTALLMENT = (sfpId: string) =>
     `${BASE_URL}/admin-core-service/v1/fee-management/installments/${sfpId}/split`;
+export const GET_USER_ADMISSION_PACKAGES = (userId: string, instituteId: string) =>
+    `${BASE_URL}/admin-core-service/v1/fee-management/user/${userId}/admission-packages?instituteId=${encodeURIComponent(instituteId)}`;
+export const POST_ADMISSION_PACKAGE_PAYMENT = (packageId: string) =>
+    `${BASE_URL}/admin-core-service/v1/fee-management/admission-package/${packageId}/record-offline-payment`;
+export const POST_ADMISSION_PACKAGE_PAYMENT_PREVIEW = (packageId: string) =>
+    `${BASE_URL}/admin-core-service/v1/fee-management/admission-package/${packageId}/record-offline-payment/preview`;
 
 // Offline Data Entry
 export const OFFLINE_CREATE_ATTEMPT = `${BASE_URL}/assessment-service/assessment/offline-entry/create-attempt`;

@@ -75,7 +75,8 @@
             "discount": "Discount",
             "paid": "Paid",
             "status": "Status"
-        }
+        },
+        "inPackage": "Part of the admission package — record payments on the package above."
     },
     "loadingPlans": "Loading CPO plans…",
     "loadPlansError": "Could not load CPO plans.",

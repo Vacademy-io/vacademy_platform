@@ -52,5 +52,50 @@
         "total": "Forfait",
         "installments": "Échéances : {{list}}",
         "receipt": "Un seul reçu d’inscription listera tous ces cours."
+    },
+    "side": {
+        "heading_one": "Forfait d’inscription · {{count}} cours",
+        "heading_many": "Forfait d’inscription · {{count}} cours",
+        "heading_other": "Forfait d’inscription · {{count}} cours",
+        "net": "Net {{amount}}",
+        "paid": "Payé {{amount}}",
+        "outstanding": "Reste dû {{amount}}",
+        "nextDue": "Prochaine échéance {{amount}} le {{date}}",
+        "left": "{{amount}} restant",
+        "discountReason": "Remise : {{reason}}",
+        "installments": "Échéances du forfait",
+        "recordPayment": "+ Enregistrer un paiement du forfait",
+        "courses": {
+            "course": "Cours",
+            "fee": "Frais",
+            "discount": "Remise",
+            "paid": "Payé",
+            "left": "Reste",
+            "total": "Forfait"
+        },
+        "status": {
+            "PAID": "Payé",
+            "PARTIAL_PAID": "Payé en partie",
+            "OVERDUE": "En retard",
+            "DUE": "À payer"
+        },
+        "pay": {
+            "heading": "Paiement du forfait",
+            "note": "Règle les échéances du forfait de la plus ancienne à la plus récente ; un paiement partiel est réparti entre les cours selon ce que chacun doit.",
+            "amount": "Montant",
+            "date": "Date",
+            "next": "Prochaine échéance {{amount}}",
+            "all": "Tout le reste dû {{amount}}",
+            "tooMuch": "Plus que le reste dû du forfait ({{amount}}).",
+            "split": "Réparti sur",
+            "previewError": "Impossible de calculer la répartition.",
+            "receipt": "Un seul reçu pour le forfait",
+            "cancel": "Annuler",
+            "saving": "Enregistrement…",
+            "submit": "Enregistrer {{amount}}",
+            "amountError": "Saisissez un montant positif",
+            "success": "{{amount}} enregistré sur le forfait",
+            "error": "Le paiement n’a pas pu être enregistré"
+        }
     }
 }

@@ -52,5 +52,49 @@
         "total": "Package",
         "installments": "Installments: {{list}}",
         "receipt": "One admission receipt will list all these courses."
+    },
+    "side": {
+        "heading_one": "Admission package · {{count}} course",
+        "heading_other": "Admission package · {{count}} courses",
+        "net": "Net {{amount}}",
+        "paid": "Paid {{amount}}",
+        "outstanding": "Outstanding {{amount}}",
+        "nextDue": "Next installment {{amount}} due {{date}}",
+        "left": "{{amount}} left",
+        "discountReason": "Discount: {{reason}}",
+        "installments": "Package installments",
+        "recordPayment": "+ Record package payment",
+        "courses": {
+            "course": "Course",
+            "fee": "Fee",
+            "discount": "Discount",
+            "paid": "Paid",
+            "left": "Left",
+            "total": "Package"
+        },
+        "status": {
+            "PAID": "Paid",
+            "PARTIAL_PAID": "Part paid",
+            "OVERDUE": "Overdue",
+            "DUE": "Due"
+        },
+        "pay": {
+            "heading": "Package payment",
+            "note": "Settles the package installments earliest first; a part-payment is shared between the courses by what each owes.",
+            "amount": "Amount",
+            "date": "Date",
+            "next": "Next installment {{amount}}",
+            "all": "All dues {{amount}}",
+            "tooMuch": "More than is still owed on the package ({{amount}}).",
+            "split": "Goes to",
+            "previewError": "Could not work out the split.",
+            "receipt": "One receipt for the package",
+            "cancel": "Cancel",
+            "saving": "Saving…",
+            "submit": "Record {{amount}}",
+            "amountError": "Enter a positive amount",
+            "success": "Recorded {{amount}} on the package",
+            "error": "Could not record the payment"
+        }
     }
 }

@@ -1,7 +1,10 @@
 {
     "common": {
         "tryAgain": "حاول مرة أخرى",
-        "download": "تنزيل"
+        "download": "تنزيل",
+        "downloadImages": "تنزيل الصور",
+        "imageN": "الصورة {{n}}",
+        "downloadAll": "تنزيل الكل"
     },
     "verification": {
         "focusPrompt": "للتأكد من أنك تتعلم فعليًا، يرجى النقر على الرقم <1>{{number}}</1> خلال <2>{{seconds}}</2> ثانية."

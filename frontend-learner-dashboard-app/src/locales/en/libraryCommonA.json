@@ -1,7 +1,10 @@
 {
     "common": {
         "tryAgain": "Try Again",
-        "download": "Download"
+        "download": "Download",
+        "downloadImages": "Download images",
+        "imageN": "Image {{n}}",
+        "downloadAll": "Download all"
     },
     "verification": {
         "focusPrompt": "Just ensuring that you are actively learning, please click the number <1>{{number}}</1> within <2>{{seconds}}</2> seconds."

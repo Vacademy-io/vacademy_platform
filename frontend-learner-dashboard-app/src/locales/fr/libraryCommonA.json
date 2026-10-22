@@ -1,7 +1,10 @@
 {
     "common": {
         "tryAgain": "Réessayer",
-        "download": "Télécharger"
+        "download": "Télécharger",
+        "downloadImages": "Télécharger les images",
+        "imageN": "Image {{n}}",
+        "downloadAll": "Tout télécharger"
     },
     "verification": {
         "focusPrompt": "Pour vérifier que vous êtes bien attentif, veuillez cliquer sur le numéro <1>{{number}}</1> dans les <2>{{seconds}}</2> secondes."

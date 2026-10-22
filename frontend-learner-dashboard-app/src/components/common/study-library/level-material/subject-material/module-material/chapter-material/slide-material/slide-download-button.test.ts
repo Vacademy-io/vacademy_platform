@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { SlideDownloadButton } from "./slide-download-button";
+import { SlideDownloadButton, SlideImagesDownloadButton, imageSrcsFromHtml } from "./slide-download-button";
 
 /** The slide Download button: shown only when Content Protection allows the type. */
 
@@ -91,5 +91,48 @@ describe("SlideDownloadButton", () => {
     const host = await mount({ typeKey: "AUDIO", title: "Talk", url: "https://cdn/x.mp3" });
     await click(host);
     expect(open).toHaveBeenCalledWith("https://cdn/x.mp3", "_blank", "noopener,noreferrer");
+  });
+});
+
+describe("Images in a Docs slide", () => {
+  const mountImages = async (props: React.ComponentProps<typeof SlideImagesDownloadButton>) => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    root = createRoot(host);
+    await act(async () => {
+      root!.render(React.createElement(SlideImagesDownloadButton, props));
+    });
+    return host;
+  };
+
+  it("lists http(s) and data: images in order without repeats", () => {
+    const html =
+      '<p>a</p><img src="https://cdn/1.png"><img src="https://cdn/2.jpg?x=1&amp;y=2">' +
+      '<img src="https://cdn/1.png"><img src="data:image/png;base64,AA=="><img src="javascript:x"><img>';
+    expect(imageSrcsFromHtml(html)).toEqual([
+      "https://cdn/1.png",
+      "https://cdn/2.jpg?x=1&y=2",
+      "data:image/png;base64,AA==",
+    ]);
+    expect(imageSrcsFromHtml("<p>no images</p>")).toEqual([]);
+    expect(imageSrcsFromHtml(null)).toEqual([]);
+  });
+
+  it("renders nothing when Images is off or the document has no image", async () => {
+    allowed = false;
+    expect((await mountImages({ html: '<img src="https://cdn/1.png">' })).innerHTML).toBe("");
+    act(() => root?.unmount());
+    allowed = true;
+    expect((await mountImages({ html: "<p>text</p>" })).innerHTML).toBe("");
+  });
+
+  it("downloads a single image named after the slide", async () => {
+    allowed = true;
+    const names = capturedDownloads();
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, blob: async () => new Blob(["x"], { type: "image/png" }) })));
+    const host = await mountImages({ title: "Practice Page", html: '<img src="https://cdn/a">' });
+    expect(host.textContent).toContain("common.downloadImages");
+    await click(host);
+    expect(names).toEqual(["Practice Page.png"]);
   });
 });

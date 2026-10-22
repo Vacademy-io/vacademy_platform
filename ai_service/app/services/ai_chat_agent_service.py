@@ -111,6 +111,17 @@ _MARK_ANSWERED_SQL = text(
     """
 )
 
+# The answering stream went away mid-turn (tab closed, network drop): free the
+# question so the next stream to open answers it, instead of waiting out the claim.
+_RELEASE_CLAIM_SQL = text(
+    """
+    UPDATE chat_messages
+       SET metadata = metadata - 'claimed_at'
+     WHERE id = :id AND metadata->>'answered_at' IS NULL
+    RETURNING id
+    """
+)
+
 # Is this message still worth waiting for? (claimed by a live stream, young.)
 _LIST_SESSIONS_SQL = text(
     """
@@ -714,6 +725,15 @@ class AiChatAgentService:
         except Exception as e:  # noqa: BLE001
             logger.warning(f"Could not mark message {message_id} answered: {e}")
 
+    def _release_claim(self, message_id: Optional[int]) -> None:
+        if not message_id:
+            return
+        try:
+            with self._get_db() as db:
+                db.execute(_RELEASE_CLAIM_SQL, {"id": message_id}).first()
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"Could not release the claim on message {message_id}: {e}")
+
     def _still_pending(self, message_id: int) -> bool:
         """False once the message is answered (by anyone) or too old to auto-answer."""
         try:
@@ -898,8 +918,15 @@ class AiChatAgentService:
         for msg in existing_messages:
             cursor = msg.id
             yield _relay(msg)
-        if existing_messages and existing_messages[-1].message_type == "user":
-            pending = existing_messages[-1].id
+        # The last question is still open when nothing but tool scaffolding
+        # (rows the learner never sees) follows it: the stream answering it went
+        # away mid-turn. The claim decides whether it is really unanswered.
+        for msg in reversed(existing_messages):
+            if msg.message_type == "user":
+                pending = msg.id
+                break
+            if msg.message_type not in ("tool_call", "tool_result"):
+                break
 
         if not existing_messages:
             async for event in self._stream_greeting_generation(
@@ -930,6 +957,11 @@ class AiChatAgentService:
                         "event": "status",
                         "data": {"ai_status": "thinking", "session_status": session_status},
                     }
+                    # The reply is produced inside this stream. If the learner
+                    # leaves mid-turn the generator is closed/cancelled here: the
+                    # question was NOT answered, so release it and the next stream
+                    # (the chat reopened) answers it. It used to be marked answered,
+                    # which left the question without a reply for good.
                     try:
                         async for event in self._stream_agentic_processing(
                             session_id, user_id, institute_id, message_id=claimed
@@ -937,8 +969,14 @@ class AiChatAgentService:
                             if event.get("event") == "message" and event.get("data", {}).get("id"):
                                 sent.add(event["data"]["id"])
                             yield event
-                    finally:
+                    except (GeneratorExit, asyncio.CancelledError):
+                        logger.info(f"Stream left mid-turn; releasing message {claimed} for session {session_id}")
+                        self._release_claim(claimed)
+                        raise
+                    except BaseException:
                         self._mark_answered(claimed)
+                        raise
+                    self._mark_answered(claimed)
                     yield {
                         "event": "status",
                         "data": {"ai_status": "idle", "session_status": session_status},

@@ -504,19 +504,9 @@ class _DiscardQueue(asyncio.Queue):
 
 
 def _merge_metadata(video_id: str, extra: Dict[str, Any]) -> bool:
-    from sqlalchemy.orm.attributes import flag_modified
-    from ..models.ai_gen_video import AiGenVideo
-
-    with make_db_session() as s:
-        rec = s.query(AiGenVideo).filter_by(video_id=video_id).first()
-        if rec is None:
-            return False
-        meta = dict(rec.extra_metadata or {})
-        meta.update(extra)
-        rec.extra_metadata = meta
-        flag_modified(rec, "extra_metadata")
-        s.commit()
-    return True
+    """Atomic ``metadata || extra`` (never a read-modify-write of the column:
+    that could revert the run lease / run request written concurrently)."""
+    return AiVideoRepository().merge_metadata(video_id, extra)
 
 
 def _finish_record(video_id: str, failure: Optional[BaseException], extra: Dict[str, Any],
@@ -590,6 +580,30 @@ class _LmsRun:
         if self.rejected or final not in ("COMPLETED", "FAILED"):
             return
         await notify_creator(self.institute_id, self.user_id, self.video_id, self.topic, self.context, final)
+
+
+def resume_hooks(video_id: str, meta: Dict[str, Any]) -> "_LmsRun":
+    """Hooks for an auto-resumed LMS leg: the LMS metadata is already on the
+    row and /generate answered long ago, so ``merged`` / ``responded`` start
+    True — on_finished notifies the creator once, only when the run ends
+    COMPLETED or FAILED (an interrupted leg ends IN_PROGRESS: no bell)."""
+    meta = meta if isinstance(meta, dict) else {}
+    rr = meta.get("run_request") if isinstance(meta.get("run_request"), dict) else {}
+    run = _LmsRun(
+        video_id=video_id,
+        institute_id=str(meta.get("institute_id") or rr.get("institute_id") or ""),
+        user_id=meta.get("created_by_user_id") or rr.get("user_id"),
+        topic=str(meta.get("lms_topic") or ""),
+        context=meta.get("context") if isinstance(meta.get("context"), dict) else {},
+        extra={},
+        prompt="",
+        language=str((rr.get("kwargs") or {}).get("language") or "English"),
+    )
+    run.merged = True
+    run.responded = True
+    if not run.ready.done():
+        run.ready.set_result(None)
+    return run
 
 
 async def notify_creator(institute_id: str, user_id: Optional[str], video_id: str, topic: str,
@@ -707,6 +721,7 @@ async def generate_lms_video(
         video_req, video_id, TARGET_STAGE, inst,
         queue=_DiscardQueue(), user_id=principal.user_id,
         on_event=run.on_event, on_finished=run.on_finished, track_concurrency=False,
+        run_request_kind="lms",
     )
     try:
         start_error = await asyncio.wait_for(asyncio.shield(run.ready), timeout=READY_TIMEOUT_SECONDS)

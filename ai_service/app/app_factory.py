@@ -149,6 +149,14 @@ async def _lifespan(app: FastAPI):
         start_ai_video_sweeper()
     except Exception as exc:  # noqa: BLE001
         _logger.warning("ai_gen_video sweeper skipped: %s", exc)
+    # AI-video auto-resume: runs whose leg died (deploy / OOM / node loss) are
+    # claimed (lease compare-and-set — one pod wins) and resumed from their
+    # checkpoints. First scan 30 s after boot, then every 90 s ± 20 s.
+    try:
+        from .services.ai_video_resumer import start_ai_video_resumer
+        start_ai_video_resumer()
+    except Exception as exc:  # noqa: BLE001
+        _logger.warning("ai_gen_video resumer skipped: %s", exc)
     # Reels stuck-render reaper: sweeps PENDING/IN_PROGRESS rows orphaned by
     # a deploy/crash (in-process asyncio renders die with the process) every
     # 5 min. Lazy import so a reels-module issue can't block app boot.

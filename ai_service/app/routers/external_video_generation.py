@@ -346,21 +346,94 @@ async def external_route_preview(
     return plan.model_dump()
 
 
+def build_generate_kwargs(
+    p: VideoGenerationRequest,
+    ts: str,
+    inst_id: str,
+    user_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """The ``generate_till_stage`` kwargs of a fresh run of request ``p``
+    (everything but ``db_session``). Shared by POST /generate, the LMS router
+    and — via the stored run request — the auto-resumer, so the three can
+    never drift apart."""
+    return dict(
+        video_id=p.video_id,
+        prompt=p.prompt,
+        target_stage=ts,
+        language=p.language,
+        captions_enabled=p.captions_enabled,
+        html_quality=p.html_quality,
+        target_audience=p.target_audience,
+        target_duration=p.target_duration,
+        voice_gender=p.voice_gender,
+        tts_provider=p.tts_provider,
+        voice_id=p.voice_id,
+        content_type=p.content_type,
+        model=p.model or "",  # Empty = let service pick based on quality_tier
+        quality_tier=p.quality_tier,
+        institute_id=inst_id,
+        user_id=user_id,
+        reference_files=[rf.model_dump() for rf in p.reference_files] if p.reference_files else None,
+        orientation=p.orientation,
+        visual_style=p.visual_style,
+        sound_effects_enabled=p.sound_effects_enabled,
+        input_video_ids=p.input_video_ids,
+        input_video_audio=p.input_video_audio,
+        mute_tts_on_source_clips=p.mute_tts_on_source_clips,
+        background_music_enabled=p.background_music_enabled,
+        background_music_volume=p.background_music_volume,
+        sub_shots_enabled=p.sub_shots_enabled,
+        dialogue_scenes_enabled=p.dialogue_scenes_enabled,
+        dialogue_mode=p.dialogue_mode,
+        dialogue_clip_model=p.dialogue_clip_model,
+        cast_id=p.cast_id,
+        routing_overrides=p.routing_overrides,
+        host=p.host,
+        lesson=getattr(p, "lesson", None),
+        brand_kit_id=getattr(p, "brand_kit_id", None),
+        # Per-video overrides (palette/intro/outro/watermark/system_prompt)
+        # that layer on top of the resolved kit.
+        brand_overrides=getattr(p, "brand_overrides", None),
+        visual_preferences=getattr(p, "visual_preferences", None),
+        # AI video (Phase 3b): the service / pipeline gates tier eligibility.
+        ai_video_enabled=bool(getattr(p, "ai_video_enabled", False)),
+        ai_video_audio_enabled=bool(getattr(p, "ai_video_audio_enabled", False)),
+        ai_video_model=getattr(p, "ai_video_model", None),
+        # Per-stage model overrides (DB-backed routing).
+        model_overrides=getattr(p, "model_overrides", None),
+        # Assist mode (conversational, human-in-the-loop); default off.
+        assist_mode=bool(getattr(p, "assist_mode", False)),
+        assist_gates=getattr(p, "assist_gates", None),
+        assist_granularity=getattr(p, "assist_granularity", "per_decision"),
+    )
+
+
 async def run_video_generation(
     q: asyncio.Queue,
     vid: str,
-    p: VideoGenerationRequest,
+    p: Optional[VideoGenerationRequest],
     ts: str,
     inst_id: str,
     *,
     user_id: Optional[str] = None,
     on_event: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = None,
     on_finished: Optional[Callable[[Optional[BaseException]], Awaitable[None]]] = None,
+    run_request_kind: str = "external",
+    generate_kwargs: Optional[Dict[str, Any]] = None,
+    resume: bool = False,
+    resume_from_stage: Optional[str] = None,
+    resume_mode: Optional[str] = None,
+    lease: Optional[Dict[str, Any]] = None,
 ) -> None:
-    """The background generation run shared by POST /generate here and the LMS
-    router (routers/lms_video.py). Owns its own DB session so it keeps running
-    after the HTTP request / SSE connection closes; refunds every credit charged
-    when the run raises; always clears the task registries.
+    """The background generation run shared by POST /generate here, the LMS
+    router (routers/lms_video.py) and the auto-resumer. Owns its own DB
+    session so it keeps running after the HTTP request / SSE connection
+    closes; refunds every credit charged when the run raises; always clears
+    the task registries.
+
+    A fresh run builds its kwargs from ``p`` (build_generate_kwargs) and
+    records them as the run request. A resumed run passes ``generate_kwargs``
+    (services/video_run_request.rehydrate) with ``resume=True``.
 
     `on_event(event)` sees each pipeline event before it is queued;
     `on_finished(exc_or_None)` runs once at the end (not on cancel). Both are
@@ -369,6 +442,15 @@ async def run_video_generation(
     failure: Optional[BaseException] = None
     cancelled = False
     try:
+        if generate_kwargs is not None:
+            kwargs = dict(generate_kwargs)
+        else:
+            kwargs = build_generate_kwargs(p, ts, inst_id, user_id)
+        kwargs["video_id"] = vid
+        kwargs["target_stage"] = ts
+        if not resume:
+            from ..services.video_run_request import capture as _capture_run_request
+            kwargs["run_request"] = _capture_run_request(run_request_kind, ts, kwargs)
         with make_bg_db_session() as bg_session:
             bg_svc = VideoGenerationService(
                 # Session-less repo: every get/update opens its own
@@ -379,66 +461,15 @@ async def run_video_generation(
                 repository=AiVideoRepository(),
                 s3_service=S3Service()
             )
-            async for event in bg_svc.generate_till_stage(
-                video_id=vid,
-                prompt=p.prompt,
-                target_stage=ts,
-                language=p.language,
-                captions_enabled=p.captions_enabled,
-                html_quality=p.html_quality,
-                resume=False,
-                target_audience=p.target_audience,
-                target_duration=p.target_duration,
-                voice_gender=p.voice_gender,
-                tts_provider=p.tts_provider,
-                voice_id=p.voice_id,
-                content_type=p.content_type,
-                db_session=bg_session,
-                model=p.model or "",  # Empty = let service pick based on quality_tier
-                quality_tier=p.quality_tier,
-                institute_id=inst_id,
-                user_id=user_id,
-                reference_files=[rf.model_dump() for rf in p.reference_files] if p.reference_files else None,
-                orientation=p.orientation,
-                visual_style=p.visual_style,
-                sound_effects_enabled=p.sound_effects_enabled,
-                input_video_ids=p.input_video_ids,
-                input_video_audio=p.input_video_audio,
-                mute_tts_on_source_clips=p.mute_tts_on_source_clips,
-                background_music_enabled=p.background_music_enabled,
-                background_music_volume=p.background_music_volume,
-                sub_shots_enabled=p.sub_shots_enabled,
-                dialogue_scenes_enabled=p.dialogue_scenes_enabled,
-                dialogue_mode=p.dialogue_mode,
-                dialogue_clip_model=p.dialogue_clip_model,
-                cast_id=p.cast_id,
-                routing_overrides=p.routing_overrides,
-                host=p.host,
-                lesson=getattr(p, "lesson", None),
-                brand_kit_id=getattr(p, "brand_kit_id", None),
-                # Per-video overrides (palette/intro/outro/watermark/system_prompt)
-                # that layer on top of the resolved kit. One-shot — not persisted
-                # by the FE across videos.
-                brand_overrides=getattr(p, "brand_overrides", None),
-                visual_preferences=getattr(p, "visual_preferences", None),
-                # AI video (Phase 3b): forward from request body. The
-                # service / pipeline gates tier eligibility internally.
-                ai_video_enabled=bool(getattr(p, "ai_video_enabled", False)),
-                ai_video_audio_enabled=bool(getattr(p, "ai_video_audio_enabled", False)),
-                ai_video_model=getattr(p, "ai_video_model", None),
-                # Per-stage model overrides (DB-backed routing). When set,
-                # the service resolves a per-stage map via
-                # `AIModelsService.get_stage_model_map(...)`. The legacy
-                # `model` field collapses to `model_overrides.default` if
-                # `model_overrides` is omitted.
-                model_overrides=getattr(p, "model_overrides", None),
-                # Assist mode (conversational, human-in-the-loop). The
-                # service pauses at enabled SCRIPT-boundary gates and
-                # emits `decision_required`; default off = Auto mode.
-                assist_mode=bool(getattr(p, "assist_mode", False)),
-                assist_gates=getattr(p, "assist_gates", None),
-                assist_granularity=getattr(p, "assist_granularity", "per_decision"),
-            ):
+            extra: Dict[str, Any] = {"resume": bool(resume)}
+            if resume_from_stage:
+                extra["resume_from_stage"] = resume_from_stage
+            if resume_mode:
+                extra["resume_mode"] = resume_mode
+            if lease is not None:
+                extra["lease"] = lease
+                extra["lease_origin"] = lease.get("origin") or "user"
+            async for event in bg_svc.generate_till_stage(db_session=bg_session, **kwargs, **extra):
                 if on_event is not None:
                     try:
                         await on_event(event)
@@ -446,10 +477,10 @@ async def run_video_generation(
                         logger.warning(f"[BG-Gen] on_event hook failed for {vid}: {hook_err}")
                 await q.put(json.dumps(event))
     except asyncio.CancelledError:
-        # `task.cancel()` from POST /cancel/{video_id} fired. Cancel
-        # endpoint already handled CANCELLED status + refund + SSE
-        # event; we just unwind quietly. Re-raise so asyncio cleanup
-        # works correctly.
+        # `task.cancel()` from POST /cancel/{video_id} fired, or the process
+        # is shutting down. Cancel endpoint already handled CANCELLED status +
+        # refund + SSE event; a shutdown is an interruption (the lease is
+        # marked interrupted, a new pod resumes) — never refund here.
         logger.info(f"[BG-Gen] Background task cancelled for {vid}")
         cancelled = True
         raise
@@ -497,7 +528,7 @@ async def run_video_generation(
 
 
 def start_video_generation(
-    payload: VideoGenerationRequest,
+    payload: Optional[VideoGenerationRequest],
     video_id: str,
     target_stage: str,
     institute_id: str,
@@ -507,15 +538,24 @@ def start_video_generation(
     on_event: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = None,
     on_finished: Optional[Callable[[Optional[BaseException]], Awaitable[None]]] = None,
     track_concurrency: bool = True,
+    run_request_kind: str = "external",
+    generate_kwargs: Optional[Dict[str, Any]] = None,
+    resume: bool = False,
+    resume_from_stage: Optional[str] = None,
+    resume_mode: Optional[str] = None,
+    lease: Optional[Dict[str, Any]] = None,
 ) -> asyncio.Queue:
     """Start `run_video_generation` as a registered background task (so
-    /cancel can find it) and return its event queue."""
+    /cancel and an SSE re-connect can find it) and return its event queue."""
     q = queue if queue is not None else asyncio.Queue()
     _generation_queues[video_id] = q
     task = asyncio.create_task(
         run_video_generation(
             q, video_id, payload, target_stage, institute_id,
             user_id=user_id, on_event=on_event, on_finished=on_finished,
+            run_request_kind=run_request_kind, generate_kwargs=generate_kwargs,
+            resume=resume, resume_from_stage=resume_from_stage, resume_mode=resume_mode,
+            lease=lease,
         )
     )
     _generation_tasks[video_id] = task
@@ -523,6 +563,31 @@ def start_video_generation(
         _institute_active_tasks[institute_id].add(video_id)
     logger.info(f"[BG-Gen] Started background task for {video_id}")
     return q
+
+
+def acquire_user_lease(video_id: str) -> Optional[Dict[str, Any]]:
+    """Run lease for a user-triggered leg on an EXISTING video (/resume,
+    /retry, /decision, /generate with a known video_id). Returns the lease to
+    hand to generate_till_stage; raises 409 when another pod has a live leg
+    of this video. A database error degrades to no lease (old behaviour)."""
+    from ..services import ai_video_run_lease as _run_lease
+
+    repo = AiVideoRepository()
+    try:
+        rec = repo.get_by_video_id(video_id)
+        if rec is None:
+            return None  # new video: generate_till_stage takes the lease after creating the row
+        prev = (rec.extra_metadata or {}).get("run_lease")
+        lease = _run_lease.new_lease(origin="user", prev=prev)
+        if repo.acquire_lease(video_id, lease, _run_lease.LEASE_STALE_S):
+            return lease
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"[Lease] acquire for {video_id} failed ({exc}); continuing without a lease")
+        return None
+    raise HTTPException(
+        status_code=409,
+        detail=f"Video {video_id} is already being generated by another worker — poll /urls/{video_id}.",
+    )
 
 
 @router.post(
@@ -606,8 +671,12 @@ async def generate_video_external(
         # ------------------------------------------------------------------
         # Start a new background task.  It owns its own DB session so it
         # keeps running after this HTTP request / SSE connection is closed.
+        # A client-supplied video_id that another pod is still generating
+        # gets 409 (poll /urls) instead of a second, competing run.
         # ------------------------------------------------------------------
-        queue = start_video_generation(payload, video_id, target_stage, institute_id, queue=queue)
+        _lease = acquire_user_lease(video_id) if payload.video_id else None
+        queue = start_video_generation(payload, video_id, target_stage, institute_id, queue=queue,
+                                       lease=_lease)
 
     # ------------------------------------------------------------------
     # SSE generator – drains the queue.
@@ -706,6 +775,18 @@ async def cancel_video_generation(
             TokenUsageService(session).refund_video_credits(video_id, institute_id)
     except Exception as e:
         logger.error(f"[Cancel] Failed to refund credits for {video_id}: {e}")
+
+    # 4b. Release the run lease (compare-and-set on the leg that holds it) so
+    #     nothing resumes a cancelled run. The owning leg — on whichever pod —
+    #     still sees CANCELLED on its next heartbeat and stops.
+    try:
+        _lease_now = (getattr(video, "extra_metadata", None) or {}).get("run_lease") or {}
+        if _lease_now.get("leg_id"):
+            AiVideoRepository().release_lease(
+                video_id, _lease_now["leg_id"], "released", interrupt_reason="cancelled",
+            )
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[Cancel] Failed to release the run lease for {video_id}: {e}")
 
     # 5. Notify any still-listening SSE clients.
     queue = _generation_queues.get(video_id)
@@ -847,6 +928,7 @@ async def resume_video_external(
             queue = existing_queue
             logger.info(f"[Resume] Re-connecting to existing task for {video_id}")
     else:
+        _lease = acquire_user_lease(video_id)
         _generation_queues[video_id] = queue
 
         async def _run_resume(q: asyncio.Queue, vid: str, ts: str, inst_id: str,
@@ -917,6 +999,7 @@ async def resume_video_external(
                         # the legacy `model` field (which the service collapses
                         # into ModelOverrides(default=model)).
                         model_overrides=_meta.get("model_overrides"),
+                        lease=_lease,
                     ):
                         await q.put(json.dumps(event))
             except Exception as exc:
@@ -1373,6 +1456,7 @@ async def decision_video_external(
             queue = existing_queue
             logger.info(f"[Decision] re-connecting to existing task for {video_id}")
     else:
+        _lease = acquire_user_lease(video_id)
         _generation_queues[video_id] = queue
 
         async def _run_decision_resume(q: asyncio.Queue, vid: str, inst_id: str) -> None:
@@ -1422,6 +1506,7 @@ async def decision_video_external(
                         ai_video_audio_enabled=bool(m.get("ai_video_audio_enabled", False)),
                         ai_video_model=m.get("ai_video_model"),
                         model_overrides=m.get("model_overrides"),
+                        lease=_lease,
                     ):
                         await q.put(json.dumps(event))
             except Exception as exc:
@@ -1703,6 +1788,7 @@ async def retry_video_external(
             detail=_tier_check.message,
         )
 
+    _lease = acquire_user_lease(video_id)
     queue: asyncio.Queue = asyncio.Queue()
     _generation_queues[video_id] = queue
 
@@ -1764,6 +1850,7 @@ async def retry_video_external(
                         ai_video_model=_meta.get("ai_video_model"),
                     # Retry parity: rehydrate per-stage overrides from saved meta
                     model_overrides=_meta.get("model_overrides"),
+                    lease=_lease,
                 ):
                     await q.put(json.dumps(event))
         except Exception as exc:

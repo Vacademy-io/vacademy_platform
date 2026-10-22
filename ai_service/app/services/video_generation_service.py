@@ -300,8 +300,14 @@ def _bill_video_stage_usage(
     tts_provider_resolved: Optional[str],
     language: Optional[str],
     meter: Optional[Dict[str, Any]] = None,
+    idempotency_key_fn: Optional[Any] = None,
 ) -> Dict[str, Any]:
     """Record usage and deduct credits for one pipeline stage's output.
+
+    ``idempotency_key_fn(sub) -> key``: when given, every deduction carries an
+    idempotency key (``llm:{model}``, ``img:{event id or index}``, ``tts``
+    under the stage's key, see _video_charge_key), so a stage re-run after a
+    kill between billing and the stage's COMPLETED write is not billed twice.
 
     ``meter``: optional usage-event attribution fields (ai_billing.
     metering_kwargs); passed only where the token service accepts them and
@@ -322,6 +328,16 @@ def _bill_video_stage_usage(
     # Record-only rows (free stock media, free TTS) are bundled into the video.
     _meter_record = _supported(getattr(token_service, "record_usage", None),
                                {**meter, "free_reason": "BUNDLED"} if meter else {})
+
+    def _idem(sub: str) -> Dict[str, Any]:
+        if idempotency_key_fn is None:
+            return {}
+        try:
+            key = idempotency_key_fn(sub)
+        except Exception:  # noqa: BLE001 — a key failure must not drop the charge
+            key = None
+        return {"idempotency_key": key} if key else {}
+
     usage = usage or {}
     _u_pt = int(usage.get("prompt_tokens", 0) or 0)
     _u_ct = int(usage.get("completion_tokens", 0) or 0)
@@ -382,6 +398,7 @@ def _bill_video_stage_usage(
                 },
                 batch_id=video_id,
                 allow_negative=True,
+                **_idem(f"llm:{_m}"),
                 **_meter_deduct,
             )
             summary["llm_rows"] += 1
@@ -404,7 +421,7 @@ def _bill_video_stage_usage(
             f"{len(_billable)} image cost event(s); billing {_shortfall} at the "
             f"{IMAGE_FALLBACK_MODEL_ID} price"
         )
-    _image_rows: List[Tuple[str, Optional[float], str, Optional[str]]] = []
+    _image_rows: List[Tuple[str, Optional[float], str, Optional[str], Optional[str]]] = []
     for ev in _billable:
         _model = ev.get("model") or IMAGE_FALLBACK_MODEL_ID
         _cost = ev.get("cost_usd")
@@ -413,9 +430,10 @@ def _bill_video_stage_usage(
         except (TypeError, ValueError):
             _cost = None
         _image_rows.append((_model, _cost if _cost and _cost > 0 else None,
-                            ev.get("purpose") or "other", ev.get("stage")))
-    _image_rows += [(IMAGE_FALLBACK_MODEL_ID, None, "unrecorded", None)] * _shortfall
-    for _model, _cost, _purpose, _ev_stage in _image_rows:
+                            ev.get("purpose") or "other", ev.get("stage"),
+                            ev.get("event_id") or ev.get("id")))
+    _image_rows += [(IMAGE_FALLBACK_MODEL_ID, None, "unrecorded", None, None)] * _shortfall
+    for _img_idx, (_model, _cost, _purpose, _ev_stage, _ev_id) in enumerate(_image_rows):
         _usd = _cost if _cost is not None else float(image_unit_usd(_model))
         token_service.record_usage_and_deduct_credits(
             api_provider=ApiProvider.OPENAI,
@@ -437,6 +455,7 @@ def _bill_video_stage_usage(
             batch_id=video_id,
             precomputed_credits=usd_to_credits(_usd),
             allow_negative=True,
+            **_idem(f"img:{_ev_id if _ev_id else _img_idx}"),
             **_meter_deduct,
         )
     summary["image_rows"] = len(_image_rows)
@@ -507,6 +526,7 @@ def _bill_video_stage_usage(
                 # None (unknown vendor rate) → calculate_credits('tts_premium').
                 precomputed_credits=_tts_credits if _tts_credits and _tts_credits > _Dec("0") else None,
                 allow_negative=True,
+                **_idem("tts"),
                 **_meter_deduct,
             )
             log.info(f"[VideoGenService] Deducted premium TTS credits ({_vendor}) for {_tts_chars} chars in stage {stage}")
@@ -622,12 +642,13 @@ def _lesson_billing_record(
 _FULL_VIDEO_REFUND_DESCRIPTION_PREFIX = "Full refund for failed video generation"
 
 
-def _lesson_teacher_idempotency_key(db: Any, video_id: str, institute_id: str) -> str:
-    """`{video_id}:lesson-teacher`, plus a refund generation once
-    refund_video_credits has refunded this video (that refund includes the
-    teacher row, so the re-run's teacher must be billable again). Per-clip
-    AiVideoLedger refunds are not counted: they never touch the teacher."""
-    key = f"{video_id}:lesson-teacher"
+def _refund_generation(db: Any, video_id: str, institute_id: str, key_prefix: str) -> int:
+    """How many times this video's charges under ``key_prefix`` were fully
+    refunded: full-video REFUND rows (refund_video_credits), plus — for an
+    institute that has or had an AI plan — REFUNDED plan usage events keyed
+    under the prefix (a refund that only gave allowance back writes no REFUND
+    row). Monotonic, so each refund generation gets distinct keys."""
+    log = __import__("logging").getLogger(__name__)
     try:
         n = db.execute(
             text(
@@ -638,16 +659,10 @@ def _lesson_teacher_idempotency_key(db: Any, video_id: str, institute_id: str) -
             {"v": video_id, "i": institute_id, "d": _FULL_VIDEO_REFUND_DESCRIPTION_PREFIX + "%"},
         ).scalar() or 0
     except Exception as exc:  # noqa: BLE001
-        __import__("logging").getLogger(__name__).warning(
-            "[VideoGenService] Lesson-teacher refund count failed for %s (%s); using the base key",
-            video_id, exc,
+        log.warning(
+            "[VideoGenService] Refund count failed for %s (%s); using the base key", video_id, exc,
         )
         n = 0
-    # AI plans: a teacher paid from the plan allowance has no ledger row, and a
-    # full refund that only gave allowance back writes no REFUND row. Its usage
-    # event (keyed with this key) is then REFUNDED: count those too, so the
-    # re-run gets a fresh key instead of an idempotent no-op (a free teacher).
-    # Only for an institute that has or had an AI subscription (in-memory check).
     try:
         from .metering import plan_wiring
 
@@ -659,13 +674,40 @@ def _lesson_teacher_idempotency_key(db: Any, video_id: str, institute_id: str) -
                         "WHERE batch_id = :v AND institute_id = :i AND idempotency_key LIKE :k "
                         "AND billing_mode IN ('INCLUDED', 'ALLOWANCE') AND charge_status = 'REFUNDED'"
                     ),
-                    {"v": video_id, "i": institute_id, "k": key + "%"},
+                    {"v": video_id, "i": institute_id, "k": key_prefix + "%"},
                 ).scalar() or 0)
     except Exception as exc:  # noqa: BLE001
-        __import__("logging").getLogger(__name__).warning(
-            "[VideoGenService] Lesson-teacher plan refund count failed for %s (%s)", video_id, exc,
-        )
-    return f"{key}:refund{int(n)}" if int(n) > 0 else key
+        log.warning("[VideoGenService] Plan refund count failed for %s (%s)", video_id, exc)
+    return int(n)
+
+
+def _video_charge_key(db: Any, video_id: str, institute_id: str, suffix: str) -> str:
+    """Idempotency key of one video charge: ``{video_id}:{suffix}``, plus a
+    refund generation once the video was fully refunded (that refund includes
+    this charge, so the re-run must be billable again). A resume after a kill
+    (no refund) reuses the key → the replayed charge is a no-op. Per-shot
+    AiVideoLedger refunds are not counted here."""
+    key = f"{video_id}:{suffix}"
+    n = _refund_generation(db, video_id, institute_id, key)
+    return f"{key}:refund{n}" if n > 0 else key
+
+
+def _stage_charge_key_fn(db: Any, video_id: str, institute_id: Optional[str], stage: str):
+    """``sub -> key`` for _bill_video_stage_usage: ``{vid}:stage:{stage}:{sub}``
+    with ONE refund generation for the whole stage (computed once, so every
+    row of a stage run shares it). Returns (fn, generation)."""
+    prefix = f"{video_id}:stage:{stage}"
+    n = _refund_generation(db, video_id, institute_id, prefix + ":") if institute_id else 0
+    gen = f":refund{n}" if n > 0 else ""
+    return (lambda sub: f"{prefix}:{sub}{gen}"), n
+
+
+def _lesson_teacher_idempotency_key(db: Any, video_id: str, institute_id: str) -> str:
+    """`{video_id}:lesson-teacher`, plus a refund generation once
+    refund_video_credits has refunded this video (that refund includes the
+    teacher row, so the re-run's teacher must be billable again). Per-clip
+    AiVideoLedger refunds are not counted: they never touch the teacher."""
+    return _video_charge_key(db, video_id, institute_id, "lesson-teacher")
 
 
 def _supported_meter(fn: Any, meter: Optional[Dict[str, Any]]) -> Dict[str, Any]:
@@ -894,6 +936,25 @@ def _assign_capture_ids(captured_files: List[Dict[str, Any]]) -> None:
             f["id"] = f"inline_{inline_idx}"
             inline_idx += 1
 
+
+
+class _LegState:
+    """Book-keeping for one generate_till_stage leg (lease handle, uploader,
+    the exception it ended with, and the run's final target stage)."""
+
+    def __init__(self, final_target_stage: str = "HTML") -> None:
+        self.final_target_stage = final_target_stage
+        self.handle: Any = None
+        self.uploader: Any = None
+        self.exc: Optional[BaseException] = None
+        self.interrupted: Optional[str] = None  # reason when the leg stopped as an interruption
+
+
+def _stage_index(stage: Optional[str]) -> int:
+    try:
+        return VideoGenerationService.STAGES.index(str(stage or "").upper())
+    except ValueError:
+        return -1
 
 
 class VideoGenerationService:
@@ -1561,19 +1622,25 @@ class VideoGenerationService:
             _raw = run_dir / "narration_raw.json"
             if _raw.exists():
                 self.s3_service.upload_video_file(_raw, video_id, "audio")
-            # per-shot TTS dir (v3) — the html-stage audio assembly may read it on
-            # resume. Best-effort per-file upload under per_shot_tts/.
-            _pst = run_dir / "per_shot_tts"
+            # per-shot TTS dir — the pipeline writes run_dir/"tts" (shot_NNN.mp3,
+            # _raw.json, _script.txt); a resumed combine leg restores it into
+            # run_dir/tts and re-uses it instead of re-synthesising.
+            _pst = run_dir / "tts"
             if _pst.exists() and _pst.is_dir():
+                from .video_checkpoint import is_temp_file as _is_tmp
                 for _f in _pst.glob("*"):
-                    if _f.is_file():
+                    if _f.is_file() and not _is_tmp(_f):
                         try:
                             self.s3_service.upload_file(
                                 _f, s3_key=f"ai-videos/{video_id}/per_shot_tts/{_f.name}"
                             )
                         except Exception:
                             pass
-            for _name in ("shot_plan.json", "style_guide.json", "director_plan.json"):
+            _unmixed = run_dir / "narration_unmixed.mp3"
+            if _unmixed.exists():
+                self.s3_service.upload_video_file(_unmixed, video_id, "audio")
+            from .video_checkpoint import RESUME_CHECKPOINT_FILES
+            for _name in ("shot_plan.json", "asset_selections.json") + tuple(RESUME_CHECKPOINT_FILES):
                 _f = run_dir / _name
                 if _f.exists():
                     self.s3_service.upload_file(
@@ -1582,6 +1649,8 @@ class VideoGenerationService:
             _sc = run_dir / "shot_cache"
             if _sc.exists() and _sc.is_dir():
                 for _f in _sc.glob("*.json"):
+                    if _f.name.startswith("."):
+                        continue
                     self.s3_service.upload_file(
                         _f, s3_key=f"ai-videos/{video_id}/checkpoints/shot_cache/{_f.name}"
                     )
@@ -1592,6 +1661,279 @@ class VideoGenerationService:
             logger.error(
                 f"[Assist] failed to persist resume artifacts for {video_id}", exc_info=True
             )
+
+    # ── Resume helpers ───────────────────────────────────────────────
+
+    @classmethod
+    def resume_start_stage(cls, rec: Any) -> Optional[str]:
+        """The stage a resumed leg starts at, or None when nothing is left.
+
+        From ``checkpoint.completed_stages`` (the stage after the highest
+        completed one; SCRIPT when none — a kill during SCRIPT re-runs it).
+        Legacy rows without a manifest: the stage after current_stage when the
+        row reads COMPLETED, else current_stage itself (it never finished)."""
+        meta = getattr(rec, "extra_metadata", None) or {}
+        ckpt = meta.get("checkpoint") if isinstance(meta, dict) else None
+        if isinstance(ckpt, dict) and "completed_stages" in ckpt:
+            done = [_stage_index(s) for s in (ckpt.get("completed_stages") or [])]
+            done = [i for i in done if i >= 1]
+            nxt = (max(done) + 1) if done else 1
+        else:
+            cur = _stage_index(getattr(rec, "current_stage", None))
+            if cur < 1:
+                nxt = 1
+            elif str(getattr(rec, "status", "") or "").upper() == "COMPLETED":
+                nxt = cur + 1
+            else:
+                nxt = cur
+        return cls.STAGES[nxt] if 1 <= nxt < len(cls.STAGES) else None
+
+    @staticmethod
+    def _combine_eligible(target_stage_idx: int, quality_tier: Optional[str], content_type: Optional[str]) -> bool:
+        """Phase-B combine applies (TTS+WORDS run inside the HTML pass) —
+        same tier/type/target rule as _run_pipeline_stages."""
+        return (
+            target_stage_idx >= 4
+            and (quality_tier or "") in ("premium", "ultra", "super_ultra")
+            and (content_type or "VIDEO") == "VIDEO"
+        )
+
+    @staticmethod
+    def _html_completed(rec: Any) -> bool:
+        meta = getattr(rec, "extra_metadata", None) or {}
+        ckpt = meta.get("checkpoint") if isinstance(meta, dict) else None
+        if isinstance(ckpt, dict) and "HTML" in (ckpt.get("completed_stages") or []):
+            return True
+        return (
+            _stage_index(getattr(rec, "current_stage", None)) >= 4
+            and str(getattr(rec, "status", "") or "").upper() == "COMPLETED"
+        )
+
+    def _bucket(self) -> Optional[str]:
+        b = getattr(self.s3_service, "public_bucket", None)
+        if b:
+            return str(b)
+        try:
+            from ..config import get_settings
+            st = get_settings()
+            return st.aws_bucket_name or st.aws_s3_public_bucket
+        except Exception:  # noqa: BLE001
+            return None
+
+    def _s3_url(self, key: str) -> str:
+        """The raw-S3 URL download_file accepts for ``key`` (same convention
+        as the other resume downloads)."""
+        return f"https://{self._bucket()}.s3.amazonaws.com/{key}"
+
+    def _list_keys(self, prefix: str) -> List[str]:
+        """Every object key under ``prefix`` (list_objects_v2, paginated)."""
+        client = getattr(self.s3_service, "s3_client", None)
+        bucket = self._bucket()
+        if client is None or not bucket:
+            return []
+        keys: List[str] = []
+        token = None
+        for _ in range(50):  # 50 × 1000 keys — far above any video
+            kw: Dict[str, Any] = {"Bucket": bucket, "Prefix": prefix}
+            if token:
+                kw["ContinuationToken"] = token
+            resp = client.list_objects_v2(**kw) or {}
+            keys.extend(o["Key"] for o in (resp.get("Contents") or []) if o.get("Key"))
+            if not resp.get("IsTruncated"):
+                break
+            token = resp.get("NextContinuationToken")
+            if not token:
+                break
+        return keys
+
+    def _restore_checkpoints(self, video_id: str, run_dir: Path, video_record: Any = None) -> Dict[str, int]:
+        """Pull a run's resume checkpoints from S3 into ``run_dir``.
+
+        • checkpoints/shot_cache/* by LISTING (shots finish out of order; the
+          old shot_000… probe stopped at the first gap and never saw _subK);
+        • per_shot_tts/* → run_dir/tts (the per-shot TTS cache);
+        • checkpoints/{preamble, reference_context, host_outputs,
+          lesson_teacher, director_plan, style_guide, cost_breakdown_by_stage}
+          and lesson/teacher_raw.mp4; asset_selections.json is always
+          re-downloaded (the user may have just answered the gate);
+        • a missing preamble plan is rebuilt from extra_metadata
+          (intent_outcomes.routing_plan / video_type, host).
+        Best-effort; returns counts for logging/tests."""
+        import logging
+        log = logging.getLogger(__name__)
+        from .video_checkpoint import RESUME_CHECKPOINT_FILES, TEACHER_RAW_REL
+
+        counts = {"shots": 0, "tts": 0, "files": 0}
+        base = f"ai-videos/{video_id}"
+        try:
+            sc_dir = run_dir / "shot_cache"
+            sc_dir.mkdir(parents=True, exist_ok=True)
+            for key in self._list_keys(f"{base}/checkpoints/shot_cache/"):
+                name = key.rsplit("/", 1)[-1]
+                if not name.endswith(".json") or name.startswith("."):
+                    continue
+                local = sc_dir / name
+                if local.exists() or self.s3_service.download_file(self._s3_url(key), local, expected_missing=True):
+                    counts["shots"] += 1
+        except Exception as exc:  # noqa: BLE001
+            log.warning(f"[VideoGenService] shot-cache restore failed for {video_id}: {exc}")
+        try:
+            tts_dir = run_dir / "tts"
+            for key in self._list_keys(f"{base}/per_shot_tts/"):
+                name = key.rsplit("/", 1)[-1]
+                if not name or name.startswith(".") or name.endswith(".tmp"):
+                    continue
+                tts_dir.mkdir(parents=True, exist_ok=True)
+                local = tts_dir / name
+                if local.exists() or self.s3_service.download_file(self._s3_url(key), local, expected_missing=True):
+                    counts["tts"] += 1
+        except Exception as exc:  # noqa: BLE001
+            log.warning(f"[VideoGenService] per-shot TTS restore failed for {video_id}: {exc}")
+        try:
+            self.s3_service.download_file(
+                self._s3_url(f"{base}/checkpoints/asset_selections.json"),
+                run_dir / "asset_selections.json", expected_missing=True,
+            )
+            for name in RESUME_CHECKPOINT_FILES:
+                local = run_dir / name
+                if local.exists():
+                    continue
+                if self.s3_service.download_file(self._s3_url(f"{base}/checkpoints/{name}"), local,
+                                                 expected_missing=True):
+                    counts["files"] += 1
+            if (run_dir / "lesson_teacher.json").exists() and not (run_dir / TEACHER_RAW_REL).exists():
+                self.s3_service.download_file(self._s3_url(f"{base}/{TEACHER_RAW_REL}"),
+                                              run_dir / TEACHER_RAW_REL, expected_missing=True)
+        except Exception as exc:  # noqa: BLE001
+            log.warning(f"[VideoGenService] checkpoint file restore failed for {video_id}: {exc}")
+        self._rebuild_preamble_from_metadata(run_dir, video_record)
+        log.info(f"[VideoGenService] Restored checkpoints for {video_id}: {counts}")
+        return counts
+
+    @staticmethod
+    def _rebuild_preamble_from_metadata(run_dir: Path, video_record: Any) -> None:
+        """Write routing_plan.json / video_type.json / host_plan.json from the
+        row when their checkpoint is missing (cross-pod resume of a run from
+        before preamble checkpoints): without host_plan.json the resumed leg
+        silently drops the host."""
+        meta = getattr(video_record, "extra_metadata", None) or {}
+        if not isinstance(meta, dict):
+            return
+        try:
+            from ..schemas.routing import HostPlan, RoutingPlan, VideoTypePlan
+        except Exception:  # noqa: BLE001
+            return
+        io = meta.get("intent_outcomes") if isinstance(meta.get("intent_outcomes"), dict) else {}
+        for fname, cls, src in (
+            ("routing_plan.json", RoutingPlan, io.get("routing_plan")),
+            ("video_type.json", VideoTypePlan, io.get("video_type")),
+            ("host_plan.json", HostPlan, meta.get("host")),
+        ):
+            f = run_dir / fname
+            if f.exists() or not isinstance(src, dict):
+                continue
+            try:
+                src = {k: v for k, v in src.items() if k not in ("outputs", "estimated_cost_usd")} \
+                    if fname == "host_plan.json" else src
+                f.write_text(cls.model_validate(src).model_dump_json(indent=2), encoding="utf-8")
+            except Exception:  # noqa: BLE001 — a bad snapshot just means the default plan
+                continue
+
+    @staticmethod
+    async def _flush_uploader(uploader: Any, timeout: float) -> None:
+        """Drain the leg's checkpoint uploads (off the event loop when we can)."""
+        try:
+            await asyncio.wait_for(asyncio.to_thread(uploader.close, timeout), timeout + 5)
+        except BaseException:  # noqa: BLE001 — shutdown: best effort, synchronously
+            try:
+                uploader.close(min(timeout, 5.0))
+            except Exception:  # noqa: BLE001
+                pass
+
+    async def _release_leg_for_pause(self, video_id: str, leg: Optional["_LegState"]) -> None:
+        """Assist pause: flush the leg's checkpoints and release its lease
+        BEFORE the pending decision becomes answerable. Otherwise a fast
+        /decision on the other pod finds the lease still held by this ending
+        leg and is refused (409) after it already recorded the answer."""
+        if leg is None or leg.handle is None or leg.handle.ended:
+            return
+        if leg.uploader is not None:
+            await self._flush_uploader(leg.uploader, 25.0)
+        from . import ai_video_run_lease as _run_lease
+        _run_lease.end_leg(leg.handle, "released", outcome="awaiting_input")
+
+    def _mark_completed_stages(self, video_id: str, stages: List[str]) -> None:
+        fn = getattr(self.repository, "update_checkpoint", None)
+        if fn is None:
+            return
+        try:
+            from datetime import datetime as _dt_c, timezone as _tz_c
+            fn(video_id, {"v": 1, "updated_at": _dt_c.now(_tz_c.utc).isoformat()}, add_stages=stages)
+        except Exception as exc:  # noqa: BLE001
+            __import__("logging").getLogger(__name__).warning(
+                f"[VideoGenService] could not record completed stages {stages} for {video_id}: {exc}")
+
+    def _finish_leg(self, video_id: str, leg: "_LegState") -> None:
+        """Final lease state of a leg:
+          • fenced (another pod owns the run)  → untouched;
+          • interrupted (task cancelled at shutdown, or an interruption the
+            stage loop reported)                → ``interrupted`` (resumable);
+          • FAILED / CANCELLED / AWAITING_INPUT, or the run's final target
+            stage completed                    → ``released``;
+          • otherwise (e.g. course-builder leg 1 stopped at SCRIPT)
+                                               → ``handoff``.
+        Never refunds and never changes the row's status."""
+        import logging
+        log = logging.getLogger(__name__)
+        handle = leg.handle
+        if handle is None:
+            return
+        from . import ai_video_run_lease as _run_lease
+        try:
+            if handle.stop_reason == "fenced" or cancellation_registry.reason(video_id) == "fenced":
+                handle.stop_reason = "fenced"
+                _run_lease.end_leg(handle, "fenced", outcome="fenced")
+                return
+            exc = leg.exc
+            if leg.interrupted or (exc is not None and isinstance(exc, asyncio.CancelledError)):
+                reason = leg.interrupted or "task_cancelled"
+                _run_lease.end_leg(
+                    handle, "interrupted", outcome="interrupted", reason=reason,
+                    interrupted_at=_run_lease.now_iso(), interrupt_reason=reason,
+                )
+                return
+            rec = None
+            try:
+                rec = self.repository.get_by_video_id(video_id)
+            except Exception:  # noqa: BLE001
+                rec = None
+            status = str(getattr(rec, "status", "") or "").upper()
+            if isinstance(exc, GeneratorExit):
+                exc = None  # the consumer stopped reading — judge the leg by the row
+            if status in ("FAILED", "CANCELLED", "AWAITING_INPUT") or exc is not None:
+                _run_lease.end_leg(handle, "released", outcome=(status.lower() or "error"),
+                                   reason=(type(exc).__name__ if exc is not None else None))
+                return
+            meta = getattr(rec, "extra_metadata", None) or {}
+            ckpt = meta.get("checkpoint") if isinstance(meta, dict) else None
+            done = {str(s).upper() for s in ((ckpt or {}).get("completed_stages") or [])} if isinstance(ckpt, dict) else set()
+            final_idx = _stage_index(leg.final_target_stage)
+            reached = any(_stage_index(s) >= final_idx for s in done) if final_idx >= 1 else True
+            if not reached and not done and rec is not None:
+                # Manifest write failed / legacy: fall back to the row.
+                reached = (status == "COMPLETED" and _stage_index(rec.current_stage) >= final_idx)
+            if reached:
+                _run_lease.end_leg(handle, "released", outcome="completed")
+            else:
+                _run_lease.end_leg(handle, "handoff", outcome="handoff",
+                                   reason=f"stopped before {leg.final_target_stage}")
+        except Exception as exc:  # noqa: BLE001
+            log.warning(f"[VideoGenService] finishing leg for {video_id} failed: {exc}")
+        finally:
+            # Not while a newer leg of the same video runs on this process:
+            # clearing would detach its stop flag (cancel / fence unreachable).
+            if _run_lease.active_leg(video_id) is None:
+                cancellation_registry.clear(video_id)
 
     async def generate_till_stage(
         self,
@@ -1654,6 +1996,22 @@ class VideoGenerationService:
         assist_mode: bool = False,
         assist_gates: Optional[List[str]] = None,
         assist_granularity: str = "per_decision",
+        # ── Resume / ownership (2026-10: generation survives deploys) ──
+        # resume_from_stage: explicit first stage of a resume leg (overrides
+        # "the stage after current_stage"). resume_mode="auto": the resumer's
+        # mode — start from checkpoint.completed_stages and apply the Phase-B
+        # combine clamp (a combine run whose HTML is not completed restarts at
+        # TTS, rebuilding narration from the restored per-shot TTS cache).
+        resume_from_stage: Optional[str] = None,
+        resume_mode: Optional[str] = None,
+        # extra_metadata.run_request (services/video_run_request.capture) —
+        # stored atomically with the row on creation.
+        run_request: Optional[Dict[str, Any]] = None,
+        # A run lease the caller already holds (router-acquired or claimed by
+        # the resumer); None = acquire it here. lease_origin labels a lease
+        # acquired here.
+        lease: Optional[Dict[str, Any]] = None,
+        lease_origin: str = "user",
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Generate video up to a specific stage with SSE progress updates.
@@ -1676,442 +2034,646 @@ class VideoGenerationService:
         """
         import logging
         logger = logging.getLogger(__name__)
-        
-        logger.info(f"[VideoGenService] generate_till_stage called with video_id={video_id}, target={target_stage}, content_type={content_type}, resume={resume}")
-        logger.info(f"[VideoGenService] Prompt: {prompt[:100]}...")
-        
-        # Validate target stage
-        if target_stage not in self.STAGES:
-            error_msg = f"Invalid target stage: {target_stage}. Must be one of {self.STAGES}"
-            logger.error(f"[VideoGenService] {error_msg}")
-            yield {
-                "type": "error",
-                "message": error_msg
-            }
-            return
-
-        # ── Vimotion saved-avatar + brand-kit resolution ───────────────
-        # When the request carries `host.avatar.saved_avatar_id` or
-        # `brand_kit_id`, hydrate from admin-core Postgres before any
-        # tier-gate / pipeline work. The resolver scopes by institute_id,
-        # so a request can never read another tenant's avatar/kit.
-        # Voice override (use_avatar_voice=true) mutates the *local*
-        # voice_id/voice_gender/tts_provider/language so every downstream
-        # caller (including TTS) sees the avatar's voice.
-        #
-        # ── Resume safety contract ─────────────────────────────────────
-        # The override is NOT persisted into host_plan.json — only into
-        # function locals, then forwarded to _run_pipeline_stages and
-        # AutomationPipeline kwargs. This is intentional and safe because:
-        #   1. Resume requests carry the same payload (saved_avatar_id) so
-        #      this block re-runs on every resume and re-derives the same
-        #      override values (idempotent unless the avatar row was edited
-        #      between original submit and resume — see #3).
-        #   2. TTS is atomic from the pipeline's POV — narration.mp3 either
-        #      exists (resume past TTS, voice_id no longer consulted) or it
-        #      doesn't (resume runs TTS fresh with the re-resolved voice).
-        #      There is no half-baked partial-narration state where stale
-        #      voice_id could leak in.
-        #   3. If the avatar row IS edited between submit and pre-TTS
-        #      resume, the resumed run picks up the new voice. This is
-        #      arguably correct behaviour (user changed their mind), but
-        #      worth knowing if you go to wire saved-avatar voice into a
-        #      cached plan for stricter resume determinism.
-        # If you change any of the above (e.g. switch TTS to a multi-call
-        # streaming flow, or move resolution behind a cache that survives
-        # resume), persist applied_voice_* onto HostAvatarPlan and prefer
-        # the cached values on resume.
-        resolved_saved_avatar: Optional[Dict[str, Any]] = None
+        # One leg = one call. The lease, the checkpoint uploader and the final
+        # lease state (released / handoff / interrupted) are owned here.
+        _leg = _LegState(
+            final_target_stage=str(
+                ((run_request or {}).get("final_target_stage") if isinstance(run_request, dict) else None)
+                or target_stage or "HTML"
+            ).upper(),
+        )
         try:
-            host_avatar = getattr(host, "avatar", None) if host is not None else None
-            saved_avatar_id = getattr(host_avatar, "saved_avatar_id", None) if host_avatar else None
-            use_avatar_voice = bool(getattr(host_avatar, "use_avatar_voice", True)) if host_avatar else True
-            if saved_avatar_id and institute_id:
-                from .vimotion_resolver import resolve_studio_avatar
-                resolved_saved_avatar = resolve_studio_avatar(saved_avatar_id, institute_id)
-                if resolved_saved_avatar is None:
-                    logger.warning(
-                        f"[VideoGenService] saved_avatar_id={saved_avatar_id!r} did not resolve "
-                        f"for institute_id={institute_id!r} — falling back to request fields."
-                    )
-                elif use_avatar_voice:
-                    # Map saved-avatar voice fields onto the request locals.
-                    # Avatar.voice_provider is concrete ('edge'|'sarvam'|'google');
-                    # tts_provider in the request schema is the user-facing tier
-                    # ('standard'|'premium'). edge → standard; sarvam/google → premium.
-                    av_voice_id = resolved_saved_avatar.get("voice_id") or None
-                    av_provider = (resolved_saved_avatar.get("voice_provider") or "").lower() or None
-                    av_language = resolved_saved_avatar.get("voice_language") or None
-                    av_gender = resolved_saved_avatar.get("voice_gender") or None
-                    if av_voice_id:
-                        voice_id = av_voice_id
-                    if av_provider == "edge":
-                        tts_provider = "standard"
-                    elif av_provider in ("sarvam", "google"):
-                        tts_provider = "premium"
-                    if av_language:
-                        language = av_language
-                    if av_gender:
-                        voice_gender = av_gender
-                    logger.info(
-                        f"[VideoGenService] Applied avatar voice override "
-                        f"(voice_id={av_voice_id!r}, provider={av_provider!r}, "
-                        f"language={av_language!r}, gender={av_gender!r})."
-                    )
-        except Exception as _vr_err:
-            # Don't fail the whole request on a resolution glitch — log and
-            # continue with whatever the caller sent in the request body.
-            logger.warning(
-                f"[VideoGenService] Vimotion saved-avatar resolution failed (non-fatal): {_vr_err}"
-            )
 
-        # Tier-gate the Host feature BEFORE creating any DB record / charging
-        # credits. Mirrors the early-fail UX of stage validation above.
-        if host is not None and not resume:
-            try:
-                from .host_planner_service import make_host_plan, HostFeatureError
-                from ..config import get_settings as _get_settings
-                _settings = _get_settings()
-                _early_host_plan = make_host_plan(
-                    host,
-                    quality_tier=quality_tier,
-                    fal_api_key=getattr(_settings, "fal_api_key", None) or "",
-                    resolved_saved_avatar=resolved_saved_avatar,
-                )
-                # New host pipeline supersedes the legacy single-PiP avatar.
-                # If both `host.type=avatar` and `generate_avatar=true` are set,
-                # the new per-shot host already covers the on-screen narrator —
-                # running EchoMimic on top would produce a redundant corner PiP.
-                # Suppress the legacy path here (mutate the local kwarg) so the
-                # rest of the pipeline only sees the new host configuration.
-                if _early_host_plan.is_avatar() and generate_avatar:
-                    logger.info(
-                        "[VideoGenService] host.type=avatar is set — suppressing legacy "
-                        "generate_avatar=true (PiP) to avoid double-rendering the host."
-                    )
-                    generate_avatar = False
-            except HostFeatureError as he:
-                logger.warning(f"[VideoGenService] Host validation failed: {he}")
-                yield {"type": "error", "message": str(he)}
-                return
+            logger.info(f"[VideoGenService] generate_till_stage called with video_id={video_id}, target={target_stage}, content_type={content_type}, resume={resume}")
+            logger.info(f"[VideoGenService] Prompt: {prompt[:100]}...")
 
-        # Lesson mode — validate before any DB record / credit work, like host.
-        lesson_plan_dict: Optional[Dict[str, Any]] = None
-        if lesson is not None and not resume:
-            try:
-                lesson_plan_dict = resolve_lesson_plan(
-                    lesson, institute_id=institute_id, host=host, db=db_session,
-                )
-            except LessonConfigError as le:
-                logger.warning(f"[VideoGenService] Lesson validation failed: {le}")
-                yield {"type": "error", "message": str(le)}
-                return
-            except Exception as le:  # registry / import trouble must not 500 the request
-                logger.warning(f"[VideoGenService] Lesson validation errored: {le}")
-                yield {"type": "error", "message": f"Lesson mode could not be set up: {le}"}
-                return
-
-        # Get or create video record
-        video_record = self.repository.get_by_video_id(video_id)
-        
-        if not video_record:
-            if resume:
+            # Validate target stage
+            if target_stage not in self.STAGES:
+                error_msg = f"Invalid target stage: {target_stage}. Must be one of {self.STAGES}"
+                logger.error(f"[VideoGenService] {error_msg}")
                 yield {
                     "type": "error",
-                    "message": f"Cannot resume: video_id {video_id} not found"
+                    "message": error_msg
                 }
                 return
-            
-            # Create new record
-            gen_metadata = {}
-            if institute_id:
-                gen_metadata["institute_id"] = institute_id
-            if user_id:
-                gen_metadata["user_id"] = user_id
-            if orientation and orientation != "landscape":
-                gen_metadata["orientation"] = orientation
-            # Persist visual_style mode so history, resume, and frame regeneration
-            # can look up which pipeline mode the video was originally generated with.
-            if visual_style and visual_style != "standard":
-                gen_metadata["visual_style"] = visual_style
-            if quality_tier and quality_tier != "ultra":
-                gen_metadata["quality_tier"] = quality_tier
-            # Which model the user asked for. Neither field was recorded, so a
-            # finished run carried no trace of the choice and the only way to
-            # answer "what model ran this?" was to guess. Worse, reading the
-            # absent key returned None, which reads exactly like "no override
-            # was set" — the run looks like it used defaults when it did not.
-            if model:
-                gen_metadata["model"] = model
-            if model_overrides is not None:
-                try:
-                    gen_metadata["model_overrides"] = (
-                        model_overrides.model_dump(exclude_none=True)
-                        if hasattr(model_overrides, "model_dump")
-                        else dict(model_overrides)
-                    )
-                except Exception:
-                    gen_metadata["model_overrides"] = str(model_overrides)
-            # Normalize: singular → list (backward compat)
-            if input_video_id and not input_video_ids:
-                input_video_ids = [input_video_id]
-            if input_video_ids:
-                gen_metadata["input_video_ids"] = input_video_ids
-                gen_metadata["input_video_id"] = input_video_ids[0]  # compat
-            if input_video_audio:
-                gen_metadata["input_video_audio"] = input_video_audio
-            gen_metadata["mute_tts_on_source_clips"] = bool(mute_tts_on_source_clips)
-            if background_music_enabled is not None:
-                gen_metadata["background_music_enabled"] = bool(background_music_enabled)
-            if background_music_volume is not None:
-                gen_metadata["background_music_volume"] = float(background_music_volume)
-            if sub_shots_enabled:
-                gen_metadata["sub_shots_enabled"] = True
-            if dialogue_scenes_enabled:
-                gen_metadata["dialogue_scenes_enabled"] = True
-            if dialogue_scenes_enabled and dialogue_mode:
-                gen_metadata["dialogue_mode"] = str(dialogue_mode)
-            if dialogue_scenes_enabled and dialogue_clip_model:
-                gen_metadata["dialogue_clip_model"] = str(dialogue_clip_model)
-            if cast_id:
-                gen_metadata["cast_id"] = str(cast_id)
-            # Persist the AI-video (Veo) opt-in so a RESUME leg re-enables it.
-            # Without this, the router's resume path reads
-            # `_meta.get("ai_video_enabled", False)` = False and every
-            # AI_VIDEO_HERO shot the plan committed to falls back to
-            # VIDEO_HERO after the shot-plan gate (observed live: plan had 4
-            # AI shots, all demoted "run disabled" on resume). Mirrors the
-            # dialogue-flag persistence above.
-            if ai_video_enabled:
-                gen_metadata["ai_video_enabled"] = True
-            if ai_video_audio_enabled:
-                gen_metadata["ai_video_audio_enabled"] = True
-            if ai_video_enabled and ai_video_model:
-                gen_metadata["ai_video_model"] = str(ai_video_model)
-            # Persist the TTS voice knobs so per-sentence re-narration in the
-            # editor can reproduce the same voice without the user having to
-            # re-supply them. Defaults are skipped to keep the row small.
-            if voice_gender and voice_gender != "female":
-                gen_metadata["voice_gender"] = voice_gender
-            if tts_provider and tts_provider != "standard":
-                gen_metadata["tts_provider"] = tts_provider
-            if voice_id:
-                gen_metadata["voice_id"] = voice_id
-            # Persist the raw visual preference slider state at top-level so
-            # resume / retry can rehydrate it without rummaging through
-            # extra_metadata.user_selections. None-only entries are dropped.
-            if visual_preferences is not None:
-                try:
-                    _vp_dump = (
-                        visual_preferences.model_dump()
-                        if hasattr(visual_preferences, "model_dump")
-                        else dict(visual_preferences)
-                    )
-                    if any(v is not None for v in _vp_dump.values()):
-                        gen_metadata["visual_preferences"] = _vp_dump
-                except Exception:
-                    pass
-            # Persist the brand kit + per-video overrides so resume / retry
-            # re-apply the SAME brand direction (kit system_prompt + palette +
-            # intro/outro/watermark, and any overrides) to the shots generated
-            # in the second half of a resumed run. Without this, a resumed video
-            # drifts off-brand: the later shots regenerate with no brand
-            # direction while the cached first-half shots keep theirs.
-            if brand_kit_id:
-                gen_metadata["brand_kit_id"] = brand_kit_id
-            if brand_overrides is not None:
-                try:
-                    _bo_dump = (
-                        brand_overrides.model_dump(exclude_none=True)
-                        if hasattr(brand_overrides, "model_dump")
-                        else dict(brand_overrides)
-                    )
-                    if _bo_dump:
-                        gen_metadata["brand_overrides"] = _bo_dump
-                except Exception:
-                    pass
 
-            video_record = self.repository.create(
-                video_id=video_id,
-                prompt=prompt,
-                language=language,
-                content_type=content_type,
-                metadata=gen_metadata
-            )
-            yield {
-                "type": "progress",
-                "stage": "PENDING",
-                "message": f"{content_type} generation initialized",
-                "video_id": video_id,
-                "content_type": content_type,
-                "percentage": 0
-            }
-        
-        # Determine starting stage
-        if resume:
-            # Start from the stage AFTER the current completed one
-            start_stage_idx = self.STAGES.index(video_record.current_stage) + 1
-            # If already at or past target, just return current state
-            if start_stage_idx > self.STAGES.index(target_stage):
-                yield {
-                    "type": "info",
-                    "message": f"Video already at stage {video_record.current_stage}",
-                    "video_id": video_id,
-                    "current_stage": video_record.current_stage,
-                    "files": video_record.s3_urls
-                }
-                return
-        else:
-            start_stage_idx = 1  # Start from SCRIPT
-        
-        target_stage_idx = self.STAGES.index(target_stage)
-
-        # ── Assist mode: SCRIPT-boundary decision gates ─────────────────
-        # Gated entirely behind assist_mode so the Auto path is unchanged.
-        _assist = self._load_assist_state(video_record, assist_mode, assist_gates, assist_granularity)
-        # Resolve the DecisionRequired sentinel class for the HTML-stage gate
-        # catch below. Always importable (pure module); fall back to a private
-        # placeholder so the `except` clause is always valid.
-        try:
-            _DecisionRequired = self._decision_gates().DecisionRequired
-        except Exception:
-            class _DecisionRequired(BaseException):  # noqa: N801 — placeholder, never raised
-                pass
-        _pending_gate = None
-        if _assist.get("enabled"):
-            # Persist the assist block (first leg seeds it; resume legs no-op-merge)
-            # so the /decision endpoint can read the gate set + answer ledger.
+            # ── Vimotion saved-avatar + brand-kit resolution ───────────────
+            # When the request carries `host.avatar.saved_avatar_id` or
+            # `brand_kit_id`, hydrate from admin-core Postgres before any
+            # tier-gate / pipeline work. The resolver scopes by institute_id,
+            # so a request can never read another tenant's avatar/kit.
+            # Voice override (use_avatar_voice=true) mutates the *local*
+            # voice_id/voice_gender/tts_provider/language so every downstream
+            # caller (including TTS) sees the avatar's voice.
+            #
+            # ── Resume safety contract ─────────────────────────────────────
+            # The override is NOT persisted into host_plan.json — only into
+            # function locals, then forwarded to _run_pipeline_stages and
+            # AutomationPipeline kwargs. This is intentional and safe because:
+            #   1. Resume requests carry the same payload (saved_avatar_id) so
+            #      this block re-runs on every resume and re-derives the same
+            #      override values (idempotent unless the avatar row was edited
+            #      between original submit and resume — see #3).
+            #   2. TTS is atomic from the pipeline's POV — narration.mp3 either
+            #      exists (resume past TTS, voice_id no longer consulted) or it
+            #      doesn't (resume runs TTS fresh with the re-resolved voice).
+            #      There is no half-baked partial-narration state where stale
+            #      voice_id could leak in.
+            #   3. If the avatar row IS edited between submit and pre-TTS
+            #      resume, the resumed run picks up the new voice. This is
+            #      arguably correct behaviour (user changed their mind), but
+            #      worth knowing if you go to wire saved-avatar voice into a
+            #      cached plan for stricter resume determinism.
+            # If you change any of the above (e.g. switch TTS to a multi-call
+            # streaming flow, or move resolution behind a cache that survives
+            # resume), persist applied_voice_* onto HostAvatarPlan and prefer
+            # the cached values on resume.
+            resolved_saved_avatar: Optional[Dict[str, Any]] = None
             try:
-                self.repository.update_assist_state(video_id, _assist)
-            except Exception as _ae:
-                logger.warning(f"[Assist] could not persist assist state for {video_id}: {_ae}")
-            _pending_gate, _need_script_run = self._next_script_boundary_gate(_assist, start_stage_idx)
-            if _pending_gate and not _need_script_run:
-                # The asset gate only presents when the planner asked for
-                # something; empty → auto-answer + advance (possibly to None,
-                # in which case the leg proceeds normally below).
-                _pending_gate = self._skip_empty_asset_gate(video_id, _assist, _pending_gate)
-            if _pending_gate and not _need_script_run:
-                # Script artifacts already exist (resume leg). If the user left
-                # a freeform steering note for this gate, REVISE the artifacts
-                # per the note first, then re-present the gate with the updated
-                # draft — this is what makes "make it punchier" actually work.
-                _steer = _assist.get("steering") if isinstance(_assist.get("steering"), dict) else None
-                _revision_note = None
-                if (
-                    _steer
-                    and _steer.get("gate_type") == _pending_gate
-                    and str(_steer.get("text") or "").strip()
-                ):
-                    _revision_note = str(_steer.get("text")).strip()
-                    async for _ev in self._apply_freeform_steering(
-                        video_id, _pending_gate, _revision_note
-                    ):
-                        yield _ev
-                    _assist["steering"] = None
-                    try:
-                        self.repository.update_assist_state(video_id, _assist)
-                    except Exception as _se:
+                host_avatar = getattr(host, "avatar", None) if host is not None else None
+                saved_avatar_id = getattr(host_avatar, "saved_avatar_id", None) if host_avatar else None
+                use_avatar_voice = bool(getattr(host_avatar, "use_avatar_voice", True)) if host_avatar else True
+                if saved_avatar_id and institute_id:
+                    from .vimotion_resolver import resolve_studio_avatar
+                    resolved_saved_avatar = resolve_studio_avatar(saved_avatar_id, institute_id)
+                    if resolved_saved_avatar is None:
                         logger.warning(
-                            f"[Assist] could not clear steering for {video_id}: {_se}"
+                            f"[VideoGenService] saved_avatar_id={saved_avatar_id!r} did not resolve "
+                            f"for institute_id={institute_id!r} — falling back to request fields."
                         )
-                async for _ev in self._present_script_boundary_gate(
-                    video_id, institute_id, _assist, _pending_gate,
-                    revision_note=_revision_note,
-                ):
-                    yield _ev
-                return
-            if _pending_gate and _need_script_run:
-                # Clamp this leg to SCRIPT; we present the gate after it runs.
-                target_stage = "SCRIPT"
-                target_stage_idx = self.STAGES.index("SCRIPT")
+                    elif use_avatar_voice:
+                        # Map saved-avatar voice fields onto the request locals.
+                        # Avatar.voice_provider is concrete ('edge'|'sarvam'|'google');
+                        # tts_provider in the request schema is the user-facing tier
+                        # ('standard'|'premium'). edge → standard; sarvam/google → premium.
+                        av_voice_id = resolved_saved_avatar.get("voice_id") or None
+                        av_provider = (resolved_saved_avatar.get("voice_provider") or "").lower() or None
+                        av_language = resolved_saved_avatar.get("voice_language") or None
+                        av_gender = resolved_saved_avatar.get("voice_gender") or None
+                        if av_voice_id:
+                            voice_id = av_voice_id
+                        if av_provider == "edge":
+                            tts_provider = "standard"
+                        elif av_provider in ("sarvam", "google"):
+                            tts_provider = "premium"
+                        if av_language:
+                            language = av_language
+                        if av_gender:
+                            voice_gender = av_gender
+                        logger.info(
+                            f"[VideoGenService] Applied avatar voice override "
+                            f"(voice_id={av_voice_id!r}, provider={av_provider!r}, "
+                            f"language={av_language!r}, gender={av_gender!r})."
+                        )
+            except Exception as _vr_err:
+                # Don't fail the whole request on a resolution glitch — log and
+                # continue with whatever the caller sent in the request body.
+                logger.warning(
+                    f"[VideoGenService] Vimotion saved-avatar resolution failed (non-fatal): {_vr_err}"
+                )
 
-        # Saved cast (storybook/drama series): load once per leg so the plan
-        # keeps these characters verbatim and the pipeline reuses their stored
-        # portrait sheets + voice mapping. Best-effort — a missing/foreign cast
-        # just means a fresh cast this run.
-        _saved_cast_list = None
-        if cast_id and dialogue_scenes_enabled and institute_id:
-            try:
-                from ..repositories.ai_video_cast_repository import AiVideoCastRepository
-                with _fresh_db_session() as _cast_db:
-                    _cast_row = AiVideoCastRepository(_cast_db).get(str(cast_id), institute_id)
-                if _cast_row and _cast_row.get("characters"):
-                    _saved_cast_list = _cast_row["characters"]
-                    logger.info(
-                        f"[Cast] video {video_id} reuses cast '{_cast_row['name']}' "
-                        f"({len(_saved_cast_list)} characters)"
+            # Tier-gate the Host feature BEFORE creating any DB record / charging
+            # credits. Mirrors the early-fail UX of stage validation above.
+            if host is not None and not resume:
+                try:
+                    from .host_planner_service import make_host_plan, HostFeatureError
+                    from ..config import get_settings as _get_settings
+                    _settings = _get_settings()
+                    _early_host_plan = make_host_plan(
+                        host,
+                        quality_tier=quality_tier,
+                        fal_api_key=getattr(_settings, "fal_api_key", None) or "",
+                        resolved_saved_avatar=resolved_saved_avatar,
                     )
-            except Exception as _cast_err:
-                logger.warning(f"[Cast] could not load cast {cast_id}: {_cast_err}")
+                    # New host pipeline supersedes the legacy single-PiP avatar.
+                    # If both `host.type=avatar` and `generate_avatar=true` are set,
+                    # the new per-shot host already covers the on-screen narrator —
+                    # running EchoMimic on top would produce a redundant corner PiP.
+                    # Suppress the legacy path here (mutate the local kwarg) so the
+                    # rest of the pipeline only sees the new host configuration.
+                    if _early_host_plan.is_avatar() and generate_avatar:
+                        logger.info(
+                            "[VideoGenService] host.type=avatar is set — suppressing legacy "
+                            "generate_avatar=true (PiP) to avoid double-rendering the host."
+                        )
+                        generate_avatar = False
+                except HostFeatureError as he:
+                    logger.warning(f"[VideoGenService] Host validation failed: {he}")
+                    yield {"type": "error", "message": str(he)}
+                    return
 
-        # Create temporary working directory
-        with tempfile.TemporaryDirectory() as temp_dir:
-            work_dir = Path(temp_dir) / video_id
-            work_dir.mkdir(parents=True, exist_ok=True)
-            
-            try:
-                # Run pipeline stages
-                async for event in self._run_pipeline_stages(
+            # Lesson mode — validate before any DB record / credit work, like host.
+            lesson_plan_dict: Optional[Dict[str, Any]] = None
+            if lesson is not None and not resume:
+                try:
+                    lesson_plan_dict = resolve_lesson_plan(
+                        lesson, institute_id=institute_id, host=host, db=db_session,
+                    )
+                except LessonConfigError as le:
+                    logger.warning(f"[VideoGenService] Lesson validation failed: {le}")
+                    yield {"type": "error", "message": str(le)}
+                    return
+                except Exception as le:  # registry / import trouble must not 500 the request
+                    logger.warning(f"[VideoGenService] Lesson validation errored: {le}")
+                    yield {"type": "error", "message": f"Lesson mode could not be set up: {le}"}
+                    return
+
+            # Get or create video record
+            video_record = self.repository.get_by_video_id(video_id)
+
+            if not video_record:
+                if resume:
+                    yield {
+                        "type": "error",
+                        "message": f"Cannot resume: video_id {video_id} not found"
+                    }
+                    return
+
+                # Create new record
+                gen_metadata = {}
+                if institute_id:
+                    gen_metadata["institute_id"] = institute_id
+                if user_id:
+                    gen_metadata["user_id"] = user_id
+                if orientation and orientation != "landscape":
+                    gen_metadata["orientation"] = orientation
+                # Persist visual_style mode so history, resume, and frame regeneration
+                # can look up which pipeline mode the video was originally generated with.
+                if visual_style and visual_style != "standard":
+                    gen_metadata["visual_style"] = visual_style
+                if quality_tier and quality_tier != "ultra":
+                    gen_metadata["quality_tier"] = quality_tier
+                # Which model the user asked for. Neither field was recorded, so a
+                # finished run carried no trace of the choice and the only way to
+                # answer "what model ran this?" was to guess. Worse, reading the
+                # absent key returned None, which reads exactly like "no override
+                # was set" — the run looks like it used defaults when it did not.
+                if model:
+                    gen_metadata["model"] = model
+                if model_overrides is not None:
+                    try:
+                        gen_metadata["model_overrides"] = (
+                            model_overrides.model_dump(exclude_none=True)
+                            if hasattr(model_overrides, "model_dump")
+                            else dict(model_overrides)
+                        )
+                    except Exception:
+                        gen_metadata["model_overrides"] = str(model_overrides)
+                # Normalize: singular → list (backward compat)
+                if input_video_id and not input_video_ids:
+                    input_video_ids = [input_video_id]
+                if input_video_ids:
+                    gen_metadata["input_video_ids"] = input_video_ids
+                    gen_metadata["input_video_id"] = input_video_ids[0]  # compat
+                if input_video_audio:
+                    gen_metadata["input_video_audio"] = input_video_audio
+                gen_metadata["mute_tts_on_source_clips"] = bool(mute_tts_on_source_clips)
+                if background_music_enabled is not None:
+                    gen_metadata["background_music_enabled"] = bool(background_music_enabled)
+                if background_music_volume is not None:
+                    gen_metadata["background_music_volume"] = float(background_music_volume)
+                if sub_shots_enabled:
+                    gen_metadata["sub_shots_enabled"] = True
+                if dialogue_scenes_enabled:
+                    gen_metadata["dialogue_scenes_enabled"] = True
+                if dialogue_scenes_enabled and dialogue_mode:
+                    gen_metadata["dialogue_mode"] = str(dialogue_mode)
+                if dialogue_scenes_enabled and dialogue_clip_model:
+                    gen_metadata["dialogue_clip_model"] = str(dialogue_clip_model)
+                if cast_id:
+                    gen_metadata["cast_id"] = str(cast_id)
+                # Persist the AI-video (Veo) opt-in so a RESUME leg re-enables it.
+                # Without this, the router's resume path reads
+                # `_meta.get("ai_video_enabled", False)` = False and every
+                # AI_VIDEO_HERO shot the plan committed to falls back to
+                # VIDEO_HERO after the shot-plan gate (observed live: plan had 4
+                # AI shots, all demoted "run disabled" on resume). Mirrors the
+                # dialogue-flag persistence above.
+                if ai_video_enabled:
+                    gen_metadata["ai_video_enabled"] = True
+                if ai_video_audio_enabled:
+                    gen_metadata["ai_video_audio_enabled"] = True
+                if ai_video_enabled and ai_video_model:
+                    gen_metadata["ai_video_model"] = str(ai_video_model)
+                # Persist the TTS voice knobs so per-sentence re-narration in the
+                # editor can reproduce the same voice without the user having to
+                # re-supply them. Defaults are skipped to keep the row small.
+                if voice_gender and voice_gender != "female":
+                    gen_metadata["voice_gender"] = voice_gender
+                if tts_provider and tts_provider != "standard":
+                    gen_metadata["tts_provider"] = tts_provider
+                if voice_id:
+                    gen_metadata["voice_id"] = voice_id
+                # Persist the raw visual preference slider state at top-level so
+                # resume / retry can rehydrate it without rummaging through
+                # extra_metadata.user_selections. None-only entries are dropped.
+                if visual_preferences is not None:
+                    try:
+                        _vp_dump = (
+                            visual_preferences.model_dump()
+                            if hasattr(visual_preferences, "model_dump")
+                            else dict(visual_preferences)
+                        )
+                        if any(v is not None for v in _vp_dump.values()):
+                            gen_metadata["visual_preferences"] = _vp_dump
+                    except Exception:
+                        pass
+                # Persist the brand kit + per-video overrides so resume / retry
+                # re-apply the SAME brand direction (kit system_prompt + palette +
+                # intro/outro/watermark, and any overrides) to the shots generated
+                # in the second half of a resumed run. Without this, a resumed video
+                # drifts off-brand: the later shots regenerate with no brand
+                # direction while the cached first-half shots keep theirs.
+                if brand_kit_id:
+                    gen_metadata["brand_kit_id"] = brand_kit_id
+                if brand_overrides is not None:
+                    try:
+                        _bo_dump = (
+                            brand_overrides.model_dump(exclude_none=True)
+                            if hasattr(brand_overrides, "model_dump")
+                            else dict(brand_overrides)
+                        )
+                        if _bo_dump:
+                            gen_metadata["brand_overrides"] = _bo_dump
+                    except Exception:
+                        pass
+
+                # The run request goes in WITH the row, so a kill at any later
+                # point leaves a resumable record.
+                if isinstance(run_request, dict) and run_request:
+                    gen_metadata["run_request"] = run_request
+
+                video_record = self.repository.create(
                     video_id=video_id,
                     prompt=prompt,
                     language=language,
-                    captions_enabled=captions_enabled,
-                    html_quality=html_quality,
-                    work_dir=work_dir,
-                    start_stage_idx=start_stage_idx,
-                    target_stage_idx=target_stage_idx,
-                    model=model,
-                    target_audience=target_audience,
-                    target_duration=target_duration,
-                    voice_gender=voice_gender,
-                    tts_provider=tts_provider,
-                    voice_id=voice_id,
                     content_type=content_type,
-                    db_session=db_session,
-                    institute_id=institute_id,
-                    user_id=user_id,
-                    generate_avatar=generate_avatar,
-                    avatar_image_url=avatar_image_url,
-                    quality_tier=quality_tier,
-                    reference_files=reference_files,
-                    orientation=orientation,
-                    visual_style=visual_style,
-                    sound_effects_enabled=sound_effects_enabled,
-                    input_video_ids=input_video_ids,
-                    input_video_audio=input_video_audio,
-                    mute_tts_on_source_clips=mute_tts_on_source_clips,
-                    background_music_enabled=background_music_enabled,
-                    background_music_volume=background_music_volume,
-                    sub_shots_enabled=sub_shots_enabled,
-                    dialogue_scenes_enabled=dialogue_scenes_enabled,
-                    dialogue_mode=dialogue_mode,
-                    dialogue_clip_model=dialogue_clip_model,
-                    saved_cast=_saved_cast_list,
-                    routing_overrides=routing_overrides,
-                    host=host,
-                    lesson_plan=lesson_plan_dict,
-                    brand_kit_id=brand_kit_id,
-                    brand_overrides=brand_overrides,
-                    resolved_saved_avatar=resolved_saved_avatar,
-                    visual_preferences=visual_preferences,
-                    ai_video_enabled=ai_video_enabled,
-                    ai_video_audio_enabled=ai_video_audio_enabled,
-                    ai_video_model=ai_video_model,
-                    model_overrides=model_overrides,
-                    # Assist mode: the pipeline pauses at the HTML-stage
-                    # visual_casting gate when enabled. None ⇒ no HTML gate.
-                    assist_state=(_assist if _assist.get("enabled") else None),
+                    metadata=gen_metadata
+                )
+                yield {
+                    "type": "progress",
+                    "stage": "PENDING",
+                    "message": f"{content_type} generation initialized",
+                    "video_id": video_id,
+                    "content_type": content_type,
+                    "percentage": 0
+                }
+            elif not resume and isinstance(run_request, dict) and run_request:
+                # Fresh leg on an existing row (client-supplied video_id): a new
+                # run of the video — its request replaces the old one, or an
+                # auto-resume of THIS run would rebuild the previous run's kwargs.
+                _mm = getattr(self.repository, "merge_metadata", None)
+                if _mm is not None:
+                    _mm(video_id, {"run_request": run_request})
+
+            # ── Run lease: one live leg per video across every pod ──────────
+            _prev_meta = getattr(video_record, "extra_metadata", None) or {}
+            if not isinstance(_prev_meta, dict):
+                _prev_meta = {}
+            if not run_request and isinstance(_prev_meta.get("run_request"), dict):
+                _db_rr = _prev_meta["run_request"]
+                _leg.final_target_stage = str(_db_rr.get("final_target_stage") or _leg.final_target_stage).upper()
+                if _stage_index(target_stage) > _stage_index(_leg.final_target_stage):
+                    # A user leg goes further than the recorded run (review
+                    # mode: /generate to SCRIPT, then /resume to HTML) — the
+                    # run's final target moves with it, so a kill of THIS leg
+                    # is resumed to where the user asked.
+                    _leg.final_target_stage = str(target_stage).upper()
+                    _mm = getattr(self.repository, "merge_metadata", None)
+                    if _mm is not None:
+                        _mm(video_id, {"run_request": {**_db_rr, "final_target_stage": _leg.final_target_stage}})
+            if hasattr(self.repository, "acquire_lease") or lease is not None:
+                from . import ai_video_run_lease as _run_lease
+                _leg.handle = _run_lease.begin_leg(
+                    self.repository, video_id, origin=lease_origin, lease=lease,
+                    prev_lease=_prev_meta.get("run_lease"),
+                )
+                if _leg.handle is None:
+                    yield {
+                        "type": "info",
+                        "code": "LEASE_HELD",
+                        "message": "This video is already being generated by another worker; "
+                                   "poll its status instead of starting it again.",
+                        "video_id": video_id,
+                    }
+                    return
+                # Register the stop flag now so a fence / cross-pod cancel that
+                # lands during the preamble is seen at the first stage boundary.
+                cancellation_registry.register(video_id)
+
+            # Determine starting stage
+            if resume:
+                if resume_from_stage and str(resume_from_stage).upper() in self.STAGES:
+                    start_stage_idx = max(1, self.STAGES.index(str(resume_from_stage).upper()))
+                elif resume_mode == "auto":
+                    _auto_stage = self.resume_start_stage(video_record)
+                    start_stage_idx = (
+                        self.STAGES.index(_auto_stage) if _auto_stage else len(self.STAGES)
+                    )
+                else:
+                    # Start from the stage AFTER the current completed one
+                    start_stage_idx = self.STAGES.index(video_record.current_stage) + 1
+                # Phase-B combine clamp (auto resumes only): a combine run
+                # whose HTML stage has not completed must restart at TTS —
+                # TTS/WORDS ran INSIDE the HTML pass, so starting at HTML finds
+                # no narration and the shot timings would be un-reconciled.
+                if (
+                    resume_mode == "auto"
+                    and start_stage_idx > 2
+                    and self._combine_eligible(self.STAGES.index(target_stage), quality_tier, content_type)
+                    and not self._html_completed(video_record)
                 ):
-                    # If we get an error event, refund credits and stop
-                    if event.get("type") == "error":
-                        logger.error(f"[VideoGenService] Error event received: {event.get('message', 'Unknown error')}")
+                    logger.info(
+                        f"[VideoGenService] auto-resume {video_id}: combine run without a completed "
+                        f"HTML stage — restarting at TTS (was {self.STAGES[min(start_stage_idx, 6)]})"
+                    )
+                    start_stage_idx = 2
+                # The pipeline's per-shot TTS cache hit is switched on only for
+                # a combine run that (re)starts at TTS on an auto resume.
+                if not (
+                    resume_mode == "auto"
+                    and start_stage_idx == 2
+                    and self._combine_eligible(self.STAGES.index(target_stage), quality_tier, content_type)
+                ):
+                    resume_mode = None
+                # If already at or past target, just return current state
+                if start_stage_idx > self.STAGES.index(target_stage):
+                    yield {
+                        "type": "info",
+                        "message": f"Video already at stage {video_record.current_stage}",
+                        "video_id": video_id,
+                        "current_stage": video_record.current_stage,
+                        "files": video_record.s3_urls
+                    }
+                    return
+            else:
+                start_stage_idx = 1  # Start from SCRIPT
+
+            target_stage_idx = self.STAGES.index(target_stage)
+
+            # ── Assist mode: SCRIPT-boundary decision gates ─────────────────
+            # Gated entirely behind assist_mode so the Auto path is unchanged.
+            _assist = self._load_assist_state(video_record, assist_mode, assist_gates, assist_granularity)
+            # Resolve the DecisionRequired sentinel class for the HTML-stage gate
+            # catch below. Always importable (pure module); fall back to a private
+            # placeholder so the `except` clause is always valid.
+            try:
+                _DecisionRequired = self._decision_gates().DecisionRequired
+            except Exception:
+                class _DecisionRequired(BaseException):  # noqa: N801 — placeholder, never raised
+                    pass
+            _pending_gate = None
+            if _assist.get("enabled"):
+                # Persist the assist block (first leg seeds it; resume legs no-op-merge)
+                # so the /decision endpoint can read the gate set + answer ledger.
+                try:
+                    self.repository.update_assist_state(video_id, _assist)
+                except Exception as _ae:
+                    logger.warning(f"[Assist] could not persist assist state for {video_id}: {_ae}")
+                _pending_gate, _need_script_run = self._next_script_boundary_gate(_assist, start_stage_idx)
+                if _pending_gate and not _need_script_run:
+                    # The asset gate only presents when the planner asked for
+                    # something; empty → auto-answer + advance (possibly to None,
+                    # in which case the leg proceeds normally below).
+                    _pending_gate = self._skip_empty_asset_gate(video_id, _assist, _pending_gate)
+                if _pending_gate and not _need_script_run:
+                    # Script artifacts already exist (resume leg). If the user left
+                    # a freeform steering note for this gate, REVISE the artifacts
+                    # per the note first, then re-present the gate with the updated
+                    # draft — this is what makes "make it punchier" actually work.
+                    _steer = _assist.get("steering") if isinstance(_assist.get("steering"), dict) else None
+                    _revision_note = None
+                    if (
+                        _steer
+                        and _steer.get("gate_type") == _pending_gate
+                        and str(_steer.get("text") or "").strip()
+                    ):
+                        _revision_note = str(_steer.get("text")).strip()
+                        async for _ev in self._apply_freeform_steering(
+                            video_id, _pending_gate, _revision_note
+                        ):
+                            yield _ev
+                        _assist["steering"] = None
+                        try:
+                            self.repository.update_assist_state(video_id, _assist)
+                        except Exception as _se:
+                            logger.warning(
+                                f"[Assist] could not clear steering for {video_id}: {_se}"
+                            )
+                    await self._release_leg_for_pause(video_id, _leg)
+                    async for _ev in self._present_script_boundary_gate(
+                        video_id, institute_id, _assist, _pending_gate,
+                        revision_note=_revision_note,
+                    ):
+                        yield _ev
+                    return
+                if _pending_gate and _need_script_run:
+                    # Clamp this leg to SCRIPT; we present the gate after it runs.
+                    target_stage = "SCRIPT"
+                    target_stage_idx = self.STAGES.index("SCRIPT")
+
+            # Saved cast (storybook/drama series): load once per leg so the plan
+            # keeps these characters verbatim and the pipeline reuses their stored
+            # portrait sheets + voice mapping. Best-effort — a missing/foreign cast
+            # just means a fresh cast this run.
+            _saved_cast_list = None
+            if cast_id and dialogue_scenes_enabled and institute_id:
+                try:
+                    from ..repositories.ai_video_cast_repository import AiVideoCastRepository
+                    with _fresh_db_session() as _cast_db:
+                        _cast_row = AiVideoCastRepository(_cast_db).get(str(cast_id), institute_id)
+                    if _cast_row and _cast_row.get("characters"):
+                        _saved_cast_list = _cast_row["characters"]
+                        logger.info(
+                            f"[Cast] video {video_id} reuses cast '{_cast_row['name']}' "
+                            f"({len(_saved_cast_list)} characters)"
+                        )
+                except Exception as _cast_err:
+                    logger.warning(f"[Cast] could not load cast {cast_id}: {_cast_err}")
+
+            # Create temporary working directory
+            with tempfile.TemporaryDirectory() as temp_dir:
+                work_dir = Path(temp_dir) / video_id
+                work_dir.mkdir(parents=True, exist_ok=True)
+
+                # Per-leg checkpoint uploader (background thread). Flushed
+                # before the temp dir is torn down.
+                if _leg.handle is not None and getattr(self.s3_service, "upload_file", None) is not None:
+                    try:
+                        from .video_checkpoint import CheckpointUploader
+                        _leg.uploader = CheckpointUploader(
+                            self.s3_service, video_id,
+                            repository=(self.repository if hasattr(self.repository, "update_checkpoint") else None),
+                            known_shots=((_prev_meta.get("checkpoint") or {}).get("shots_persisted") or [])
+                            if isinstance(_prev_meta.get("checkpoint"), dict) else [],
+                        )
+                        _leg.handle.uploader = _leg.uploader
+                        _leg.handle.work_dir = work_dir
+                    except Exception as _up_err:  # noqa: BLE001
+                        logger.warning(f"[VideoGenService] checkpoint uploader unavailable: {_up_err}")
+                        _leg.uploader = None
+
+                try:
+                    try:
+                        # Run pipeline stages
+                        async for event in self._run_pipeline_stages(
+                            video_id=video_id,
+                            prompt=prompt,
+                            language=language,
+                            captions_enabled=captions_enabled,
+                            html_quality=html_quality,
+                            work_dir=work_dir,
+                            start_stage_idx=start_stage_idx,
+                            target_stage_idx=target_stage_idx,
+                            model=model,
+                            target_audience=target_audience,
+                            target_duration=target_duration,
+                            voice_gender=voice_gender,
+                            tts_provider=tts_provider,
+                            voice_id=voice_id,
+                            content_type=content_type,
+                            db_session=db_session,
+                            institute_id=institute_id,
+                            user_id=user_id,
+                            generate_avatar=generate_avatar,
+                            avatar_image_url=avatar_image_url,
+                            quality_tier=quality_tier,
+                            reference_files=reference_files,
+                            orientation=orientation,
+                            visual_style=visual_style,
+                            sound_effects_enabled=sound_effects_enabled,
+                            input_video_ids=input_video_ids,
+                            input_video_audio=input_video_audio,
+                            mute_tts_on_source_clips=mute_tts_on_source_clips,
+                            background_music_enabled=background_music_enabled,
+                            background_music_volume=background_music_volume,
+                            sub_shots_enabled=sub_shots_enabled,
+                            dialogue_scenes_enabled=dialogue_scenes_enabled,
+                            dialogue_mode=dialogue_mode,
+                            dialogue_clip_model=dialogue_clip_model,
+                            saved_cast=_saved_cast_list,
+                            routing_overrides=routing_overrides,
+                            host=host,
+                            lesson_plan=lesson_plan_dict,
+                            brand_kit_id=brand_kit_id,
+                            brand_overrides=brand_overrides,
+                            resolved_saved_avatar=resolved_saved_avatar,
+                            visual_preferences=visual_preferences,
+                            ai_video_enabled=ai_video_enabled,
+                            ai_video_audio_enabled=ai_video_audio_enabled,
+                            ai_video_model=ai_video_model,
+                            model_overrides=model_overrides,
+                            # Assist mode: the pipeline pauses at the HTML-stage
+                            # visual_casting gate when enabled. None ⇒ no HTML gate.
+                            assist_state=(_assist if _assist.get("enabled") else None),
+                            resuming=bool(resume),
+                            resume_mode=resume_mode,
+                            checkpoint_uploader=_leg.uploader,
+                            leg=_leg,
+                        ):
+                            # If we get an error event, refund credits and stop
+                            if event.get("type") == "error":
+                                logger.error(f"[VideoGenService] Error event received: {event.get('message', 'Unknown error')}")
+                                # Refund all credits charged for this failed video.
+                                # FRESH session — by the time a late-stage error lands
+                                # here the request-scoped `db_session` connection is
+                                # often dead (idle-in-tx kill during the long run),
+                                # which made refunds silently fail. TokenUsageService
+                                # doesn't commit; the context-manager exit does.
+                                if institute_id:
+                                    try:
+                                        from .token_usage_service import TokenUsageService
+                                        with _fresh_db_session() as _refund_db:
+                                            TokenUsageService(_refund_db).refund_video_credits(video_id, institute_id)
+                                    except Exception as refund_err:
+                                        logger.error(
+                                            f"[VideoGenService] Failed to refund credits for video {video_id}: {refund_err}",
+                                            exc_info=True,
+                                        )
+                                yield event
+                                return
+                            yield event
+                            if event.get("type") == "interrupted":
+                                # Fenced: another pod owns the run now — no gate,
+                                # no "completed" event from this leg.
+                                return
+
+                        # ── Assist mode: pause at the SCRIPT-boundary gate ──────
+                        # The SCRIPT stage just produced shot_plan.json / script.txt;
+                        # present the pending gate and end the leg cleanly (no completed
+                        # event — the FE flips to the conversation card on this event).
+                        if _assist.get("enabled") and _pending_gate:
+                            _pending_gate = self._skip_empty_asset_gate(video_id, _assist, _pending_gate)
+                        if _assist.get("enabled") and _pending_gate:
+                            await self._release_leg_for_pause(video_id, _leg)
+                            async for _ev in self._present_script_boundary_gate(
+                                video_id, institute_id, _assist, _pending_gate
+                            ):
+                                yield _ev
+                            return
+
+                        # Final completion event
+                        video_record = self.repository.get_by_video_id(video_id)
+                        if video_record and video_record.status != "FAILED":
+                            yield {
+                                "type": "completed",
+                                "message": f"Generation completed up to {target_stage}",
+                                "video_id": video_id,
+                                "current_stage": video_record.current_stage,
+                                "files": video_record.s3_urls,
+                                "file_ids": video_record.file_ids,
+                                "percentage": 100
+                            }
+
+                    except _DecisionRequired as _dr:
+                        # Assist mode: a gate inside the HTML stage (visual_casting) asked
+                        # for the user. The decision_required event was already emitted to
+                        # the SSE stream; persist the pending decision + flip to
+                        # AWAITING_INPUT and end the leg cleanly (NOT a failure — no
+                        # refund). The /decision endpoint resumes from here.
+                        try:
+                            # Persist the in-flight artifacts (narration.mp3, words, shot
+                            # cache) to S3 BEFORE the temp dir is torn down, so the resume
+                            # leg can recover them (the normal end-of-stage upload never
+                            # ran — we paused mid-HTML).
+                            self._persist_resume_artifacts(video_id, work_dir)
+                            await self._release_leg_for_pause(video_id, _leg)
+                            _decision = dict(getattr(_dr, "decision", {}) or {})
+                            _decision["video_id"] = video_id
+                            _dg = self._decision_gates()
+                            _dg.set_pending(_assist, _decision)
+                            # current_stage stays at the stage BEFORE html ("WORDS") so the
+                            # resume leg RE-ENTERS the html stage (which skips cached shots,
+                            # forces the picked clips, then renders). HTML would skip it.
+                            self.repository.update_assist_state(
+                                video_id, _assist, status="AWAITING_INPUT", current_stage="WORDS"
+                            )
+                            logger.info(
+                                f"[Assist] HTML-stage gate paused {video_id} "
+                                f"decision_id={_decision.get('decision_id')}"
+                            )
+                        except Exception:
+                            logger.error(
+                                f"[Assist] failed to persist HTML-stage pending decision for {video_id}",
+                                exc_info=True,
+                            )
+                        return
+
+                    except Exception as e:
+                        import traceback
+                        error_traceback = traceback.format_exc()
+                        error_msg = str(e)
+                        logger.error(f"[VideoGenService] Exception in generate_till_stage: {error_msg}")
+                        logger.error(f"[VideoGenService] Full traceback:\n{error_traceback}")
+
+                        # Mark as failed
+                        self.repository.mark_failed(
+                            video_id=video_id,
+                            error_message=error_msg
+                        )
                         # Refund all credits charged for this failed video.
-                        # FRESH session — by the time a late-stage error lands
-                        # here the request-scoped `db_session` connection is
-                        # often dead (idle-in-tx kill during the long run),
-                        # which made refunds silently fail. TokenUsageService
-                        # doesn't commit; the context-manager exit does.
+                        # FRESH session — same reasoning as the error-event refund
+                        # above: the request-scoped session is usually stale here.
                         if institute_id:
                             try:
                                 from .token_usage_service import TokenUsageService
@@ -2122,100 +2684,21 @@ class VideoGenerationService:
                                     f"[VideoGenService] Failed to refund credits for video {video_id}: {refund_err}",
                                     exc_info=True,
                                 )
-                        yield event
-                        return
-                    yield event
+                        yield {
+                            "type": "error",
+                            "message": f"Generation failed: {error_msg}",
+                            "video_id": video_id
+                        }
+                finally:
+                    if _leg.uploader is not None:
+                        await self._flush_uploader(_leg.uploader, 25.0)
 
-                # ── Assist mode: pause at the SCRIPT-boundary gate ──────
-                # The SCRIPT stage just produced shot_plan.json / script.txt;
-                # present the pending gate and end the leg cleanly (no completed
-                # event — the FE flips to the conversation card on this event).
-                if _assist.get("enabled") and _pending_gate:
-                    _pending_gate = self._skip_empty_asset_gate(video_id, _assist, _pending_gate)
-                if _assist.get("enabled") and _pending_gate:
-                    async for _ev in self._present_script_boundary_gate(
-                        video_id, institute_id, _assist, _pending_gate
-                    ):
-                        yield _ev
-                    return
+        except BaseException as _leg_exc:  # noqa: BLE001 — recorded, re-raised
+            _leg.exc = _leg_exc
+            raise
+        finally:
+            self._finish_leg(video_id, _leg)
 
-                # Final completion event
-                video_record = self.repository.get_by_video_id(video_id)
-                if video_record and video_record.status != "FAILED":
-                    yield {
-                        "type": "completed",
-                        "message": f"Generation completed up to {target_stage}",
-                        "video_id": video_id,
-                        "current_stage": video_record.current_stage,
-                        "files": video_record.s3_urls,
-                        "file_ids": video_record.file_ids,
-                        "percentage": 100
-                    }
-
-            except _DecisionRequired as _dr:
-                # Assist mode: a gate inside the HTML stage (visual_casting) asked
-                # for the user. The decision_required event was already emitted to
-                # the SSE stream; persist the pending decision + flip to
-                # AWAITING_INPUT and end the leg cleanly (NOT a failure — no
-                # refund). The /decision endpoint resumes from here.
-                try:
-                    # Persist the in-flight artifacts (narration.mp3, words, shot
-                    # cache) to S3 BEFORE the temp dir is torn down, so the resume
-                    # leg can recover them (the normal end-of-stage upload never
-                    # ran — we paused mid-HTML).
-                    self._persist_resume_artifacts(video_id, work_dir)
-                    _decision = dict(getattr(_dr, "decision", {}) or {})
-                    _decision["video_id"] = video_id
-                    _dg = self._decision_gates()
-                    _dg.set_pending(_assist, _decision)
-                    # current_stage stays at the stage BEFORE html ("WORDS") so the
-                    # resume leg RE-ENTERS the html stage (which skips cached shots,
-                    # forces the picked clips, then renders). HTML would skip it.
-                    self.repository.update_assist_state(
-                        video_id, _assist, status="AWAITING_INPUT", current_stage="WORDS"
-                    )
-                    logger.info(
-                        f"[Assist] HTML-stage gate paused {video_id} "
-                        f"decision_id={_decision.get('decision_id')}"
-                    )
-                except Exception:
-                    logger.error(
-                        f"[Assist] failed to persist HTML-stage pending decision for {video_id}",
-                        exc_info=True,
-                    )
-                return
-
-            except Exception as e:
-                import traceback
-                error_traceback = traceback.format_exc()
-                error_msg = str(e)
-                logger.error(f"[VideoGenService] Exception in generate_till_stage: {error_msg}")
-                logger.error(f"[VideoGenService] Full traceback:\n{error_traceback}")
-                
-                # Mark as failed
-                self.repository.mark_failed(
-                    video_id=video_id,
-                    error_message=error_msg
-                )
-                # Refund all credits charged for this failed video.
-                # FRESH session — same reasoning as the error-event refund
-                # above: the request-scoped session is usually stale here.
-                if institute_id:
-                    try:
-                        from .token_usage_service import TokenUsageService
-                        with _fresh_db_session() as _refund_db:
-                            TokenUsageService(_refund_db).refund_video_credits(video_id, institute_id)
-                    except Exception as refund_err:
-                        logger.error(
-                            f"[VideoGenService] Failed to refund credits for video {video_id}: {refund_err}",
-                            exc_info=True,
-                        )
-                yield {
-                    "type": "error",
-                    "message": f"Generation failed: {error_msg}",
-                    "video_id": video_id
-                }
-    
     async def _run_pipeline_stages(
         self,
         video_id: str,
@@ -2275,6 +2758,11 @@ class VideoGenerationService:
         # Assist mode: the extra_metadata.assist block, forwarded to pipeline.run
         # so the HTML-stage visual_casting gate can fire. None ⇒ no HTML gate.
         assist_state: Optional[Dict[str, Any]] = None,
+        # Resume / checkpointing (see generate_till_stage).
+        resuming: bool = False,
+        resume_mode: Optional[str] = None,
+        checkpoint_uploader: Optional[Any] = None,
+        leg: Optional["_LegState"] = None,
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Run the video generation pipeline stages with real-time DB updates.
@@ -2590,6 +3078,11 @@ class VideoGenerationService:
             run_dir = work_dir.parent / video_id
             run_dir.mkdir(parents=True, exist_ok=True)
             logger.info(f"[VideoGenService] Using run_dir: {run_dir}")
+            # Resuming a run whose target reaches HTML after SCRIPT finished:
+            # restore every checkpoint (shot cache by listing, per-shot TTS,
+            # preamble, reference context, host outputs, lesson teacher). Not
+            # when SCRIPT itself re-runs — a new script invalidates them.
+            _restore_ckpt = bool(resuming) and target_stage_idx >= 4 and start_stage_idx >= 2
             
             # Always need script.txt if resuming from SCRIPT or later (pipeline skips script generation when resuming)
             if start_stage_idx >= 1:  # SCRIPT, TTS, WORDS, HTML, or RENDER
@@ -2619,6 +3112,15 @@ class VideoGenerationService:
                         plan_local = run_dir / _plan_name
                         if plan_local.exists():
                             continue
+                        # The checkpoints/ copy carries the post-gate cast and
+                        # narration edits — prefer it on a checkpoint resume.
+                        if _plan_name == "shot_plan.json" and _restore_ckpt:
+                            if self.s3_service.download_file(
+                                f"https://{bucket}.s3.amazonaws.com/ai-videos/{video_id}/checkpoints/shot_plan.json",
+                                plan_local, expected_missing=True,
+                            ):
+                                logger.info("[VideoGenService] Restored shot_plan.json from checkpoints/")
+                                continue
                         logger.info(f"[VideoGenService] Attempting to download {_plan_name} from S3...")
                         if self.s3_service.download_file(plan_url, plan_local, expected_missing=True):
                             logger.info(f"[VideoGenService] Successfully downloaded {_plan_name}")
@@ -2635,7 +3137,7 @@ class VideoGenerationService:
             if start_stage_idx >= 3:  # WORDS, HTML, or RENDER
                 # Note: narration_raw.json might not be in S3 yet (it's an intermediate file)
                 # We'll try to download it, but if it doesn't exist, the pipeline should generate TTS
-                audio_url = video_record.s3_urls.get("audio")
+                audio_url = video_record.s3_urls.get("audio") or self._s3_url(f"ai-videos/{video_id}/audio/narration.mp3")
                 if audio_url:
                     audio_path = run_dir / "narration.mp3"
                     if not audio_path.exists():
@@ -2666,7 +3168,7 @@ class VideoGenerationService:
             
             # Need words files if resuming from HTML or later
             if start_stage_idx >= 4:  # HTML or RENDER
-                words_url = video_record.s3_urls.get("words")
+                words_url = video_record.s3_urls.get("words") or self._s3_url(f"ai-videos/{video_id}/words/narration.words.json")
                 if words_url:
                     words_path = run_dir / "narration.words.json"
                     if not words_path.exists():
@@ -2682,58 +3184,10 @@ class VideoGenerationService:
                         if self.s3_service.download_file(_csv_url, words_csv_path, expected_missing=True):
                             logger.info(f"[VideoGenService] Successfully downloaded narration.words.csv")
 
-                # Download shot checkpoints for intra-HTML-stage resume (director plan + per-shot cache)
-                try:
-                    from ..config import get_settings as _get_settings_ckpt
-                    _ckpt_settings = _get_settings_ckpt()
-                    _ckpt_bucket = _ckpt_settings.aws_bucket_name or _ckpt_settings.aws_s3_public_bucket
-                    _ckpt_prefix = f"ai-videos/{video_id}/checkpoints"
-                    _ckpt_base_url = f"https://{_ckpt_bucket}.s3.amazonaws.com/{_ckpt_prefix}"
-
-                    # style_guide.json
-                    _sg_local = run_dir / "style_guide.json"
-                    if not _sg_local.exists():
-                        self.s3_service.download_file(f"{_ckpt_base_url}/style_guide.json", _sg_local, expected_missing=True)
-
-                    # asset_selections.json (assist mode) — the user's forced
-                    # stock-media picks. The pipeline reads run_dir/asset_selections.json
-                    # at run() entry and the resolver forces these clips. Always
-                    # re-download (the user may have just answered the gate).
-                    _as_local = run_dir / "asset_selections.json"
-                    self.s3_service.download_file(f"{_ckpt_base_url}/asset_selections.json", _as_local, expected_missing=True)
-
-                    # director_plan.json
-                    _dp_local = run_dir / "director_plan.json"
-                    if not _dp_local.exists():
-                        self.s3_service.download_file(f"{_ckpt_base_url}/director_plan.json", _dp_local, expected_missing=True)
-
-                    # shot_plan.json (v3) — ShotPlanner+NarrationWriter output.
-                    # On v3 resumes, the html-stage Director branch reads this
-                    # in `automation_pipeline._run_v3_shot_planning`'s sibling
-                    # branch via `getattr(self, "_v3_shot_plan", None)` falling
-                    # back to disk. Download is best-effort: absent file just
-                    # means the run was v2 (no shot_plan.json was ever written).
-                    _sp_local = run_dir / "shot_plan.json"
-                    if not _sp_local.exists():
-                        self.s3_service.download_file(f"{_ckpt_base_url}/shot_plan.json", _sp_local, expected_missing=True)
-
-                    # Per-shot cache files (shot_000.json … shot_NNN.json)
-                    _shot_cache_local = run_dir / "shot_cache"
-                    _shot_cache_local.mkdir(exist_ok=True)
-                    _downloaded_shots = 0
-                    for _shot_idx in range(200):  # max 200 shots
-                        _sc_key = f"{_ckpt_base_url}/shot_cache/shot_{_shot_idx:03d}.json"
-                        _sc_local = _shot_cache_local / f"shot_{_shot_idx:03d}.json"
-                        if _sc_local.exists():
-                            _downloaded_shots += 1
-                            continue
-                        if not self.s3_service.download_file(_sc_key, _sc_local, expected_missing=True):
-                            break  # No more shot cache files
-                        _downloaded_shots += 1
-                    if _downloaded_shots:
-                        logger.info(f"[VideoGenService] Downloaded {_downloaded_shots} shot checkpoints for {video_id}")
-                except Exception as _ckpt_dl_err:
-                    logger.info(f"[VideoGenService] No shot checkpoints found or download failed (new run): {_ckpt_dl_err}")
+            # Checkpoints for an intra-HTML / combine resume (director plan,
+            # per-shot cache listed — never probed —, per-shot TTS, preamble…).
+            if start_stage_idx >= 4 or _restore_ckpt:
+                self._restore_checkpoints(video_id, run_dir, video_record)
 
             # Need branding_meta.json for render stage (audio delay)
             if start_stage_idx >= 5:  # RENDER
@@ -3160,6 +3614,18 @@ class VideoGenerationService:
                 logger.warning(f"[VideoGenService] Reference file processing failed (non-fatal): {e}")
                 reference_context = None
 
+        # Resume: the final reference context (web capture + search text +
+        # scrape artifacts merged) was checkpointed at SCRIPT end — reload it
+        # even when this leg was given no reference_files.
+        if reference_context is None and resuming and start_stage_idx >= 2:
+            try:
+                from .reference_file_service import ReferenceFileService
+                reference_context = ReferenceFileService.load_cached(run_dir)
+                if reference_context is not None:
+                    logger.info(f"[VideoGenService] Restored reference context for {video_id}")
+            except Exception as _rc_err:  # noqa: BLE001
+                logger.warning(f"[VideoGenService] Could not reload reference context: {_rc_err}")
+
         # ── Merge captured page text + web search results into ReferenceContext ──
         extra_text_blocks = [b for b in (captured_text_context, searched_text_context) if b]
         if extra_text_blocks:
@@ -3368,6 +3834,8 @@ class VideoGenerationService:
             ],
             "words": [
                 ("words_json", "words", "narration.words.json"),
+                # The HTML resume REQUIRES the csv next to the json.
+                (None, None, "narration.words.csv"),
                 (None, "alignment", "alignment.json")  # alignment.json (not in outputs dict)
             ],
             "html": [
@@ -3385,6 +3853,10 @@ class VideoGenerationService:
                 ("timeline_json", "timeline", "time_based_frame.json"),  # Process AFTER images to update URLs
                 ("audio_path", "audio", "narration.mp3"),  # Re-upload if audio was mixed with source clips
                 ("words_json", "words", "narration.words.json"),  # Re-upload if words were filtered
+                # Combine runs produce these inside the HTML pass — a later
+                # resume past HTML (or an editor rebuild) needs them.
+                (None, None, "narration.words.csv"),
+                (None, None, "narration_raw.json"),
             ],
             "avatar": [("avatar_video_path", "avatar", "avatar_video.mp4")],
             "render": [("video_path", "video", "output.mp4")]
@@ -3398,6 +3870,36 @@ class VideoGenerationService:
         # PipelineCancelled. Cleared at the end of this generator (and as a
         # safety net by the router's _run_generation finally block).
         stop_event = cancellation_registry.register(video_id)
+
+        # Resume hooks for pipeline.run — only passed when the pipeline's run()
+        # accepts them (keeps this service deployable against an older
+        # pipeline). checkpoint_callback(kind, paths) enqueues finished files
+        # on the leg's uploader; resume_mode="auto" turns on the per-shot TTS
+        # cache hit.
+        _resume_run_kwargs: Dict[str, Any] = {}
+        try:
+            import inspect as _inspect
+            _run_params = _inspect.signature(pipeline.run).parameters
+            _var_kw = any(_p.kind == _p.VAR_KEYWORD for _p in _run_params.values())
+            if checkpoint_uploader is not None and ("checkpoint_callback" in _run_params or _var_kw):
+                from .video_checkpoint import make_checkpoint_callback
+                _resume_run_kwargs["checkpoint_callback"] = make_checkpoint_callback(
+                    checkpoint_uploader, video_id, work_dir
+                )
+            if resume_mode and ("resume_mode" in _run_params or _var_kw):
+                _resume_run_kwargs["resume_mode"] = resume_mode
+        except Exception as _rk_err:  # noqa: BLE001
+            logger.warning(f"[VideoGenService] resume hooks not wired: {_rk_err}")
+
+        def _fenced_exit() -> Dict[str, Any]:
+            """Another pod took this run over: stop silently (no CANCELLED, no
+            refund, no error event)."""
+            if leg is not None:
+                leg.interrupted = None
+                if leg.handle is not None:
+                    leg.handle.stop_reason = "fenced"
+            logger.warning(f"[VideoGenService] {video_id}: lease fenced — leaving the run to its new owner")
+            return {"type": "interrupted", "video_id": video_id, "reason": "fenced", "resuming": True}
 
         # ── PHASE B COMBINE (2026-05-14) ──────────────────────────────────
         # Phase B's per-shot TTS reorder requires the pipeline.run() call to
@@ -3437,6 +3939,9 @@ class VideoGenerationService:
             # Check the stop flag at the start of each stage — cheapest
             # checkpoint, catches the case where the user cancelled while
             # we were uploading the previous stage's outputs to S3.
+            if stop_event.is_set() and cancellation_registry.reason(video_id) == "fenced":
+                yield _fenced_exit()
+                return
             if stop_event.is_set():
                 logger.info(f"[VideoGenService] Cancellation detected before stage {stage_idx}; halting")
                 # Re-assert CANCELLED in DB. The cancel endpoint already
@@ -3611,6 +4116,7 @@ class VideoGenerationService:
                     # Assist mode: gate config + answer ledger. The HTML-stage
                     # visual_casting gate reads this; None ⇒ fully autonomous.
                     assist_state=assist_state,
+                    **_resume_run_kwargs,
                 )
 
                 # Release the request-scoped DB connection before the long
@@ -3777,6 +4283,9 @@ class VideoGenerationService:
                             from .credit_service import CreditService
                             from .provider_rates import image_cost_usd
                             _billing_credits = CreditService(_fresh)
+                            _key_fn, _bill_gen = _stage_charge_key_fn(
+                                _fresh, video_id, institute_id, stage_pipeline_name
+                            )
                             _bill_video_stage_usage(
                                 TokenUsageService(_fresh),
                                 usage=usage,
@@ -3796,7 +4305,18 @@ class VideoGenerationService:
                                     prompt=prompt, content_type=content_type, quality_tier=quality_tier,
                                     stage=stage_pipeline_name,
                                 ),
+                                idempotency_key_fn=_key_fn,
                             )
+                          # Observability: which leg billed which stage (the
+                          # keys above are what actually prevent a re-bill).
+                          _rsb = getattr(self.repository, "record_stage_billed", None)
+                          if _rsb is not None:
+                              from datetime import datetime as _dt_b, timezone as _tz_b
+                              _rsb(video_id, stage_pipeline_name, {
+                                  "leg_id": getattr(getattr(leg, "handle", None), "leg_id", None),
+                                  "at": _dt_b.now(_tz_b.utc).isoformat(),
+                                  "gen": _bill_gen,
+                              })
                     except Exception as e:
                         logger.warning(f"[VideoGenService] Failed to record token usage: {e}")
 
@@ -3966,6 +4486,13 @@ class VideoGenerationService:
                                             _shot_art["deducted_at"] = _now_iso
                                         # Avatar video seconds — single charge per dedup-run
                                         if _undeducted_seconds > 0:
+                                            import hashlib as _hl
+                                            _host_key = _video_charge_key(
+                                                _host_db, video_id, institute_id,
+                                                "host:" + _hl.sha1(",".join(sorted(
+                                                    str(a.get("shot_index")) for a in _undeducted_completed
+                                                )).encode("utf-8")).hexdigest()[:16],
+                                            )
                                             _ts.record_usage_and_deduct_credits(
                                                 api_provider=ApiProvider.OPENAI,
                                                 prompt_tokens=0,
@@ -3983,6 +4510,7 @@ class VideoGenerationService:
                                                 },
                                                 seconds=_undeducted_seconds,
                                                 batch_id=video_id,
+                                                idempotency_key=_host_key,
                                                 allow_negative=True,
                                                 **_supported_meter(
                                                     _ts.record_usage_and_deduct_credits,
@@ -4172,6 +4700,9 @@ class VideoGenerationService:
                 # Detect PipelineCancelled by class name — the pipeline class
                 # lives outside `app.*` so we can't catch the type directly
                 # (see `_is_pipeline_cancelled` near the top of this module).
+                if _is_pipeline_cancelled(e) and cancellation_registry.reason(video_id) == "fenced":
+                    yield _fenced_exit()
+                    return
                 if _is_pipeline_cancelled(e):
                     logger.info(
                         f"[VideoGenService] Pipeline cancelled by user during stage {stage_pipeline_name}"
@@ -4567,7 +5098,10 @@ class VideoGenerationService:
                                     # Backwards compat: narration_raw.json keeps its hardcoded "audio"
                                     # subdir because the existing download path at line 631 looks there.
                                     if file_key is None:
-                                        _internal_stage = "audio" if file_name == "narration_raw.json" else stage_pipeline_name
+                                        _internal_stage = {
+                                            "narration_raw.json": "audio",
+                                            "narration.words.csv": "words",
+                                        }.get(file_name, stage_pipeline_name)
                                         logger.info(f"[VideoGenService] Uploading internal file {file_name} to S3 stage='{_internal_stage}' (not storing in DB)...")
                                         s3_url = self.s3_service.upload_video_file(
                                             file_path=file_path_obj,
@@ -4728,6 +5262,27 @@ class VideoGenerationService:
                         "Files may have been uploaded but stage is not marked complete.",
                         exc_info=True
                     )
+                # Resume manifest: the stage is done (status/current_stage cannot
+                # say this — a non-combine run busy in TTS reads COMPLETED at
+                # SCRIPT). A combine HTML pass also completed TTS and WORDS.
+                # Not when the stage raised: the loop still uploads partial
+                # files (and marks the row) but the stage did not finish.
+                if not pipeline_error:
+                    self._mark_completed_stages(
+                        video_id,
+                        [stage_name] + (["TTS", "WORDS"] if (_phase_b_combine and stage_name == "HTML") else []),
+                    )
+                if checkpoint_uploader is not None:
+                    try:
+                        from .video_checkpoint import PREAMBLE_FILES, enqueue_existing
+                        _ck_names = ["cost_breakdown_by_stage.json"]
+                        if stage_name == "SCRIPT":
+                            # Plans that only live on this pod + the final
+                            # reference context: a cross-pod resume needs them.
+                            _ck_names += list(PREAMBLE_FILES) + ["reference_context.json", "lesson_plan.json"]
+                        enqueue_existing(checkpoint_uploader, video_id, run_dir, _ck_names)
+                    except Exception as _ck_err:  # noqa: BLE001
+                        logger.warning(f"[VideoGenService] checkpoint enqueue failed: {_ck_err}")
 
                 # After HTML stage: build per-sentence audio clips from the
                 # already-uploaded narration.mp3 + words.json so the editor's

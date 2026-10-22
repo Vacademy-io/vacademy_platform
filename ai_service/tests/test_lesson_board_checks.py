@@ -126,3 +126,70 @@ def test_the_walker_reports_text_squeezed_into_a_sliver():
     # off by default (non-lesson runs are unchanged)
     assert _run(lambda w: w.bbox_check_shot(html=SQUEEZED, width=1920, height=842, timestamps=[0.5],
                                             background="#1F3B2D")) == []
+
+
+# ── proper nouns are never "errors" (prod: "ITRC" flagged as a garbled CHAPTER) ──
+
+ITRC_BRANDING = {
+    "intro": {"enabled": False, "html": "<h1>Vacademy</h1>"},          # disabled: not this run's brand
+    "watermark": {"enabled": True, "html": "<div style='x'>ITRC Academy</div>"},
+    "outro": {"enabled": True, "html": "<p>Thank you for watching, see you in the next class</p>"},
+}
+
+
+def test_known_proper_nouns_come_from_branding_teacher_and_the_prompts_caps():
+    nouns = lm.known_proper_nouns(
+        prompt="Make a lesson for ITRC students on Newton's laws for JEE. IMPORTANT: keep it short. I want AI-free maths.",
+        branding=ITRC_BRANDING,
+        teacher={"name": "Riya Sharma"},
+    )
+    assert "ITRC Academy" in nouns and "Riya Sharma" in nouns
+    assert "ITRC" in nouns and "JEE" in nouns
+    assert "IMPORTANT" not in nouns and "I" not in nouns
+    assert "Vacademy" not in nouns                                     # disabled section ignored
+    assert not [n for n in nouns if "Thank you" in n]                  # sentences are not names
+    assert lm.known_proper_nouns() == []
+
+
+def test_fact_check_prompt_lists_the_proper_nouns_as_correct():
+    assert "KNOWN PROPER NOUNS" in lm.FACT_CHECK_SYSTEM
+    p = lm.fact_check_user_prompt(narration="Welcome to ITRC.", board="ITRC — Chapter 3",
+                                  subject="Physics", proper_nouns=["ITRC", "Riya Sharma"])
+    assert "KNOWN PROPER NOUNS (correct as written — never report or change them): ITRC, Riya Sharma" in p
+    assert p.index("KNOWN PROPER NOUNS") < p.index("NARRATION:")
+    # no list → prompt unchanged from before
+    assert "KNOWN PROPER NOUNS" not in lm.fact_check_user_prompt(narration="n", board="b", subject=None)
+
+
+def test_a_checker_error_that_rewrites_a_proper_noun_is_dropped():
+    reply = {"errors": [
+        {"board": "ITRC", "problem": "garbled heading, should be CHAPTER", "fix": "CHAPTER"},
+        {"board": "ITRC: Chapter 3", "problem": "garbled", "fix": "Chapter 3"},
+        {"board": "6² + 8² = 110", "problem": "36 + 64 is 100", "fix": "6² + 8² = 100"},
+        {"board": "ITRC: 2 + 2 = 5", "problem": "2 + 2 is 4", "fix": "ITRC: 2 + 2 = 4"},
+    ]}
+    issues = lm.parse_fact_check(reply, proper_nouns=["ITRC"])
+    assert issues == ['"6² + 8² = 110" — 36 + 64 is 100 → write: "6² + 8² = 100"',
+                      '"ITRC: 2 + 2 = 5" — 2 + 2 is 4 → write: "ITRC: 2 + 2 = 4"']
+    # without the list the old behaviour is unchanged
+    assert len(lm.parse_fact_check(reply)) == 4
+    assert "Keep these proper nouns exactly as written: ITRC." in lm.correction_prompt(issues, ["ITRC"])
+
+
+def test_proper_nouns_never_shield_formulas_shouted_words_or_real_errors():
+    # formulas are notation the checker must still fix; a prompt in capitals
+    # is shouting, not a list of names
+    assert lm.known_proper_nouns(prompt="Explain H2SO4 and CO2 for ITRC") == ["ITRC"]
+    assert lm.known_proper_nouns(prompt="MAKE A VIDEO ON PHOTOSYNTHESIS FOR CLASS 10 STUDENTS") == []
+    reply = {"errors": [
+        {"board": "H2SO4", "problem": "subscripts missing", "fix": "H₂SO₄"},
+        # a real error on a line that mentions the name, fix drops the name
+        {"board": "ITRC: 2 + 2 = 5", "problem": "2 + 2 is 4", "fix": "2 + 2 = 4"},
+        # the name itself called misspelt → dropped
+        {"board": "ITRC Chapter 3", "problem": "heading misspelt", "fix": "Chapter 3"},
+    ]}
+    nouns = lm.known_proper_nouns(prompt="Explain H2SO4 for ITRC students")
+    assert lm.parse_fact_check(reply, proper_nouns=nouns) == [
+        '"H2SO4" — subscripts missing → write: "H₂SO₄"',
+        '"ITRC: 2 + 2 = 5" — 2 + 2 is 4 → write: "2 + 2 = 4"',
+    ]

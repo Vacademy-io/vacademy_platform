@@ -21,6 +21,7 @@ S3_AWS_ACCESS_KEY / S3_AWS_ACCESS_SECRET / S3_AWS_REGION, AWS_S3_PUBLIC_BUCKET.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
@@ -366,6 +367,54 @@ def _download(url: str, out: Path) -> Path:
 # Orchestration
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _write_json_atomic(path: Path, data: Dict[str, Any]) -> None:
+    """temp file + os.replace: the checkpoint uploader never reads half a file."""
+    tmp = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        tmp.write_text(json.dumps(data, indent=2))
+        os.replace(tmp, path)
+    finally:
+        if tmp.exists():
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
+
+
+def _sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _fire(checkpoint: Optional[Callable[[List[Path]], None]], paths: List[Path]) -> None:
+    """Best-effort resume checkpoint — never fails the render."""
+    if checkpoint is None:
+        return
+    try:
+        checkpoint([p for p in paths if p.exists()])
+    except Exception as e:  # noqa: BLE001
+        print(f"   ⚠️ teacher checkpoint skipped: {e}")
+
+
+def _load_cache(cache: Path) -> Optional[Dict[str, Any]]:
+    if not cache.exists():
+        return None
+    try:
+        data = json.loads(cache.read_text())
+        return data if isinstance(data, dict) else None
+    except Exception:
+        return None
+
+
+def _voice_matches(cached: Dict[str, Any], voice_sha: Optional[str]) -> bool:
+    """Legacy caches carry no voice hash — matched on avatar alone, as before."""
+    want = cached.get("voice_sha256")
+    return not want or want == voice_sha
+
+
 def render_track(
     *,
     voice_audio: Path,
@@ -374,41 +423,125 @@ def render_track(
     run_name: str,
     uploader: Callable[[Path, str, str], str] = upload_public,
     on_progress: Optional[Callable[[str], None]] = None,
+    checkpoint: Optional[Callable[[List[Path]], None]] = None,
 ) -> Dict[str, Any]:
-    """Render the teacher for the whole narration. Cached in run_dir."""
+    """Render the teacher for the whole narration. Cached in run_dir.
+
+    Resume-safe (the json is checkpointed by the pipeline):
+      * right after submit the cache holds {"status": "submitted", job_id,
+        avatar_id, audio_url, voice_sha256}; a resumed leg with the same
+        avatar + voice re-polls that job instead of paying for a new render;
+      * the raw MP4 is uploaded once (`raw_mp4_url`), so a ready cache restored
+        on another pod downloads it instead of rendering again.
+    """
     work = run_dir / "lesson"
     work.mkdir(parents=True, exist_ok=True)
     cache = run_dir / CACHE_NAME
     raw_mp4 = work / "teacher_raw.mp4"
-    if cache.exists() and raw_mp4.exists():
-        try:
-            cached = json.loads(cache.read_text())
-            if cached.get("avatar_id") == avatar_id and cached.get("status") == "ready":
+    cached = _load_cache(cache)
+    if cached and cached.get("avatar_id") != avatar_id:
+        cached = None
+
+    wav: Optional[Path] = None
+    voice_sha: Optional[str] = None
+
+    def _voice() -> Tuple[Path, str]:
+        nonlocal wav, voice_sha
+        if wav is None or voice_sha is None:
+            wav = to_wav(voice_audio, work / "teacher_voice.wav")
+            voice_sha = _sha256(wav)
+        return wav, voice_sha
+
+    # ── ready cache ────────────────────────────────────────────────────
+    if cached and cached.get("status") == "ready":
+        ok = True
+        if cached.get("voice_sha256"):
+            try:
+                ok = _voice_matches(cached, _voice()[1])
+            except Exception:
+                ok = True  # can't hash the voice → trust the cache, as before
+        if ok:
+            if not raw_mp4.exists() and cached.get("raw_mp4_url"):
+                try:
+                    _download(str(cached["raw_mp4_url"]), raw_mp4)
+                    print("   🧑‍🏫 Teacher render restored from raw_mp4_url")
+                except Exception as e:
+                    print(f"   ⚠️ teacher_raw.mp4 restore failed ({e}) — rendering again")
+            if raw_mp4.exists():
+                cached["raw_mp4"] = str(raw_mp4)  # run_dir differs across legs
                 return cached
-        except Exception:
-            pass
+        cached = None
+
     if not configured():
         raise TeacherRenderError("Spatius is not configured (SPATIUS_API_KEY / SPATIUS_APP_ID)")
 
-    wav = to_wav(voice_audio, work / "teacher_voice.wav")
+    wav, voice_sha = _voice()
     audio_s = media_duration(wav)
-    audio_url = uploader(wav, f"ai-videos/{run_name}/lesson/teacher_voice.wav", "audio/wav")
     t0 = time.monotonic()
-    job_id = submit_video(avatar_id, audio_url, name=f"vacademy-{run_name}")
-    if on_progress:
-        on_progress("submitted")
-    video_url = wait_for_video(job_id, timeout_s=render_timeout_s(audio_s), on_progress=on_progress)
+    timeout_s = render_timeout_s(audio_s)
+    job_id: Optional[str] = None
+    audio_url: Optional[str] = None
+    video_url: Optional[str] = None
+
+    # ── submitted cache: re-poll the paid job ─────────────────────────
+    if (
+        cached and cached.get("status") == "submitted" and cached.get("job_id")
+        and cached.get("voice_sha256") == voice_sha
+    ):
+        job_id = str(cached["job_id"])
+        audio_url = cached.get("audio_url")
+        print(f"   🧑‍🏫 Teacher job {job_id} already submitted — re-polling (no new render)")
+        if on_progress:
+            on_progress("resumed")
+        try:
+            video_url = wait_for_video(job_id, timeout_s=timeout_s, on_progress=on_progress)
+        except TeacherRenderError as e:
+            # Failed / expired / vanished job: one fresh submit below.
+            print(f"   ⚠️ Re-polled teacher job {job_id} unusable ({e}) — submitting again")
+            job_id, video_url = None, None
+
+    if video_url is None:
+        if not audio_url:
+            audio_url = uploader(wav, f"ai-videos/{run_name}/lesson/teacher_voice.wav", "audio/wav")
+        job_id = submit_video(avatar_id, audio_url, name=f"vacademy-{run_name}")
+        try:
+            _write_json_atomic(cache, {
+                "status": "submitted",
+                "provider": "spatius",
+                "job_id": job_id,
+                "avatar_id": avatar_id,
+                "audio_url": audio_url,
+                "voice_sha256": voice_sha,
+                "submitted_at": time.time(),
+            })
+            _fire(checkpoint, [cache])
+        except Exception as e:
+            print(f"   ⚠️ could not persist the submitted teacher job: {e}")
+        if on_progress:
+            on_progress("submitted")
+        video_url = wait_for_video(job_id, timeout_s=timeout_s, on_progress=on_progress)
+
     _download(video_url, raw_mp4)
     render_s = time.monotonic() - t0
     video_s = media_duration(raw_mp4)
     offset = measure_offset(wav, raw_mp4)
     box = subject_box(raw_mp4, min(max(1.0, audio_s / 2.0), max(1.0, video_s - 1.0)))
+    # Upload the raw render ONCE (the signed vendor URL dies in ~15 min) so a
+    # resume on another pod can re-cut clips without a second render.
+    raw_mp4_url: Optional[str] = None
+    try:
+        raw_mp4_url = uploader(raw_mp4, f"ai-videos/{run_name}/lesson/teacher_raw.mp4", "video/mp4")
+    except Exception as e:
+        print(f"   ⚠️ teacher_raw.mp4 upload failed ({e}) — handing it to the checkpoint uploader")
     result = {
         "status": "ready",
         "provider": "spatius",
         "avatar_id": avatar_id,
         "job_id": job_id,
+        "audio_url": audio_url,
+        "voice_sha256": voice_sha,
         "raw_mp4": str(raw_mp4),
+        "raw_mp4_url": raw_mp4_url,
         "audio_seconds": round(audio_s, 2),
         "video_seconds": round(video_s, 2),
         "offset_s": offset,
@@ -419,7 +552,9 @@ def render_track(
         "platform_credits": platform_credits_for(video_s / 60.0 * VENDOR_USD_PER_MINUTE),
         "clips": [],
     }
-    cache.write_text(json.dumps(result, indent=2))
+    _write_json_atomic(cache, result)
+    # The json always; the mp4 only when its own upload failed (upload once).
+    _fire(checkpoint, [cache] + ([] if raw_mp4_url else [raw_mp4]))
     return result
 
 
@@ -498,7 +633,7 @@ def build_clips(
                         "crop": list(crop), "size": [cw, ch]})
     track["clips" if not pad_end_s else "precut"] = records
     try:
-        (run_dir / CACHE_NAME).write_text(json.dumps(track, indent=2))
+        _write_json_atomic(run_dir / CACHE_NAME, track)
     except Exception:
         pass
     return urls

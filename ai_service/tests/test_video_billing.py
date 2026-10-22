@@ -670,3 +670,129 @@ def test_estimator_prices_the_stage_matrix_models(monkeypatch):
 
     monkeypatch.setattr(ams, "AIModelsService", Empty)
     assert est._resolve_stage_models(None, "standard", None) == (GLM_DEFAULT, GLM_DEFAULT)
+
+
+# ── Resume-safe billing (2026-10: generation survives deploys) ──────────────
+
+class _KeyedTokenService(FakeTokenService):
+    """Dedupes on idempotency_key like CreditService (credit_transactions
+    external_reference_id is UNIQUE): a replayed key is a no-op."""
+
+    def __init__(self):
+        super().__init__()
+        self.keys = set()
+        self.noops = []
+
+    def record_usage_and_deduct_credits(self, **kw):
+        key = kw.get("idempotency_key")
+        if key and key in self.keys:
+            self.noops.append(key)
+            return None
+        if key:
+            self.keys.add(key)
+        self.deducted.append(kw)
+
+
+def _bill_keyed(ts, db, usage, breakdown):
+    key_fn, gen = vgs._stage_charge_key_fn(db, "vid_1", INST, "html")
+    vgs._bill_video_stage_usage(
+        ts, usage=usage, cost_breakdown=breakdown, usd_to_credits=_usd_to_credits,
+        image_unit_usd=lambda m: 0.04, institute_id=INST, user_id=None, video_id="vid_1",
+        stage="html", resolved_model="z-ai/glm-5.3-flash", tts_provider="premium",
+        tts_provider_resolved="google", language="English", idempotency_key_fn=key_fn,
+    )
+    return gen
+
+
+def test_a_stage_billed_twice_in_one_refund_generation_charges_once():
+    usage = {"prompt_tokens": 1000, "completion_tokens": 500, "image_count": 2, "tts_character_count": 900}
+    breakdown = {"stages": [_llm("z-ai/glm-5", 1000, 500), _img("seedream", cost_usd=0.03),
+                            _img("seedream", cost_usd=0.03)]}
+    ts = _KeyedTokenService()
+    _bill_keyed(ts, _TeacherDB(refunds=0), usage, breakdown)
+    first = [d["idempotency_key"] for d in ts.deducted]
+    assert first == ["vid_1:stage:html:llm:z-ai/glm-5", "vid_1:stage:html:img:0",
+                     "vid_1:stage:html:img:1", "vid_1:stage:html:tts"]
+    # kill between billing and the stage's COMPLETED write → the stage re-runs
+    _bill_keyed(ts, _TeacherDB(refunds=0), usage, breakdown)
+    assert len(ts.deducted) == 4 and sorted(ts.noops) == sorted(first)
+    # after a full refund (generation 1) the re-run is billable again
+    gen = _bill_keyed(ts, _TeacherDB(refunds=1), usage, breakdown)
+    assert gen == 1 and len(ts.deducted) == 8
+    assert all(d["idempotency_key"].endswith(":refund1") for d in ts.deducted[4:])
+
+
+def test_without_a_key_function_nothing_changes():
+    ts, _ = _bill({"prompt_tokens": 10, "completion_tokens": 5}, {"stages": [_llm("z-ai/glm-5", 10, 5)]})
+    assert "idempotency_key" not in ts.deducted[0]
+
+
+def test_resumed_tts_characters_are_never_billed():
+    """The past-TTS resume branch reports tts_character_count_resumed (cost
+    report only) — no premium TTS row may come from it."""
+    ts, summary = _bill({"tts_character_count_resumed": 5000}, tts_provider="premium", resolved_tts="google")
+    assert ts.deducted == [] and summary["tts_model"] is None
+
+
+def test_lesson_teacher_key_is_the_generic_charge_key():
+    assert vgs._video_charge_key(_TeacherDB(refunds=0), "vid_1", INST, "lesson-teacher") == "vid_1:lesson-teacher"
+    assert vgs._video_charge_key(_TeacherDB(refunds=2), "vid_1", INST, "host:abc") == "vid_1:host:abc:refund2"
+
+
+def test_ai_video_ledger_charge_replay_is_a_noop_but_a_refunded_shot_bills_again(monkeypatch):
+    import contextlib
+    import app.db as app_db
+    import app.services.credit_rate_service as crs
+    from app.services import ai_video_ledger as led
+
+    state = SimpleNamespace(refund_rows=0, ledger={}, requests=[])
+
+    class _DB:
+        def execute(self, stmt, params=None):
+            return SimpleNamespace(scalar=lambda: state.refund_rows)
+
+    @contextlib.contextmanager
+    def fake_session():
+        yield _DB()
+
+    class _Credits:
+        def __init__(self, db):
+            pass
+
+        def deduct_credits(self, req):
+            state.requests.append(req)
+            if req.idempotency_key in state.ledger:
+                return SimpleNamespace(success=True, credits_deducted=Decimal("0"),
+                                       message="Already processed (idempotent no-op)")
+            state.ledger[req.idempotency_key] = req.precomputed_credits
+            return SimpleNamespace(success=True, credits_deducted=req.precomputed_credits, message="ok")
+
+    monkeypatch.setattr(app_db, "db_session", fake_session)
+    monkeypatch.setattr(crs, "CreditRateService", lambda db: SimpleNamespace(get_effective_ratio=lambda: RATIO))
+    monkeypatch.setattr(cs_mod, "CreditService", _Credits)
+
+    ledger = led.AiVideoLedger(institute_id=INST, video_id="vid_1")
+    ledger.charge(cost_usd=0.5, shot_idx=3, duration_s=6, audio_on=False)
+    assert state.requests[-1].idempotency_key == "vid_1:aivideo:3:x:c0:r0"
+    # a second charge of the same shot in the SAME leg (another inline
+    # <aivideo> tag) is a separate, billable charge
+    ledger.charge(cost_usd=0.5, shot_idx=3, duration_s=6, audio_on=False)
+    assert state.requests[-1].idempotency_key == "vid_1:aivideo:3:x:c1:r0" and len(state.ledger) == 2
+    # the resumed leg (a new ledger) charges the shot again → replayed key, no new debit
+    resumed = led.AiVideoLedger(institute_id=INST, video_id="vid_1")
+    resumed.charge(cost_usd=0.5, shot_idx=3, duration_s=6, audio_on=False)
+    assert state.requests[-1].idempotency_key == "vid_1:aivideo:3:x:c0:r0" and len(state.ledger) == 2
+    # a segment has its own key
+    resumed.charge(cost_usd=0.5, shot_idx=3, duration_s=6, audio_on=False, segment_idx=0)
+    assert state.requests[-1].idempotency_key == "vid_1:aivideo:3:0:c0:r0" and len(state.ledger) == 3
+    # after the shot was refunded (one REFUND row) it is billable again
+    state.refund_rows = 1
+    again = led.AiVideoLedger(institute_id=INST, video_id="vid_1")
+    again.charge(cost_usd=0.5, shot_idx=3, duration_s=6, audio_on=False)
+    assert state.requests[-1].idempotency_key == "vid_1:aivideo:3:x:c0:r1" and len(state.ledger) == 4
+    # a contact-sheet re-render of a sent-back shot is a new charge too
+    state.refund_rows = 0
+    regen = led.AiVideoLedger(institute_id=INST, video_id="vid_1")
+    regen.regen_shots = {3}
+    regen.charge(cost_usd=0.5, shot_idx=3, duration_s=6, audio_on=False)
+    assert state.requests[-1].idempotency_key == "vid_1:aivideo:3:regen:x:c0:r0" and len(state.ledger) == 5

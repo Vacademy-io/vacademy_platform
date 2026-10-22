@@ -644,21 +644,31 @@ class ContentGenerationService:
             event_count = 0
             pipeline_error: Optional[str] = None
 
-            async for event in self._video_gen_service.generate_till_stage(
-                video_id=video_id,
-                prompt=prompt,
-                target_stage="SCRIPT",  # Stop at SCRIPT stage
+            # One kwargs set for both legs; recorded as the run request (final
+            # target HTML) so a kill during leg 1, between the legs or during
+            # the fire-and-forget leg 2 is auto-resumed (ai_video_resumer).
+            _video_kwargs = dict(
                 language=todo.metadata.get("language", "English"),
                 captions_enabled=True,  # Default for course outline
                 html_quality=todo.metadata.get("html_quality", "advanced"),
-                resume=False,
                 model=self._wizard_model(todo),  # wizard pick only; None = video pipeline default
                 target_audience=todo.metadata.get("target_audience", "General/Adult"),
                 target_duration=todo.metadata.get("target_duration", "2-3 minutes"),
                 **self._video_voice_kwargs(todo),
-                db_session=self._db_session,
                 institute_id=self._institute_id,
-                user_id=self._user_id
+                user_id=self._user_id,
+            )
+            from .video_run_request import capture as _capture_run_request
+            _run_request = _capture_run_request("course_builder", "HTML", _video_kwargs)
+
+            async for event in self._video_gen_service.generate_till_stage(
+                video_id=video_id,
+                prompt=prompt,
+                target_stage="SCRIPT",  # Stop at SCRIPT stage
+                resume=False,
+                db_session=self._db_session,
+                run_request=_run_request,
+                **_video_kwargs,
             ):
                 event_count += 1
                 logger.info(f"[AI_VIDEO] Received event #{event_count} for {video_id}: {event.get('type', 'unknown')}, stage={event.get('stage', 'N/A')}")
@@ -767,22 +777,18 @@ class ContentGenerationService:
                     else:
                         logger.warning(f"[AI_VIDEO] Script file not found in S3, but proceeding anyway (may fail)")
                     
-                    # Resume from SCRIPT stage and continue till HTML
+                    # Resume from SCRIPT stage and continue till HTML. Leg 1
+                    # ended with the run lease in `handoff` (its completed
+                    # stages are short of the run request's final HTML); this
+                    # leg acquires it — or, if a resumer on another pod already
+                    # took the run over, yields LEASE_HELD and stops.
                     async for event in self._video_gen_service.generate_till_stage(
                         video_id=video_id,
                         prompt=prompt,
                         target_stage="HTML",  # Continue till HTML
-                        language=todo.metadata.get("language", "English"),
-                        captions_enabled=True,
-                        html_quality=todo.metadata.get("html_quality", "advanced"),
                         resume=True,  # Resume from current stage (SCRIPT)
-                        model=self._wizard_model(todo),
-                        target_audience=todo.metadata.get("target_audience", "General/Adult"),
-                        target_duration=todo.metadata.get("target_duration", "2-3 minutes"),
-                        **self._video_voice_kwargs(todo),
                         db_session=self._db_session,
-                        institute_id=self._institute_id,
-                        user_id=self._user_id
+                        **_video_kwargs,
                     ):
                         # Log background progress but don't send events to frontend
                         if event.get("type") == "completed":
@@ -993,22 +999,28 @@ class ContentGenerationService:
             yield json.dumps(started_event)
 
             pipeline_error: Optional[str] = None
-            async for event in self._video_gen_service.generate_till_stage(
-                video_id=video_id,
-                prompt=prompt,
-                target_stage="SCRIPT",
+            _story_kwargs = dict(
                 content_type="STORYBOOK",
                 language=todo.metadata.get("language", "English"),
                 captions_enabled=True,
                 html_quality=todo.metadata.get("html_quality", "advanced"),
-                resume=False,
                 model=self._wizard_model(todo),
                 target_audience=todo.metadata.get("target_audience", "General/Adult"),
                 target_duration=todo.metadata.get("target_duration", "2-3 minutes"),
                 **self._video_voice_kwargs(todo),
-                db_session=self._db_session,
                 institute_id=self._institute_id,
                 user_id=self._user_id,
+            )
+            from .video_run_request import capture as _capture_run_request
+            _story_run_request = _capture_run_request("storybook_builder", "HTML", _story_kwargs)
+            async for event in self._video_gen_service.generate_till_stage(
+                video_id=video_id,
+                prompt=prompt,
+                target_stage="SCRIPT",
+                resume=False,
+                db_session=self._db_session,
+                run_request=_story_run_request,
+                **_story_kwargs,
             ):
                 if event.get("type") == "error":
                     pipeline_error = event.get("message") or "Storybook generation failed"
@@ -1071,18 +1083,9 @@ class ContentGenerationService:
                         video_id=video_id,
                         prompt=prompt,
                         target_stage="HTML",
-                        content_type="STORYBOOK",
-                        language=todo.metadata.get("language", "English"),
-                        captions_enabled=True,
-                        html_quality=todo.metadata.get("html_quality", "advanced"),
                         resume=True,
-                        model=self._wizard_model(todo),
-                        target_audience=todo.metadata.get("target_audience", "General/Adult"),
-                        target_duration=todo.metadata.get("target_duration", "2-3 minutes"),
-                        **self._video_voice_kwargs(todo),
                         db_session=self._db_session,
-                        institute_id=self._institute_id,
-                        user_id=self._user_id,
+                        **_story_kwargs,
                     ):
                         if event.get("type") == "completed":
                             logger.info(f"[AI_STORYBOOK] Background HTML generation completed for {video_id}")

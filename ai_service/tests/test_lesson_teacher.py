@@ -187,3 +187,161 @@ def test_precut_clips_are_reused_when_the_section_still_matches(monkeypatch, tmp
                           run_name="r", uploader=up, reuse=track["precut"])
     assert urls[0].endswith("teacher_pre_000_presenter.webm") and urls[1].endswith("teacher_pre_001_side.webm")
     assert cuts == [(30.8, 4.4)]   # only the new run is cut (narration 30.6 s + 0.2 s offset)
+
+
+# ── resume: the Spatius job survives a deploy / crash ────────────────────────
+
+def _fake_media(monkeypatch, *, events, voice_bytes=b"VOICE-PCM"):
+    """Stub every ffmpeg / network edge of render_track. `events` records the
+    paid calls in order so tests can assert what happened when."""
+    def to_wav(src, out):
+        out.write_bytes(voice_bytes)
+        return out
+
+    def submit(avatar_id, audio_url, *, name, **kw):
+        events.append(("submit", audio_url))
+        return "job-new"
+
+    def wait(job_id, *, timeout_s, **kw):
+        events.append(("wait", job_id))
+        return f"https://vendor/{job_id}.mp4"
+
+    def download(url, out):
+        events.append(("download", url))
+        out.write_bytes(b"MP4")
+        return out
+
+    monkeypatch.setattr(lt, "to_wav", to_wav)
+    monkeypatch.setattr(lt, "media_duration", lambda p: 40.0)
+    monkeypatch.setattr(lt, "submit_video", submit)
+    monkeypatch.setattr(lt, "wait_for_video", wait)
+    monkeypatch.setattr(lt, "_download", download)
+    monkeypatch.setattr(lt, "measure_offset", lambda a, b: 0.2)
+    monkeypatch.setattr(lt, "subject_box", lambda p, t: (480, 110, 1440, 1080))
+
+
+def _voice(tmp_path):
+    v = tmp_path / "narration.mp3"
+    v.write_bytes(b"mp3")
+    return v
+
+
+def _uploader(events, fail_mp4=False):
+    def up(path, key, ct):
+        if fail_mp4 and key.endswith("teacher_raw.mp4"):
+            raise RuntimeError("s3 down")
+        events.append(("upload", key))
+        return f"https://s3/{key}"
+    return up
+
+
+def test_fresh_render_persists_the_job_right_after_submit(monkeypatch, tmp_path):
+    events, ckpts = [], []
+    _fake_media(monkeypatch, events=events)
+    cache = tmp_path / lt.CACHE_NAME
+
+    def checkpoint(paths):
+        # Snapshot what the uploader would read at this moment.
+        ckpts.append([(p.name, json.loads(p.read_text()).get("status") if p.suffix == ".json" else None)
+                      for p in paths])
+        events.append(("checkpoint", None))
+
+    res = lt.render_track(voice_audio=_voice(tmp_path), avatar_id="av", run_dir=tmp_path, run_name="vid1",
+                          uploader=_uploader(events), checkpoint=checkpoint)
+    kinds = [e[0] for e in events]
+    # the submitted job is checkpointed BEFORE the (long) wait for the render
+    assert kinds.index("submit") < kinds.index("checkpoint") < kinds.index("wait")
+    assert ckpts[0] == [(lt.CACHE_NAME, "submitted")]
+    # ready: json only — the raw mp4 went up once through the uploader
+    assert ckpts[-1] == [(lt.CACHE_NAME, "ready")]
+    assert res["status"] == "ready" and res["job_id"] == "job-new"
+    assert res["raw_mp4_url"] == "https://s3/ai-videos/vid1/lesson/teacher_raw.mp4"
+    assert res["voice_sha256"] and json.loads(cache.read_text())["raw_mp4_url"] == res["raw_mp4_url"]
+    assert not [p for p in tmp_path.iterdir() if p.name.endswith(".tmp")]   # atomic writes
+
+
+def test_submitted_cache_re_polls_the_same_job_without_a_second_render(monkeypatch, tmp_path):
+    events, ckpts = [], []
+    _fake_media(monkeypatch, events=events)
+    import hashlib
+    (tmp_path / lt.CACHE_NAME).write_text(json.dumps({
+        "status": "submitted", "provider": "spatius", "job_id": "job-old", "avatar_id": "av",
+        "audio_url": "https://s3/old.wav", "voice_sha256": hashlib.sha256(b"VOICE-PCM").hexdigest(),
+    }))
+    res = lt.render_track(voice_audio=_voice(tmp_path), avatar_id="av", run_dir=tmp_path, run_name="vid1",
+                          uploader=_uploader(events), checkpoint=lambda paths: ckpts.append([p.name for p in paths]))
+    assert not [e for e in events if e[0] == "submit"]           # no new paid job
+    assert ("wait", "job-old") in events
+    assert not [e for e in events if e == ("upload", "ai-videos/vid1/lesson/teacher_voice.wav")]
+    assert res["status"] == "ready" and res["job_id"] == "job-old" and res["audio_url"] == "https://s3/old.wav"
+    assert ckpts == [[lt.CACHE_NAME]]
+
+
+def test_submitted_cache_for_a_different_voice_renders_again(monkeypatch, tmp_path):
+    events = []
+    _fake_media(monkeypatch, events=events)
+    (tmp_path / lt.CACHE_NAME).write_text(json.dumps({
+        "status": "submitted", "job_id": "job-old", "avatar_id": "av", "voice_sha256": "not-this-voice",
+    }))
+    res = lt.render_track(voice_audio=_voice(tmp_path), avatar_id="av", run_dir=tmp_path, run_name="vid1",
+                          uploader=_uploader(events))
+    assert [e for e in events if e[0] == "submit"] and res["job_id"] == "job-new"
+
+
+def test_a_dead_submitted_job_is_submitted_once_more(monkeypatch, tmp_path):
+    events = []
+    _fake_media(monkeypatch, events=events)
+    import hashlib
+
+    def wait(job_id, *, timeout_s, **kw):
+        events.append(("wait", job_id))
+        if job_id == "job-old":
+            raise lt.TeacherRenderError("Spatius job expired")
+        return "https://vendor/new.mp4"
+
+    monkeypatch.setattr(lt, "wait_for_video", wait)
+    (tmp_path / lt.CACHE_NAME).write_text(json.dumps({
+        "status": "submitted", "job_id": "job-old", "avatar_id": "av", "audio_url": "https://s3/old.wav",
+        "voice_sha256": hashlib.sha256(b"VOICE-PCM").hexdigest(),
+    }))
+    res = lt.render_track(voice_audio=_voice(tmp_path), avatar_id="av", run_dir=tmp_path, run_name="vid1",
+                          uploader=_uploader(events))
+    assert [e[0] for e in events if e[0] in ("wait", "submit")] == ["wait", "submit", "wait"]
+    assert ("submit", "https://s3/old.wav") in events and res["job_id"] == "job-new"
+
+
+def test_ready_cache_restored_on_another_pod_downloads_the_raw_render(monkeypatch, tmp_path):
+    events = []
+    _fake_media(monkeypatch, events=events)
+    (tmp_path / lt.CACHE_NAME).write_text(json.dumps({
+        "status": "ready", "job_id": "job-old", "avatar_id": "av", "raw_mp4": "/old-pod/tmp/lesson/teacher_raw.mp4",
+        "raw_mp4_url": "https://s3/ai-videos/vid1/lesson/teacher_raw.mp4", "precut": [{"url": "https://s3/c.webm"}],
+    }))
+    res = lt.render_track(voice_audio=_voice(tmp_path), avatar_id="av", run_dir=tmp_path, run_name="vid1",
+                          uploader=_uploader(events))
+    assert [e[0] for e in events] == ["download"]                  # no submit, no wait, no upload
+    assert res["raw_mp4"] == str(tmp_path / "lesson" / "teacher_raw.mp4")
+    assert (tmp_path / "lesson" / "teacher_raw.mp4").read_bytes() == b"MP4"
+    assert res["precut"] == [{"url": "https://s3/c.webm"}]
+
+
+def test_raw_mp4_goes_to_the_checkpoint_only_when_its_own_upload_failed(monkeypatch, tmp_path):
+    events, ckpts = [], []
+    _fake_media(monkeypatch, events=events)
+    res = lt.render_track(voice_audio=_voice(tmp_path), avatar_id="av", run_dir=tmp_path, run_name="vid1",
+                          uploader=_uploader(events, fail_mp4=True),
+                          checkpoint=lambda paths: ckpts.append([p.name for p in paths]))
+    assert res["raw_mp4_url"] is None and res["status"] == "ready"
+    assert ckpts[-1] == [lt.CACHE_NAME, "teacher_raw.mp4"]
+
+
+def test_a_failing_checkpoint_never_fails_the_render(monkeypatch, tmp_path):
+    events = []
+    _fake_media(monkeypatch, events=events)
+
+    def boom(paths):
+        raise RuntimeError("uploader exploded")
+
+    res = lt.render_track(voice_audio=_voice(tmp_path), avatar_id="av", run_dir=tmp_path, run_name="vid1",
+                          uploader=_uploader(events), checkpoint=boom)
+    assert res["status"] == "ready"

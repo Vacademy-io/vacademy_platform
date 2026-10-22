@@ -25,6 +25,7 @@ import re
 import subprocess
 import sys
 import textwrap
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple
@@ -2761,6 +2762,11 @@ class VideoGenerationPipeline:
         # attribute below (audited via AST 2026-07-10). Values mirror the
         # inert defaults run() starts from.
         self._stop_event = None  # cooperative-cancel Event (None = no cancel)
+        # Resume checkpointing: the service's per-leg uploader hook (see
+        # `_checkpoint`) and the resume flavour ("auto" = deterministic
+        # crash/deploy resume — reuse per-shot TTS from run_dir/tts).
+        self._checkpoint_cb = None
+        self._resume_mode: Optional[str] = None
         # Vision-review / bbox-lint per-run state.
         self._vision_review_banner_shown = False
         self._vision_review_run_cost_usd = 0.0
@@ -3648,6 +3654,179 @@ class VideoGenerationPipeline:
         if self._stop_event is not None and self._stop_event.is_set():
             raise PipelineCancelled("Pipeline cancelled by user")
 
+    # ── Resume checkpointing ───────────────────────────────────────────
+    # The service passes `checkpoint_callback(kind, paths)` into run(); it
+    # enqueues the files for an off-thread S3 upload so a crashed / drained
+    # leg can resume from the last finished artifact. Kinds:
+    #   shot          one shot_cache/shot_NNN[_subK].json just written
+    #   tts           run_dir/tts/* + narration.mp3 / narration_raw.json /
+    #                 narration.words.{json,csv} / narration_unmixed.mp3
+    #   director      director_plan.json / style_guide.json / asset_selections.json
+    #   host_outputs  host_outputs.json (AvatarBatch end)
+    #   teacher       lesson_teacher.json (+ lesson/teacher_raw.mp4 only when
+    #                 the teacher's own public upload of it failed)
+    #   preamble      routing_plan.json / video_type.json / host_plan.json /
+    #                 visual_preferences.json / reference_context.json
+    # Checkpointing is best-effort: it must never fail or stall the run.
+    _TTS_CHECKPOINT_FILES = (
+        "narration.mp3",
+        "narration_raw.json",
+        "narration.words.json",
+        "narration.words.csv",
+        "narration_unmixed.mp3",
+    )
+    _PREAMBLE_CHECKPOINT_FILES = (
+        "routing_plan.json",
+        "video_type.json",
+        "host_plan.json",
+        "visual_preferences.json",
+        "reference_context.json",
+    )
+    _DIRECTOR_CHECKPOINT_FILES = (
+        "director_plan.json",
+        "style_guide.json",
+        "asset_selections.json",
+    )
+
+    def _checkpoint(self, kind: str, paths: Any) -> None:
+        """Hand finished files to the service's checkpoint uploader.
+
+        Swallows every error — a broken uploader must never fail or block a
+        generation. Missing paths are dropped; nothing is called when no
+        file is left. The callback is expected to enqueue and return."""
+        cb = getattr(self, "_checkpoint_cb", None)
+        if cb is None:
+            return
+        try:
+            if isinstance(paths, (str, Path)):
+                paths = [paths]
+            files = [Path(p) for p in (paths or []) if p and Path(p).is_file()]
+            if not files:
+                return
+            cb(kind, files)
+        except Exception as _ck_err:  # noqa: BLE001 — best-effort by contract
+            try:
+                print(f"   ⚠️ checkpoint '{kind}' skipped: {type(_ck_err).__name__}: {_ck_err}")
+            except Exception:
+                pass
+
+    @staticmethod
+    def _atomic_write_text(path: Path, text: str) -> None:
+        """Write via a sibling temp file + os.replace so a concurrent reader
+        (the checkpoint uploader, a resume download) never sees half a file.
+        The temp name is unique per call — shot workers write in parallel."""
+        path = Path(path)
+        tmp = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+        try:
+            tmp.write_text(text, encoding="utf-8")
+            os.replace(tmp, path)
+        finally:
+            if tmp.exists():
+                try:
+                    tmp.unlink()
+                except Exception:
+                    pass
+
+    def _write_shot_cache(self, cache_path: Path, body: Dict[str, Any]) -> None:
+        """Atomically persist one shot's cache file and checkpoint it.
+        Never raises (a cache write failure only costs a regen on resume)."""
+        try:
+            self._atomic_write_text(cache_path, json.dumps(body, default=str))
+        except Exception as _sc_err:
+            print(f"   ⚠️ shot cache write failed ({cache_path.name}): {_sc_err}")
+            return
+        self._checkpoint("shot", [cache_path])
+
+    def _retry_empty_shot_html(
+        self,
+        *,
+        system_prompt: str,
+        user_prompt: str,
+        temperature: float,
+        max_tokens: int,
+        primary_model: Optional[str],
+        usage: Dict[str, Any],
+        log_label: str,
+    ) -> Optional[Dict[str, Any]]:
+        """ONE retry of a shot whose HTML came back empty, on the
+        different-vendor fallback model (NON_GLM_FALLBACK) with the same
+        prompt. Returns the parsed shot object when it carries HTML, else
+        None (caller ships the fallback card as before). Tokens are added
+        to `usage` either way. Never raises."""
+        fb_model = NON_GLM_FALLBACK
+        if not fb_model:
+            return None
+        _attempt_usage: Dict[str, Any] = {}
+        try:
+            print(
+                f"   🔁 {log_label}: empty HTML from {primary_model or 'default model'} "
+                f"— retrying once on {fb_model}"
+            )
+            raw_fb, _attempt_usage = self.html_client.chat(
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                temperature=temperature,
+                max_tokens=max_tokens,
+                model=fb_model,
+            )
+        except Exception as _fb_err:
+            print(f"   ⚠️ {log_label}: fallback-model retry failed ({type(_fb_err).__name__}: {_fb_err})")
+            return None
+        finally:
+            for _k in ("prompt_tokens", "completion_tokens", "total_tokens"):
+                usage[_k] = usage.get(_k, 0) + (_attempt_usage or {}).get(_k, 0)
+        try:
+            data_fb = _extract_json_blob(raw_fb)
+        except Exception as _pe:
+            print(f"   ⚠️ {log_label}: fallback-model retry unparseable ({_pe})")
+            return None
+        if isinstance(data_fb, dict) and str(data_fb.get("html") or "").strip():
+            print(f"   ✅ {log_label}: fallback model {fb_model} produced the shot")
+            return data_fb
+        print(f"   ⚠️ {log_label}: fallback model {fb_model} also returned empty HTML")
+        return None
+
+    def _checkpoint_tts(self, run_dir: Path) -> None:
+        """Checkpoint the narration set (per-shot TTS + master + word timings).
+        Must run BEFORE the lesson teacher job is submitted: a resumed run
+        that re-synthesised a different voice would no longer match the
+        teacher video rendered from the first one."""
+        try:
+            run_dir = Path(run_dir)
+            files: List[Path] = []
+            tts_dir = run_dir / "tts"
+            if tts_dir.is_dir():
+                files.extend(
+                    sorted(p for p in tts_dir.iterdir()
+                           if p.is_file() and not p.name.startswith("."))
+                )
+            files.extend(run_dir / n for n in self._TTS_CHECKPOINT_FILES)
+        except Exception as _tts_ck_err:
+            print(f"   ⚠️ checkpoint 'tts' skipped: {_tts_ck_err}")
+            return
+        self._checkpoint("tts", files)
+
+    def _checkpoint_preamble(self, run_dir: Path) -> None:
+        """SCRIPT-end checkpoint: the routing / video-type / host / visual
+        preference plans the service wrote into run_dir, plus the final
+        merged reference context (written here as reference_context.json so
+        a cross-pod resume keeps the user's uploads + scrape artifacts)."""
+        try:
+            run_dir = Path(run_dir)
+            ref_ctx = getattr(self, "_reference_context", None)
+            if isinstance(ref_ctx, dict) and ref_ctx:
+                self._atomic_write_text(
+                    run_dir / "reference_context.json",
+                    json.dumps(ref_ctx, ensure_ascii=False, default=str),
+                )
+        except Exception as _rc_err:
+            print(f"   ⚠️ reference_context.json write failed: {_rc_err}")
+        self._checkpoint(
+            "preamble", [Path(run_dir) / n for n in self._PREAMBLE_CHECKPOINT_FILES]
+        )
+
     def run(
         self,
         base_prompt: Optional[str],
@@ -3718,12 +3897,23 @@ class VideoGenerationPipeline:
         # {enabled, enabled_gates, answered_decisions, auto_all_gates}. None ⇒
         # fully autonomous (every assist branch below is a no-op).
         assist_state: Optional[Dict[str, Any]] = None,
+        # Resume checkpointing (see `_checkpoint`): called as
+        # `checkpoint_callback(kind, [paths])` whenever a resumable artifact
+        # is finished. Must be non-blocking (enqueue + return). None ⇒ off.
+        checkpoint_callback: Optional[Callable[[str, List[Path]], None]] = None,
+        # "auto" ⇒ deterministic crash/deploy resume: per-shot TTS reuses
+        # run_dir/tts/shot_NNN.{mp3,_raw.json} when the text matches, so the
+        # resumed narration (and the cached shots timed against it) is
+        # identical. None ⇒ legacy behaviour (always re-synthesise).
+        resume_mode: Optional[str] = None,
     ) -> Dict[str, Any]:
         # Stash the cooperative stop signal on the instance so deeply-nested
         # methods (per-shot HTML, sound planner, etc.) can check it via
         # `self._check_stop()` without threading the parameter through every
         # call site. None disables checking entirely (legacy / tests).
         self._stop_event = stop_event
+        self._checkpoint_cb = checkpoint_callback
+        self._resume_mode = (str(resume_mode).strip().lower() or None) if resume_mode else None
 
         # Assist mode: gate config + the per-query forced media selections the
         # user made on a previous leg (loaded from asset_selections.json once
@@ -4346,6 +4536,22 @@ class VideoGenerationPipeline:
         run_dir = self._resolve_run_dir(run_name, resume_run)
         run_dir.mkdir(parents=True, exist_ok=True)
 
+        # Resume: the final merged reference context (uploads + web capture +
+        # scrape artifacts) is checkpointed as reference_context.json at
+        # SCRIPT end. A resumed leg may get no reference_context from the
+        # service (reference_files are not part of the persisted request) —
+        # restore it from run_dir so the board keeps the user's material.
+        if not self._reference_context:
+            _rc_path = run_dir / "reference_context.json"
+            if _rc_path.exists():
+                try:
+                    _rc_loaded = json.loads(_rc_path.read_text(encoding="utf-8"))
+                    if isinstance(_rc_loaded, dict) and _rc_loaded:
+                        self._reference_context = _rc_loaded
+                        print("♻️  reference_context.json restored from run_dir")
+                except Exception as _rc_err:
+                    print(f"⚠️ reference_context.json unreadable on resume: {_rc_err}")
+
         # Assist mode: load the user's forced media picks from a prior leg so the
         # HTML-stage casting gate doesn't re-prompt and the resolver forces the
         # chosen URL per query. No-op when the file is absent (first leg / auto).
@@ -4425,6 +4631,14 @@ class VideoGenerationPipeline:
                         )
             except Exception:
                 self._shot_regen_notes = {}
+            # A sent-back shot's AI-video re-render is a NEW charge — keep its
+            # ledger idempotency key apart from the first render's.
+            _av_led = getattr(self, "_ai_video_ledger", None)
+            if self._shot_regen_notes and _av_led is not None:
+                try:
+                    _av_led.regen_shots = set(self._shot_regen_notes)
+                except Exception:
+                    pass
 
         # Cache the run identifier so downstream stages (host avatar batch,
         # post-processing) can namespace their S3 uploads. Without this every
@@ -5225,6 +5439,11 @@ class VideoGenerationPipeline:
                         f"({type(_v3r_err).__name__}: {_v3r_err}) — falling back to v2 behavior"
                     )
 
+        # SCRIPT end (fresh or resumed): checkpoint the preamble plans + the
+        # final merged reference context so a cross-pod resume keeps the
+        # host, routing and the user's reference material.
+        self._checkpoint_preamble(run_dir)
+
         # Content types that produce no audio (purely visual)
         NO_AUDIO_TYPES = {"SLIDES"}
 
@@ -5415,6 +5634,9 @@ class VideoGenerationPipeline:
                                       "message": "Voice narration ready",
                                       "tts_character_count": _tts_chars,
                                       "cumulative_tokens": dict(total_usage)})
+                # Monolithic TTS finished — checkpoint narration.mp3 +
+                # narration_raw.json now rather than only at stage end.
+                self._checkpoint_tts(run_dir)
             elif content_type not in NO_AUDIO_TYPES:
                 # Resuming from a checkpoint after TTS — files must already exist
                 self._require_file(response_json, "narration_raw.json (ElevenLabs response)")
@@ -5427,8 +5649,15 @@ class VideoGenerationPipeline:
                     _resumed_tts_chars = len(_script_text_for_tts)
                 except Exception:
                     _resumed_tts_chars = 0
+                # Billing: this TTS was synthesised (and billed) by an
+                # earlier leg. Report it under a separate, NEVER-billed key
+                # for the cost report only — adding it to
+                # tts_character_count re-billed premium TTS on every resume.
                 if _resumed_tts_chars:
-                    accumulate_usage({"tts_character_count": _resumed_tts_chars})
+                    total_usage["tts_character_count_resumed"] = (
+                        int(total_usage.get("tts_character_count_resumed", 0) or 0)
+                        + _resumed_tts_chars
+                    )
                 tts_outputs = {
                     "response_json": response_json,
                     "audio_path": audio_path,
@@ -5449,6 +5678,8 @@ class VideoGenerationPipeline:
                 self._check_stop()  # stage-boundary cancel checkpoint (before word alignment)
                 print("🔤 Deriving word timings ...")
                 word_outputs = self._parse_timestamps(tts_outputs["response_json"], run_dir)
+                # Word timings are part of the narration set a resume needs.
+                self._checkpoint_tts(run_dir)
             elif content_type not in NO_AUDIO_TYPES:
                 # Resuming from a checkpoint after WORDS — files must already exist
                 self._require_file(words_json, "narration.words.json")
@@ -6070,6 +6301,12 @@ class VideoGenerationPipeline:
                         print(f"   ⚠️ Could not start thumbnail batch: {_tb_err}")
 
                 if _director_plan and _director_plan.get("shots"):
+                    # director_done: checkpoint the plan + style guide (and the
+                    # assist casting picks) so a resume skips the Director.
+                    self._checkpoint(
+                        "director",
+                        [run_dir / n for n in self._DIRECTOR_CHECKPOINT_FILES],
+                    )
                     # ── Phase B: v2 per-shot TTS (after Director, before avatar) ──
                     # Director plan is final and AudioPolicyPlanner has set
                     # `audio_policy` per shot. Now produce per-shot narration
@@ -6097,6 +6334,17 @@ class VideoGenerationPipeline:
                             _v2_chars = int(tts_outputs.get("tts_character_count") or 0)
                             if _v2_chars > 0:
                                 accumulate_usage({"tts_character_count": _v2_chars})
+                            # Of which reused from run_dir/tts on an auto
+                            # resume (no vendor call this leg). Informational:
+                            # combine-mode TTS is billed once at HTML end, so
+                            # the service decides whether these chars were
+                            # already billed by an earlier leg.
+                            _v2_cached = int(tts_outputs.get("tts_character_count_cached") or 0)
+                            if _v2_cached > 0:
+                                total_usage["tts_character_count_cached"] = (
+                                    int(total_usage.get("tts_character_count_cached", 0) or 0)
+                                    + _v2_cached
+                                )
                             # Refresh words + seg_audio_dur from concat result.
                             try:
                                 _v2_raw = tts_outputs.get("response_json")
@@ -6204,6 +6452,11 @@ class VideoGenerationPipeline:
                                 print(f"   ❌ Monolithic TTS fallback also failed: {_fb_err}")
                                 # Re-raise — the run can't proceed without audio
                                 raise
+                        # Narration is final (per-shot mp3s → concat → timing
+                        # reconcile → word timings). Checkpoint it NOW — before
+                        # the avatar batch and, critically, before the lesson
+                        # teacher job is submitted below.
+                        self._checkpoint_tts(run_dir)
 
                     # Per-shot HTML generation using Director plan
                     print(f"🎬 Using Director plan: {len(_director_plan['shots'])} shots")
@@ -6285,6 +6538,9 @@ class VideoGenerationPipeline:
                             _nw_usage = _regen.get("nw_usage") or {}
                             if _nw_usage:
                                 accumulate_usage(_nw_usage)
+                            # The narration was re-recorded — re-checkpoint
+                            # it before the lesson teacher is submitted.
+                            self._checkpoint_tts(run_dir)
 
                     # ── Late emphasis_map build (post per-shot TTS) ──────
                     # v2 builds emphasis_map inside `_run_director` from the
@@ -8267,6 +8523,35 @@ class VideoGenerationPipeline:
         shot_script_path = tts_dir / f"shot_{shot_idx:03d}_script.txt"
         shot_audio_path = tts_dir / f"shot_{shot_idx:03d}.mp3"
         shot_raw_json = tts_dir / f"shot_{shot_idx:03d}_raw.json"
+
+        # Auto resume (crash / deploy): reuse this shot's audio restored into
+        # run_dir/tts when it was recorded for the SAME text (mirrors the
+        # regen_shot_narration cache check). Re-synthesising would cost the
+        # TTS again AND produce different durations, misaligning every cached
+        # shot. char_count is still reported (combine-mode TTS is billed once,
+        # at HTML end); `cache_hit` lets the service tell the two apart.
+        if getattr(self, "_resume_mode", None) == "auto":
+            try:
+                if (
+                    shot_script_path.is_file()
+                    and shot_audio_path.is_file()
+                    and shot_audio_path.stat().st_size > 0
+                    and shot_raw_json.is_file()
+                    and shot_script_path.read_text(encoding="utf-8").strip() == narration_text
+                ):
+                    json.loads(shot_raw_json.read_text(encoding="utf-8"))  # corrupt ⇒ re-synth
+                    print(f"   ♻️  shot {shot_idx} TTS reused from run_dir/tts (auto resume)")
+                    return {
+                        "shot_idx": shot_idx,
+                        "skipped": False,
+                        "mp3_path": shot_audio_path,
+                        "raw_json_path": shot_raw_json,
+                        "char_count": len(narration_text),
+                        "cache_hit": True,
+                    }
+            except Exception as _tc_err:
+                print(f"   ⚠️ shot {shot_idx} TTS cache unusable ({_tc_err}) — re-synthesising")
+
         shot_script_path.write_text(narration_text, encoding="utf-8")
 
         tts_result = self._synthesize_voice(
@@ -9416,6 +9701,9 @@ class VideoGenerationPipeline:
                             )
                             if not self._dialogue_ledger.enabled:
                                 print("⚠️  dialogue credit ledger disabled (missing institute/video id)")
+                            self._dialogue_ledger.regen_shots = set(
+                                getattr(self, "_shot_regen_notes", None) or {}
+                            )
                         except Exception as _dl_err:
                             print(f"⚠️  dialogue credit ledger unavailable: {_dl_err}")
                             self._dialogue_ledger = False  # tried and failed; no retry
@@ -10926,6 +11214,7 @@ class VideoGenerationPipeline:
         # ── Per-shot TTS loop with progress events ────────────────────
         per_shot_outputs: List[Dict[str, Any]] = []
         total_chars = 0
+        cached_chars = 0  # reused from run_dir/tts on an auto resume
         for loop_idx, shot in enumerate(_v2_shots):
             shot_idx = self._coerce_shot_index(shot.get("shot_index"), loop_idx)
             narration_text = shot.get("_v2_narration_text") or ""
@@ -10959,6 +11248,8 @@ class VideoGenerationPipeline:
             result["intended_duration_s"] = float(shot.get("shot_duration_s") or 0.0)
             per_shot_outputs.append(result)
             total_chars += int(result.get("char_count") or 0)
+            if result.get("cache_hit"):
+                cached_chars += int(result.get("char_count") or 0)
             self._emit_progress({
                 "type": "sub_stage",
                 "sub_stage": "tts_shot_done",
@@ -11012,6 +11303,7 @@ class VideoGenerationPipeline:
         tts_outputs["audio_path"] = master_audio_path
         tts_outputs["response_json"] = master_raw_json
         tts_outputs["tts_character_count"] = total_chars
+        tts_outputs["tts_character_count_cached"] = cached_chars
         tts_outputs["deferred_to_html"] = False
 
         # Track TTS character count for credit deduction (mirrors the
@@ -11021,6 +11313,7 @@ class VideoGenerationPipeline:
             "sub_stage": "tts_done",
             "message": f"Per-shot narration ready ({total_dur:.1f}s, {total_chars} chars)",
             "tts_character_count": total_chars,
+            "tts_character_count_cached": cached_chars,
             "shot_count": total_shots,
         })
         print(
@@ -12808,6 +13101,27 @@ class VideoGenerationPipeline:
             "_skill_audio_events": [],
         }
 
+    def _lesson_proper_nouns(self, lm_mod: Any, plan: Dict[str, Any]) -> List[str]:
+        """Names the lesson board may show that the fact-check must never
+        'correct' (prod: the institute "ITRC" in a heading was flagged as a
+        garbled "CHAPTER"): branding / brand-kit names, the teacher's name and
+        ALL-CAPS tokens of the user's prompt. Computed once per run."""
+        cached = getattr(self, "_lesson_proper_nouns_cache", None)
+        if isinstance(cached, tuple) and len(cached) == 2 and cached[0] is plan:
+            return cached[1]
+        try:
+            nouns = lm_mod.known_proper_nouns(
+                prompt=getattr(self, "_user_prompt_raw", "") or "",
+                branding=getattr(self, "_current_branding", None),
+                brand_system_prompt=getattr(self, "_current_brand_system_prompt", None),
+                teacher=(plan or {}).get("teacher"),
+            )
+        except Exception as _pn_err:
+            print(f"   ⚠️ lesson proper-noun list failed ({_pn_err}) — checking without it")
+            nouns = []
+        self._lesson_proper_nouns_cache = (plan, nouns)
+        return nouns
+
     def _lesson_check_shot(
         self,
         *,
@@ -12832,6 +13146,7 @@ class VideoGenerationPipeline:
         import lesson_mode as _lm_f
         narration = str(shot.get("narration_text") or shot.get("narration_excerpt") or "")
         record: Dict[str, Any] = {"issues": [], "shipped": "original", "regen_html": None}
+        proper_nouns = self._lesson_proper_nouns(_lm_f, plan)
         issues = _lm_f.notation_issues(html, narration)
         board = _lm_f.board_text(html)
         if board and narration:
@@ -12842,7 +13157,8 @@ class VideoGenerationPipeline:
                     messages=[
                         {"role": "system", "content": _lm_f.FACT_CHECK_SYSTEM},
                         {"role": "user", "content": _lm_f.fact_check_user_prompt(
-                            narration=narration, board=board, subject=plan.get("subject"))},
+                            narration=narration, board=board, subject=plan.get("subject"),
+                            proper_nouns=proper_nouns)},
                     ],
                     model=(self._resolve_stage_model("vision_review")
                            or self._resolve_stage_model("narration_writer")),
@@ -12852,7 +13168,9 @@ class VideoGenerationPipeline:
                 )
                 for _k in ("prompt_tokens", "completion_tokens", "total_tokens"):
                     usage[_k] = usage.get(_k, 0) + (usage_c or {}).get(_k, 0)
-                issues += _lm_f.parse_fact_check(_extract_json_blob(raw_c or "{}"))
+                issues += _lm_f.parse_fact_check(
+                    _extract_json_blob(raw_c or "{}"), proper_nouns=proper_nouns
+                )
             except Exception as exc:
                 record["check_error"] = str(exc)[:200]
                 print(f"   ⚠️ Shot {shot_idx + 1} lesson fact-check skipped ({str(exc)[:80]})")
@@ -12871,7 +13189,7 @@ class VideoGenerationPipeline:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
                     {"role": "assistant", "content": (last_raw_response or "")[:4000]},
-                    {"role": "user", "content": _lm_f.correction_prompt(issues)},
+                    {"role": "user", "content": _lm_f.correction_prompt(issues, proper_nouns)},
                 ],
                 temperature=0.3,
                 max_tokens=self._tier_config.get("per_shot_max_tokens", _PER_SHOT_MAX_TOKENS),
@@ -19373,9 +19691,11 @@ class VideoGenerationPipeline:
             "errors": errors,
         }
         try:
-            (_Path(run_dir) / "host_outputs.json").write_text(
-                _json.dumps(outputs, indent=2), encoding="utf-8"
+            self._atomic_write_text(
+                _Path(run_dir) / "host_outputs.json", _json.dumps(outputs, indent=2)
             )
+            # Resume skips every avatar shot listed here (paid renders).
+            self._checkpoint("host_outputs", [_Path(run_dir) / "host_outputs.json"])
         except Exception as e:
             print(f"[AvatarBatch] ⚠️  Could not persist host_outputs.json: {e}")
 
@@ -19748,12 +20068,7 @@ class VideoGenerationPipeline:
                             on_segment_done([_ds_entry])
                         except Exception:
                             pass
-                    try:
-                        _cache_path.write_text(
-                            json.dumps({"entries": [_ds_entry], "usage": {}}, default=str)
-                        )
-                    except Exception:
-                        pass
+                    self._write_shot_cache(_cache_path, {"entries": [_ds_entry], "usage": {}})
                     return [_ds_entry], {}
                 # Demote: plain visual beat over the (already silent) window.
                 print(
@@ -19945,12 +20260,7 @@ class VideoGenerationPipeline:
                                 on_segment_done([_av_entry])
                             except Exception:
                                 pass
-                        try:
-                            _cache_path.write_text(
-                                json.dumps({"entries": [_av_entry], "usage": {}}, default=str)
-                            )
-                        except Exception:
-                            pass
+                        self._write_shot_cache(_cache_path, {"entries": [_av_entry], "usage": {}})
                         return [_av_entry], {}
                     else:
                         # Failure (fal error, budget/cap exhausted, safety
@@ -20093,12 +20403,7 @@ class VideoGenerationPipeline:
                         except Exception:
                             pass
                     # Cache so a resume can skip; usage = empty since we skipped the LLM.
-                    try:
-                        _cache_path.write_text(
-                            json.dumps({"entries": [_t_entry], "usage": {}}, default=str)
-                        )
-                    except Exception:
-                        pass
+                    self._write_shot_cache(_cache_path, {"entries": [_t_entry], "usage": {}})
                     return [_t_entry], {}
                 else:
                     # Template said skip — log and fall through to the LLM path.
@@ -21738,13 +22043,35 @@ class VideoGenerationPipeline:
                             f"winner '{_winner.get('angle')}' via {(_judge_meta or {}).get('mode')}"
                         )
 
-            html = data.get("html", "")
-            if not html:
-                print(f"   ⚠️ Shot {shot_idx + 1} returned empty HTML")
-                # Returning no entry left a hole in the timeline (a blank
-                # 10 s stretch in the LMS player). Raise so the shot loop
-                # ships its fallback card for this shot instead.
-                raise RuntimeError(f"Shot {shot_idx + 1} returned empty HTML")
+            html = data.get("html", "") if isinstance(data, dict) else ""
+            if not (html or "").strip():
+                print(f"   ⚠️ {_log_label} returned empty HTML (model {_shot_model})")
+                # One retry on the different-vendor fallback model with the
+                # SAME prompt before giving up: an empty body is usually a
+                # model-side hiccup (reasoning ate the budget, a filtered
+                # completion), and a real shot beats a fallback card.
+                _fb_html_data = self._retry_empty_shot_html(
+                    system_prompt=system_prompt,
+                    user_prompt=_base_user_prompt,
+                    temperature=_shot_temperature,
+                    max_tokens=_shot_max_tokens,
+                    primary_model=_shot_model,
+                    usage=usage,
+                    log_label=_log_label,
+                )
+                if _fb_html_data is not None:
+                    data = _fb_html_data
+                    html = data.get("html", "")
+                    try:
+                        raw = json.dumps(data, ensure_ascii=False)
+                    except Exception:
+                        pass
+                else:
+                    # Returning no entry left a hole in the timeline (a blank
+                    # 10 s stretch in the LMS player). Raise so the shot loop
+                    # ships its fallback card for this shot instead (an empty
+                    # SUB-shot is skipped by its parent).
+                    raise RuntimeError(f"Shot {shot_idx + 1} returned empty HTML")
 
             html = self._sanitize_html_content(html)
 
@@ -22462,13 +22789,12 @@ class VideoGenerationPipeline:
             # SAME cache file under "shot_look" (resume readers only consume
             # entries/usage — additive-safe) so a future shot_look gate can
             # present them without regenerating.
-            try:
-                _cache_body: Dict[str, Any] = {"entries": entries, "usage": usage}
-                if _shot_look_stash:
-                    _cache_body["shot_look"] = _shot_look_stash
-                _cache_path.write_text(json.dumps(_cache_body, default=str))
-            except Exception:
-                pass  # cache write failure is non-fatal
+            # Atomic (temp + os.replace) and checkpointed the moment it lands,
+            # so a crash / deploy mid-HTML resumes from every finished shot.
+            _cache_body: Dict[str, Any] = {"entries": entries, "usage": usage}
+            if _shot_look_stash:
+                _cache_body["shot_look"] = _shot_look_stash
+            self._write_shot_cache(_cache_path, _cache_body)  # never raises
 
             return entries, usage
 
@@ -29475,6 +29801,10 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                     run_dir=run_dir,
                     run_name=run_name,
                     on_progress=lambda st: print(f"   🧑‍🏫 Teacher render: {st}"),
+                    # Persist the Spatius job the moment it is submitted (and
+                    # again when ready) so a resumed leg re-polls the same
+                    # paid job instead of rendering a second one.
+                    checkpoint=lambda paths: self._checkpoint("teacher", paths),
                 )
                 _r = self._lesson_teacher_result or {}
                 print(
@@ -29507,6 +29837,9 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                                 run_dir=run_dir, run_name=run_name, pad_end_s=1.0,
                             )
                             print(f"   🧑‍🏫 Teacher clips pre-cut: {len(_r.get('precut') or [])} run(s)")
+                            # Pre-cut clip URLs ride lesson_teacher.json —
+                            # checkpoint so a resume reuses them.
+                            self._checkpoint("teacher", [run_dir / _lt.CACHE_NAME])
                     except Exception as _pc_err:
                         print(f"   ⚠️ Teacher clip pre-cut skipped ({_pc_err}) — cutting at timeline time")
             except Exception as _err:

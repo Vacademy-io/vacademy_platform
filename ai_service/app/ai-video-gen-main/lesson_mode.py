@@ -439,21 +439,150 @@ FACT_CHECK_SYSTEM = (
     "Report ONLY definite mistakes: wrong arithmetic, a wrong formula or law, wrong notation for what is "
     "said (e.g. a subscript where the teacher says 'squared'), numbers/units that contradict the "
     "narration, or a false fact. Ignore style, wording, layout, missing detail and anything you are "
-    "unsure about. Respond with ONE JSON object: "
+    "unsure about. Names are not errors: words in the KNOWN PROPER NOUNS list (the institute or brand, "
+    "the teacher, exams and acronyms the user wrote) are correct exactly as written — never report "
+    "them as garbled, misspelt or wrong, and never 'fix' them into other words. Respond with ONE JSON object: "
     '{"errors": [{"board": "<the wrong text as shown>", "problem": "<why it is wrong>", "fix": "<correct text>"}]} '
     '— use {"errors": []} when the section is correct.'
 )
 
+# ALL-CAPS words in a user's prompt that are instructions, not names.
+_CAPS_STOPWORDS = frozenset({
+    "A", "I", "AN", "AND", "OR", "THE", "OF", "TO", "IN", "ON", "FOR", "IS", "IT", "BE", "AS", "AT",
+    "BY", "WITH", "NOT", "NO", "DO", "DONT", "MUST", "SHOULD", "NEVER", "ALWAYS", "ONLY", "ALL", "ANY",
+    "IMPORTANT", "NOTE", "NOTES", "WARNING", "VISUAL", "APPROACH", "VIDEO", "LESSON", "SCRIPT",
+    "SECTION", "CHAPTER", "TOPIC", "STEP", "STEPS", "PART", "END", "START", "TITLE", "INTRO", "OUTRO",
+    "YES", "OK", "PLEASE", "NEW", "USE", "MAKE", "SHOW", "ADD", "KEEP", "AVOID", "HTML", "JSON",
+})
+_CAPS_TOKEN = re.compile(r"(?<![A-Za-z0-9])([A-Z][A-Z0-9&.\-]*[A-Z0-9]|[A-Z]{2,})(?![a-z])")
+_BRAND_NAME_KEYS = ("name", "brand_name", "institute_name", "organization", "organisation",
+                    "title", "text", "logo_text", "heading")
+_MAX_PROPER_NOUNS = 30
 
-def fact_check_user_prompt(*, narration: str, board: str, subject: Optional[str]) -> str:
+
+def _caps_tokens(text: str) -> List[str]:
+    """ALL-CAPS name-like tokens (ITRC, JEE). Never tokens with digits — those
+    are formulas / notation (CO2, H2SO4), exactly what the checker must still
+    correct — and nothing from a prompt written mostly in capitals (there the
+    caps are just shouted words: PHOTOSYNTHESIS, CLASS)."""
+    words = re.findall(r"[A-Za-z]{2,}", text or "")
+    if len(words) >= 4 and sum(1 for w in words if w.isupper()) * 2 > len(words):
+        return []
+    out: List[str] = []
+    for m in _CAPS_TOKEN.finditer(text or ""):
+        tok = m.group(1).strip(".-")
+        letters = re.sub(r"[^A-Z]", "", tok)
+        if len(letters) < 2 or tok in _CAPS_STOPWORDS or re.search(r"\d", tok):
+            continue
+        out.append(tok)
+    return out
+
+
+def _branding_names(branding: Any) -> List[str]:
+    """Short visible strings of the ENABLED intro/outro/watermark sections:
+    the institute / brand name lives there (text fields or the html)."""
+    names: List[str] = []
+    if not isinstance(branding, dict):
+        return names
+    for section in branding.values():
+        if not isinstance(section, dict) or not section.get("enabled", False):
+            continue
+        for key in _BRAND_NAME_KEYS:
+            val = section.get(key)
+            if isinstance(val, str) and 0 < len(val.strip()) <= 60:
+                names.append(val.strip())
+        markup = section.get("html")
+        if isinstance(markup, str) and markup:
+            visible = _SCRIPT_BLOCK.sub(" ", markup)
+            for chunk in _TAG.split(visible):
+                chunk = re.sub(r"\s+", " ", _html.unescape(chunk)).strip()
+                # A name, not a sentence: at most 4 words.
+                if chunk and len(chunk) <= 40 and len(chunk.split()) <= 4:
+                    names.append(chunk)
+    return names
+
+
+def known_proper_nouns(
+    *,
+    prompt: Optional[str] = None,
+    branding: Any = None,
+    brand_system_prompt: Optional[str] = None,
+    teacher: Optional[Dict[str, Any]] = None,
+    extra: Optional[Iterable[str]] = None,
+) -> List[str]:
+    """Names the board may legitimately show that a fact-checker could mistake
+    for typos ("ITRC" read as a garbled "CHAPTER"): the institute / brand name
+    from the run's branding, the teacher's name, ALL-CAPS tokens of the user's
+    prompt and the brand direction, plus `extra`. Order-preserving, de-duped
+    (case-insensitive), capped."""
+    cands: List[str] = []
+    cands += [str(x).strip() for x in (extra or []) if str(x or "").strip()]
+    cands += _branding_names(branding)
+    if isinstance(teacher, dict):
+        tname = str(teacher.get("name") or "").strip()
+        if tname:
+            cands.append(tname)
+    cands += _caps_tokens(prompt or "")
+    cands += _caps_tokens(brand_system_prompt or "")
+    out: List[str] = []
+    seen = set()
+    for c in cands:
+        c = c.strip()[:60]
+        key = c.lower()
+        if not c or key in seen:
+            continue
+        seen.add(key)
+        out.append(c)
+        if len(out) >= _MAX_PROPER_NOUNS:
+            break
+    return out
+
+
+def fact_check_user_prompt(
+    *,
+    narration: str,
+    board: str,
+    subject: Optional[str],
+    proper_nouns: Optional[Iterable[str]] = None,
+) -> str:
+    nouns = [str(n).strip() for n in (proper_nouns or []) if str(n or "").strip()]
     return (
         (f"SUBJECT: {subject}\n" if subject else "")
+        + (
+            "KNOWN PROPER NOUNS (correct as written — never report or change them): "
+            + ", ".join(nouns) + "\n"
+            if nouns else ""
+        )
         + f"NARRATION:\n{(narration or '').strip()[:2500]}\n\nBOARD:\n{board}"
     )
 
 
-def parse_fact_check(data: Any) -> List[str]:
-    """Normalise the checker's JSON into human-readable issue lines."""
+_NAME_PROBLEM = re.compile(r"garbl|spel|typo|gibberish|nonsens|acronym|abbreviat", re.I)
+
+
+def _touches_proper_noun(board: str, fix: str, nouns: List[str], problem: str = "") -> bool:
+    """True when the checker wants to 'correct' a known name itself: the
+    flagged board text contains the name, the fix drops it, AND either the
+    flagged text is (almost) only the name or the stated problem is about
+    spelling / a garbled word. A real error in a longer line that merely
+    mentions the name ("ITRC: 2 + 2 = 5" → "2 + 2 = 4") is kept."""
+    b, f = board.lower(), fix.lower()
+    for n in nouns:
+        k = n.lower()
+        pat = r"(?<![a-z0-9])" + re.escape(k) + r"(?![a-z0-9])"
+        if not k or not re.search(pat, b) or k in f:
+            continue
+        rest = re.findall(r"[a-z0-9]+", re.sub(pat, " ", b))
+        if not rest or _NAME_PROBLEM.search(problem or ""):
+            return True
+    return False
+
+
+def parse_fact_check(data: Any, proper_nouns: Optional[Iterable[str]] = None) -> List[str]:
+    """Normalise the checker's JSON into human-readable issue lines. Errors
+    that would rewrite a known proper noun are dropped (belt and braces for
+    the prompt rule)."""
+    nouns = [str(n).strip() for n in (proper_nouns or []) if str(n or "").strip()]
     errs = (data or {}).get("errors") if isinstance(data, dict) else None
     out: List[str] = []
     for e in errs or []:
@@ -462,18 +591,25 @@ def parse_fact_check(data: Any) -> List[str]:
         board = str(e.get("board") or "").strip()[:160]
         problem = str(e.get("problem") or "").strip()[:240]
         fix = str(e.get("fix") or "").strip()[:160]
+        if nouns and board and _touches_proper_noun(board, fix, nouns, problem):
+            continue
         if board or problem:
             out.append(f'"{board}" — {problem}' + (f' → write: "{fix}"' if fix else ""))
     return out[:6]
 
 
-def correction_prompt(issues: List[str]) -> str:
+def correction_prompt(issues: List[str], proper_nouns: Optional[Iterable[str]] = None) -> str:
+    nouns = [str(n).strip() for n in (proper_nouns or []) if str(n or "").strip()]
     return (
         "The board in your previous shot HTML has DEFINITE errors a learner would copy down:\n"
         + "\n".join(f"  - {i}" for i in issues)
         + "\n\nFix exactly these errors (correct text, numbers and notation; powers as superscripts via "
         "KaTeX). Keep the layout, shot_pack tokens, animation_strategy and narration sync unchanged. "
-        "Return only the JSON shot object."
+        + (
+            "Keep these proper nouns exactly as written: " + ", ".join(nouns) + ". "
+            if nouns else ""
+        )
+        + "Return only the JSON shot object."
     )
 
 

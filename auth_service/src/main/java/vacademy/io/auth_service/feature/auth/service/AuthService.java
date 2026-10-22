@@ -359,14 +359,13 @@ public class AuthService {
      *       "email" is already applied by LearnerAuthManager; random/manual are handled
      *       by the signup page itself.</li>
      *   <li>Everything else (admin add, CSV, invites, payments, forms): only when the
-     *       institute switched on usernameApplyToAll, and never over a username an
-     *       admin typed by hand.</li>
+     *       institute switched on usernameApplyToAll, and not over a username an
+     *       admin typed by hand unless usernameOverrideTyped is also on.</li>
      * </ul>
      * A missing value (no phone, field not filled) falls back to the old username.
      */
     private String usernameFromInstituteStrategy(UserDTO request, String instituteId, boolean selfSignup) {
-        if (!StringUtils.hasText(instituteId) || Boolean.TRUE.equals(request.getUsernameExplicit())
-                || !isLearnerRequest(request.getRoles())) {
+        if (!StringUtils.hasText(instituteId) || !isLearnerRequest(request.getRoles())) {
             return null;
         }
         InstituteSignupPolicy policy;
@@ -382,6 +381,10 @@ public class AuthService {
         String strategy = policy.getUserNameStrategy().trim();
         boolean valueStrategy = "phone".equalsIgnoreCase(strategy) || "customField".equalsIgnoreCase(strategy);
         if (selfSignup ? !valueStrategy : !policy.isUsernameApplyToAll()) {
+            return null;
+        }
+        if (Boolean.TRUE.equals(request.getUsernameExplicit())
+                && (!policy.isUsernameOverrideTyped() || "random".equalsIgnoreCase(strategy))) {
             return null;
         }
 

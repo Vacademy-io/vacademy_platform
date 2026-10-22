@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { BASE_URL } from '@/constants/urls';
 import { getInstituteId } from '@/constants/helper';
@@ -213,6 +214,7 @@ function mergeWithDefaults(
             usernameCustomFieldId: incoming?.signup?.usernameCustomFieldId,
             usernamePrefix: incoming?.signup?.usernamePrefix,
             usernameApplyToAll: incoming?.signup?.usernameApplyToAll ?? false,
+            usernameOverrideTyped: incoming?.signup?.usernameOverrideTyped ?? false,
             passwordStrategy: incoming?.signup?.passwordStrategy ?? d.signup.passwordStrategy,
             passwordDelivery: incoming?.signup?.passwordDelivery ?? d.signup.passwordDelivery,
             presentation: incoming?.signup?.presentation ?? d.signup.presentation,
@@ -489,6 +491,28 @@ export async function saveStudentDisplaySettings(
     );
     writeCache(settings);
 }
+
+/**
+ * The institute's learner-username rule for admin add forms (Settings → Login &
+ * Signup). `applies`: the strategy also covers admin adds. `overridesTyped`: it
+ * replaces a username the admin types, so forms lock that field. Reads the server
+ * copy (not the 24h cache) so a just-changed setting shows.
+ */
+export const useLearnerUsernamePolicy = () => {
+    const { data } = useQuery({
+        queryKey: ['student-display-settings', 'username-policy', getInstituteId()],
+        queryFn: () => getStudentDisplaySettings(true),
+        staleTime: 5 * 60 * 1000,
+    });
+    const signup = data?.signup;
+    const strategy = signup?.usernameStrategy;
+    const applies = !!signup?.usernameApplyToAll && strategy !== 'manual';
+    return {
+        strategy,
+        applies,
+        overridesTyped: applies && !!signup?.usernameOverrideTyped && strategy !== 'random',
+    };
+};
 
 export function clearStudentDisplaySettingsCache(): void {
     try {

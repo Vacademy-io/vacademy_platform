@@ -213,6 +213,55 @@ class AuthServiceUsernameDedupeTest {
         assertEquals("asha.typed", user.getUsername());
     }
 
+    private void strategyOverridingTyped(String name) {
+        when(institutePolicyService.fetchSignupPolicyCached(INSTITUTE_ID)).thenReturn(InstituteSignupPolicy.builder()
+                .userNameStrategy(name).usernameApplyToAll(true).usernameOverrideTyped(true).build());
+    }
+
+    @Test
+    void emailStrategyReplacesTypedUsernameWhenOverrideTypedOn() {
+        strategyOverridingTyped("email");
+        UserDTO dto = request("Asha@Yahoo.com", "asha.typed", null);
+        dto.setUsernameExplicit(true);
+
+        User user = authService.createUserForLearnerEnrollment(dto, INSTITUTE_ID, false, null);
+
+        assertEquals("asha@yahoo.com", user.getUsername());
+    }
+
+    @Test
+    void emailStrategyKeepsTypedUsernameWhenOverrideTypedOff() {
+        strategy("email", true, null, null);
+        UserDTO dto = request("asha@yahoo.com", "asha.typed", null);
+        dto.setUsernameExplicit(true);
+
+        User user = authService.createUserForLearnerEnrollment(dto, INSTITUTE_ID, false, null);
+
+        assertEquals("asha.typed", user.getUsername());
+    }
+
+    @Test
+    void overrideTypedKeepsTypedUsernameWhenStrategyHasNoValue() {
+        strategyOverridingTyped("email");
+        UserDTO dto = request(null, "asha.typed", "9876500000");
+        dto.setUsernameExplicit(true);
+
+        User user = authService.createUserForLearnerEnrollment(dto, INSTITUTE_ID, false, null);
+
+        assertEquals("asha.typed", user.getUsername());
+    }
+
+    @Test
+    void overrideTypedNeverReplacesTypedUsernameWithRandom() {
+        strategyOverridingTyped("random");
+        UserDTO dto = request("asha@yahoo.com", "asha.typed", null);
+        dto.setUsernameExplicit(true);
+
+        User user = authService.createUserForLearnerEnrollment(dto, INSTITUTE_ID, false, null);
+
+        assertEquals("asha.typed", user.getUsername());
+    }
+
     @Test
     void phoneStrategyAppliesToSelfSignupEvenWhenApplyToAllOff() {
         strategy("phone", false, null, null);

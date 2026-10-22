@@ -73,6 +73,8 @@
         "usernamePrefixHint": "Facultatif. Les noms d'utilisateur sont uniques entre tous les établissements ; un préfixe évite les conflits.",
         "usernameApplyToAll": "Appliquer à toutes les inscriptions",
         "usernameApplyToAllHint": "Désactivé : inscription des apprenants uniquement. Activé : aussi ajout par l'admin, import CSV, liens d'invitation, paiements et formulaires.",
+        "usernameOverrideTyped": "Remplacer aussi un identifiant saisi",
+        "usernameOverrideTypedHint": "Activé : l'ajout par l'admin et l'import CSV suivent cette règle même si un identifiant est saisi ; le champ est verrouillé.",
         "usernamePreview": "Les nouveaux apprenants auront des noms comme {{example}}.",
         "usernamePreviewNone": "Les nouveaux apprenants reçoivent un nom généré ou choisi par eux.",
         "usernameRulesNote": "Nouveaux apprenants uniquement — les noms existants ne changent jamais. Un nom saisi par un admin est toujours conservé, un nom déjà pris reçoit un court suffixe, et une valeur vide revient au nom habituel.",

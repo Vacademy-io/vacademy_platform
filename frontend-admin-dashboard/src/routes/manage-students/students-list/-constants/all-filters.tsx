@@ -5,7 +5,10 @@ import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingS
 import { InstituteDetailsType } from '@/schemas/student/student-list/institute-schema';
 import { removeDefaultPrefix } from '@/utils/helpers/removeDefaultPrefix';
 import { getBatchOwnName } from '@/utils/helpers/student-management/batch-display-name';
-import { ALL_SESSIONS_ID } from '@/routes/manage-students/students-list/-hooks/useStudentFilters';
+import {
+    ALL_SESSIONS_ID,
+    TERMINATED_STATUS,
+} from '@/routes/manage-students/students-list/-hooks/useStudentFilters';
 import { CustomFieldSetupItem } from '@/routes/audience-manager/list/-services/get-custom-field-setup';
 
 export const GetFilterData = (
@@ -31,7 +34,12 @@ export const GetFilterData = (
     // Trial/Paid distinction that means nothing there.
     membershipTypesAvailable = false
 ) => {
-    const statuses = instituteDetails?.student_statuses.map((status, index) => ({
+    // TERMINATED is offered on top of the institute's default roster statuses, but never
+    // applied by default — the normal list stays Active/Inactive, and an admin picks it to
+    // see members who were removed (e.g. terminated out of a practice).
+    const statusLabels: string[] = [...(instituteDetails?.student_statuses || [])];
+    if (!statusLabels.includes(TERMINATED_STATUS)) statusLabels.push(TERMINATED_STATUS);
+    const statuses = statusLabels.map((status, index) => ({
         id: index.toString(),
         label: status,
     }));

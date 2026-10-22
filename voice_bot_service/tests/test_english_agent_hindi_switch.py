@@ -38,3 +38,28 @@ def test_hinglish_agents_are_untouched():
     p = _prompt("navana", language="hinglish")
     assert "Write Hindi words in DEVANAGARI" in p
     assert "ONE exception: if the caller has asked you to speak Hindi" not in p
+
+
+def test_english_calls_stay_english_whatever_the_script_pairs():
+    # Calls 3bc5f884 / f8d8478b / be51d77f / 5b88b55c (2026-10-22, Arushi CRM): a script
+    # with Hinglish twins of every line made the model speak them unasked.
+    for engine in ("navana", "smallest_pro", "sarvam", "rumik"):
+        p = _prompt(engine)
+        assert "This is an English call." in p, engine
+        assert "never end an English reply with a Hindi sentence" in p, engine
+        # Placement is the fix: as the LAST line it held 12/12 on Vertex, inside the
+        # rules block it lost to the script's Hinglish question 8/8.
+        assert p.rstrip().splitlines()[-1].startswith("- LANGUAGE: This is an English call."), engine
+    assert "rewritten in Devanagari before you say it" in _prompt("navana")
+    assert "rewritten in Devanagari" not in _prompt("sarvam")
+
+
+def test_thin_prompt_english_agents_end_on_the_lock_too():
+    agent = {"id": "a2", "name": "Riya", "language": "english", "voice": "ipsita",
+             "tts_model": "navana", "systemPrompt": "", "direction": "OUTBOUND"}
+    p = b.build_system_prompt({"agent": agent, "instituteName": "Tutezy", "direction": "OUTBOUND"})
+    assert p.rstrip().splitlines()[-1].startswith("- LANGUAGE: This is an English call.")
+
+
+def test_language_lock_is_not_added_to_hinglish_agents():
+    assert "This is an English call." not in _prompt("navana", language="hinglish")

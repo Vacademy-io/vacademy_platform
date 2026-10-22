@@ -5064,6 +5064,21 @@ _STT_LANGS = {
 }
 
 
+# Calls 3bc5f884/f8d8478b/be51d77f/5b88b55c (2026-10-22, Arushi CRM): the agent's script
+# pairs every line with a Hinglish version in Latin letters and says "mirror English or
+# Hinglish". With callers who had only said "Yes", the model opened in that Hinglish or
+# ended an English pitch with its Hinglish question, and the English voice read it in an
+# English accent. The language is decided by the caller, never by the script.
+_ENGLISH_CALL_LANGUAGE_LOCK = (
+    "\n- LANGUAGE: This is an English call. Every sentence you say is in English until the "
+    "caller asks you to speak Hindi or speaks it to you in full sentences (see LANGUAGE "
+    "STABILITY). Your instructions may also give Hindi or Hinglish "
+    "versions of lines — those are only for after such a switch: before it, never say "
+    "them, never open in Hindi, and never end an English reply with a Hindi sentence. One "
+    "reply is one language."
+)
+
+
 def _agent_stt_mode(agent) -> str:
     """Sarvam saaras `mode` for this agent.
 
@@ -5811,6 +5826,15 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
             "So write 'मैं आपको एक demo book कर देती हूँ' — NOT romanized 'main aapko ek demo book kar "
             "deti hoon'. NEVER write Hindi words in Latin letters."
         )
+    # The LAST line of every English agent's prompt (see _ENGLISH_CALL_LANGUAGE_LOCK).
+    # Placement is the fix: inside the rules block the model still copied the script's
+    # Hinglish question 8/8 times (probe 2026-10-22); as the final line, 0/12.
+    language_lock = ""
+    if is_english:
+        language_lock = _ENGLISH_CALL_LANGUAGE_LOCK.lstrip("\n")
+        if _agent_tts_model(agent) == "navana":
+            language_lock += (" If you do switch, any Hindi/Hinglish line from your "
+                              "instructions is rewritten in Devanagari before you say it.")
     if not is_english:
         # Rumik reads Devanagari-transliterated English as gibberish — live call
         # 8e1e00ad: the model wrote 'लाइव क्लासेस' and the caller heard 'लव असेस'
@@ -6363,6 +6387,7 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
             sends_line,
             disposition_line,
             closing_grounding,
+            language_lock,
         ]
         return "\n".join(l for l in lines if l)
 
@@ -6429,6 +6454,7 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
         f"variation. Use the SAME company name you introduce yourself with for the whole call; "
         f"never change, translate or invent a different company name.",
         closing_grounding,
+        language_lock,
     ]
     return "\n".join(l for l in lines if l)
 

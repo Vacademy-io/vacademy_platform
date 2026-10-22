@@ -45,4 +45,7 @@ public class CpoUserPlanSummaryDTO {
 
     private Date startDate;
     private Date endDate;
+
+    /** The admission package this course was enrolled in with others, if any. */
+    private String admissionPackageId;
 }

@@ -69,6 +69,7 @@ public class CpoSideViewService {
     private final OfflinePaymentDetailsService offlinePaymentDetailsService;
     private final ComplexPaymentOptionRepository complexPaymentOptionRepository;
     private final FacultySubjectPackageSessionMappingRepository facultyMappingRepository;
+    private final vacademy.io.admin_core_service.features.admission_package.repository.AdmissionPackageCourseRepository admissionPackageCourseRepository;
 
     // -------------------------------------------------------------------- read
 
@@ -88,6 +89,11 @@ public class CpoSideViewService {
         for (StudentFeePayment sfp : all) {
             if (sfp.getUserPlanId() == null) continue;
             byPlan.computeIfAbsent(sfp.getUserPlanId(), k -> new ArrayList<>()).add(sfp);
+        }
+
+        Map<String, String> packageByPlan = new HashMap<>();
+        for (var course : admissionPackageCourseRepository.findByUserPlanIdIn(byPlan.keySet())) {
+            packageByPlan.put(course.getUserPlanId(), course.getAdmissionPackageId());
         }
 
         List<CpoUserPlanSummaryDTO> out = new ArrayList<>(byPlan.size());
@@ -128,6 +134,7 @@ public class CpoSideViewService {
                     .installmentCount(rows.size())
                     .startDate(plan.getStartDate())
                     .endDate(plan.getEndDate())
+                    .admissionPackageId(packageByPlan.get(plan.getId()))
                     .build());
         }
         return out;
@@ -307,6 +314,17 @@ public class CpoSideViewService {
     @Transactional
     public CpoSideViewInstallmentsResponseDTO recordOfflinePayment(
             String userPlanId, RecordOfflinePaymentRequestDTO req, String appliedBy) {
+        recordOfflinePaymentLog(userPlanId, req, appliedBy);
+        return list(userPlanId);
+    }
+
+    /**
+     * {@link #recordOfflinePayment} without the refreshed listing: records the payment and returns
+     * its payment log id. An admission package records one per course and then issues a single
+     * receipt for all of them.
+     */
+    @Transactional
+    public String recordOfflinePaymentLog(String userPlanId, RecordOfflinePaymentRequestDTO req, String appliedBy) {
 
         assertNotSubOrgAdmin(appliedBy, "record offline payment");
 
@@ -436,7 +454,7 @@ public class CpoSideViewService {
             invoiceService.generateInvoiceAfterCommit(paymentLogId, instituteId);
         }
 
-        return list(userPlanId);
+        return paymentLogId;
     }
 
     // ---------------------------------------------------------------- helpers

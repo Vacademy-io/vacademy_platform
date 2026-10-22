@@ -162,6 +162,9 @@ public class InvoiceService {
     private StudentSessionRepository studentSessionRepository;
 
     @Autowired
+    private vacademy.io.admin_core_service.features.admission_package.repository.AdmissionPackageCourseRepository admissionPackageCourseRepository;
+
+    @Autowired
     private PackageSessionRepository packageSessionRepository;
 
     @Autowired
@@ -7219,16 +7222,22 @@ public class InvoiceService {
      */
     private ReceiptFigures buildReceiptFigures(InvoiceData invoiceData) {
         List<PaymentLog> covered = invoiceData.getReceiptPaymentLogs();
-        if (covered != null && covered.size() > 1) {
-            java.util.LinkedHashMap<String, UserPlan> plans = new java.util.LinkedHashMap<>();
+        java.util.LinkedHashMap<String, UserPlan> plans = new java.util.LinkedHashMap<>();
+        if (covered != null) {
             for (PaymentLog pl : covered) {
                 if (pl.getUserPlan() != null && pl.getUserPlan().getId() != null) {
                     plans.putIfAbsent(pl.getUserPlan().getId(), pl.getUserPlan());
                 }
             }
-            if (plans.size() > 1) {
-                return buildPackageReceiptFigures(invoiceData, new ArrayList<>(plans.values()), covered);
-            }
+        }
+        if (invoiceData.getUserPlan() != null && invoiceData.getUserPlan().getId() != null) {
+            plans.putIfAbsent(invoiceData.getUserPlan().getId(), invoiceData.getUserPlan());
+        }
+        addAdmissionPackagePlans(plans);
+        if (plans.size() > 1) {
+            List<PaymentLog> logs = covered != null && !covered.isEmpty() ? covered
+                    : invoiceData.getPaymentLog() != null ? List.of(invoiceData.getPaymentLog()) : List.of();
+            return buildPackageReceiptFigures(invoiceData, new ArrayList<>(plans.values()), logs);
         }
         ReceiptFigures rf = new ReceiptFigures();
         PaymentPlan plan = invoiceData.getPaymentPlan();
@@ -7306,6 +7315,34 @@ public class InvoiceService {
         return rf;
     }
 
+
+    /**
+     * Adds every course of the admission package(s) these plans belong to, so a receipt for any
+     * payment towards a package — even one that only reached one of its courses — reports the
+     * package's totals. Plans outside any package are left as they are.
+     */
+    private void addAdmissionPackagePlans(java.util.Map<String, UserPlan> plans) {
+        if (plans.isEmpty()) {
+            return;
+        }
+        try {
+            java.util.Set<String> packageIds = new java.util.LinkedHashSet<>();
+            for (var course : admissionPackageCourseRepository.findByUserPlanIdIn(plans.keySet())) {
+                packageIds.add(course.getAdmissionPackageId());
+            }
+            for (String packageId : packageIds) {
+                for (var course : admissionPackageCourseRepository.findByAdmissionPackageIdOrderByPositionAsc(packageId)) {
+                    if (!plans.containsKey(course.getUserPlanId())) {
+                        userPlanRepository.findById(course.getUserPlanId())
+                                .ifPresent(up -> plans.put(up.getId(), up));
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Could not load admission package courses for plans {} while building receipt figures",
+                    plans.keySet(), e);
+        }
+    }
 
     /**
      * Receipt figures for one payment spread over several courses (an admission package): fees,

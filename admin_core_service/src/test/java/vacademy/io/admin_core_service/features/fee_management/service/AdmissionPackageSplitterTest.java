@@ -76,10 +76,37 @@ class AdmissionPackageSplitterTest {
         // The largest course absorbs the rounding: a rupee either way per installment.
         assertMoney("14999", shares.get(0).rows().get(0).net());
         assertMoney("15001", shares.get(0).rows().get(2).net());
-        // The first installment is covered across all courses, then the second starts with course 1.
-        assertMoney("24999", shares.get(0).paidAtAdmission());
-        assertMoney("11667", shares.get(1).paidAtAdmission());
-        assertMoney("3334", shares.get(2).paidAtAdmission());
+        // The first installment is covered across all courses (14999 + 11667 + 3334); the other
+        // 10000 is shared on the second in proportion to 15000 / 11667 / 3333.
+        assertMoney("19999", shares.get(0).paidAtAdmission());
+        assertMoney("15556", shares.get(1).paidAtAdmission());
+        assertMoney("4445", shares.get(2).paidAtAdmission());
+    }
+
+    @Test
+    @DisplayName("package payment: earliest date first, a part-payment shared by what each course owes")
+    void allocatePayment() {
+        List<AdmissionPackageSplitter.OpenBill> bills = List.of(
+                new AdmissionPackageSplitter.OpenBill(0, LocalDate.parse("2026-11-10"), d("22344")),
+                new AdmissionPackageSplitter.OpenBill(1, LocalDate.parse("2026-11-10"), d("10156")),
+                new AdmissionPackageSplitter.OpenBill(0, LocalDate.parse("2026-12-10"), d("22343")),
+                new AdmissionPackageSplitter.OpenBill(1, LocalDate.parse("2026-12-10"), d("10157")));
+        // Exactly the next installment: each course's bill on that date.
+        BigDecimal[] next = AdmissionPackageSplitter.allocatePayment(2, bills, d("32500"));
+        assertMoney("22344", next[0]);
+        assertMoney("10156", next[1]);
+        // Part of it: shared 22344 : 10156.
+        BigDecimal[] part = AdmissionPackageSplitter.allocatePayment(2, bills, d("10000"));
+        assertMoney("6875", part[0]);
+        assertMoney("3125", part[1]);
+        // Into the next date: the first is paid off, the rest shared on the second.
+        BigDecimal[] more = AdmissionPackageSplitter.allocatePayment(2, bills, d("42500"));
+        assertMoney("29219", more[0]);
+        assertMoney("13281", more[1]);
+        assertEquals(0, more[0].add(more[1]).compareTo(d("42500")));
+        // More than is owed, or nothing.
+        assertThrows(VacademyException.class, () -> AdmissionPackageSplitter.allocatePayment(2, bills, d("65001")));
+        assertThrows(VacademyException.class, () -> AdmissionPackageSplitter.allocatePayment(2, bills, d("0")));
     }
 
     @Test

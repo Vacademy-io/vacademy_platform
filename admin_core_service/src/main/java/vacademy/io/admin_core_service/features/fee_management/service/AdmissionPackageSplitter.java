@@ -19,9 +19,12 @@ import java.util.List;
  * whole rupees when the inputs are, otherwise in paise. The course with the largest fee absorbs
  * the rounding, so its share moves by at most a rupee per installment.
  *
- * <p>The payment taken at admission is applied installment by installment (earliest first), each
- * installment across all courses, exactly as each course's own oldest-first allocation will
- * then apply it. Pure and free of I/O: see AdmissionPackageSplitterTest.
+ * <p>Money is placed installment by installment, earliest due first: an installment is paid off
+ * across every course before the next one is touched, and a part-payment of an installment is
+ * shared between the courses in proportion to what each still owes on it. That is what each
+ * course's own oldest-first allocation then does with its share, both for the payment taken at
+ * admission ({@link #split}) and for a later package payment ({@link #allocatePayment}). Pure and
+ * free of I/O: see AdmissionPackageSplitterTest.
  */
 public final class AdmissionPackageSplitter {
 
@@ -146,12 +149,14 @@ public final class AdmissionPackageSplitter {
                     + ") is more than the package total (" + netTotal.toPlainString() + ")");
         }
         BigDecimal[] paid = zeros(n);
+        int payScale = scale == 0 && isWhole(toPlace) ? 0 : 2;
         for (int r = 0; r < m && toPlace.signum() > 0; r++) {
-            for (int c = 0; c < n && toPlace.signum() > 0; c++) {
-                BigDecimal cellNet = gross[c][r].subtract(off[c][r]);
-                BigDecimal take = cellNet.min(toPlace);
-                paid[c] = paid[c].add(take);
-                toPlace = toPlace.subtract(take);
+            List<BigDecimal> cellNets = new ArrayList<>(n);
+            for (int c = 0; c < n; c++) cellNets.add(gross[c][r].subtract(off[c][r]));
+            BigDecimal[] parts = placeOnInstallment(cellNets, toPlace, payScale);
+            for (int c = 0; c < n; c++) {
+                paid[c] = paid[c].add(parts[c]);
+                toPlace = toPlace.subtract(parts[c]);
             }
         }
 
@@ -167,6 +172,64 @@ public final class AdmissionPackageSplitter {
             out.add(new CourseShare(c, money(courseFees.get(c)), money(courseOff), courseRows, money(paid[c])));
         }
         return out;
+    }
+
+    /** One course's unpaid balance on one bill, for {@link #allocatePayment}. */
+    public record OpenBill(int courseIndex, LocalDate dueDate, BigDecimal outstanding) {
+    }
+
+    /**
+     * Splits a payment made against the whole package across its courses: due dates earliest
+     * first (a bill with no due date last), each date paid off across the courses before the next,
+     * a part-payment of a date shared in proportion to what each course owes on it.
+     *
+     * @return each course's share, indexed by {@link OpenBill#courseIndex}
+     */
+    public static BigDecimal[] allocatePayment(int courseCount, List<OpenBill> bills, BigDecimal amount) {
+        if (amount == null || amount.signum() <= 0) {
+            throw new VacademyException("Enter an amount above zero");
+        }
+        java.util.TreeMap<LocalDate, BigDecimal[]> byDate = new java.util.TreeMap<>();
+        BigDecimal owed = BigDecimal.ZERO;
+        boolean whole = isWhole(amount);
+        for (OpenBill b : bills) {
+            BigDecimal o = nz(b.outstanding());
+            if (o.signum() <= 0) continue;
+            LocalDate due = b.dueDate() != null ? b.dueDate() : LocalDate.MAX;
+            BigDecimal[] perCourse = byDate.computeIfAbsent(due, d -> zeros(courseCount));
+            perCourse[b.courseIndex()] = perCourse[b.courseIndex()].add(o);
+            owed = owed.add(o);
+            whole &= isWhole(o);
+        }
+        if (amount.compareTo(owed) > 0) {
+            throw new VacademyException("The payment (" + amount.toPlainString()
+                    + ") is more than what is still owed on the package (" + owed.toPlainString() + ")");
+        }
+        int scale = whole ? 0 : 2;
+        BigDecimal[] shares = zeros(courseCount);
+        BigDecimal left = amount;
+        for (BigDecimal[] perCourse : byDate.values()) {
+            if (left.signum() <= 0) break;
+            BigDecimal[] parts = placeOnInstallment(java.util.Arrays.asList(perCourse), left, scale);
+            for (int c = 0; c < courseCount; c++) {
+                shares[c] = shares[c].add(parts[c]);
+                left = left.subtract(parts[c]);
+            }
+        }
+        for (int c = 0; c < courseCount; c++) shares[c] = money(shares[c]);
+        return shares;
+    }
+
+    /**
+     * What of {@code available} goes to each course on one installment: all of it when the money
+     * covers the installment, otherwise shared in proportion to what each course owes on it.
+     */
+    private static BigDecimal[] placeOnInstallment(List<BigDecimal> owedPerCourse, BigDecimal available, int scale) {
+        BigDecimal owed = sum(owedPerCourse);
+        if (available.compareTo(owed) >= 0) {
+            return owedPerCourse.toArray(new BigDecimal[0]);
+        }
+        return apportion(available, owedPerCourse, scale);
     }
 
     /**

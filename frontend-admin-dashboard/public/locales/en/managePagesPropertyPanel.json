@@ -218,7 +218,7 @@
       "seriesHint": "The \"Part of …\" chips listing the other steps of the learning path the course is in, and the \"Next in the series\" card.",
       "seriesLimit": "Most \"Part of\" chips shown",
       "seriesLimitAll": "All",
-      "seriesLimitHint": "Shows this many steps around the current course, each with its number in the path. Leave empty to show every step."
+      "seriesLimitHint": "Shows this many steps around the current course, numbered from 1. Leave empty to show every step."
     },
     "courseFormats": {
       "fromTags": {

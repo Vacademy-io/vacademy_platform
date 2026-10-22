@@ -25,7 +25,7 @@ import { LinkedWorkflowsDialog } from '../audience-invite/linked-workflows-dialo
 import { ConfigureAudienceWorkflowDialog } from '../audience-invite/configure-audience-workflow-dialog';
 import { BookingSettingsDialog } from '../booking-settings/BookingSettingsDialog';
 
-/** Wizard step that holds notifications and the initial lead score. */
+/** Form section that holds notifications and the initial lead score. */
 const STEP_NOTIFY = 4;
 
 /** Same event match as the card menu count and the Linked Workflows dialog. */

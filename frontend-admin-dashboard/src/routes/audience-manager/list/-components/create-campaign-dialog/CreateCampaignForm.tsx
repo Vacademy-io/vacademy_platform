@@ -14,8 +14,6 @@ import { useFileUpload } from '@/hooks/use-file-upload';
 import { FileUploadComponent } from '@/components/design-system/file-upload';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { ImageSquare, PencilSimpleLine } from '@phosphor-icons/react';
-import { Check } from '@phosphor-icons/react';
-import { cn } from '@/lib/utils';
 import { TokenKey } from '@/constants/auth/tokens';
 import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtility';
 import { Info } from '@phosphor-icons/react';
@@ -143,16 +141,16 @@ const buildInitialFormValues = (
 interface CreateCampaignFormProps {
     onSuccess?: () => void;
     campaign?: CampaignItem | null;
-    /** Wizard step to open on (0 = Basics). */
+    /** Section to scroll to on open (0 = Basics) — used by the list detail tabs' Edit links. */
     initialStep?: number;
 }
 
 /**
- * The create / edit wizard. Every step stays mounted and is only hidden, so the
- * form state, its validation and the single save are unchanged; `fields` maps a
- * validation error back to the step that shows it.
+ * The create / edit form is one page. These are its sections, indexed the way
+ * `initialStep` is; `fields` maps a validation error back to the section that
+ * shows it, so a failed save scrolls there.
  */
-const WIZARD_STEPS: ReadonlyArray<{ key: string; fields: readonly string[] }> = [
+const FORM_SECTIONS: ReadonlyArray<{ key: string; fields: readonly string[] }> = [
     {
         key: 'basics',
         fields: [
@@ -171,7 +169,9 @@ const WIZARD_STEPS: ReadonlyArray<{ key: string; fields: readonly string[] }> = 
     { key: 'appearance', fields: ['formAppearance'] },
     { key: 'notify', fields: ['to_notify', 'send_respondent_email', 'default_initial_score'] },
 ];
-const LAST_STEP = WIZARD_STEPS.length - 1;
+const SECTION_BASICS = 0;
+const SECTION_AFTER_SUBMIT = 2;
+const SECTION_APPEARANCE = 3;
 
 export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({
     onSuccess,
@@ -230,20 +230,23 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({
     } = form;
     const submitCount = form.formState.submitCount;
 
-    // ── Wizard ────────────────────────────────────────────────
-    const [step, setStep] = useState(() => Math.min(Math.max(initialStep ?? 0, 0), LAST_STEP));
-    // After a failed save, show the first step that has an error.
+    // ── Sections ──────────────────────────────────────────────
+    const sectionRefs = useRef<Array<HTMLDivElement | null>>([]);
+    const scrollToSection = useCallback((index: number) => {
+        sectionRefs.current[index]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, []);
+    // After a failed save, scroll to the first section that has an error.
     const handledSubmitRef = useRef(0);
     useEffect(() => {
         if (!submitCount || handledSubmitRef.current === submitCount) return;
         const errorKeys = Object.keys(errors);
         if (errorKeys.length === 0) return;
         handledSubmitRef.current = submitCount;
-        const firstStep = WIZARD_STEPS.findIndex((s) =>
+        const firstSection = FORM_SECTIONS.findIndex((s) =>
             s.fields.some((f) => errorKeys.includes(f))
         );
-        if (firstStep >= 0) setStep(firstStep);
-    }, [submitCount, errors]);
+        if (firstSection >= 0) scrollToSection(firstSection);
+    }, [submitCount, errors, scrollToSection]);
     const createCampaign = useCreateAudienceCampaign(tCreateAudienceCampaign);
     const updateCampaign = useUpdateAudienceCampaign(tUpdateAudienceCampaign);
 
@@ -843,7 +846,7 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({
             const startDateOnly = (data.start_date_local || '').split('T')[0] ?? '';
             if (startDateOnly && startDateOnly < todayDateOnly) {
                 toast.error(t('errors.startDateInPast'));
-                setStep(0);
+                scrollToSection(SECTION_BASICS);
                 return;
             }
         }
@@ -1014,14 +1017,15 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({
                 term: getTerminology(OtherTerms.AudienceList, SystemTerms.AudienceList),
             });
 
-    // Built every render (cheap): a memo could keep raw keys from before the catalog loaded.
-    const stepLabels = [
-        t('wizard.steps.basics'),
-        t('wizard.steps.fields'),
-        t('wizard.steps.afterSubmit'),
-        t('wizard.steps.appearance'),
-        t('wizard.steps.notify'),
-    ];
+    // Opened from an Edit link: scroll to that section once the form is on screen.
+    const scrolledToInitialRef = useRef(false);
+    const isFormReady = !(isEditMode && isLoadingCampaign);
+    useEffect(() => {
+        if (scrolledToInitialRef.current || !isFormReady || !initialStep) return;
+        scrolledToInitialRef.current = true;
+        const frame = requestAnimationFrame(() => scrollToSection(initialStep));
+        return () => cancelAnimationFrame(frame);
+    }, [isFormReady, initialStep, scrollToSection]);
 
     // Show loading state while fetching campaign data
     if (isEditMode && isLoadingCampaign) {
@@ -1035,7 +1039,7 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({
     return (
         // noValidate: zod owns validation. The browser's own checks (e.g. Start
         // Date `min` = today on a campaign that started earlier) fire on inputs in
-        // hidden wizard steps, where Chrome cannot show its bubble — so Save
+        // collapsed cards, where Chrome cannot show its bubble — so Save
         // silently did nothing.
         <form
             noValidate
@@ -1054,51 +1058,12 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({
                     />
                 </div>
             )}
-            {/* Wizard steps — every step can be opened directly. */}
-            <ol className="flex flex-wrap items-center gap-2" aria-label={t('wizard.ariaLabel')}>
-                {stepLabels.map((label, i) => {
-                    const hasError = WIZARD_STEPS[i]?.fields.some((f) => f in errors);
-                    return (
-                        <li key={WIZARD_STEPS[i]?.key ?? i}>
-                            <button
-                                type="button"
-                                onClick={() => setStep(i)}
-                                aria-current={step === i ? 'step' : undefined}
-                                className={cn(
-                                    'flex items-center gap-2 rounded-full border px-3 py-1.5 text-caption font-medium transition-colors',
-                                    step === i
-                                        ? 'border-primary-500 bg-primary-50 text-primary-600'
-                                        : i < step
-                                          ? 'border-success-200 bg-success-50 text-success-700 hover:bg-success-100'
-                                          : 'border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50'
-                                )}
-                            >
-                                <span
-                                    className={cn(
-                                        'flex size-5 items-center justify-center rounded-full',
-                                        step === i
-                                            ? 'bg-primary-500 text-white'
-                                            : i < step
-                                              ? 'bg-success-500 text-white'
-                                              : 'bg-neutral-100 text-neutral-600'
-                                    )}
-                                >
-                                    {i < step ? <Check size={12} weight="bold" /> : i + 1}
-                                </span>
-                                {label}
-                                {hasError && (
-                                    <span
-                                        className="size-1.5 rounded-full bg-danger-500"
-                                        aria-label={t('wizard.hasErrors')}
-                                    />
-                                )}
-                            </button>
-                        </li>
-                    );
-                })}
-            </ol>
-
-            <div className={cn('space-y-6', step !== 0 && 'hidden')}>
+            <div
+                ref={(el) => {
+                    sectionRefs.current[0] = el;
+                }}
+                className="space-y-6"
+            >
                 {/* Campaign Name */}
                 <div>
                     <label className="block text-sm font-semibold text-neutral-700">
@@ -1384,135 +1349,12 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({
                 </div>
             </div>
 
-            <div className={cn('space-y-6', step !== 1 && 'hidden')}>
-                {/* Customize Campaign Form - Custom Fields Card */}
-                <CampaignCustomFieldsCard
-                    form={form}
-                    updateFieldOrders={updateFieldOrders}
-                    handleDeleteOpenField={handleDeleteOpenField}
-                    toggleIsRequired={toggleIsRequired}
-                    handleAddGender={handleAddGender}
-                    handleAddOpenFieldValues={handleAddOpenFieldValues}
-                    handleValueChange={handleValueChange}
-                    handleEditClick={handleEditClick}
-                    handleDeleteOptionField={handleDeleteOptionField}
-                    handleAddDropdownOptions={handleAddDropdownOptions}
-                    handleEditFieldAt={handleEditFieldAt}
-                    campaignId={editingCampaignId}
-                    handleCloseDialog={handleCloseDialog}
-                    handleAddPhoneNumber={handleAddPhoneNumber}
-                />
-            </div>
-
-            <div className={cn('space-y-6', step !== 2 && 'hidden')}>
-                {/* Post Submit Configuration — the thank-you screen / redirect the
-                respondent gets. Mirrors the enroll invite's Post Form Fill card. */}
-                <Controller
-                    name="postSubmitConfiguration"
-                    control={control}
-                    render={({ field }) => (
-                        <PostSubmitConfigurationEditor
-                            // `?? DEFAULT` guards the window between a form.reset()
-                            // and the async default landing — the editor is fully
-                            // controlled and would crash on an undefined value.
-                            value={field.value ?? DEFAULT_POST_SUBMIT_CONFIGURATION}
-                            onChange={field.onChange}
-                            // Open: it is the only card of its wizard step.
-                            collapsible={false}
-                            previewCampaignName={
-                                watch('campaign_name') ||
-                                t('postSubmit.previewCampaignNameFallback')
-                            }
-                            description={t('postSubmit.description')}
-                        />
-                    )}
-                />
-            </div>
-
-            <div className={cn('space-y-6', step !== 3 && 'hidden')}>
-                {/* Form Heading & Text — the page heading (defaults to this list's
-                name) and the form card's heading + sub-heading, with alignment.
-                Deliberately NOT behind the Form Appearance institute switch:
-                every campaign can reword its own form. Writes into the same
-                `formAppearance` value, so the save path is unchanged. */}
-                <Controller
-                    name="formAppearance"
-                    control={control}
-                    render={({ field }) => (
-                        <FormTextEditor
-                            value={field.value ?? DEFAULT_FORM_APPEARANCE}
-                            onChange={field.onChange}
-                            // Open: it is the main card of its wizard step.
-                            collapsible={false}
-                            previewCampaignName={
-                                watch('campaign_name') ||
-                                t('postSubmit.previewCampaignNameFallback')
-                            }
-                            previewCampaignDescription={watch('description') || ''}
-                            previewCampaignObjective={watch('campaign_objective') || ''}
-                            previewInstituteName={
-                                instituteDetails?.institute_name || 'Your Institute'
-                            }
-                            previewFields={(watch('custom_fields') || [])
-                                .filter((customField) => customField?.status !== 'DELETED')
-                                .map((customField) => ({
-                                    name: customField?.name || '',
-                                    required: Boolean(customField?.isRequired),
-                                }))}
-                            title={t('formText.title')}
-                            description={t('formText.description')}
-                        />
-                    )}
-                />
-
-                {/* Form Appearance — how the public response form looks while it is
-                being filled in. On the Appearance step with the heading text,
-                because it is about the form itself, not what follows it. */}
-                {/* Hidden until an institute turns it on in Settings → Lead
-                Settings → Forms. A campaign that already has a saved
-                formAppearance keeps it either way — this hides the editor, it
-                does not clear the stored config. */}
-                {formAppearanceEnabled && (
-                    <Controller
-                        name="formAppearance"
-                        control={control}
-                        render={({ field }) => (
-                            <FormAppearanceEditor
-                                // `?? DEFAULT` guards the window between a form.reset()
-                                // and the value landing — the editor is fully controlled
-                                // and would crash on an undefined value.
-                                value={field.value ?? DEFAULT_FORM_APPEARANCE}
-                                onChange={field.onChange}
-                                // Collapsed by default: the create form must look the way
-                                // it always did for admins who don't need this.
-                                collapsible
-                                previewCampaignName={
-                                    watch('campaign_name') ||
-                                    t('postSubmit.previewCampaignNameFallback')
-                                }
-                                previewCampaignDescription={watch('description') || ''}
-                                previewCampaignObjective={watch('campaign_objective') || ''}
-                                previewInstituteName={
-                                    instituteDetails?.institute_name || 'Your Institute'
-                                }
-                                // The campaign's own fields, so the preview shows real
-                                // labels instead of placeholder rows. Deleted rows are
-                                // excluded because they are not sent to the API either.
-                                previewFields={(watch('custom_fields') || [])
-                                    .filter((field) => field?.status !== 'DELETED')
-                                    .map((field) => ({
-                                        name: field?.name || '',
-                                        required: Boolean(field?.isRequired),
-                                    }))}
-                                title={t('formAppearance.title')}
-                                description={t('formAppearance.description')}
-                            />
-                        )}
-                    />
-                )}
-            </div>
-
-            <div className={cn('space-y-6', step !== 4 && 'hidden')}>
+            <div
+                ref={(el) => {
+                    sectionRefs.current[4] = el;
+                }}
+                className="space-y-6"
+            >
                 {/* Emails & Share Analytics */}
                 <div className="  w-full  gap-2 rounded-lg border border-neutral-300 px-3 py-2">
                     <div className="flex flex-wrap gap-2">
@@ -1622,6 +1464,151 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({
                 </div>
             </div>
 
+            <div
+                ref={(el) => {
+                    sectionRefs.current[1] = el;
+                }}
+                className="space-y-6"
+            >
+                {/* Customize Campaign Form - Custom Fields Card */}
+                <CampaignCustomFieldsCard
+                    form={form}
+                    updateFieldOrders={updateFieldOrders}
+                    handleDeleteOpenField={handleDeleteOpenField}
+                    toggleIsRequired={toggleIsRequired}
+                    handleAddGender={handleAddGender}
+                    handleAddOpenFieldValues={handleAddOpenFieldValues}
+                    handleValueChange={handleValueChange}
+                    handleEditClick={handleEditClick}
+                    handleDeleteOptionField={handleDeleteOptionField}
+                    handleAddDropdownOptions={handleAddDropdownOptions}
+                    handleEditFieldAt={handleEditFieldAt}
+                    campaignId={editingCampaignId}
+                    handleCloseDialog={handleCloseDialog}
+                    handleAddPhoneNumber={handleAddPhoneNumber}
+                />
+            </div>
+
+            <div
+                ref={(el) => {
+                    sectionRefs.current[2] = el;
+                }}
+                className="space-y-6"
+            >
+                {/* Post Submit Configuration — the thank-you screen / redirect the
+                respondent gets. Mirrors the enroll invite's Post Form Fill card. */}
+                <Controller
+                    name="postSubmitConfiguration"
+                    control={control}
+                    render={({ field }) => (
+                        <PostSubmitConfigurationEditor
+                            // `?? DEFAULT` guards the window between a form.reset()
+                            // and the async default landing — the editor is fully
+                            // controlled and would crash on an undefined value.
+                            value={field.value ?? DEFAULT_POST_SUBMIT_CONFIGURATION}
+                            onChange={field.onChange}
+                            // Collapsed like the other optional cards, unless the
+                            // admin came here from its Edit link.
+                            collapsible={initialStep !== SECTION_AFTER_SUBMIT}
+                            previewCampaignName={
+                                watch('campaign_name') ||
+                                t('postSubmit.previewCampaignNameFallback')
+                            }
+                            description={t('postSubmit.description')}
+                        />
+                    )}
+                />
+            </div>
+
+            <div
+                ref={(el) => {
+                    sectionRefs.current[3] = el;
+                }}
+                className="space-y-6"
+            >
+                {/* Form Heading & Text — the page heading (defaults to this list's
+                name) and the form card's heading + sub-heading, with alignment.
+                Deliberately NOT behind the Form Appearance institute switch:
+                every campaign can reword its own form. Writes into the same
+                `formAppearance` value, so the save path is unchanged. */}
+                <Controller
+                    name="formAppearance"
+                    control={control}
+                    render={({ field }) => (
+                        <FormTextEditor
+                            value={field.value ?? DEFAULT_FORM_APPEARANCE}
+                            onChange={field.onChange}
+                            // Collapsed like the other optional cards, unless the
+                            // admin came here from its Edit link.
+                            collapsible={initialStep !== SECTION_APPEARANCE}
+                            previewCampaignName={
+                                watch('campaign_name') ||
+                                t('postSubmit.previewCampaignNameFallback')
+                            }
+                            previewCampaignDescription={watch('description') || ''}
+                            previewCampaignObjective={watch('campaign_objective') || ''}
+                            previewInstituteName={
+                                instituteDetails?.institute_name || 'Your Institute'
+                            }
+                            previewFields={(watch('custom_fields') || [])
+                                .filter((customField) => customField?.status !== 'DELETED')
+                                .map((customField) => ({
+                                    name: customField?.name || '',
+                                    required: Boolean(customField?.isRequired),
+                                }))}
+                            title={t('formText.title')}
+                            description={t('formText.description')}
+                        />
+                    )}
+                />
+
+                {/* Form Appearance — how the public response form looks while it is
+                being filled in. Next to the heading text, because it is about
+                the form itself, not what follows it. */}
+                {/* Hidden until an institute turns it on in Settings → Lead
+                Settings → Forms. A campaign that already has a saved
+                formAppearance keeps it either way — this hides the editor, it
+                does not clear the stored config. */}
+                {formAppearanceEnabled && (
+                    <Controller
+                        name="formAppearance"
+                        control={control}
+                        render={({ field }) => (
+                            <FormAppearanceEditor
+                                // `?? DEFAULT` guards the window between a form.reset()
+                                // and the value landing — the editor is fully controlled
+                                // and would crash on an undefined value.
+                                value={field.value ?? DEFAULT_FORM_APPEARANCE}
+                                onChange={field.onChange}
+                                // Collapsed by default: the create form must look the way
+                                // it always did for admins who don't need this.
+                                collapsible
+                                previewCampaignName={
+                                    watch('campaign_name') ||
+                                    t('postSubmit.previewCampaignNameFallback')
+                                }
+                                previewCampaignDescription={watch('description') || ''}
+                                previewCampaignObjective={watch('campaign_objective') || ''}
+                                previewInstituteName={
+                                    instituteDetails?.institute_name || 'Your Institute'
+                                }
+                                // The campaign's own fields, so the preview shows real
+                                // labels instead of placeholder rows. Deleted rows are
+                                // excluded because they are not sent to the API either.
+                                previewFields={(watch('custom_fields') || [])
+                                    .filter((field) => field?.status !== 'DELETED')
+                                    .map((field) => ({
+                                        name: field?.name || '',
+                                        required: Boolean(field?.isRequired),
+                                    }))}
+                                title={t('formAppearance.title')}
+                                description={t('formAppearance.description')}
+                            />
+                        )}
+                    />
+                )}
+            </div>
+
             {/* Custom HTML Card */}
             {/* <CustomHTMLCard form={form} /> */}
 
@@ -1636,30 +1623,6 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({
                     {t('actions.reset')}
                 </MyButton>
                 <span className="flex-1" />
-                <span className="text-caption text-neutral-500">
-                    {t('wizard.stepOf', { current: step + 1, total: WIZARD_STEPS.length })}
-                </span>
-                {step > 0 && (
-                    <MyButton
-                        type="button"
-                        buttonType="secondary"
-                        scale="medium"
-                        onClick={() => setStep(step - 1)}
-                    >
-                        {t('wizard.back')}
-                    </MyButton>
-                )}
-                {step < LAST_STEP && (
-                    <MyButton
-                        type="button"
-                        buttonType="secondary"
-                        scale="medium"
-                        onClick={() => setStep(step + 1)}
-                    >
-                        {t('wizard.next', { step: stepLabels[step + 1] })}
-                    </MyButton>
-                )}
-                {/* Save is offered on every step, as the single-page form did. */}
                 <MyButton type="submit" disabled={isSaving} buttonType="primary" scale="medium">
                     {primaryButtonLabel}
                 </MyButton>

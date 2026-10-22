@@ -2,6 +2,9 @@ package vacademy.io.admin_core_service.features.product_page.service;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.common.dto.CustomFieldDTO;
@@ -152,6 +155,80 @@ public class ProductPageService {
         List<ProductPage> pages = coursePageRepository.findByInstituteIdAndStatusIn(
                 instituteId, List.of(STATUS_ACTIVE, STATUS_DRAFT));
         return pages.stream().map(this::buildAdminResponse).collect(Collectors.toList());
+    }
+
+    /**
+     * One page of the admin list, lightweight: no page JSON and no mappings,
+     * only their count. search matches name or code (case-insensitive);
+     * status is ACTIVE, DRAFT or blank for both; sort is LATEST (default),
+     * OLDEST, NAME_ASC or NAME_DESC.
+     */
+    public ProductPageListResponse listProductPages(String instituteId, String search, String status,
+                                                    String sort, int page, int size) {
+        int safePage = Math.max(page, 0);
+        int safeSize = Math.min(Math.max(size, 1), 100);
+        List<String> allStatuses = List.of(STATUS_ACTIVE, STATUS_DRAFT);
+        List<String> statuses = StringUtils.hasText(status) && allStatuses.contains(status.trim().toUpperCase())
+                ? List.of(status.trim().toUpperCase())
+                : allStatuses;
+        String pattern = likePattern(search);
+
+        Page<ProductPage> result = coursePageRepository.searchForAdmin(
+                instituteId, statuses, pattern, PageRequest.of(safePage, safeSize, listSort(sort)));
+
+        List<String> ids = result.getContent().stream().map(ProductPage::getId).collect(Collectors.toList());
+        Map<String, Long> mappingCounts = new HashMap<>();
+        if (!ids.isEmpty()) {
+            for (Object[] row : mappingRepository.countByProductPageIds(ids, List.of(STATUS_ACTIVE))) {
+                mappingCounts.put((String) row[0], ((Number) row[1]).longValue());
+            }
+        }
+
+        Map<String, Long> statusCounts = new HashMap<>();
+        for (Object[] row : coursePageRepository.countByStatusForAdmin(instituteId, allStatuses, pattern)) {
+            statusCounts.put((String) row[0], ((Number) row[1]).longValue());
+        }
+
+        ProductPageListResponse resp = new ProductPageListResponse();
+        resp.setContent(result.getContent().stream()
+                .map(p -> new ProductPageSummaryResponse(p.getId(), p.getName(), p.getCode(), p.getStatus(),
+                        p.getShortUrl(), mappingCounts.getOrDefault(p.getId(), 0L),
+                        p.getCreatedAt(), p.getUpdatedAt()))
+                .collect(Collectors.toList()));
+        resp.setPage(safePage);
+        resp.setSize(safeSize);
+        resp.setTotalElements(result.getTotalElements());
+        resp.setTotalPages(result.getTotalPages());
+        resp.setActiveCount(statusCounts.getOrDefault(STATUS_ACTIVE, 0L));
+        resp.setDraftCount(statusCounts.getOrDefault(STATUS_DRAFT, 0L));
+        return resp;
+    }
+
+    /** Lower-cased contains-pattern for the list search, with % _ and ! escaped by !. */
+    static String likePattern(String search) {
+        if (!StringUtils.hasText(search)) {
+            return "%";
+        }
+        String escaped = search.trim().toLowerCase(Locale.ROOT)
+                .replace("!", "!!")
+                .replace("%", "!%")
+                .replace("_", "!_");
+        return "%" + escaped + "%";
+    }
+
+    /** id breaks ties, so a page never shows up on two list pages. */
+    static Sort listSort(String sort) {
+        String key = sort == null ? "" : sort.trim().toUpperCase(Locale.ROOT);
+        switch (key) {
+            case "OLDEST":
+                return Sort.by(Sort.Order.asc("createdAt"), Sort.Order.asc("id"));
+            case "NAME_ASC":
+                return Sort.by(Sort.Order.asc("name").ignoreCase(), Sort.Order.asc("id"));
+            case "NAME_DESC":
+                return Sort.by(Sort.Order.desc("name").ignoreCase(), Sort.Order.asc("id"));
+            default:
+                return Sort.by(Sort.Order.desc("createdAt"), Sort.Order.asc("id"));
+        }
     }
 
     public ProductPageResponse getProductPageById(String coursePageId) {

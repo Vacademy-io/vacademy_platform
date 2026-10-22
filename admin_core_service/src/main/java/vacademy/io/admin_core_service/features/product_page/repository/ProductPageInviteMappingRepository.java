@@ -38,6 +38,13 @@ public interface ProductPageInviteMappingRepository extends JpaRepository<Produc
     List<ProductPageInviteMapping> findOrderedWithBridge(@Param("productPageId") String productPageId,
                                                          @Param("statuses") List<String> statuses);
 
+    /** How many mappings in the statuses each of the pages has, as rows of page id and count. */
+    @Query("SELECT m.productPage.id, COUNT(m) FROM ProductPageInviteMapping m "
+            + "WHERE m.productPage.id IN :productPageIds AND m.status IN :statuses "
+            + "GROUP BY m.productPage.id")
+    List<Object[]> countByProductPageIds(@Param("productPageIds") List<String> productPageIds,
+                                         @Param("statuses") List<String> statuses);
+
     @Modifying
     @Query("UPDATE ProductPageInviteMapping m SET m.status = :status WHERE m.productPage.id = :coursePageId")
     void updateStatusByProductPageId(@Param("coursePageId") String coursePageId, @Param("status") String status);

@@ -42,6 +42,22 @@ public class ProductPageController {
         return ResponseEntity.ok(coursePageService.getAllProductPages(instituteId));
     }
 
+    /**
+     * The admin list, one page at a time and without page JSON or mappings.
+     * status: ACTIVE, DRAFT or blank for both. sort: LATEST, OLDEST,
+     * NAME_ASC or NAME_DESC. size is capped at 100.
+     */
+    @GetMapping("/list")
+    public ResponseEntity<ProductPageListResponse> list(
+            @RequestParam("instituteId") String instituteId,
+            @RequestParam(value = "search", required = false) String search,
+            @RequestParam(value = "status", required = false) String status,
+            @RequestParam(value = "sort", defaultValue = "LATEST") String sort,
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "12") int size) {
+        return ResponseEntity.ok(coursePageService.listProductPages(instituteId, search, status, sort, page, size));
+    }
+
     @GetMapping("/{coursePageId}")
     public ResponseEntity<ProductPageResponse> getById(
             @PathVariable("coursePageId") String coursePageId) {

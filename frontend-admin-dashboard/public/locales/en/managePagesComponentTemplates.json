@@ -277,5 +277,15 @@
         "title": "Memberships",
         "subtitle": "One purchase, several courses.",
         "buyLabel": "Get the pass"
+    },
+    "promoPopup": {
+        "badge": "Limited time",
+        "heading": "Flash sale on all courses",
+        "highlight": "50% OFF",
+        "body": "Enroll today and save on every course. This offer is only here for a short time.",
+        "couponCode": "SAVE50",
+        "buttonText": "Grab the offer",
+        "dismissText": "No thanks, maybe later",
+        "footnote": "*Terms and conditions apply"
     }
 }

@@ -234,5 +234,41 @@
   },
   "whatsAppFloatingButton": {
     "chatWithUs": "تحدث معنا عبر واتساب"
+  },
+  "promoPopup": {
+    "days": "أيام",
+    "hours": "ساعات",
+    "mins": "دقائق",
+    "secs": "ثوانٍ",
+    "endsIn": "ينتهي العرض خلال",
+    "copy": "نسخ",
+    "copied": "تم النسخ!",
+    "copyCode": "نسخ الرمز {{code}}",
+    "useCode": "استخدم الرمز",
+    "close": "إغلاق",
+    "dialogLabel": "عرض خاص",
+    "previewTitle": "نافذة ترويجية ({{template}})",
+    "previewHint": "حدّد هذه الكتلة لرؤية النافذة",
+    "whenLoad": "تفتح فور تحميل الصفحة",
+    "whenDelay": "تفتح بعد {{seconds}} ث من تحميل الصفحة",
+    "whenScroll": "تفتح عند تمرير {{percent}}٪",
+    "whenExit": "تفتح عندما يوشك الزائر على المغادرة",
+    "template": {
+      "spotlight": "تسليط الضوء",
+      "split": "مقسّم",
+      "poster": "ملصق",
+      "ticket": "تذكرة قسيمة",
+      "corner": "بطاقة جانبية",
+      "bar": "شريط ثابت",
+      "custom": "HTML مخصص"
+    },
+    "frequency": {
+      "always": "في كل تحميل للصفحة",
+      "session": "مرة لكل زيارة",
+      "daily": "مرة يوميًا",
+      "weekly": "مرة أسبوعيًا",
+      "once": "مرة واحدة فقط"
+    },
+    "customEmpty": "الصق HTML في المحرر لرؤيته هنا."
   }
 }

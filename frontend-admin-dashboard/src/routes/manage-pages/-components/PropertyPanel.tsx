@@ -64,6 +64,7 @@ import { CoursePagesEditor } from './CoursePagesEditor';
 import { useBlogManagerStore } from '../-stores/blog-manager-store';
 import { LinkPicker } from './LinkPicker';
 import { CampaignPicker, websiteFormFields } from './CampaignPicker';
+import { PromoPopupEditor } from './PromoPopupEditor';
 import { FolderBrowserEditor } from './folders/FolderBrowserEditor';
 import { AccessPassGridEditor } from './access-pass/AccessPassGridEditor';
 import { CatalogDiscoveryEditor } from './catalog/CatalogDiscoveryEditor';
@@ -2220,6 +2221,8 @@ const ComponentEditor = ({ component, pageId, updateComponent, siteConfig }: any
             return <MapEmbedEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'countdownTimer':
             return <CountdownTimerEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
+        case 'promoPopup':
+            return <PromoPopupEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
 
         case 'textBlock':
             return <TextBlockEditor component={component} pageId={pageId} updateComponent={updateComponent} />;

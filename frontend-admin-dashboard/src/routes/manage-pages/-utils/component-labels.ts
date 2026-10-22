@@ -53,6 +53,7 @@ export const COMPONENT_LABELS: Record<string, string> = {
     tabsAccordion: 'Tabs / Accordion',
     mapEmbed: 'Map Embed',
     countdownTimer: 'Countdown Timer',
+    promoPopup: 'Promo Popup',
     textBlock: 'Text Block',
     imageBlock: 'Image Block',
     buttonBlock: 'Button',
@@ -105,6 +106,7 @@ export const COMPONENT_DESCRIPTIONS: Record<string, string> = {
     documentViewer: 'A PDF — catalogue, brochure, prospectus — read on the page or in a full-screen viewer',
     stepsProcess: 'Numbered steps — how enrolling or learning works',
     countdownTimer: 'Counts down to a deadline',
+    promoPopup: 'A sale or offer popup that opens by itself — on load, on scroll or on exit',
     marquee: 'A scrolling ticker of announcements',
 
     // ── Asking for something back ────────────────────────────────────────────

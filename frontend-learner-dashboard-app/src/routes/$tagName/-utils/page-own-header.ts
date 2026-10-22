@@ -19,16 +19,25 @@ const OPENS_WITH_OWN_TITLE = new Set([
     "banner",
 ]);
 
+/** Blocks with no place in the page flow — they open over it. */
+const OVERLAY_ONLY = new Set(["promoPopup"]);
+
 /**
  * `components` is the page's component list; disabled entries are ignored by
  * the caller before this is asked.
  */
 export const pageOpensWithOwnHeader = (
     components: Array<{ type?: string; props?: unknown } | null | undefined>,
-): boolean =>
-    components.some((c) => c?.type === "heroSection") ||
-    OPENS_WITH_OWN_TITLE.has(components[0]?.type ?? "") ||
-    opensWithCatalogHero(components[0]);
+): boolean => {
+    // What the visitor first SEES: a block that only floats over the page
+    // (promoPopup) takes no room, so it never decides whether a title bar shows.
+    const first = components.find((c) => !OVERLAY_ONLY.has(c?.type ?? ""));
+    return (
+        components.some((c) => c?.type === "heroSection") ||
+        OPENS_WITH_OWN_TITLE.has(first?.type ?? "") ||
+        opensWithCatalogHero(first)
+    );
+};
 
 /**
  * A Courses grid that draws its own page hero (courseCatalog.hero, opt-in)

@@ -54,4 +54,11 @@ describe("pageOpensWithOwnHeader", () => {
     expect(pageOpensWithOwnHeader(grid({ hero: { enabled: false } }))).toBe(false);
     expect(pageOpensWithOwnHeader([{ type: "textBlock" }, { type: "courseCatalog", props: { hero: { enabled: true } } }])).toBe(false);
   });
+
+  it("looks past a promo popup placed at the top of the page", () => {
+    // The popup floats over the page; the section under it is what opens it.
+    expect(pageOpensWithOwnHeader(page("promoPopup", "sectionHeading"))).toBe(true);
+    expect(pageOpensWithOwnHeader(page("promoPopup", "faqSection"))).toBe(false);
+    expect(pageOpensWithOwnHeader(page("promoPopup"))).toBe(false);
+  });
 });

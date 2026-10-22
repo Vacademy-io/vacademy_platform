@@ -98,7 +98,7 @@ const COMPONENT_GROUPS: { title: string; keys: string[] }[] = [
     },
     {
         title: 'Ask the visitor',
-        keys: ['leadForm', 'ctaBanner', 'contactForm', 'newsletterSignup', 'countdownTimer'],
+        keys: ['promoPopup', 'leadForm', 'ctaBanner', 'contactForm', 'newsletterSignup', 'countdownTimer'],
     },
     {
         title: 'Media',

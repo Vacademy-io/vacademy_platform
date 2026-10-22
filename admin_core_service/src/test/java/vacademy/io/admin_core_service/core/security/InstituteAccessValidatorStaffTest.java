@@ -94,6 +94,25 @@ class InstituteAccessValidatorStaffTest {
     }
 
     @Test
+    @DisplayName("a COUNSELLOR who is also enrolled as a STUDENT keeps staff access")
+    void counsellorEnrolledAsStudentAllowed() {
+        assertDoesNotThrow(() -> validator.requireStaffAccess(principal(false, "STUDENT", "COUNSELLOR"), INSTITUTE));
+    }
+
+    @Test
+    @DisplayName("requireInstituteStaff: COUNSELLOR + STUDENT may place human calls (ShikshaNation counsellors)")
+    void counsellorEnrolledAsStudentIsInstituteStaff() {
+        assertDoesNotThrow(() -> validator.requireInstituteStaff(principal(false, "STUDENT", "counsellor"), INSTITUTE));
+    }
+
+    @Test
+    @DisplayName("requireInstituteStaff: STUDENT + TEACHER is still refused")
+    void studentWithTeacherNotInstituteStaff() {
+        assertThrows(ForbiddenException.class,
+                () -> validator.requireInstituteStaff(principal(false, "STUDENT", "TEACHER"), INSTITUTE));
+    }
+
+    @Test
     @DisplayName("TEACHER is allowed (case-insensitive)")
     void teacherAllowed() {
         assertDoesNotThrow(() -> validator.requireStaffAccess(principal(false, "teacher"), INSTITUTE));

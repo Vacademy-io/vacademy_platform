@@ -254,6 +254,7 @@
         },
         "goToMyCourses": "اذهب إلى {{courses}} الخاصة بي",
         "redirecting": "جارٍ نقلك إلى الصفحة التالية…",
-        "redirectNow": "المتابعة الآن"
+        "redirectNow": "المتابعة الآن",
+        "loggingIn": "جارٍ تسجيل دخولك…"
     }
 }

@@ -245,6 +245,7 @@
         },
         "goToMyCourses": "Accéder à mes {{courses}}",
         "redirecting": "Redirection vers la page suivante…",
-        "redirectNow": "Continuer maintenant"
+        "redirectNow": "Continuer maintenant",
+        "loggingIn": "Connexion en cours…"
     }
 }

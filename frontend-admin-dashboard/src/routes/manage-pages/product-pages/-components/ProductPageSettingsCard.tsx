@@ -679,6 +679,23 @@ export const ProductPageSettingsCard = ({
                     />
                 </div>
 
+                {/* Auto-login after purchase toggle */}
+                <div className="flex items-center gap-4 border-t border-neutral-100 px-5 py-4">
+                    <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-neutral-800">Log In Automatically After Purchase</p>
+                        <p className="text-xs text-neutral-400">
+                            Once the payment goes through, take a new buyer straight to their
+                            dashboard, already logged in. Buyers who had an account before still
+                            see the success page and log in themselves. Takes priority over the
+                            redirect path.
+                        </p>
+                    </div>
+                    <Toggle
+                        checked={settings.autoLoginAfterPayment ?? false}
+                        onChange={() => update({ autoLoginAfterPayment: !(settings.autoLoginAfterPayment ?? false) })}
+                    />
+                </div>
+
                 {/* Success Page Content */}
                 <div className="border-t border-neutral-100 px-5 py-4 space-y-2">
                     <p className="text-sm font-semibold text-neutral-800">Success Page Content <span className="font-normal text-neutral-400">(Optional)</span></p>

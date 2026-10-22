@@ -403,6 +403,7 @@ export const VALIDATE_PRODUCT_PAGE_COUPON = `${PRODUCT_PAGE_OPEN_URL}/validate-c
 export const PRODUCT_PAGE_FORM_SUBMIT = `${PRODUCT_PAGE_OPEN_URL}/form-submit`;
 export const PRODUCT_PAGE_ENROLL = `${PRODUCT_PAGE_OPEN_URL}/enroll`;
 export const PRODUCT_PAGE_CPO_ENROLL = `${PRODUCT_PAGE_OPEN_URL}/cpo-enroll`;
+export const PRODUCT_PAGE_LOGIN_CODE_EXCHANGE = `${PRODUCT_PAGE_OPEN_URL}/login-code/exchange`;
 
 // Invoice payment (open — no auth required for viewing or initiating)
 export const GET_INVOICE_PUBLIC = (invoiceId: string) =>

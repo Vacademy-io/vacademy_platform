@@ -47,6 +47,10 @@ interface ProductPageStore {
     abandonedCartIds: string[];
     setFormSubmitResult: (userId: string, abandonedCartIds: string[]) => void;
 
+    /** One-time code from a paid enroll, for autoLoginAfterPayment. */
+    loginCode: string | null;
+    setLoginCode: (code: string | null) => void;
+
     // CPO installment state
     cpoUserPlanId: string | null;
     cpoSelectedSfpIds: string[];
@@ -115,6 +119,7 @@ const initialState = {
     registrationData: {},
     userId: null,
     abandonedCartIds: [],
+    loginCode: null,
     utmParams: {},
     ...noCpoState,
 };
@@ -174,6 +179,8 @@ export const useProductPageStore = create<ProductPageStore>((set, get) => ({
     setRegistrationData: (data) => set({ registrationData: data }),
 
     setFormSubmitResult: (userId, abandonedCartIds) => set({ userId, abandonedCartIds }),
+
+    setLoginCode: (loginCode) => set({ loginCode }),
 
     setCpoEnrollResult: (userPlanId) => set({ cpoUserPlanId: userPlanId }),
 

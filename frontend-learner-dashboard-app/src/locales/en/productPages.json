@@ -243,7 +243,8 @@
         },
         "goToMyCourses": "Go to My {{courses}}",
         "redirecting": "Taking you to the next page…",
-        "redirectNow": "Continue now"
+        "redirectNow": "Continue now",
+        "loggingIn": "Logging you in…"
     },
     "planTiles": {
         "coursesIncluded": "{{count}} {{courses}} included",

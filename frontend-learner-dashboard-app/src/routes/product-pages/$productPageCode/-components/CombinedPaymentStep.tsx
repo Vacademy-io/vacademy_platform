@@ -54,7 +54,7 @@ export const CombinedPaymentStep = ({
     const courseTermFor = (count: number) => (count === 1 ? course : coursePlural).toLocaleLowerCase();
     const {
         selectedPsOptionIds, registrationData, userId, couponCode, discountAmount,
-        clearCoupon, finalPrice, utmParams,
+        clearCoupon, finalPrice, utmParams, setLoginCode,
     } = useProductPageStore();
 
     const razorpayRef = useRef<RazorpayCheckoutFormRef | null>(null);
@@ -225,6 +225,7 @@ export const CombinedPaymentStep = ({
             );
         }
 
+        setLoginCode(result.login_code ?? null);
         pushCombinedEnrollmentSuccess(amount, selectedPsOptionIds.length, utmParams);
         onSuccess();
     };

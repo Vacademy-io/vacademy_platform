@@ -5,11 +5,13 @@ import {
     PRODUCT_PAGE_FORM_SUBMIT,
     PRODUCT_PAGE_ENROLL,
     PRODUCT_PAGE_CPO_ENROLL,
+    PRODUCT_PAGE_LOGIN_CODE_EXCHANGE,
 } from '@/constants/urls';
 import type {
     ProductPageData,
     ProductPageFormSubmitResponse,
     ProductPageEnrollResponse,
+    ProductPageLoginCodeExchangeResponse,
     CouponValidateResponse,
     FieldValue,
 } from '../-types/product-page-types';
@@ -201,5 +203,17 @@ export const enrollForProductPage = async (
         payment_initiation_request: payload.paymentInitiationRequest,
         utm_params: payload.utmParams ?? {},
     });
+    return response.data;
+};
+
+/** Swaps the one-time login_code from a paid enroll for the buyer's tokens. */
+export const exchangeProductPageLoginCode = async (
+    loginCode: string,
+    instituteId: string
+): Promise<ProductPageLoginCodeExchangeResponse> => {
+    const response = await axios.post<ProductPageLoginCodeExchangeResponse>(
+        PRODUCT_PAGE_LOGIN_CODE_EXCHANGE,
+        { login_code: loginCode, institute_id: instituteId }
+    );
     return response.data;
 };

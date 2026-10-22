@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useProductPageStore } from "../-stores/product-page-store";
 import { CheckCircle, BookOpen, ArrowRight } from "@phosphor-icons/react";
@@ -29,11 +29,14 @@ const PAYMENT_SUCCESS_TARGET_ORIGINS = [
   "http://localhost:3000",
 ];
 
+/** A course with one class and one session names both "default"; that says nothing to a buyer. */
+const isDefaultName = (name?: string | null) => name?.trim().toLowerCase() === "default";
+
 export const ProductPageSuccess = ({ pageData }: ProductPageSuccessProps) => {
   const { t } = useTranslation("productPages");
   const course = getTerminology(ContentTerms.Course, SystemTerms.Course);
   const coursePlural = getTerminologyPlural(ContentTerms.Course, SystemTerms.Course);
-  const { selectedPsOptionIds, utmParams, finalPrice, totalPrice } = useProductPageStore();
+  const { selectedPsOptionIds, utmParams, finalPrice, totalPrice, loginCode } = useProductPageStore();
 
   const settings: ProductPageSettings = pageData.settings_json
     ? (() => {
@@ -51,6 +54,13 @@ export const ProductPageSuccess = ({ pageData }: ProductPageSuccessProps) => {
   const redirectDelayMs = clampRedirectDelay(settings.afterPaymentRedirectDelaySeconds) * 1000;
   const showLoginButton = settings.showLoginButton ?? true;
   const successPageContent = settings.successPageContent?.trim() ?? "";
+
+  // "Log in automatically after purchase": the server only hands out a code
+  // for a buyer whose account this checkout created, so anyone without one
+  // (or whose code fails) gets the normal receipt below.
+  const [autoLogin, setAutoLogin] = useState<"pending" | "failed" | "idle">(
+    settings.autoLoginAfterPayment && loginCode ? "pending" : "idle",
+  );
 
   const enrolledCount = selectedPsOptionIds.length;
   const currency =
@@ -104,18 +114,59 @@ export const ProductPageSuccess = ({ pageData }: ProductPageSuccessProps) => {
     }
   }, [utmParams]);
 
+  useEffect(() => {
+    if (autoLogin !== "pending" || !loginCode) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        // Loaded on demand: only buyers who get a login code need the auth cycle.
+        const [{ exchangeProductPageLoginCode }, { performFullAuthCycle }] = await Promise.all([
+          import("../-services/product-page-service"),
+          import("@/services/auth-cycle-service"),
+        ]);
+        const tokens = await exchangeProductPageLoginCode(loginCode, pageData.institute_id);
+        await performFullAuthCycle(
+          { accessToken: tokens.access_token, refreshToken: tokens.refresh_token },
+          pageData.institute_id,
+        );
+        // replace(): Back must not return to a checkout that is already paid.
+        if (!cancelled) window.location.replace("/dashboard");
+      } catch {
+        if (!cancelled) setAutoLogin("failed");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [autoLogin, loginCode, pageData.institute_id]);
+
   // "Redirect Path" in the product page's Post Enrollment Configuration: once
   // the enrolment is through, hand the buyer over to the institute's own
   // thank-you page instead of this receipt.
   useEffect(() => {
-    if (!redirectTarget) return;
+    if (!redirectTarget || autoLogin === "pending") return;
     const timer = window.setTimeout(() => {
       // replace(), not assign() — Back from the thank-you page must not walk
       // the buyer into a checkout they have already paid for.
       window.location.replace(redirectTarget);
     }, redirectDelayMs);
     return () => window.clearTimeout(timer);
-  }, [redirectTarget, redirectDelayMs]);
+  }, [redirectTarget, redirectDelayMs, autoLogin]);
+
+  if (autoLogin === "pending") {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 px-4 py-12">
+        <div className="mb-6 flex size-20 items-center justify-center rounded-3xl bg-green-100">
+          <CheckCircle className="size-10 text-green-600" />
+        </div>
+        <h1 className="text-2xl font-bold text-gray-900">{t("success.title")}</h1>
+        <p className="mt-3 flex items-center gap-2 text-sm text-gray-500">
+          <span className="size-4 animate-spin rounded-full border-2 border-gray-300 border-t-gray-600" />
+          {t("success.loggingIn")}
+        </p>
+      </div>
+    );
+  }
 
   // While the handover is pending, the receipt below would only flash past, so
   // show the one thing that matters — the enrolment went through — plus a link
@@ -177,7 +228,11 @@ export const ProductPageSuccess = ({ pageData }: ProductPageSuccessProps) => {
           // Class and session sit on the meta line because a parent buying for
           // two children needs to see WHICH child each row is for; the plan's
           // validity joins them rather than owning a line of its own.
-          const meta = [m.level_name, m.session_name, accessLabel(m.payment_plan?.validity_in_days)]
+          const meta = [
+            isDefaultName(m.level_name) ? "" : m.level_name,
+            isDefaultName(m.session_name) ? "" : m.session_name,
+            accessLabel(m.payment_plan?.validity_in_days),
+          ]
             .filter(Boolean)
             .join(" · ");
           return (

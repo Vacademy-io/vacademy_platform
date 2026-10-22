@@ -492,12 +492,19 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
          * inside a course-filtered view. REJECTED is a voided invoice: visible in the table
          * (struck through) but neither collected nor owed.
          *
+         * <p>{@code cpo_sched}, {@code cpo_next} and {@code plan_paid} are MATERIALIZED, so each is
+         * computed once per query. Postgres otherwise inlines a CTE referenced once, and when a date
+         * window leaves few plans it estimates one row and puts the per-plan aggregate on the inner
+         * side of a nested loop. On an institute with 58k payment logs that re-ran the whole PAID
+         * aggregate once per plan: a one-year window took 60 to 90 s and the cards gave up; it now
+         * takes a few seconds, with identical results on every query built on these CTEs.
+         *
          * <p>The SQL text deliberately carries no comments: an apostrophe, quote, semicolon or
          * colon inside a native-query comment reaches the query parser and has broken production
          * before. Explain here, not there.
          */
         String DUE_OBLIGATION_CTES = """
-                WITH cpo_sched AS (
+                WITH cpo_sched AS MATERIALIZED (
                   SELECT sfp.user_plan_id,
                          SUM(sfp.amount_expected) AS expected,
                          SUM(COALESCE(sfp.amount_paid, 0)) AS paid,
@@ -518,7 +525,7 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                    WHERE sfp.institute_id = :instituteId
                      AND sfp.status NOT IN ('DELETED', 'CANCELLED', 'DROPPED', 'WAIVED')
                    GROUP BY sfp.user_plan_id
-                ), cpo_next AS (
+                ), cpo_next AS MATERIALIZED (
                   SELECT u.user_plan_id, SUM(u.unpaid) AS next_due_amount
                     FROM (SELECT sfp.user_plan_id,
                                  CAST(sfp.due_date AS date) AS due_on,
@@ -530,7 +537,7 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                              AND COALESCE(sfp.amount_paid, 0) < sfp.amount_expected) u
                    WHERE u.due_on = u.first_due_on
                    GROUP BY u.user_plan_id
-                ), plan_paid AS (
+                ), plan_paid AS MATERIALIZED (
                   SELECT pl.user_plan_id, SUM(pl.payment_amount) AS amt
                     FROM payment_log pl
                     JOIN user_plan up2 ON up2.id = pl.user_plan_id

@@ -21,6 +21,7 @@ import {
 import { readUtmSelection, toUtmFiltersPayload } from '@/components/shared/leads/utm-filter-encoding';
 
 export const ALL_SESSIONS_ID = '__ALL__';
+export const TERMINATED_STATUS = 'TERMINATED';
 
 export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) => {
     const { allowAllSessions = false } = options;
@@ -55,6 +56,19 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
     const [searchFilter, setSearchFilter] = useState('');
     const [clearFilters, setClearFilters] = useState<boolean>(false);
     const hasInitializedFilters = useRef(false);
+    // Statuses sent when the admin hasn't picked any. A search by name/email also includes
+    // TERMINATED, so a member removed from every batch is still findable without first
+    // guessing to pick Terminated in the Status filter; the unsearched list is unchanged.
+    const defaultStatusesFor = (name?: string): string[] => {
+        const base: string[] = instituteDetails?.student_statuses || [];
+        return name?.trim() && !base.includes(TERMINATED_STATUS)
+            ? [...base, TERMINATED_STATUS]
+            : base;
+    };
+    const hasExplicitStatusFilter = () =>
+        columnFilters.some(
+            (f) => (f.id === 'statuses' || f.id === 'approval_statuses') && f.value.length > 0
+        );
     const buildAllOption = (): DropdownItemType => ({
         id: ALL_SESSIONS_ID,
         name: t('sessionSelector.allOption', {
@@ -313,7 +327,13 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
             const name = searchParams.name as string;
             setSearchInput(name);
             setSearchFilter(name);
-            setAppliedFilters((prev) => ({ ...prev, name }));
+            setAppliedFilters((prev) => ({
+                ...prev,
+                name,
+                ...(!searchParams.status && !searchParams.approvalStatus
+                    ? { statuses: defaultStatusesFor(name) }
+                    : {}),
+            }));
         }
 
         // Payment Status filter from URL
@@ -453,7 +473,9 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
             if (statusesToApply.length > 0 || approvalStatusesToApply.length > 0) {
                 finalStatusesToApply = [...statusesToApply, ...approvalStatusesToApply];
             } else {
-                finalStatusesToApply = instituteDetails?.student_statuses || [];
+                finalStatusesToApply = defaultStatusesFor(
+                    (searchParams.name as string) || searchFilter
+                );
             }
 
             const genderFilter = initialFilters.find((filter) => filter.id === 'gender');
@@ -664,7 +686,7 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
 
         // If NO status filters are selected (regular or approval), default to ACTIVE/INACTIVE
         if (finalStatusesToApply.length === 0) {
-            finalStatusesToApply = instituteDetails?.student_statuses || [];
+            finalStatusesToApply = defaultStatusesFor(searchFilter);
         }
 
         // Handle Package Session IDs
@@ -1011,6 +1033,7 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
         setAppliedFilters((prev) => ({
             ...prev,
             name: searchInput,
+            ...(hasExplicitStatusFilter() ? {} : { statuses: defaultStatusesFor(searchInput) }),
         }));
     };
 
@@ -1027,6 +1050,7 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
         setAppliedFilters((prev) => ({
             ...prev,
             name: '',
+            ...(hasExplicitStatusFilter() ? {} : { statuses: defaultStatusesFor('') }),
         }));
     };
 

@@ -365,7 +365,7 @@ export const ProductPagesList = () => {
                         return (
                             <div
                                 key={page.id}
-                                className="group overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5"
+                                className="group flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
                             >
                                 <div
                                     className={`relative flex h-24 items-center justify-center bg-gradient-to-br ${gradient}`}
@@ -383,8 +383,8 @@ export const ProductPagesList = () => {
                                     </div>
                                 </div>
 
-                                <div className="p-4">
-                                    <h3 className="truncate text-sm font-semibold text-neutral-800">
+                                <div className="flex flex-1 flex-col p-4">
+                                    <h3 className="break-words text-sm font-semibold leading-snug text-neutral-800">
                                         {page.name}
                                     </h3>
 
@@ -402,7 +402,7 @@ export const ProductPagesList = () => {
                                         </div>
                                     )}
 
-                                    <div className="mt-4 flex items-center gap-2">
+                                    <div className="mt-auto flex items-center gap-2 pt-4">
                                         <MyButton
                                             scale="small"
                                             buttonType="primary"

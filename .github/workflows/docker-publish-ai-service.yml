@@ -75,6 +75,15 @@ jobs:
           ECR_REGISTRY: public.ecr.aws/e0x1f4p4
           REPOSITORY: ai-service/ai-service-repo
           GIT_SHA: ${{ github.sha }}
+          # YouTube captions proxy + Supadata (services/youtube_captions). Passed via
+          # env, not inlined, so proxy URLs / passwords with shell metacharacters
+          # survive intact. All optional; applied below only when non-empty.
+          YT_CAPTIONS_PROXY: ${{ secrets.YT_CAPTIONS_PROXY }}
+          WEBSHARE_PROXY_USERNAME: ${{ secrets.WEBSHARE_PROXY_USERNAME }}
+          WEBSHARE_PROXY_PASSWORD: ${{ secrets.WEBSHARE_PROXY_PASSWORD }}
+          YT_CAPTIONS_PROXY_HTTP_URL: ${{ secrets.YT_CAPTIONS_PROXY_HTTP_URL }}
+          YT_CAPTIONS_PROXY_HTTPS_URL: ${{ secrets.YT_CAPTIONS_PROXY_HTTPS_URL }}
+          SUPADATA_API_KEY: ${{ secrets.SUPADATA_API_KEY }}
         run: |
           if kubectl get deployment "$DEPLOYMENT_NAME" --namespace "$NAMESPACE" >/dev/null 2>&1; then
             kubectl set env deployment/"$DEPLOYMENT_NAME" \
@@ -125,6 +134,21 @@ jobs:
             if [ -n "${{ secrets.SPATIUS_API_KEY }}" ] && [ -n "${{ secrets.SPATIUS_APP_ID }}" ]; then
               kubectl set env deployment/"$DEPLOYMENT_NAME" --namespace "$NAMESPACE" \
                 SPATIUS_API_KEY=${{ secrets.SPATIUS_API_KEY }} SPATIUS_APP_ID=${{ secrets.SPATIUS_APP_ID }}
+            fi
+
+            # YouTube captions proxy + Supadata. Same rule: each one only when its GitHub
+            # secret is non-empty, so an unset secret never blanks the value already in
+            # `vacademy-secrets` (envFrom). Values are never echoed.
+            yt_env=()
+            for name in YT_CAPTIONS_PROXY WEBSHARE_PROXY_USERNAME WEBSHARE_PROXY_PASSWORD \
+                        YT_CAPTIONS_PROXY_HTTP_URL YT_CAPTIONS_PROXY_HTTPS_URL SUPADATA_API_KEY; do
+              if [ -n "${!name}" ]; then
+                yt_env+=("$name=${!name}")
+              fi
+            done
+            if [ "${#yt_env[@]}" -gt 0 ]; then
+              echo "Applying ${#yt_env[@]} YouTube-caption env var(s) from GitHub secrets"
+              kubectl set env deployment/"$DEPLOYMENT_NAME" --namespace "$NAMESPACE" "${yt_env[@]}" >/dev/null
             fi
 
             # Encryption key for the Claude key pool (llm_provider_keys). It lives in its

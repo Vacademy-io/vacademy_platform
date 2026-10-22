@@ -26,6 +26,21 @@ import { isValidPostSubmitUrl } from '@/services/audience-post-submit-settings';
 
 // ─── Shape ───────────────────────────────────────────────────────────────────
 
+/**
+ * A whole-page look picked from the template gallery. `standard` is the page
+ * driven by the individual knobs below; every other template owns the layout,
+ * background, card and width, while the text, fields and button colour still
+ * come from the rest of this blob.
+ */
+export type AudienceFormTemplate =
+    | 'standard'
+    | 'banner'
+    | 'split'
+    | 'framed'
+    | 'minimal'
+    | 'gradient'
+    | 'dark'
+    | 'logo';
 export type AudienceFormLayout = 'classic' | 'hero' | 'split';
 export type AudienceFormWidth = 'narrow' | 'regular' | 'wide';
 export type AudienceFormBackground = 'gradient' | 'plain' | 'muted';
@@ -56,6 +71,7 @@ const MAX_RICH_TEXT = 5000;
 
 export interface AudienceFormAppearance {
     // ── Shape ──
+    template: AudienceFormTemplate;
     layout: AudienceFormLayout;
     width: AudienceFormWidth;
     background: AudienceFormBackground;
@@ -119,6 +135,7 @@ export interface AudienceFormAppearance {
 }
 
 export const DEFAULT_FORM_APPEARANCE: AudienceFormAppearance = {
+    template: 'standard',
     layout: 'hero',
     width: 'regular',
     // Neutral surface + white card + one brand-coloured action. Must match the
@@ -169,6 +186,16 @@ export const FORM_APPEARANCE_KEY = 'formAppearance';
 
 // ─── Option lists (also drive the editor's dropdowns) ────────────────────────
 
+export const FORM_TEMPLATES: readonly AudienceFormTemplate[] = [
+    'standard',
+    'banner',
+    'split',
+    'framed',
+    'minimal',
+    'gradient',
+    'dark',
+    'logo',
+];
 export const FORM_LAYOUTS: readonly AudienceFormLayout[] = ['classic', 'hero', 'split'];
 export const FORM_WIDTHS: readonly AudienceFormWidth[] = ['narrow', 'regular', 'wide'];
 // Ordered by how often they are the right answer, since this drives the editor's
@@ -246,6 +273,7 @@ export const normalizeFormAppearance = (
 ): AudienceFormAppearance => {
     const src = (raw ?? {}) as Partial<AudienceFormAppearance> & Record<string, unknown>;
     return {
+        template: toEnum(src.template, FORM_TEMPLATES, base.template),
         layout: toEnum(src.layout, FORM_LAYOUTS, base.layout),
         width: toEnum(src.width, FORM_WIDTHS, base.width),
         background: toEnum(src.background, FORM_BACKGROUNDS, base.background),
@@ -328,6 +356,7 @@ export const applyFormAppearance = (
 export const isDefaultFormAppearance = (config: AudienceFormAppearance): boolean => {
     const d = DEFAULT_FORM_APPEARANCE;
     return (
+        config.template === d.template &&
         config.layout === d.layout &&
         config.width === d.width &&
         config.background === d.background &&

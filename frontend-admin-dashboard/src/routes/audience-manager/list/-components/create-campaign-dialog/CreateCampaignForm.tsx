@@ -51,6 +51,7 @@ import {
     type AudiencePostSubmitConfiguration,
 } from '@/services/audience-post-submit-settings';
 import FormAppearanceEditor from '@/components/audience/FormAppearanceEditor';
+import FormTemplatePicker from '@/components/audience/FormTemplatePicker';
 import FormTextEditor from '@/components/audience/FormTextEditor';
 import { AUDIENCE_FORM_SETTINGS_QUERY_KEY } from '@/routes/settings/-components/AudienceFormSettings';
 import {
@@ -1526,6 +1527,22 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({
                 }}
                 className="space-y-6"
             >
+                {/* Form Template — the whole-page look of the public form. Not
+                behind the Form Appearance institute switch: picking a look is
+                a per-campaign choice. Writes `formAppearance.template`. */}
+                <Controller
+                    name="formAppearance"
+                    control={control}
+                    render={({ field }) => (
+                        <FormTemplatePicker
+                            value={field.value ?? DEFAULT_FORM_APPEARANCE}
+                            onChange={field.onChange}
+                            title={t('formTemplate.title')}
+                            description={t('formTemplate.description')}
+                        />
+                    )}
+                />
+
                 {/* Form Heading & Text — the page heading (defaults to this list's
                 name) and the form card's heading + sub-heading, with alignment.
                 Deliberately NOT behind the Form Appearance institute switch:

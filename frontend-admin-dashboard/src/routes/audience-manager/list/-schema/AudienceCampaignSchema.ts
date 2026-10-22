@@ -95,6 +95,9 @@ const postSubmitConfigurationSchema = z.object({
  * way to the API).
  */
 const formAppearanceSchema = z.object({
+    template: z
+        .enum(['standard', 'banner', 'split', 'framed', 'minimal', 'gradient', 'dark', 'logo'])
+        .catch(DEFAULT_FORM_APPEARANCE.template),
     layout: z.enum(['classic', 'hero', 'split']).catch(DEFAULT_FORM_APPEARANCE.layout),
     width: z.enum(['narrow', 'regular', 'wide']).catch(DEFAULT_FORM_APPEARANCE.width),
     background: z.enum(['gradient', 'plain', 'muted']).catch(DEFAULT_FORM_APPEARANCE.background),

@@ -33,6 +33,7 @@ from ..core.chat_auth import (
     get_chat_caller,
     require_auth_enabled,
     shadow_counts,
+    shadow_counts_by_route,
 )
 from ..core.security import is_platform_staff
 
@@ -554,7 +555,11 @@ async def close_session(
 async def debug_auth_stats(caller: ChatCaller = Depends(get_chat_caller)):
     if not caller.authenticated or not is_platform_staff({"user_id": caller.user_id}):
         raise HTTPException(status_code=404, detail="Not found")
-    return {"require_auth": require_auth_enabled(), "would_refuse_since_boot": shadow_counts()}
+    return {
+        "require_auth": require_auth_enabled(),
+        "would_refuse_since_boot": shadow_counts(),
+        "no_token_or_invalid_by_route": shadow_counts_by_route(),
+    }
 
 
 @router.post(

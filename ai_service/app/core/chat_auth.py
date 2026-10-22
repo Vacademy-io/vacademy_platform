@@ -27,7 +27,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from typing import Optional
 
-from fastapi import Header, HTTPException, status
+from fastapi import Header, HTTPException, Request, status
 
 from ..config import get_settings
 from .security import _extract_bearer, decode_access_token
@@ -69,23 +69,52 @@ def require_auth_enabled() -> bool:
 
 _lock = threading.Lock()
 _counts: Counter = Counter()
+# "no_token GET /chat-agent/session/{session_id}/stream native": which calls and
+# which clients would be cut off, so the flip can wait for old app builds.
+_by_route: Counter = Counter()
 _last_log = 0.0
 _LOG_EVERY_S = 60.0
 
 
-def _count(kind: str) -> None:
+def _client_kind(user_agent: str, origin: str = "") -> str:
+    """native = the Capacitor app (origin capacitor://localhost or http(s)://localhost,
+    an Android WebView, an iOS WebView with no Safari token)."""
+    ua, origin = (user_agent or "").lower(), (origin or "").lower()
+    if origin.startswith("capacitor://") or origin in ("http://localhost", "https://localhost"):
+        return "native"
+    ios_webview = ("iphone" in ua or "ipad" in ua) and "safari" not in ua
+    if ios_webview or "capacitor" in ua or "; wv)" in ua or "okhttp" in ua or "cfnetwork" in ua:
+        return "native"
+    if "mozilla" in ua:
+        return "browser"
+    return "other" if ua else "none"
+
+
+def _route_key(kind: str, request: Optional[Request]) -> Optional[str]:
+    if request is None:
+        return None
+    route = request.scope.get("route")
+    path = getattr(route, "path", None) or request.url.path
+    return f"{kind} {request.method} {path} {_client_kind(request.headers.get('user-agent', ''), request.headers.get('origin', ''))}"
+
+
+def _count(kind: str, request: Optional[Request] = None) -> None:
     global _last_log
     with _lock:
         _counts[kind] += 1
+        key = _route_key(kind, request)
+        if key:
+            _by_route[key] += 1
         now = time.monotonic()
         if now - _last_log < _LOG_EVERY_S:
             return
         _last_log = now
         snapshot = dict(_counts)
+        routes = dict(_by_route.most_common(8))
     logger.warning(
         "[chat-auth] chat-agent request without a valid token or with a mismatched "
-        "identity (served: require_auth is off) — totals since boot: %s",
-        snapshot,
+        "identity (served: require_auth is off) — totals since boot: %s; by route: %s",
+        snapshot, routes,
     )
 
 
@@ -94,20 +123,25 @@ def shadow_counts() -> dict:
         return dict(_counts)
 
 
-def _violation(kind: str, detail: str, code: int) -> None:
+def shadow_counts_by_route() -> dict:
+    with _lock:
+        return dict(_by_route.most_common(50))
+
+
+def _violation(kind: str, detail: str, code: int, request: Optional[Request] = None) -> None:
     """Refuse when enforcing; otherwise count it and let the request through."""
     if require_auth_enabled():
         raise HTTPException(status_code=code, detail=detail)
-    _count(kind)
+    _count(kind, request)
 
 
 # ── FastAPI dependency ───────────────────────────────────────────────────────
 
 
-def get_chat_caller(authorization: Optional[str] = Header(None)) -> ChatCaller:
+def get_chat_caller(request: Request, authorization: Optional[str] = Header(None)) -> ChatCaller:
     token = _extract_bearer(authorization)
     if not token:
-        _violation("no_token", "Login required", status.HTTP_401_UNAUTHORIZED)
+        _violation("no_token", "Login required", status.HTTP_401_UNAUTHORIZED, request)
         return ChatCaller(anonymous_reason="missing")
 
     claims = decode_access_token(token)
@@ -115,7 +149,7 @@ def get_chat_caller(authorization: Optional[str] = Header(None)) -> ChatCaller:
     if not user_id:
         # Expired or forged. The app refreshes before opening the stream, so a
         # steady stream of these means a client bug, not a learner problem.
-        _violation("invalid_token", "Session expired — please log in again", status.HTTP_401_UNAUTHORIZED)
+        _violation("invalid_token", "Session expired — please log in again", status.HTTP_401_UNAUTHORIZED, request)
         return ChatCaller(anonymous_reason="invalid")
 
     authorities = claims.get("authorities")
@@ -184,4 +218,5 @@ __all__ = [
     "check_rate_limit",
     "require_auth_enabled",
     "shadow_counts",
+    "shadow_counts_by_route",
 ]

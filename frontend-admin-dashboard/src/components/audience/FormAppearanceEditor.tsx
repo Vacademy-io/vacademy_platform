@@ -705,8 +705,10 @@ export const FormAppearanceEditor = ({
     // standard look, so a customised campaign never looks inert while collapsed.
     // The heading / form-header fields belong to FormTextEditor and carry their
     // own chip there, so they don't count as "this card was customised".
+    // Same for `template`, which FormTemplatePicker owns.
     const isDefault = isDefaultFormAppearance({
         ...value,
+        template: DEFAULT_FORM_APPEARANCE.template,
         showHeader: DEFAULT_FORM_APPEARANCE.showHeader,
         showHeadline: DEFAULT_FORM_APPEARANCE.showHeadline,
         headline: DEFAULT_FORM_APPEARANCE.headline,

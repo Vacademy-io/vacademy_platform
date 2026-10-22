@@ -73,6 +73,24 @@ describe("parseAudienceFormAppearance — a public form must always render", () 
     });
   });
 
+  it("renders the standard page unless a known template is picked", () => {
+    expect(parseAudienceFormAppearance(wrap({})).template).toBe("standard");
+    expect(parseAudienceFormAppearance(wrap({ template: "neon" })).template).toBe(
+      "standard"
+    );
+    for (const template of [
+      "banner",
+      "split",
+      "framed",
+      "minimal",
+      "gradient",
+      "dark",
+      "logo",
+    ]) {
+      expect(parseAudienceFormAppearance(wrap({ template })).template).toBe(template);
+    }
+  });
+
   it("honours booleans in both directions", () => {
     // Each of these flips its own default, so the assertion cannot pass by
     // accidentally falling through to the fallback.

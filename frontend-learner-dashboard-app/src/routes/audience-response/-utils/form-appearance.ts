@@ -30,6 +30,7 @@
  * ```json
  * {
  *   "formAppearance": {
+ *     "template": "standard",      // standard | banner | split | framed | minimal | gradient | dark | logo
  *     "layout": "hero",            // classic | hero | split
  *     "width": "regular",          // narrow | regular | wide
  *     "background": "muted",       // muted | plain | gradient
@@ -71,6 +72,22 @@ import {
   sanitizePostSubmitHtml,
 } from "./post-submit-config";
 
+/**
+ * A whole-page look, picked from a gallery in the admin's campaign form.
+ * `standard` is the page as it has always rendered and is driven by the
+ * individual knobs below. Every other template owns the page shell — layout,
+ * background and card — while the copy, fields, accent and width still come
+ * from the rest of the blob. See form-template-styles.ts.
+ */
+export type AudienceFormTemplate =
+  | "standard"
+  | "banner"
+  | "split"
+  | "framed"
+  | "minimal"
+  | "gradient"
+  | "dark"
+  | "logo";
 export type AudienceFormLayout = "classic" | "hero" | "split";
 export type AudienceFormWidth = "narrow" | "regular" | "wide";
 export type AudienceFormBackground = "gradient" | "plain" | "muted";
@@ -104,6 +121,7 @@ export interface AudienceFormHighlight {
 export const MAX_FORM_HIGHLIGHTS = 4;
 
 export interface AudienceFormAppearance {
+  template: AudienceFormTemplate;
   layout: AudienceFormLayout;
   width: AudienceFormWidth;
   background: AudienceFormBackground;
@@ -162,6 +180,7 @@ export interface AudienceFormAppearance {
 }
 
 export const DEFAULT_FORM_APPEARANCE: AudienceFormAppearance = {
+  template: "standard",
   layout: "hero",
   width: "regular",
   // Neutral surface + white card + one brand-coloured action. A gradient behind
@@ -197,6 +216,16 @@ export const DEFAULT_FORM_APPEARANCE: AudienceFormAppearance = {
 
 const FORM_APPEARANCE_KEY = "formAppearance";
 
+const TEMPLATES: readonly AudienceFormTemplate[] = [
+  "standard",
+  "banner",
+  "split",
+  "framed",
+  "minimal",
+  "gradient",
+  "dark",
+  "logo",
+];
 const LAYOUTS: readonly AudienceFormLayout[] = ["classic", "hero", "split"];
 const WIDTHS: readonly AudienceFormWidth[] = ["narrow", "regular", "wide"];
 const BACKGROUNDS: readonly AudienceFormBackground[] = [
@@ -305,6 +334,7 @@ export const parseAudienceFormAppearance = (
     Record<string, unknown>;
   const d = DEFAULT_FORM_APPEARANCE;
   return {
+    template: toEnum(src.template, TEMPLATES, d.template),
     layout: toEnum(src.layout, LAYOUTS, d.layout),
     width: toEnum(src.width, WIDTHS, d.width),
     background: toEnum(src.background, BACKGROUNDS, d.background),

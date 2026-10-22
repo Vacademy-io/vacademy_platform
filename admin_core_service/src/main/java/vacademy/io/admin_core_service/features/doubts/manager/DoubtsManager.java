@@ -1427,6 +1427,20 @@ public class DoubtsManager {
         Pageable pageable = PageRequest.of(pageNo,pageSize,sortColumns);
 
         String viewerUserId = resolveViewerUserId(userDetails);
+        String instituteId = StringUtils.hasText(filter.getInstituteId()) ? filter.getInstituteId() : null;
+        filter.setInstituteId(instituteId);
+
+        // The unscoped (whole-institute) list is for staff of the institute asked for. Roles come
+        // from the clientId-header institute, so an ADMIN role alone does not cover a body
+        // institute_id of another institute, nor no institute at all; and a root flag (every learner
+        // has one) with an empty role list is not staff. Those callers get the scoped view instead:
+        // their own doubts, the ones assigned to them and their batches'.
+        if (viewerUserId == null && (instituteId == null || !isInstituteStaff(userDetails, instituteId))) {
+            viewerUserId = userDetails == null ? null : userDetails.getUserId();
+            if (!StringUtils.hasText(viewerUserId)) {
+                return ResponseEntity.ok(createDoubtAllResponse(Page.empty(pageable)));
+            }
+        }
 
         // For a scoped viewer (teacher / non-admin staff), their LIVE FSPSSM visibility mirrors the
         // institute's configured default_assignee_source so what a teacher can see matches what the

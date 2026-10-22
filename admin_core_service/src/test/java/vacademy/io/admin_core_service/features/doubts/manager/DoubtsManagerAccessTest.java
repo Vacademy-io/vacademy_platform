@@ -8,6 +8,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
+import org.mockito.invocation.Invocation;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
@@ -17,6 +18,7 @@ import org.springframework.web.context.request.ServletRequestAttributes;
 import vacademy.io.admin_core_service.core.security.InstituteAccessValidator;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.doubts.dtos.DoubtsDto;
+import vacademy.io.admin_core_service.features.doubts.dtos.DoubtsRequestFilter;
 import vacademy.io.admin_core_service.features.doubts.entity.DoubtAssignee;
 import vacademy.io.admin_core_service.features.doubts.entity.Doubts;
 import vacademy.io.admin_core_service.features.doubts.repository.DoubtsAssigneeRepository;
@@ -35,11 +37,13 @@ import vacademy.io.common.exceptions.ForbiddenException;
 import java.util.List;
 import java.util.Optional;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mockingDetails;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -55,6 +59,8 @@ import static org.mockito.Mockito.when;
  *       not text edits or delete;</li>
  *   <li>anyone else (another learner, staff of another institute) — 403.</li>
  * </ul>
+ * And {@code get-all}: the whole-institute list only for staff of the institute asked for; others
+ * (an admin naming another institute or none, a root-flagged account without roles) are scoped.
  * The real {@link InstituteAccessValidator} decides staff; the clientId header is set per test.
  */
 @ExtendWith(MockitoExtension.class)
@@ -248,5 +254,49 @@ class DoubtsManagerAccessTest {
         assertThrows(ForbiddenException.class,
                 () -> manager.getDoubtActivity(principal(ADMIN, "ADMIN"), DOUBT_ID));
         assertEquals(200, manager.getDoubtActivity(principal(ASSIGNEE, "TEACHER"), DOUBT_ID).getStatusCode().value());
+    }
+
+    // ---------------------------------------------------------------- list
+
+    /** {institute_id, viewer_user_id} the list query ran with for this caller and body institute. */
+    private String[] listedAs(CustomUserDetails caller, String instituteId) {
+        DoubtsRequestFilter filter = new DoubtsRequestFilter();
+        filter.setInstituteId(instituteId);
+        manager.getAllDoubts(caller, filter, 0, 10);
+        Invocation call = mockingDetails(doubtService).getInvocations().stream()
+                .filter(i -> i.getMethod().getName().equals("getAllDoubtsWithFilter"))
+                .reduce((first, last) -> last).orElse(null);
+        return call == null ? null : new String[]{call.getArgument(10), call.getArgument(11)};
+    }
+
+    @Test
+    @DisplayName("list: an admin of the institute sees the whole institute")
+    void listAdminOwnInstitute() {
+        assertArrayEquals(new String[]{INST, null}, listedAs(principal(ADMIN, "ADMIN"), INST));
+    }
+
+    @Test
+    @DisplayName("list: an admin naming another institute, or none, only gets their own scoped view")
+    void listAdminOtherInstituteScoped() {
+        assertArrayEquals(new String[]{OTHER_INST, ADMIN}, listedAs(principal(ADMIN, "ADMIN"), OTHER_INST));
+        assertArrayEquals(new String[]{null, ADMIN}, listedAs(principal(ADMIN, "ADMIN"), null));
+        assertArrayEquals(new String[]{null, ADMIN}, listedAs(principal(ADMIN, "ADMIN"), " "));
+    }
+
+    @Test
+    @DisplayName("list: a root-flagged account with no roles (every learner; spoofed clientId) is scoped")
+    void listRootWithoutRolesScoped() {
+        UserServiceDTO dto = new UserServiceDTO();
+        dto.setUserId(LEARNER);
+        dto.setUsername(LEARNER);
+        dto.setRootUser(true);
+        dto.setAuthorities(List.of());
+        assertArrayEquals(new String[]{null, LEARNER}, listedAs(new CustomUserDetails(dto), null));
+    }
+
+    @Test
+    @DisplayName("list: a learner stays scoped to their own doubts")
+    void listLearnerScoped() {
+        assertArrayEquals(new String[]{INST, LEARNER}, listedAs(principal(LEARNER, "STUDENT"), INST));
     }
 }

@@ -233,6 +233,21 @@ public class UserAccountLedgerService {
         if (extraAccruals != null) totalAccrued = totalAccrued.add(extraAccruals);
         if (extraPayments != null) totalPaid    = totalPaid.add(extraPayments);
 
+        // Same for fee plans that pre-date the ledger (migrated installments): their ledger
+        // rows are only the new payments and discount/split deltas, so they are swapped for
+        // the installment figures. Left alone, one recorded payment showed Accrued 0 / Due 0.
+        // Only once the learner HAS ledger rows: with an empty ledger the summary stays zero
+        // and the payment-history screen keeps building it from the invoice list, as before.
+        if (repository.existsByUserIdAndInstituteId(userId, instituteId)) {
+            List<Object[]> preLedgerRows = repository.sumPreLedgerFeePlans(userId, instituteId);
+            if (preLedgerRows != null && !preLedgerRows.isEmpty() && preLedgerRows.get(0) != null) {
+                Object[] r = preLedgerRows.get(0);
+                totalAccrued = totalAccrued.add(num(r[0]).subtract(num(r[3])));
+                totalPaid    = totalPaid.add(num(r[1]).subtract(num(r[4])));
+                pastDue      = pastDue.add(num(r[2]).subtract(num(r[5])));
+            }
+        }
+
         // Reversals can push a net figure below zero when an obligation was voided after
         // the money had already been recognised elsewhere — never report a negative total.
         totalAccrued = totalAccrued.max(BigDecimal.ZERO);
@@ -270,6 +285,13 @@ public class UserAccountLedgerService {
                     userId, instituteId, e.getMessage());
         }
         return "INR";
+    }
+
+    /** A native-query number column as BigDecimal (Postgres numeric arrives as BigDecimal). */
+    private static BigDecimal num(Object v) {
+        if (v == null) return BigDecimal.ZERO;
+        if (v instanceof BigDecimal bd) return bd;
+        return new BigDecimal(v.toString());
     }
 
     public Page<UserAccountLedgerEntryDTO> getLedger(String userId, String instituteId, Pageable pageable) {

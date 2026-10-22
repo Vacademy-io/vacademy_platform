@@ -60,7 +60,8 @@
         "instituteContextUnavailable": "Contexte de l'établissement indisponible. Veuillez actualiser la page et réessayer.",
         "uploadImageFailed": "Échec du téléchargement de l'image de la campagne",
         "customFieldsMustBeArray": "Le JSON des champs personnalisés doit être un tableau.",
-        "customFieldsInvalidJson": "Les champs personnalisés doivent être un JSON valide."
+        "customFieldsInvalidJson": "Les champs personnalisés doivent être un JSON valide.",
+        "startDateInPast": "La date de début ne peut pas être antérieure à aujourd'hui."
     },
     "actions": {
         "reset": "Réinitialiser",

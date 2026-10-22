@@ -834,6 +834,20 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({
             return;
         }
 
+        // Create only: a new campaign cannot start before today. This was the
+        // Start Date input's native `min`, which the form's `noValidate` now
+        // skips. Edit mode is exempt — a running campaign started in the past.
+        // Same UTC "today" as that `min`.
+        if (!isEditMode) {
+            const todayDateOnly = new Date().toISOString().split('T')[0] ?? '';
+            const startDateOnly = (data.start_date_local || '').split('T')[0] ?? '';
+            if (startDateOnly && startDateOnly < todayDateOnly) {
+                toast.error(t('errors.startDateInPast'));
+                setStep(0);
+                return;
+            }
+        }
+
         // A bad redirect/CTA link only fails on the public form, long after the
         // admin has left this dialog — block the save instead.
         const postSubmitError = validatePostSubmitConfiguration(
@@ -1019,7 +1033,15 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({
     }
 
     return (
-        <form onSubmit={onFormSubmit} className="w-full min-w-0 space-y-6 overflow-hidden">
+        // noValidate: zod owns validation. The browser's own checks (e.g. Start
+        // Date `min` = today on a campaign that started earlier) fire on inputs in
+        // hidden wizard steps, where Chrome cannot show its bubble — so Save
+        // silently did nothing.
+        <form
+            noValidate
+            onSubmit={onFormSubmit}
+            className="w-full min-w-0 space-y-6 overflow-hidden"
+        >
             {isStatusActive && latestCampaignShareLink && (
                 <div className="rounded-lg border border-primary-100 bg-primary-50 p-4">
                     <p className="text-sm font-semibold text-primary-700">{t('shareLink.ready')}</p>

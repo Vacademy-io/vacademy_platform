@@ -60,7 +60,8 @@
         "instituteContextUnavailable": "Institute context unavailable. Please refresh and try again.",
         "uploadImageFailed": "Failed to upload campaign image",
         "customFieldsMustBeArray": "Custom fields JSON must be an array.",
-        "customFieldsInvalidJson": "Custom fields must be valid JSON."
+        "customFieldsInvalidJson": "Custom fields must be valid JSON.",
+        "startDateInPast": "Start date cannot be before today."
     },
     "actions": {
         "reset": "Reset",

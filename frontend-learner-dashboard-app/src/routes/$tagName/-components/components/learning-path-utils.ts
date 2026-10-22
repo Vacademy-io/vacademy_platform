@@ -476,6 +476,47 @@ export const mergePathSteps = <T extends PathMapping>(
   return out;
 };
 
+/**
+ * Every language a path step's version is in: its level's, else each language
+ * its tags name (a course tagged "english,hindi" is in both).
+ */
+const pathRowLanguageCodes = (
+  row: { level_name?: string | null; tags?: unknown },
+  languages: CourseLanguageOption[],
+): string[] => {
+  const level = languageOfLevel(row.level_name, languages);
+  if (level) return [level.code];
+  const tags = mappingTags(row).join(",");
+  return languages.filter((l) => languageOfTags(tags, [l])).map((l) => l.code);
+};
+
+/**
+ * A course page's series in the course's own language: a Hindi course counts
+ * only the path's steps in Hindi (and steps with no language), so its number
+ * is its place among them. A step that has a version in that language shows
+ * it. A course whose language is unknown, or that is not a step, keeps every step.
+ * Only for a site with course languages on (else every site would read the default languages).
+ */
+export const stepsInCourseLanguage = <T extends PathMapping>(
+  steps: PathStep<T>[],
+  courseId: string,
+  languages: CourseLanguageOption[],
+): PathStep<T>[] => {
+  const own = steps.find((s) => s.courseId === courseId);
+  // Every version of the course counts: a course in English and Hindi keeps both.
+  const langs = new Set(own ? own.variants.flatMap((v) => pathRowLanguageCodes(v, languages)) : []);
+  if (!langs.size) return steps;
+  const inLangs = (row: T) => pathRowLanguageCodes(row, languages).some((code) => langs.has(code));
+  const out: PathStep<T>[] = [];
+  for (const step of steps) {
+    // The step's own pick (the visitor's language) when it qualifies, else its first version that does.
+    const hit = inLangs(step.primary) ? step.primary : step.variants.find(inLangs);
+    if (hit) out.push(hit === step.primary ? step : { ...step, primary: hit });
+    else if (step.variants.every((v) => !pathRowLanguageCodes(v, languages).length)) out.push(step);
+  }
+  return out;
+};
+
 /** The step a visitor sees: its primary, or the version in the visitor's language (by level or tag). */
 export const displayVariant = <T extends PathMapping>(
   step: PathStep<T>,

@@ -6,6 +6,7 @@ import {
   buildPathSteps,
   collectPathEntries,
   findFolderBySlug,
+  stepsInCourseLanguage,
   variantPrice,
   type PathMapping,
 } from "../../-components/components/learning-path-utils";
@@ -92,11 +93,13 @@ export const useCourseSeries = (input: {
       if (!mappings.some((m) => m.package_id === courseId && (m.status ?? "ACTIVE").toUpperCase() === "ACTIVE")) {
         continue;
       }
-      const steps = buildPathSteps(mappings, {
+      const built = buildPathSteps(mappings, {
         groupVersions: input.groupVersions,
         languages: input.languages,
         preferredLanguage: input.preferredLanguage,
       });
+      // With course languages on, numbered within the course's language: a Hindi course's chips skip the English steps.
+      const steps = input.groupVersions ? stepsInCourseLanguage(built, courseId, input.languages) : built;
       if (steps.length < 2) return null;
       const titles = steps.map((s) => (s.primary.package_name || "").trim());
       const labels = shortStepLabels(titles);

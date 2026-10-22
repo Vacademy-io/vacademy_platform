@@ -24,6 +24,7 @@ import {
   pathsInScope,
   planPathCart,
   resolvePathScope,
+  stepsInCourseLanguage,
   type PathMapping,
 } from "./learning-path-utils";
 
@@ -74,6 +75,65 @@ describe("buildPathSteps", () => {
 
   it("copes with no mappings", () => {
     expect(buildPathSteps(null, { groupVersions: true, languages: LANGS })).toEqual([]);
+  });
+});
+
+describe("stepsInCourseLanguage: a course page numbers its own language's steps", () => {
+  // The temples path: separate EN / HI packages, language only in the tags.
+  const tagged = (id: string, tags: string) => row(id, `${id}-ps`, "India of temples", 0, { tags });
+  const path = buildPathSteps(
+    [
+      tagged("martand-en", "english,short film"),
+      tagged("jyeshtheshwar", "hindi,short film"),
+      tagged("maikalsuta", "hindi,articles-essays"),
+      tagged("martand-hi", "hindi,short film"),
+      tagged("no-lang", "for everyone"),
+    ],
+    { groupVersions: true, languages: LANGS },
+  );
+
+  it("drops the other language's steps, keeps steps with no language", () => {
+    expect(stepsInCourseLanguage(path, "maikalsuta", LANGS).map((s) => s.courseId)).toEqual([
+      "jyeshtheshwar",
+      "maikalsuta",
+      "martand-hi",
+      "no-lang",
+    ]);
+    expect(stepsInCourseLanguage(path, "martand-en", LANGS).map((s) => s.courseId)).toEqual(["martand-en", "no-lang"]);
+  });
+
+  it("treats a course tagged with two languages as both", () => {
+    const scriptures = buildPathSteps(
+      [
+        tagged("geetayan", "hindi,ebook"),
+        tagged("rishi", "english,ebook"),
+        tagged("raghuveer", "english,hindi,live sessions"),
+        tagged("ram-lekhan", "english,hindi,live sessions"),
+      ],
+      { groupVersions: true, languages: LANGS },
+    );
+    const ids = (id: string) => stepsInCourseLanguage(scriptures, id, LANGS).map((s) => s.courseId);
+    expect(ids("geetayan")).toEqual(["geetayan", "raghuveer", "ram-lekhan"]);
+    expect(ids("rishi")).toEqual(["rishi", "raghuveer", "ram-lekhan"]);
+    expect(ids("ram-lekhan")).toEqual(["geetayan", "rishi", "raghuveer", "ram-lekhan"]);
+  });
+
+  it("keeps every step when the course is not a step or has no language", () => {
+    expect(stepsInCourseLanguage(path, "elsewhere", LANGS)).toBe(path);
+    expect(stepsInCourseLanguage(path, "no-lang", LANGS)).toBe(path);
+  });
+
+  it("shows a grouped step's version in the course's language", () => {
+    const grouped = buildPathSteps(mappings, { groupVersions: true, languages: LANGS, preferredLanguage: "en" });
+    const out = stepsInCourseLanguage(grouped, "c2", LANGS);
+    expect(out.map((s) => s.primary.package_session_id)).toEqual(["c1-hi", "c2-hi"]);
+  });
+
+  it("keeps every step, and the visitor's version, on a course that has both languages", () => {
+    const grouped = buildPathSteps(mappings, { groupVersions: true, languages: LANGS, preferredLanguage: "hi" });
+    const out = stepsInCourseLanguage(grouped, "c1", LANGS);
+    expect(out).toEqual(grouped);
+    expect(out.map((s) => s.primary.package_session_id)).toEqual(["c1-hi", "c2-hi", "c4-en"]);
   });
 });
 

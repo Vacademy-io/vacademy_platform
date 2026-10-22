@@ -39,6 +39,7 @@ import { processSlideCounts } from "../-utils/slide-counts";
 import {
   derivePrimaryInstructorName,
   extractReadTimeMinutes,
+  fillEnrolledSessionsFromInit,
   getCourseDepthFromInit,
   getFirstLevelSubjectsFromInit,
 } from "../-utils/course-init-extract";
@@ -116,7 +117,7 @@ export const CourseDetailsPage = () => {
   // Enrollment state. Its service reads are memoized (30s TTL), so the two
   // instances on this route (page + course structure) share network calls.
   const {
-    enrolledSessions,
+    enrolledSessions: rawEnrolledSessions,
     addEnrolledSession,
     isLoading: isEnrollmentLoading,
   } = useEnrollmentStatus(instituteId);
@@ -196,6 +197,13 @@ export const CourseDetailsPage = () => {
   const courseInitSubjectsFromCourseInit = useMemo(
     () => getFirstLevelSubjectsFromInit(courseDetailsData),
     [courseDetailsData],
+  );
+
+  // One enrolled-session list for everything on this page, with skeletal
+  // entries (no package id) filled from course-init's package_sessions.
+  const enrolledSessions = useMemo(
+    () => fillEnrolledSessionsFromInit(rawEnrolledSessions, courseDetailsData),
+    [rawEnrolledSessions, courseDetailsData],
   );
 
   // Find enrolled package_sessions for THIS course by matching student package_session_ids
@@ -608,6 +616,7 @@ export const CourseDetailsPage = () => {
                     <TutorEntryCard
                       courseId={searchParams.courseId || ""}
                       packageSessionId={packageSessionIdForCurrentLevel || ""}
+                      selectedTab={searchParams.selectedTab}
                     />
                     <CourseStructureDetails
                       selectedSession={selectedSession}

@@ -43,6 +43,8 @@ interface TutorSearch {
   mode?: "text" | "voice";
   /** "1": the public guest lesson — session and token come from sessionStorage, nothing is written back. */
   demo?: string;
+  /** The course page's tab (ALL / PROGRESS / COMPLETED), handed back when the lesson ends. */
+  selectedTab?: string;
 }
 
 /** True for "1", the number 1, or a JSON-quoted "\"1\"" — see validateSearch below. */
@@ -65,6 +67,7 @@ export const Route = createFileRoute("/study-library/courses/course-details/tuto
     // valid JSON, so a client-side navigate emits demo="1" (quoted) while a
     // hand-written link carries demo=1, which parses to the number 1. Accept all forms.
     demo: isDemoFlag(search.demo) ? "1" : undefined,
+    selectedTab: search.selectedTab ? String(search.selectedTab) : undefined,
   }),
 });
 
@@ -934,7 +937,10 @@ function TutorPage() {
         navigate({ to: "/try", search: { done: "1" } as never });
         return;
       }
-      navigate({ to: "/study-library/courses/course-details", search: { courseId: search.courseId, packageSessionId: search.packageSessionId } as never });
+      navigate({
+        to: "/study-library/courses/course-details",
+        search: { courseId: search.courseId, packageSessionId: search.packageSessionId, selectedTab: search.selectedTab } as never,
+      });
     }, 400);
   };
 

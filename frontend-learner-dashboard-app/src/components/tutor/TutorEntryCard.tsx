@@ -8,6 +8,8 @@ import { TeacherAvatar } from "./TeacherAvatar";
 interface TutorEntryCardProps {
   courseId: string;
   packageSessionId: string;
+  /** The course page's tab, so ending the lesson returns to the same view. */
+  selectedTab?: string;
 }
 
 /**
@@ -18,7 +20,7 @@ interface TutorEntryCardProps {
  * `isEnrolledInCourse` flag is documented as unreliable), so the card is
  * gated on availability alone.
  */
-export const TutorEntryCard: React.FC<TutorEntryCardProps> = ({ courseId, packageSessionId }) => {
+export const TutorEntryCard: React.FC<TutorEntryCardProps> = ({ courseId, packageSessionId, selectedTab }) => {
   const navigate = useNavigate();
   const [avail, setAvail] = useState<TutorAvailability | null>(null);
 
@@ -52,6 +54,7 @@ export const TutorEntryCard: React.FC<TutorEntryCardProps> = ({ courseId, packag
       search: {
         courseId, packageSessionId, slideId, chapterId: chapterId || undefined,
         moduleId: moduleId || undefined, subjectId: subjectId || undefined, mode,
+        selectedTab,
       } as never,
     });
   };

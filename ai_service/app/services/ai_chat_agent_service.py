@@ -25,6 +25,8 @@ from ..models.ai_token_usage import ApiProvider, RequestType
 
 from ..repositories.chat_message_repository import ChatMessageRepository
 from ..services.context_resolver_service import ContextResolverService
+from ..services.lesson_text_service import apply as apply_lesson_text
+from ..services.lesson_text_service import wait_for_text as wait_for_lesson_text
 from ..services.tool_manager_service import (
     ORCHESTRATOR_TOOLS,
     TOOL_DEFINITIONS,
@@ -1124,12 +1126,14 @@ class AiChatAgentService:
                 msg_metadata = latest_msg.meta_data or {}
 
                 # Resolve context
-                context = await ContextResolverService(db).resolve_context(
+                resolver = ContextResolverService(db)
+                context = await resolver.resolve_context(
                     session.context_type,
                     session.context_meta,
                     user_id,
                     institute_id,
                 )
+                pending_lesson = getattr(resolver, "pending_lesson", None)
                 ui_language = (session.context_meta or {}).get("ui_language")
                 session_context_meta = dict(session.context_meta or {})
 
@@ -1199,6 +1203,12 @@ class AiChatAgentService:
                 # Extract quiz submission data before session closes
                 quiz_submission_data = msg_metadata.get("quiz_submission")
             # ── DB released ──
+
+            # A lesson nobody has asked about yet (video captions, a SCORM
+            # package…) is being read now. Wait briefly (no DB held) so this
+            # turn sees the lesson text.
+            if pending_lesson is not None:
+                apply_lesson_text(context["context_data"], pending_lesson, await wait_for_lesson_text(pending_lesson))
 
             # Context gathering (KB embedding search) can take seconds.
             self._refresh_claim(message_id)

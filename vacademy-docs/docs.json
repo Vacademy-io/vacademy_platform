@@ -184,7 +184,8 @@
                   "mcp-server/tools/courses",
                   "mcp-server/tools/learners",
                   "mcp-server/tools/learner-reports",
-                  "mcp-server/tools/sub-orgs"
+                  "mcp-server/tools/sub-orgs",
+                  "mcp-server/tools/crm-payments"
                 ]
               },
               {

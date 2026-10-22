@@ -89,6 +89,7 @@ public class InstitutePolicyService {
             String usernameCustomFieldId = null;
             String usernamePrefix = null;
             boolean usernameApplyToAll = false;
+            boolean usernameOverrideTyped = false;
             boolean allowCreateCourses = false;
 
             JsonNode studentDisplay = settingNode.get("STUDENT_DISPLAY_SETTINGS");
@@ -107,6 +108,7 @@ public class InstitutePolicyService {
                     if (signup.hasNonNull("usernamePrefix"))
                         usernamePrefix = signup.get("usernamePrefix").asText();
                     usernameApplyToAll = signup.path("usernameApplyToAll").asBoolean(false);
+                    usernameOverrideTyped = signup.path("usernameOverrideTyped").asBoolean(false);
                 }
             }
 
@@ -126,6 +128,7 @@ public class InstitutePolicyService {
                     .usernameCustomFieldId(usernameCustomFieldId)
                     .usernamePrefix(usernamePrefix)
                     .usernameApplyToAll(usernameApplyToAll)
+                    .usernameOverrideTyped(usernameOverrideTyped)
                     .build();
         } catch (Exception e) {
             return null;

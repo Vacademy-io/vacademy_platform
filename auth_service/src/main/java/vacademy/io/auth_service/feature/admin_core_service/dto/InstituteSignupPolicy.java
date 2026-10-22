@@ -17,5 +17,6 @@ public class InstituteSignupPolicy {
     private String usernameCustomFieldId; // for customField
     private String usernamePrefix; // optional, put in front of phone / custom field values
     private boolean usernameApplyToAll; // also apply to admin adds, invites, payments, forms
+    private boolean usernameOverrideTyped; // with usernameApplyToAll: also over a username an admin typed
 }
 

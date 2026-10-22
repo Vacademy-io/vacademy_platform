@@ -159,6 +159,19 @@ export function UsernameStrategyFields({ signup, onChange }: UsernameStrategyFie
                 </span>
             </div>
 
+            {signup.usernameApplyToAll && strategy !== 'manual' && strategy !== 'random' && (
+                <div className="flex flex-wrap items-center gap-3 pl-8">
+                    <Switch
+                        checked={!!signup.usernameOverrideTyped}
+                        onCheckedChange={(checked) => set({ usernameOverrideTyped: checked })}
+                    />
+                    <Label className="text-xs">{t('loginSignup.usernameOverrideTyped')}</Label>
+                    <span className="text-xs text-neutral-500">
+                        {t('loginSignup.usernameOverrideTypedHint')}
+                    </span>
+                </div>
+            )}
+
             <p className="pl-4 text-xs text-neutral-500">
                 {preview
                     ? t('loginSignup.usernamePreview', { example: preview })

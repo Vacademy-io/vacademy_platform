@@ -122,7 +122,8 @@ export type StudentSignupProvider = 'google' | 'github' | 'usernamePassword' | '
 export type StudentDefaultProvider = StudentSignupProvider;
 // email/random/manual: learner signup only, as before. phone/customField: also learner
 // signup. usernameApplyToAll extends the chosen strategy to every new learner (admin
-// add, CSV, invite links, payments, forms); an admin-typed username always wins.
+// add, CSV, invite links, payments, forms); an admin-typed username wins unless
+// usernameOverrideTyped is also on.
 export type UsernameStrategy = 'email' | 'random' | 'manual' | 'phone' | 'customField';
 export type PasswordStrategy = 'manual' | 'autoRandom';
 export type PasswordDelivery = 'showOnScreen' | 'sendEmail' | 'none';
@@ -146,6 +147,7 @@ export interface StudentSignupSettings {
     usernameCustomFieldId?: string; // for 'customField'
     usernamePrefix?: string; // put in front of phone / custom field values
     usernameApplyToAll?: boolean; // default off
+    usernameOverrideTyped?: boolean; // default off; with usernameApplyToAll, also over a typed username
     passwordStrategy: PasswordStrategy;
     passwordDelivery: PasswordDelivery;
     presentation?: StudentAuthPresentation;

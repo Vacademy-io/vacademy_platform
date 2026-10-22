@@ -73,6 +73,8 @@
         "usernamePrefixHint": "Optional. Usernames are unique across all institutes, so a prefix avoids clashes.",
         "usernameApplyToAll": "Apply to all enrollments",
         "usernameApplyToAllHint": "Off: learner signup only. On: also admin add, CSV upload, invite links, payments and forms.",
+        "usernameOverrideTyped": "Also replace a typed username",
+        "usernameOverrideTypedHint": "On: admin add and CSV use this rule even when a username is typed; the username box is locked.",
         "usernamePreview": "New learners get usernames like {{example}}.",
         "usernamePreviewNone": "New learners get a generated or self-chosen username.",
         "usernameRulesNote": "Only new learners — existing usernames never change. A username an admin types always wins, a taken one gets a short suffix, and an empty value falls back to the usual username.",

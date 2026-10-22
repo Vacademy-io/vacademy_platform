@@ -260,5 +260,15 @@
         "readMoreLabel": "Lire la suite",
         "backLabel": "Tous les articles",
         "emptyMessage": "Pas encore d’articles — revenez bientôt."
+    },
+    "promoPopup": {
+        "badge": "Durée limitée",
+        "heading": "Vente flash sur tous les cours",
+        "highlight": "-50 %",
+        "body": "Inscrivez-vous dès aujourd’hui et économisez sur chaque cours. Offre valable peu de temps.",
+        "couponCode": "SAVE50",
+        "buttonText": "Profiter de l’offre",
+        "dismissText": "Non merci, plus tard",
+        "footnote": "*Conditions applicables"
     }
 }

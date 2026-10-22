@@ -79,6 +79,7 @@ import { emitLeadCaptured } from "../-utils/catalogue-tracking";
 import { useNewsletterSignup } from "./components/newsletter/use-newsletter-signup";
 import { CtaBand } from "./components/promo/CtaBand";
 import { StepsCards } from "./components/promo/StepsCards";
+import { PromoPopup } from "./components/promo/PromoPopup";
 import { BannerComponent } from "./components/BannerComponent";
 import { CourseCatalogComponent } from "./components/CourseCatalogComponent";
 // Removed CourseRecommendationsComponent import as it's not used
@@ -425,6 +426,23 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
 
       case "marquee":
         return <MarqueeRenderer key={id} {...props} />;
+
+      case "promoPopup":
+        // Opens over the page (portal into the site's theme wrapper) on its own
+        // trigger; in the editor preview a strip marks it and selecting it
+        // opens the popup.
+        return (
+          <PromoPopup
+            key={id}
+            {...props}
+            componentId={id}
+            instituteId={instituteId}
+            tagName={tagName}
+            isPreviewMode={isPreviewMode}
+            showPreviewStrip={previewChrome}
+            isSelected={id === selectedComponentId}
+          />
+        );
 
       case "blog":
         // Live-reads the institute's published posts (Manage Pages → Blog /

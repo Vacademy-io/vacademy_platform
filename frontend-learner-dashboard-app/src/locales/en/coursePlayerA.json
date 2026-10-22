@@ -231,5 +231,41 @@
   },
   "whatsAppFloatingButton": {
     "chatWithUs": "Chat with us on WhatsApp"
+  },
+  "promoPopup": {
+    "days": "Days",
+    "hours": "Hrs",
+    "mins": "Min",
+    "secs": "Sec",
+    "endsIn": "Offer ends in",
+    "copy": "Copy",
+    "copied": "Copied!",
+    "copyCode": "Copy code {{code}}",
+    "useCode": "Use code",
+    "close": "Close",
+    "dialogLabel": "Special offer",
+    "previewTitle": "Promo popup ({{template}})",
+    "previewHint": "Select this block to see the popup",
+    "whenLoad": "opens as soon as the page loads",
+    "whenDelay": "opens {{seconds}}s after the page loads",
+    "whenScroll": "opens at {{percent}}% scroll",
+    "whenExit": "opens when the visitor is about to leave",
+    "template": {
+      "spotlight": "Spotlight",
+      "split": "Split",
+      "poster": "Poster",
+      "ticket": "Coupon ticket",
+      "corner": "Corner card",
+      "bar": "Sticky bar",
+      "custom": "Custom HTML"
+    },
+    "frequency": {
+      "always": "every page load",
+      "session": "once per visit",
+      "daily": "once a day",
+      "weekly": "once a week",
+      "once": "only once"
+    },
+    "customEmpty": "Paste your HTML in the editor to see it here."
   }
 }

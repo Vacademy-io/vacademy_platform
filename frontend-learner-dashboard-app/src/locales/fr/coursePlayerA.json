@@ -231,5 +231,41 @@
   },
   "whatsAppFloatingButton": {
     "chatWithUs": "Discutez avec nous sur WhatsApp"
+  },
+  "promoPopup": {
+    "days": "Jours",
+    "hours": "H",
+    "mins": "Min",
+    "secs": "Sec",
+    "endsIn": "L’offre se termine dans",
+    "copy": "Copier",
+    "copied": "Copié !",
+    "copyCode": "Copier le code {{code}}",
+    "useCode": "Utilisez le code",
+    "close": "Fermer",
+    "dialogLabel": "Offre spéciale",
+    "previewTitle": "Popup promo ({{template}})",
+    "previewHint": "Sélectionnez ce bloc pour voir la popup",
+    "whenLoad": "s’ouvre dès le chargement de la page",
+    "whenDelay": "s’ouvre {{seconds}} s après le chargement",
+    "whenScroll": "s’ouvre à {{percent}} % de défilement",
+    "whenExit": "s’ouvre quand le visiteur s’apprête à partir",
+    "template": {
+      "spotlight": "Projecteur",
+      "split": "Divisé",
+      "poster": "Affiche",
+      "ticket": "Ticket coupon",
+      "corner": "Carte d’angle",
+      "bar": "Barre fixe",
+      "custom": "HTML personnalisé"
+    },
+    "frequency": {
+      "always": "à chaque chargement",
+      "session": "une fois par visite",
+      "daily": "une fois par jour",
+      "weekly": "une fois par semaine",
+      "once": "une seule fois"
+    },
+    "customEmpty": "Collez votre HTML dans l’éditeur pour le voir ici."
   }
 }

@@ -13,6 +13,7 @@ import {
 } from '@phosphor-icons/react';
 
 import { renderHtmlPage, renderHtmlSection } from '../-utils/catalogue-html';
+import { splitHtmlAndCss } from '../-utils/promo-popup-html';
 import { isHexDark } from '../-utils/style-engine';
 import { catalogFeatures } from '../-utils/block-summary';
 import { useQuery } from '@tanstack/react-query';
@@ -1033,6 +1034,48 @@ const CtaBannerPreview: React.FC<P> = ({ props }) => {
     );
 };
 
+/** Promo popup: a small picture of the dialog over a dimmed band (it opens over the page on the site). */
+const PromoPopupPreview: React.FC<P> = ({ props }) => {
+    if (props.template === 'custom') {
+        // The admin's own markup, through the same sanitizer the site uses.
+        const { html, css } = splitHtmlAndCss(props.html);
+        return (
+            <section className="flex justify-center bg-neutral-800/70 px-6 py-6">
+                <div className="w-80 overflow-hidden rounded-xl bg-white shadow-lg">
+                    <HtmlBlockLivePreview props={{ html, css }} />
+                </div>
+            </section>
+        );
+    }
+    const accent = props.accentColor || 'hsl(var(--primary-500))';
+    const edge = props.template === 'corner' || props.template === 'bar';
+    return (
+        <section className={`flex bg-neutral-800/70 px-6 py-6 ${edge ? 'items-end justify-start' : 'justify-center'}`}>
+            <div className={`overflow-hidden rounded-xl bg-white shadow-lg ${props.template === 'bar' ? 'w-full' : 'w-64'}`}>
+                <div className="px-4 py-3 text-center text-white" style={{ background: accent }}>
+                    {props.badge && <p className="text-caption font-semibold uppercase tracking-wider opacity-90">{props.badge}</p>}
+                    {props.highlight && <p className="text-2xl font-black leading-tight">{props.highlight}</p>}
+                    {props.heading && <p className="truncate text-sm font-semibold">{props.heading}</p>}
+                </div>
+                {props.template !== 'bar' && (props.couponCode || props.button?.text) && (
+                    <div className="flex flex-col gap-2 p-3">
+                        {props.couponCode && (
+                            <p className="rounded border border-dashed border-neutral-300 py-1 text-center font-mono text-xs font-bold tracking-widest text-neutral-700">
+                                {props.couponCode}
+                            </p>
+                        )}
+                        {props.button?.text && (
+                            <span className="rounded-md py-1.5 text-center text-xs font-semibold text-white" style={{ background: accent }}>
+                                {props.button.text}
+                            </span>
+                        )}
+                    </div>
+                )}
+            </div>
+        </section>
+    );
+};
+
 const PricingPreview: React.FC<P> = ({ props }) => (
     <section className="bg-catalogue-bg-elevated py-12 px-8">
         {props.headerText && (
@@ -1497,6 +1540,8 @@ const ComponentPreviewSwitch: React.FC<{ component: { type: string; props: any }
                     </div>
                 </section>
             );
+        case 'promoPopup':
+            return <PromoPopupPreview props={props} />;
         case 'countdownTimer':
             return (
                 <section className="py-10 px-8 text-center" style={{ backgroundColor: props.backgroundColor || '#1E293B' }}>{/* design-lint-ignore: page-builder default color */}

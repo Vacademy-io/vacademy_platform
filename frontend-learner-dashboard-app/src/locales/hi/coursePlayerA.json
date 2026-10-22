@@ -231,5 +231,41 @@
   },
   "whatsAppFloatingButton": {
     "chatWithUs": "WhatsApp पर हमसे चैट करें"
+  },
+  "promoPopup": {
+    "days": "दिन",
+    "hours": "घंटे",
+    "mins": "मिनट",
+    "secs": "सेकंड",
+    "endsIn": "ऑफ़र समाप्त होने में",
+    "copy": "कॉपी",
+    "copied": "कॉपी हो गया!",
+    "copyCode": "कोड {{code}} कॉपी करें",
+    "useCode": "कोड इस्तेमाल करें",
+    "close": "बंद करें",
+    "dialogLabel": "विशेष ऑफ़र",
+    "previewTitle": "प्रोमो पॉपअप ({{template}})",
+    "previewHint": "पॉपअप देखने के लिए यह ब्लॉक चुनें",
+    "whenLoad": "पेज लोड होते ही खुलेगा",
+    "whenDelay": "पेज लोड होने के {{seconds}} सेकंड बाद खुलेगा",
+    "whenScroll": "{{percent}}% स्क्रॉल पर खुलेगा",
+    "whenExit": "विज़िटर के जाने से पहले खुलेगा",
+    "template": {
+      "spotlight": "स्पॉटलाइट",
+      "split": "स्प्लिट",
+      "poster": "पोस्टर",
+      "ticket": "कूपन टिकट",
+      "corner": "कॉर्नर कार्ड",
+      "bar": "स्टिकी बार",
+      "custom": "कस्टम HTML"
+    },
+    "frequency": {
+      "always": "हर पेज लोड पर",
+      "session": "हर विज़िट में एक बार",
+      "daily": "दिन में एक बार",
+      "weekly": "हफ़्ते में एक बार",
+      "once": "सिर्फ़ एक बार"
+    },
+    "customEmpty": "यहाँ देखने के लिए एडिटर में अपना HTML डालें।"
   }
 }

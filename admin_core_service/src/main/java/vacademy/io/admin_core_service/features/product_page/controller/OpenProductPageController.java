@@ -5,6 +5,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.product_page.dto.*;
+import vacademy.io.admin_core_service.features.product_page.service.ProductPageAutoLoginService;
 import vacademy.io.admin_core_service.features.product_page.service.ProductPageEnrollmentService;
 import vacademy.io.admin_core_service.features.product_page.service.ProductPageService;
 import vacademy.io.admin_core_service.features.regional_pricing.service.RegionalPriceResolver;
@@ -22,6 +23,9 @@ public class OpenProductPageController {
 
     @Autowired
     private RegionalPriceResolver regionalPriceResolver;
+
+    @Autowired
+    private ProductPageAutoLoginService autoLoginService;
 
     /** Learner landing: fetch page layout + aggregated custom fields, priced for the viewer's region. */
     @GetMapping("/by-code")
@@ -87,5 +91,12 @@ public class OpenProductPageController {
             @RequestBody ProductPageCpoEnrollRequest request) {
         log.info("CPO product page enroll received for code={}", request.getProductPageCode());
         return ResponseEntity.ok(enrollmentService.enrollCpoForProductPage(request));
+    }
+
+    /** Auto-login after purchase: swaps the one-time login_code from /enroll for the buyer's tokens. */
+    @PostMapping("/login-code/exchange")
+    public ResponseEntity<ProductPageLoginCodeExchangeResponse> exchangeLoginCode(
+            @RequestBody ProductPageLoginCodeExchangeRequest request) {
+        return ResponseEntity.ok(autoLoginService.exchange(request.getLoginCode(), request.getInstituteId()));
     }
 }

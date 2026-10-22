@@ -144,6 +144,9 @@ public class ProductPageEnrollmentService {
     @Autowired
     private RegionalPriceResolver regionalPriceResolver;
 
+    @Autowired
+    private ProductPageAutoLoginService autoLoginService;
+
     /**
      * Regional pricing for one product-page order. All or nothing: the basket is regionally
      * priced only when every paid course in it resolves to a regional price in the SAME
@@ -608,6 +611,8 @@ public class ProductPageEnrollmentService {
                                 .map(m -> m.getPsInvitePaymentOption().getPackageSession().getId())
                                 .collect(Collectors.toList()))
                         .message("Enrollment successful")
+                        .loginCode(autoLoginService.issue(
+                                pricingPage, phase1Log.getId(), user, request.getInstituteId()))
                         .build();
             }
 
@@ -776,6 +781,9 @@ public class ProductPageEnrollmentService {
                 .status(isRazorpayPhase2 || isGatewayPaidSync ? PaymentStatusEnum.PAID.name() : "INITIATED")
                 .enrolledPackageSessionIds(enrolledSessionIds)
                 .message("Enrollment successful")
+                .loginCode(isGatewayPaidSync
+                        ? autoLoginService.issue(pricingPage, parentPaymentLogId, user, request.getInstituteId())
+                        : null)
                 .build();
     }
 

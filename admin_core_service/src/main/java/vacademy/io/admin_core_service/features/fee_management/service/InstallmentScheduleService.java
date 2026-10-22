@@ -101,6 +101,27 @@ public class InstallmentScheduleService {
         return parts;
     }
 
+    /**
+     * The fee a plan contributes to an admission package. A package splits its own schedule
+     * across courses, so a course's bills must be free to follow it: the plan has to bill a
+     * single fee in installments, with nothing paid upfront.
+     */
+    public BigDecimal packageFee(String cpoId, String courseLabel) {
+        String name = StringUtils.hasText(courseLabel) ? courseLabel : "A course";
+        List<FeePart> parts = loadFeeParts(cpoId);
+        List<FeePart> split = parts.stream().filter(FeePart::split).toList();
+        if (split.size() != 1 || parts.size() != 1) {
+            throw new VacademyException(name + " has a fee plan with "
+                    + (split.isEmpty() ? "no fee paid in installments" : "more than one fee")
+                    + ", so it cannot follow a package schedule. Enroll it on its own.");
+        }
+        BigDecimal total = split.get(0).total();
+        if (total == null || total.signum() <= 0) {
+            throw new VacademyException(name + " has no fee to include in a package");
+        }
+        return total;
+    }
+
     // ========================= preview =========================
 
     /**

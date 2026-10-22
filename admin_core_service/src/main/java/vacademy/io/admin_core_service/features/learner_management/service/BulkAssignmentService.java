@@ -129,6 +129,14 @@ public class BulkAssignmentService {
     private final StudentSessionInstituteGroupMappingRepository studentSessionInstituteGroupMappingRepository;
     private final vacademy.io.admin_core_service.features.course_settings.service.LmsExistingUserEditPolicyService lmsExistingUserEditPolicyService;
     private final vacademy.io.admin_core_service.features.course_settings.service.LeadConversionPolicyService leadConversionPolicyService;
+    private final vacademy.io.admin_core_service.features.admission_package.service.AdmissionPackageService admissionPackageService;
+
+    /**
+     * Set while an admission package is being enrolled: learner id → the payment logs recorded
+     * for its courses. Those payments get ONE admission receipt after every course is enrolled,
+     * instead of one receipt per course. Null outside a package run.
+     */
+    private final ThreadLocal<Map<String, List<String>>> packagePaymentLogs = new ThreadLocal<>();
 
     @org.springframework.beans.factory.annotation.Autowired
     @org.springframework.context.annotation.Lazy
@@ -278,68 +286,130 @@ public class BulkAssignmentService {
         // Defaults to false: institutes opt-in to receiving invoices for manual/bulk enrollments.
         boolean generateInvoiceOnManualEnroll = resolveGenerateInvoiceOnManualEnroll(request.getInstituteId());
 
-        for (AssignmentItemDTO assignment : request.getAssignments()) {
-            // Pre-resolve config for this package session (shared across all users)
-            DefaultInviteResolver.ResolvedConfig config;
+        // An admission package: resolve every course up front, split the package across them and
+        // give each its own cpo_config. Anything wrong fails the whole request before anyone is
+        // enrolled. The resolved configs are reused below so nothing is resolved (or created) twice.
+        Map<AssignmentItemDTO, DefaultInviteResolver.ResolvedConfig> preResolved = new java.util.IdentityHashMap<>();
+        vacademy.io.admin_core_service.features.admission_package.service.AdmissionPackageService.Plan packagePlan = null;
+        if (request.getAdmissionPackage() != null) {
             try {
-                config = defaultInviteResolver.resolve(assignment, request.getInstituteId(), dryRun);
-            } catch (Exception e) {
-                log.error("Failed to resolve config for packageSession={}: {}",
-                        assignment.getPackageSessionId(), e.getMessage());
-                // Fail all users for this package session
-                for (String userId : allUserIds) {
-                    results.add(buildFailedResult(userId, userMap,
-                            assignment.getPackageSessionId(),
-                            "Config resolution failed: " + e.getMessage()));
+                List<DefaultInviteResolver.ResolvedConfig> configs = new ArrayList<>();
+                for (AssignmentItemDTO assignment : request.getAssignments()) {
+                    DefaultInviteResolver.ResolvedConfig resolved =
+                            defaultInviteResolver.resolve(assignment, request.getInstituteId(), dryRun);
+                    preResolved.put(assignment, resolved);
+                    configs.add(resolved);
                 }
-                continue;
+                packagePlan = admissionPackageService.prepare(request.getAssignments(), configs,
+                        request.getAdmissionPackage());
+            } catch (Exception e) {
+                log.warn("Admission package rejected: {}", e.getMessage());
+                for (AssignmentItemDTO assignment : request.getAssignments()) {
+                    for (String userId : allUserIds) {
+                        results.add(buildFailedResult(userId, userMap, assignment.getPackageSessionId(),
+                                "Admission package: " + e.getMessage()));
+                    }
+                }
+                return buildResponse(dryRun, results);
             }
+            packagePaymentLogs.set(new HashMap<>());
+        }
 
-            // A learner-specific installment schedule: validate it once for the whole
-            // assignment and, for a one-time price, swap in the hidden installment plan.
-            if (scheduleOf(assignment) != null) {
+        try {
+            for (AssignmentItemDTO assignment : request.getAssignments()) {
+                // Pre-resolve config for this package session (shared across all users)
+                DefaultInviteResolver.ResolvedConfig config;
                 try {
-                    config = prepareConfigForSchedule(assignment, config, request.getInstituteId(),
-                            adminUserId, dryRun);
+                    config = preResolved.containsKey(assignment)
+                            ? preResolved.get(assignment)
+                            : defaultInviteResolver.resolve(assignment, request.getInstituteId(), dryRun);
                 } catch (Exception e) {
-                    log.warn("Installment schedule rejected for packageSession={}: {}",
+                    log.error("Failed to resolve config for packageSession={}: {}",
                             assignment.getPackageSessionId(), e.getMessage());
+                    // Fail all users for this package session
                     for (String userId : allUserIds) {
                         results.add(buildFailedResult(userId, userMap,
                                 assignment.getPackageSessionId(),
-                                "Installment schedule: " + e.getMessage()));
+                                "Config resolution failed: " + e.getMessage()));
                     }
                     continue;
                 }
-            }
 
-            // How the payment was made: validated once per assignment, before anyone is
-            // enrolled, so a bad mode fails cleanly instead of leaving enrollments behind.
-            try {
-                resolveOfflinePaymentDetails(assignment, config, options, request.getInstituteId());
-            } catch (Exception e) {
+                // A learner-specific installment schedule: validate it once for the whole
+                // assignment and, for a one-time price, swap in the hidden installment plan.
+                if (scheduleOf(assignment) != null) {
+                    try {
+                        config = prepareConfigForSchedule(assignment, config, request.getInstituteId(),
+                                adminUserId, dryRun);
+                    } catch (Exception e) {
+                        log.warn("Installment schedule rejected for packageSession={}: {}",
+                                assignment.getPackageSessionId(), e.getMessage());
+                        for (String userId : allUserIds) {
+                            results.add(buildFailedResult(userId, userMap,
+                                    assignment.getPackageSessionId(),
+                                    "Installment schedule: " + e.getMessage()));
+                        }
+                        continue;
+                    }
+                }
+
+                // How the payment was made: validated once per assignment, before anyone is
+                // enrolled, so a bad mode fails cleanly instead of leaving enrollments behind.
+                try {
+                    resolveOfflinePaymentDetails(assignment, config, options, request.getInstituteId());
+                } catch (Exception e) {
+                    for (String userId : allUserIds) {
+                        results.add(buildFailedResult(userId, userMap,
+                                assignment.getPackageSessionId(), "Payment details: " + e.getMessage()));
+                    }
+                    continue;
+                }
+
                 for (String userId : allUserIds) {
-                    results.add(buildFailedResult(userId, userMap,
-                            assignment.getPackageSessionId(), "Payment details: " + e.getMessage()));
-                }
-                continue;
-            }
+                    BulkAssignResultItemDTO result = processAssignment(
+                            userId, userMap, newUserDataMap, assignment, config,
+                            request.getInstituteId(), duplicateHandling, dryRun, adminUserId, options,
+                            generateInvoiceOnManualEnroll);
+                    results.add(result);
 
-            for (String userId : allUserIds) {
-                BulkAssignResultItemDTO result = processAssignment(
-                        userId, userMap, newUserDataMap, assignment, config,
-                        request.getInstituteId(), duplicateHandling, dryRun, adminUserId, options,
-                        generateInvoiceOnManualEnroll);
-                results.add(result);
-
-                // Collect successful enrollments for notification
-                if (!dryRun && "SUCCESS".equals(result.getStatus())
-                        && ("CREATED".equals(result.getActionTaken())
-                                || "RE_ENROLLED".equals(result.getActionTaken()))) {
-                    enrolledStudentsForNotification.add(
-                            buildNotificationDTO(userId, userMap, result));
+                    // Collect successful enrollments for notification
+                    if (!dryRun && "SUCCESS".equals(result.getStatus())
+                            && ("CREATED".equals(result.getActionTaken())
+                                    || "RE_ENROLLED".equals(result.getActionTaken()))) {
+                        enrolledStudentsForNotification.add(
+                                buildNotificationDTO(userId, userMap, result));
+                    }
                 }
             }
+
+            // 3b. The package itself: which plans belong together, and one admission receipt for the
+            //     money taken at admission across all of its courses.
+            if (packagePlan != null && !dryRun) {
+                Map<String, List<String>> logsByUser = packagePaymentLogs.get();
+                for (String userId : allUserIds) {
+                    Map<String, String> planBySession = new java.util.LinkedHashMap<>();
+                    for (BulkAssignResultItemDTO r : results) {
+                        if (userId.equals(r.getUserId()) && "SUCCESS".equals(r.getStatus())
+                                && StringUtils.hasText(r.getUserPlanId())
+                                && packagePlan.packageSessionIds().contains(r.getPackageSessionId())) {
+                            planBySession.put(r.getPackageSessionId(), r.getUserPlanId());
+                        }
+                    }
+                    try {
+                        String packageId = admissionPackageService.save(packagePlan, request.getInstituteId(),
+                                userId, planBySession, adminUserId);
+                        if (packageId != null) packagePlan.preview().getAdmissionPackageIds().add(packageId);
+                    } catch (Exception e) {
+                        log.error("Could not save admission package for user {}: {}", userId, e.getMessage(), e);
+                    }
+                    List<String> logs = logsByUser != null ? logsByUser.get(userId) : null;
+                    if (generateInvoiceOnManualEnroll && logs != null && !logs.isEmpty()) {
+                        invoiceService.generateCombinedInvoiceAfterCommit(logs, request.getInstituteId());
+                    }
+                }
+            }
+        } finally {
+            packagePaymentLogs.remove();
         }
 
         // 4. Post-process: Save learner extra details and custom fields for new users
@@ -389,7 +459,11 @@ public class BulkAssignmentService {
         }
 
         // 7. Build summary
-        return buildResponse(dryRun, results);
+        BulkAssignResponseDTO response = buildResponse(dryRun, results);
+        if (packagePlan != null) {
+            response.setAdmissionPackage(packagePlan.preview());
+        }
+        return response;
     }
 
     // ========================= PRIVATE METHODS =========================
@@ -2223,7 +2297,12 @@ public class BulkAssignmentService {
             feeLedgerAllocationService.allocatePaymentForNewLog(
                     paymentLogId, amount, userPlan.getId());
 
-            if (generateInvoiceOnManualEnroll) {
+            Map<String, List<String>> packageLogs = packagePaymentLogs.get();
+            if (packageLogs != null) {
+                // Part of an admission package: one receipt for all its courses, issued once
+                // every course is enrolled (see bulkAssign).
+                packageLogs.computeIfAbsent(userId, k -> new ArrayList<>()).add(paymentLogId);
+            } else if (generateInvoiceOnManualEnroll) {
                 // After commit, not inline — see generateInvoiceAfterCommit. Generating here would
                 // hand the invoice's REQUIRES_NEW transaction a PaymentLog this transaction has not
                 // committed yet, failing invoice_payment_log_mapping's FK; and since catching that

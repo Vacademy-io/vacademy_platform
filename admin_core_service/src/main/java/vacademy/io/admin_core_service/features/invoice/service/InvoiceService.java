@@ -863,7 +863,10 @@ public class InvoiceService {
             return true;
         }
         String orderId = extractOrderIdFromPaymentLog(paymentLogs.get(0));
-        return isParentChildOrderId(orderId);
+        // No order id at all: the payments were grouped by their caller (an admission package),
+        // each for its own course's share, so each carries its own amount. Only the legacy
+        // "MP" order repeats the order total on every log.
+        return orderId == null || isParentChildOrderId(orderId);
     }
 
     /**
@@ -1141,6 +1144,7 @@ public class InvoiceService {
                 .lineItems(allLineItems)
                 .aggregatedTaxComponents(aggregatedTaxComponents)
                 .overrides(organisationBillTo(firstPaymentLog.getUserPlan(), user))
+                .receiptPaymentLogs(new ArrayList<>(paymentLogs))
                 .build();
 
         log.debug("Invoice data built successfully from {} payment logs", paymentLogs.size());
@@ -3911,6 +3915,79 @@ public class InvoiceService {
         } else {
             task.run();
         }
+    }
+
+    /**
+     * One receipt for several payments recorded together — an admission package's payment split
+     * across its courses. Runs after the caller's transaction commits (see
+     * {@link #generateInvoiceAfterCommit}); a failure leaves the payments standing.
+     */
+    public void generateCombinedInvoiceAfterCommit(List<String> paymentLogIds, String instituteId) {
+        if (paymentLogIds == null || paymentLogIds.isEmpty()) {
+            return;
+        }
+        List<String> ids = new ArrayList<>(paymentLogIds);
+        Runnable task = () -> {
+            try {
+                self.generateCombinedInvoiceForCommittedPayments(ids, instituteId);
+            } catch (Exception e) {
+                log.error("Combined invoice generation failed for payment logs {} — the payments are "
+                        + "committed and unaffected: {}", ids, e.getMessage(), e);
+            }
+        };
+        if (org.springframework.transaction.support.TransactionSynchronizationManager.isSynchronizationActive()) {
+            org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+                    new org.springframework.transaction.support.TransactionSynchronization() {
+                        @Override
+                        public void afterCommit() {
+                            task.run();
+                        }
+                    });
+        } else {
+            task.run();
+        }
+    }
+
+    /**
+     * {@link #generateCombinedInvoiceAfterCommit}'s work, in a fresh transaction: one invoice whose
+     * lines are every course's installments these payments settled, and whose receipt figures
+     * cover all of the courses. Payments already invoiced, unpaid or without a plan are left out;
+     * a single remaining payment gets an ordinary invoice.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public Invoice generateCombinedInvoiceForCommittedPayments(List<String> paymentLogIds, String instituteId) {
+        if (!StringUtils.hasText(instituteId)) {
+            log.warn("Skipping combined invoice for {}: institute id missing", paymentLogIds);
+            return null;
+        }
+        List<PaymentLog> logs = new ArrayList<>();
+        for (String id : paymentLogIds) {
+            PaymentLog pl = paymentLogRepository.findById(id).orElse(null);
+            if (pl == null || pl.getUserPlan() == null || !"PAID".equals(pl.getPaymentStatus())
+                    || invoicePaymentLogMappingRepository.existsByPaymentLogId(pl.getId())) {
+                continue;
+            }
+            logs.add(pl);
+        }
+        if (logs.isEmpty()) {
+            return null;
+        }
+        if (logs.size() == 1) {
+            return generateInvoice(logs.get(0).getUserPlan(), logs.get(0), instituteId);
+        }
+        InvoiceData invoiceData = buildInvoiceDataFromMultiplePaymentLogs(logs, instituteId);
+        allocateInvoiceNumber(instituteId, invoiceData, DOC_TYPE_ENROLLMENT);
+        String templateHtml = loadInvoiceTemplate(instituteId);
+        RenderedInvoice rendered = renderAndSaveWithCollisionRetry(
+                instituteId, invoiceData, templateHtml, logs, DOC_TYPE_ENROLLMENT);
+        Invoice invoice = rendered.invoice();
+        try {
+            sendInvoiceEmail(invoice, invoiceData.getUser(), instituteId, rendered.pdfBytes());
+        } catch (Exception e) {
+            log.error("Failed to send combined invoice email for {}: {}", invoice.getInvoiceNumber(), e.getMessage());
+        }
+        log.info("Combined invoice {} generated for {} payment(s)", invoice.getInvoiceNumber(), logs.size());
+        return invoice;
     }
 
     /**
@@ -7141,6 +7218,18 @@ public class InvoiceService {
      * already collected; the payment plan is the source of truth for what the course costs.
      */
     private ReceiptFigures buildReceiptFigures(InvoiceData invoiceData) {
+        List<PaymentLog> covered = invoiceData.getReceiptPaymentLogs();
+        if (covered != null && covered.size() > 1) {
+            java.util.LinkedHashMap<String, UserPlan> plans = new java.util.LinkedHashMap<>();
+            for (PaymentLog pl : covered) {
+                if (pl.getUserPlan() != null && pl.getUserPlan().getId() != null) {
+                    plans.putIfAbsent(pl.getUserPlan().getId(), pl.getUserPlan());
+                }
+            }
+            if (plans.size() > 1) {
+                return buildPackageReceiptFigures(invoiceData, new ArrayList<>(plans.values()), covered);
+            }
+        }
         ReceiptFigures rf = new ReceiptFigures();
         PaymentPlan plan = invoiceData.getPaymentPlan();
         if (plan != null) {
@@ -7217,6 +7306,84 @@ public class InvoiceService {
         return rf;
     }
 
+
+    /**
+     * Receipt figures for one payment spread over several courses (an admission package): fees,
+     * paid, due and the next installment cover every course on the receipt, and the course name
+     * lists them all. The next installment is the earliest unpaid due date with what is owed on
+     * it across the courses — the package installment the learner sees.
+     */
+    private ReceiptFigures buildPackageReceiptFigures(InvoiceData invoiceData, List<UserPlan> plans,
+                                                      List<PaymentLog> covered) {
+        ReceiptFigures rf = new ReceiptFigures();
+        List<String> names = new ArrayList<>();
+        BigDecimal listPrices = BigDecimal.ZERO;
+        for (UserPlan up : plans) {
+            PaymentPlan plan = up.getPaymentPlan();
+            if (plan != null) {
+                if (plan.getName() != null && !names.contains(plan.getName())) names.add(plan.getName());
+                listPrices = listPrices.add(BigDecimal.valueOf(plan.getActualPrice()));
+            }
+        }
+        rf.courseName = String.join(" + ", names);
+        rf.courseCode = names.isEmpty() ? "" : deriveCourseCode(names.get(0));
+        rf.totalFees = listPrices;
+        rf.courseFees = invoiceData.getPlanPrice() != null ? invoiceData.getPlanPrice() : listPrices;
+
+        List<StudentFeePayment> rows = new ArrayList<>();
+        for (UserPlan up : plans) {
+            try {
+                rows.addAll(studentFeePaymentRepository.findByUserPlanId(up.getId()));
+            } catch (Exception e) {
+                log.warn("Could not load fee schedule for user plan {} while building package receipt figures",
+                        up.getId(), e);
+            }
+        }
+        rows.removeIf(r -> "CANCELLED".equalsIgnoreCase(String.valueOf(r.getStatus())));
+        if (rows.isEmpty()) {
+            return rf;
+        }
+        BigDecimal paid = BigDecimal.ZERO;
+        BigDecimal expected = BigDecimal.ZERO;
+        for (var row : rows) {
+            if (row.getAmountPaid() != null) paid = paid.add(row.getAmountPaid());
+            if (row.getAmountExpected() != null) expected = expected.add(row.getAmountExpected());
+        }
+        BigDecimal thisPayment = invoiceData.getTotalAmount() != null ? invoiceData.getTotalAmount() : BigDecimal.ZERO;
+        boolean alreadyAllocated = true;
+        for (PaymentLog pl : covered) {
+            try {
+                var allocations = studentFeeAllocationLedgerRepository.findByPaymentLogId(pl.getId());
+                if (allocations == null || allocations.isEmpty()) {
+                    alreadyAllocated = false;
+                }
+            } catch (Exception e) {
+                alreadyAllocated = false;
+            }
+        }
+        rf.totalFees = billedTotal(rf.totalFees, expected);
+        rf.totalPaid = totalCollected(paid, thisPayment, alreadyAllocated);
+        rf.previousPaid = paidBefore(rf.totalPaid, thisPayment);
+        rf.totalDue = rf.totalFees.subtract(rf.totalPaid).max(BigDecimal.ZERO);
+
+        java.util.List<StudentFeePayment> open = rows.stream()
+                .filter(r -> r.getDueDate() != null)
+                .filter(r -> !"PAID".equalsIgnoreCase(String.valueOf(r.getStatus())))
+                .filter(r -> r.getAmountExpected() != null && r.getAmountExpected().compareTo(
+                        r.getAmountPaid() != null ? r.getAmountPaid() : BigDecimal.ZERO) > 0)
+                .toList();
+        open.stream().map(r -> toLocalDate(r.getDueDate())).min(java.util.Comparator.naturalOrder())
+                .ifPresent(first -> {
+                    BigDecimal owed = open.stream()
+                            .filter(r -> toLocalDate(r.getDueDate()).equals(first))
+                            .map(r -> r.getAmountExpected().subtract(
+                                    r.getAmountPaid() != null ? r.getAmountPaid() : BigDecimal.ZERO))
+                            .reduce(BigDecimal.ZERO, BigDecimal::add);
+                    rf.nextInstallmentAmount = owed;
+                    rf.nextInstallmentDate = first.atStartOfDay();
+                });
+        return rf;
+    }
 
     /**
      * What the learner is actually billed for the course. The schedule carries the amounts after

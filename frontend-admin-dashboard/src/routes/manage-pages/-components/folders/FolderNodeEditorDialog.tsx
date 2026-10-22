@@ -1,13 +1,19 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { MyDialog } from '@/components/design-system/dialog';
 import { MyButton } from '@/components/design-system/button';
+import {
+    SearchableSelect,
+    prefixFirstFilter,
+    type SearchableSelectOption,
+} from '@/components/design-system/searchable-select';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
-import { getAllProductPages } from '../../product-pages/-services/product-pages-service';
+import { listProductPages } from '../../product-pages/-services/product-pages-service';
+import type { ProductPageSummary } from '../../product-pages/-types/product-page-types';
 import { ImageUploadField } from '../ImageUploadField';
 import { FolderViewFields } from './FolderViewFields';
 import { FolderNodeAdvancedFields } from './FolderNodeAdvancedFields';
@@ -40,6 +46,17 @@ interface FolderNodeEditorDialogProps {
 }
 
 const NO_TAKEN_SLUGS = new Map<string, string>();
+
+/** Every active/draft product page, newest first (the list endpoint pages at most 100 at a time). */
+const fetchProductPagesNewestFirst = async (instituteId: string): Promise<ProductPageSummary[]> => {
+    const all: ProductPageSummary[] = [];
+    for (let page = 0; page < 50; page++) {
+        const res = await listProductPages(instituteId, { status: 'ALL', sort: 'LATEST', page, size: 100 });
+        all.push(...res.content);
+        if (page + 1 >= res.total_pages || res.content.length === 0) break;
+    }
+    return all;
+};
 
 export const FolderNodeEditorDialog = ({
     open,
@@ -78,13 +95,30 @@ export const FolderNodeEditorDialog = ({
         setError(null);
     }, [open, node]);
 
+    // Newest product page first (server-sorted), fetched fresh on open so a page
+    // made a minute ago is already at the top.
     const { data: pages, isLoading: pagesLoading } = useQuery({
-        queryKey: ['PRODUCT_PAGES_FOR_CATALOGUE', instituteId],
-        queryFn: () => getAllProductPages(instituteId!),
+        queryKey: ['PRODUCT_PAGE_PICKER_NEWEST_FIRST', instituteId],
+        queryFn: () => fetchProductPagesNewestFirst(instituteId!),
         enabled: open && !isFolder && !!instituteId,
-        staleTime: 60_000,
+        staleTime: 0,
     });
     const selectedPage = (pages || []).find((p) => p.id === productPageId);
+
+    // Labels must be unique (the picker matches on them), so a repeated name gets its code.
+    const pageOptions = useMemo<SearchableSelectOption[]>(() => {
+        const list = pages || [];
+        const nameCount = new Map<string, number>();
+        list.forEach((p) => nameCount.set(p.name, (nameCount.get(p.name) || 0) + 1));
+        return list.map((p) => ({
+            value: p.id,
+            label:
+                p.name +
+                ((nameCount.get(p.name) || 0) > 1 ? ` · ${p.code}` : '') +
+                (p.status !== 'ACTIVE' ? ` (${p.status.toLowerCase()})` : ''),
+            keywords: [p.code],
+        }));
+    }, [pages]);
 
     const submit = async () => {
         if (isFolder && !title.trim()) {
@@ -155,19 +189,18 @@ export const FolderNodeEditorDialog = ({
                 {!isFolder && (
                     <div>
                         <Label className="text-xs">Product page</Label>
-                        <select
-                            className="mt-1 w-full rounded-md border border-neutral-300 bg-white px-2 py-2 text-sm"
+                        <SearchableSelect
+                            className="mt-1"
+                            options={pageOptions}
                             value={productPageId}
-                            onChange={(e) => setProductPageId(e.target.value)}
-                        >
-                            <option value="">{pagesLoading ? 'Loading product pages…' : 'Select a product page'}</option>
-                            {(pages || []).map((p) => (
-                                <option key={p.id} value={p.id}>
-                                    {p.name}
-                                    {p.status !== 'ACTIVE' ? ` (${p.status.toLowerCase()})` : ''}
-                                </option>
-                            ))}
-                        </select>
+                            onChange={setProductPageId}
+                            placeholder={pagesLoading ? 'Loading product pages…' : 'Select a product page'}
+                            searchPlaceholder="Search product pages…"
+                            emptyText="No product page matches."
+                            disabled={pagesLoading}
+                            portal={false}
+                            filter={prefixFirstFilter}
+                        />
                         {selectedPage && selectedPage.status !== 'ACTIVE' && (
                             <p className="mt-1 text-caption text-warning-600">
                                 This product page is not active yet, so students will not see it here until it is.

@@ -10,14 +10,19 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
+import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 import vacademy.io.admin_core_service.features.common.util.JsonUtil;
+import vacademy.io.admin_core_service.features.enroll_invite.repository.PackageSessionLearnerInvitationToPaymentOptionRepository;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionStatusEnum;
+import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionTypeEnum;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
+import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionRepository;
 import vacademy.io.admin_core_service.features.invoice.service.InvoiceService;
 import vacademy.io.admin_core_service.features.learner_access.enums.LearnerAccessSourceEnum;
 import vacademy.io.admin_core_service.features.learner_access.service.LearnerAccessService;
 import vacademy.io.admin_core_service.features.offline_payment.service.OfflinePaymentDetailsService;
+import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
 import vacademy.io.admin_core_service.features.regional_pricing.service.RegionalPriceLock;
 import vacademy.io.admin_core_service.features.timeline.dto.TimelineEventDTO;
 import vacademy.io.admin_core_service.features.timeline.dto.TimelineEventRequestDTO;
@@ -35,6 +40,8 @@ import vacademy.io.admin_core_service.features.user_subscription.util.PlanValidi
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.common.institute.entity.Institute;
+import vacademy.io.common.institute.entity.session.PackageSession;
 import vacademy.io.common.payment.enums.PaymentGateway;
 import vacademy.io.common.payment.enums.PaymentStatusEnum;
 
@@ -47,6 +54,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -88,6 +96,9 @@ public class AdminManualRenewalService {
     private final TimelineEventService timelineEventService;
     private final InvoiceService invoiceService;
     private final AuthService authService;
+    private final PackageSessionLearnerInvitationToPaymentOptionRepository invitationRepository;
+    private final PackageSessionRepository packageSessionRepository;
+    private final StudentSessionRepository studentSessionRepository;
 
     @Transactional(readOnly = true)
     public ManualRenewalPreviewDTO preview(String userPlanId, String instituteId) {
@@ -135,11 +146,18 @@ public class AdminManualRenewalService {
         for (String status : REACTIVATABLE) {
             lapsed.addAll(mappingRepository.findByUserPlanIdAndStatus(plan.getId(), status));
         }
-        // The gateway renewal enrols here, which fires the enrolment workflow and its emails.
-        // A silent admin action must not, so refuse before anything is written.
+        // No access row is linked to the plan: older enrolments and imports often left
+        // user_plan_id empty, and some plans were never given their course at all. The gateway
+        // renewal enrols here, which fires the enrolment workflow and its emails; a silent admin
+        // action must not, so the plan's own course rows are adopted or built directly instead.
+        // Resolved before anything is written, so a refusal still leaves nothing behind.
+        List<StudentSessionInstituteGroupMapping> granted = new ArrayList<>();
         if (active.isEmpty() && lapsed.isEmpty()) {
-            throw new VacademyException("This membership has no course access to extend. "
-                    + "Enrol the learner instead of renewing.");
+            granted = accessForUnlinkedPlan(plan, instituteId);
+            if (granted.isEmpty()) {
+                throw new VacademyException("This membership's invite has no course to give access to. "
+                        + "Enrol the learner instead of renewing.");
+            }
         }
 
         String adminId = admin != null ? admin.getUserId() : null;
@@ -172,10 +190,11 @@ public class AdminManualRenewalService {
             offlinePaymentDetailsService.apply(paymentLogId, paymentDetails, adminId);
             // Accrual + credit pair, as a gateway renewal books it, so Total Billed and Total
             // Paid both move and the balance is unchanged.
+            // The remark rides on the ledger rows so Payment History shows why it was recorded.
             try {
                 userAccountLedgerService.recordSettledCharge(plan.getUserId(), instituteId,
                         BigDecimal.valueOf(req.getAmount()), currency, null,
-                        "USER_PLAN", plan.getId(), paymentLogId, "Manual renewal");
+                        "USER_PLAN", plan.getId(), paymentLogId, "Manual renewal: " + req.getRemarks().trim());
             } catch (Exception e) {
                 log.error("Manual renewal of plan {}: ledger posting failed for payment {}: {}",
                         plan.getId(), paymentLogId, e.getMessage(), e);
@@ -198,8 +217,12 @@ public class AdminManualRenewalService {
         String grantReason = "Manual renewal recorded by admin";
         List<StudentSessionInstituteGroupMapping> touched = new ArrayList<>(active);
         touched.addAll(lapsed);
+        touched.addAll(granted);
         for (StudentSessionInstituteGroupMapping m : touched) {
             Date previousExpiry = m.getExpiryDate();
+            if (m.getUserPlanId() == null) {
+                m.setUserPlanId(plan.getId());
+            }
             m.setStatus(LearnerSessionStatusEnum.ACTIVE.name());
             m.setExpiryDate(newEndDate);
             mappingRepository.save(m);
@@ -313,6 +336,76 @@ public class AdminManualRenewalService {
     }
 
     // ---------------------------------------------------------------- helpers
+
+    /**
+     * Access for a plan that has no row linked to it. For each course on the plan's invite, the
+     * member's own unlinked row is adopted (an import that never set user_plan_id); where they
+     * have none, a new row is built. Nothing is saved here: renew() links, extends and saves
+     * them with the rest. A course already held under another membership is refused rather
+     * than moved, since extending it here would take it away from that membership.
+     */
+    private List<StudentSessionInstituteGroupMapping> accessForUnlinkedPlan(UserPlan plan, String instituteId) {
+        if (plan.getEnrollInvite() == null) {
+            return List.of();
+        }
+        List<String> packageSessionIds = invitationRepository
+                .findPackageSessionIdsByEnrollInviteAndStatusIn(plan.getEnrollInvite(), List.of(StatusEnum.ACTIVE.name()))
+                .stream().distinct().toList();
+        if (packageSessionIds.isEmpty()) {
+            return List.of();
+        }
+        List<String> statuses = new ArrayList<>(REACTIVATABLE);
+        statuses.add(LearnerSessionStatusEnum.ACTIVE.name());
+        List<StudentSessionInstituteGroupMapping> held = mappingRepository
+                .findAllByUserIdAndPackageSessionIdsAndStatus(plan.getUserId(), packageSessionIds, statuses);
+
+        List<StudentSessionInstituteGroupMapping> out = new ArrayList<>();
+        StudentSessionInstituteGroupMapping reference = null;
+        for (String packageSessionId : packageSessionIds) {
+            List<StudentSessionInstituteGroupMapping> rows = held.stream()
+                    .filter(m -> m.getPackageSession() != null && packageSessionId.equals(m.getPackageSession().getId()))
+                    .filter(m -> m.getInstitute() != null && instituteId.equals(m.getInstitute().getId()))
+                    .toList();
+            Optional<StudentSessionInstituteGroupMapping> unlinked = rows.stream()
+                    .filter(m -> m.getUserPlanId() == null).findFirst();
+            if (unlinked.isPresent()) {
+                out.add(unlinked.get());
+                continue;
+            }
+            if (!rows.isEmpty()) {
+                throw new VacademyException("The learner already has this course under another membership. "
+                        + "Renew that membership instead.");
+            }
+            if (reference == null) {
+                reference = studentSessionRepository.findByInstituteIdAndUserIdNative(instituteId, plan.getUserId())
+                        .orElse(null);
+            }
+            out.add(newAccessRow(plan.getUserId(), instituteId, packageSessionId, reference));
+        }
+        return out;
+    }
+
+    /** A course row shaped like an ordinary enrolment's; renew() sets status, expiry and plan. */
+    private StudentSessionInstituteGroupMapping newAccessRow(String userId, String instituteId, String packageSessionId,
+                                                             StudentSessionInstituteGroupMapping reference) {
+        PackageSession packageSession = packageSessionRepository.findById(packageSessionId)
+                .orElseThrow(() -> new VacademyException("Course not found: " + packageSessionId));
+        StudentSessionInstituteGroupMapping m = new StudentSessionInstituteGroupMapping();
+        m.setUserId(userId);
+        m.setPackageSession(packageSession);
+        m.setEnrolledDate(new Date());
+        m.setType(LearnerSessionTypeEnum.PACKAGE_SESSION.name());
+        m.setSource(ACTION_RENEWAL);
+        if (reference != null) {
+            m.setInstitute(reference.getInstitute());
+            m.setInstituteEnrolledNumber(reference.getInstituteEnrolledNumber());
+        } else {
+            Institute institute = new Institute();
+            institute.setId(instituteId);
+            m.setInstitute(institute);
+        }
+        return m;
+    }
 
     private UserPlan loadForInstitute(String userPlanId, String instituteId) {
         UserPlan plan = userPlanRepository.findById(userPlanId)

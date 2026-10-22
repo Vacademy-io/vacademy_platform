@@ -511,6 +511,9 @@ def _path_to_data_uri(path: Path) -> str:
     return f"data:{mime};base64,{encoded}"
 
 
+_MEDIA_KEEP_AS_FILE_URL = frozenset({".mp4", ".webm", ".mov", ".m4v", ".ogv", ".mp3", ".wav", ".m4a", ".ogg"})
+
+
 def _convert_file_urls_to_data_uris(html: str) -> str:
     """Convert file:// URLs in img src attributes to data URIs."""
     import re
@@ -526,6 +529,13 @@ def _convert_file_urls_to_data_uris(html: str) -> str:
         
         try:
             path = Path(file_path)
+            # Video/audio stay file:// — the page is file:// with
+            # --allow-file-access-from-files, so they load and seek directly.
+            # Inlined, the render worker's prefetched lesson-teacher clip
+            # (62 MB webm for a 10-min lesson) became an 83 MB string that
+            # __updateSnippets re-sent every frame: 0.02 fps.
+            if path.suffix.lower() in _MEDIA_KEEP_AS_FILE_URL:
+                return match.group(0)
             if path.exists():
                 data_uri = _path_to_data_uri(path)
                 return f'src={quote_char}{data_uri}{quote_char}'

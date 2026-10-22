@@ -111,6 +111,7 @@ public class DoubtsManager {
     public ResponseEntity<String> updateOrCreateDoubt(CustomUserDetails userDetails, String doubtId, DoubtsDto request) {
         String actorUserId = userDetails == null ? null : userDetails.getUserId();
         if(StringUtils.hasText(doubtId)){
+            authorizeUpdate(userDetails, doubtId, request);
             return ResponseEntity.ok(updateDoubt(doubtId, request, actorUserId, isStaffViewer(userDetails)));
         }
 
@@ -144,6 +145,103 @@ public class DoubtsManager {
         return callerUserId;
     }
 
+    /**
+     * What a caller may do to an existing doubt, strongest first. STAFF = staff of the doubt's
+     * institute (anything). AUTHOR = raised this doubt/reply (edit its text, resolve/reopen, delete).
+     * ASSIGNEE = an ACTIVE assignee of the thread, or faculty of its batch — the same people the
+     * inbox ({@code get-all}) already shows the doubt to (status changes and replies, not text or delete).
+     */
+    enum DoubtAccess { NONE, ASSIGNEE, AUTHOR, STAFF }
+
+    /** Max parent hops when walking a reply up to its top-level doubt. */
+    private static final int MAX_THREAD_DEPTH = 10;
+
+    DoubtAccess resolveAccess(CustomUserDetails caller, Doubts doubt) {
+        if (caller == null || doubt == null) return DoubtAccess.NONE;
+        Doubts root = threadRoot(doubt);
+        String instituteId = resolveNotificationInstituteId(root);
+        if (StringUtils.hasText(instituteId) && isInstituteStaff(caller, instituteId)) return DoubtAccess.STAFF;
+        String callerUserId = caller.getUserId();
+        if (!StringUtils.hasText(callerUserId)) return DoubtAccess.NONE;
+        if (callerUserId.equals(doubt.getUserId())) return DoubtAccess.AUTHOR;
+        if (isAssigneeOrBatchFaculty(callerUserId, root)) return DoubtAccess.ASSIGNEE;
+        return DoubtAccess.NONE;
+    }
+
+    /** Read access: any {@link DoubtAccess} above, plus the learner who raised the thread (reading its replies). */
+    private boolean canRead(CustomUserDetails caller, Doubts doubt) {
+        if (resolveAccess(caller, doubt) != DoubtAccess.NONE) return true;
+        String callerUserId = caller == null ? null : caller.getUserId();
+        return StringUtils.hasText(callerUserId) && callerUserId.equals(threadRoot(doubt).getUserId());
+    }
+
+    /**
+     * Gate for {@code doubts/create?doubtId=X}: refuses (403) a caller with no access to the doubt,
+     * and strips what their access level doesn't cover from the request. Assignment is staff-only;
+     * it is dropped rather than refused because the learner app echoes the whole doubt back on
+     * resolve/delete — including the excluded-assignee list the response carries.
+     */
+    private void authorizeUpdate(CustomUserDetails caller, String doubtId, DoubtsDto request) {
+        Optional<Doubts> existing = doubtService.getDoubtById(doubtId);
+        if (existing.isEmpty()) return; // updateDoubt reports "Doubt Not Found"
+        Doubts doubt = existing.get();
+        DoubtAccess access = resolveAccess(caller, doubt);
+        if (access == DoubtAccess.NONE) {
+            log.warn("doubts/create?doubtId={}: caller {} has no access to this doubt — refused",
+                    doubtId, caller == null ? null : caller.getUserId());
+            throw new ForbiddenException("You can only change your own doubts");
+        }
+        if (access == DoubtAccess.STAFF) return;
+        request.setDoubtAssigneeRequestUserIds(null);
+        request.setDeleteAssigneeRequest(null);
+        request.setExcludedAssigneeUserIds(null);
+        if (access == DoubtAccess.ASSIGNEE) {
+            request.setHtmlText(null); // the text is the author's
+            if (DoubtStatusEnum.DELETED.name().equals(request.getStatus())
+                    && !DoubtStatusEnum.DELETED.name().equals(doubt.getStatus())) {
+                throw new ForbiddenException("Only the author or institute staff can delete a doubt");
+            }
+        }
+    }
+
+    /** The top-level doubt of a reply thread (the doubt itself when it has no parent). */
+    private Doubts threadRoot(Doubts doubt) {
+        Doubts current = doubt;
+        for (int i = 0; i < MAX_THREAD_DEPTH && StringUtils.hasText(current.getParentId()); i++) {
+            Optional<Doubts> parent = doubtService.getDoubtById(current.getParentId());
+            if (parent.isEmpty()) break;
+            current = parent.get();
+        }
+        return current;
+    }
+
+    /**
+     * Mirrors the non-admin visibility of {@code get-all} (DoubtsRepository): an ACTIVE USER
+     * assignee row on the doubt, or an ACTIVE FSPSSM mapping to the doubt's batch.
+     */
+    private boolean isAssigneeOrBatchFaculty(String userId, Doubts root) {
+        if (StringUtils.hasText(root.getId())) {
+            boolean assignee = doubtsAssigneeRepository
+                    .findByDoubtIdAndStatusNotIn(root.getId(), List.of(DoubtAssigneeStatusEnum.DELETED.name()))
+                    .stream()
+                    .anyMatch(a -> DoubtAssigneeSourceEnum.USER.name().equalsIgnoreCase(a.getSource())
+                            && DoubtAssigneeStatusEnum.ACTIVE.name().equalsIgnoreCase(a.getStatus())
+                            && userId.equals(a.getSourceId()));
+            if (assignee) return true;
+        }
+        String packageSessionId = root.getPackageSessionId();
+        if (!StringUtils.hasText(packageSessionId)) return false;
+        try {
+            return facultyMappingRepository.findByUserId(userId).stream()
+                    .filter(fm -> "ACTIVE".equalsIgnoreCase(fm.getStatus()))
+                    .anyMatch(fm -> packageSessionId.equals(fm.getPackageSessionId())
+                            || ("PACKAGE_SESSION".equals(fm.getAccessType()) && packageSessionId.equals(fm.getAccessId())));
+        } catch (Exception e) {
+            log.warn("FSPSSM lookup failed for doubt access, userId={}: {}", userId, e.getMessage());
+            return false;
+        }
+    }
+
     private boolean isInstituteStaff(CustomUserDetails caller, String instituteId) {
         if (caller == null) return false;
         try {
@@ -162,8 +260,13 @@ public class DoubtsManager {
         if (!isStaffViewer(userDetails)) {
             throw new VacademyException("Only institute staff can view doubt activity");
         }
-        if (doubtService.getDoubtById(doubtId).isEmpty()) {
+        Optional<Doubts> doubt = doubtService.getDoubtById(doubtId);
+        if (doubt.isEmpty()) {
             return ResponseEntity.notFound().build();
+        }
+        // Staff by role is not enough: they must be staff of THIS doubt's institute, or work it.
+        if (!canRead(userDetails, doubt.get())) {
+            throw new ForbiddenException("You don't have access to this doubt");
         }
         return ResponseEntity.ok(doubtService.getActivity(doubtId));
     }
@@ -1353,15 +1456,21 @@ public class DoubtsManager {
      * Loads one doubt by id and maps it to the same {@link DoubtsDto} the inbox list renders (via
      * {@link DoubtService#createDtoFromDoubts}, so child replies / slide metadata are populated too).
      * Backs the doubt-management deep link (?doubtId=X) — the inbox fetches the target doubt this way
-     * when it isn't on the loaded page. Returns 404 when the id doesn't resolve to a doubt.
+     * when it isn't on the loaded page. Returns 404 when the id doesn't resolve to a doubt, 403 when
+     * the caller is neither its author, staff of its institute, nor someone who works it (assignee /
+     * batch faculty) — the same people {@code get-all} lists it for. Learners only ever list their
+     * own doubts, so a learner reads only their own threads.
      */
-    public ResponseEntity<DoubtsDto> getDoubtById(String doubtId) {
+    public ResponseEntity<DoubtsDto> getDoubtById(CustomUserDetails userDetails, String doubtId) {
         if (doubtId == null || doubtId.isBlank()) {
             return ResponseEntity.notFound().build();
         }
         Optional<Doubts> doubt = doubtService.getDoubtById(doubtId);
         if (doubt.isEmpty()) {
             return ResponseEntity.notFound().build();
+        }
+        if (!canRead(userDetails, doubt.get())) {
+            throw new ForbiddenException("You don't have access to this doubt");
         }
         List<DoubtsDto> dtos = doubtService.createDtoFromDoubts(List.of(doubt.get()));
         if (dtos.isEmpty()) {

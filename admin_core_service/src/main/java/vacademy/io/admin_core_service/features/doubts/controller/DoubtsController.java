@@ -40,12 +40,13 @@ public class DoubtsController {
     /**
      * Fetch a single doubt by id, mapped to the same {@link DoubtsDto} shape the inbox list uses.
      * Powers the email/notification deep link (?doubtId=X): the inbox can open a specific doubt even
-     * when it isn't on the first page of the paginated list. Returns 404 when the id doesn't exist.
+     * when it isn't on the first page of the paginated list. Returns 404 when the id doesn't exist,
+     * 403 when the caller is not its author, staff of its institute, or an assignee / batch faculty.
      */
     @GetMapping("/{doubtId}")
     ResponseEntity<DoubtsDto> getDoubtById(@RequestAttribute("user") CustomUserDetails userDetails,
                                            @PathVariable("doubtId") String doubtId){
-        return doubtsManager.getDoubtById(doubtId);
+        return doubtsManager.getDoubtById(userDetails, doubtId);
     }
 
     /**

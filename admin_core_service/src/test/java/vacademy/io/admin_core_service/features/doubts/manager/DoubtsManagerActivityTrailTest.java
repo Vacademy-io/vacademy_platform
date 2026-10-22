@@ -1,14 +1,21 @@
 package vacademy.io.admin_core_service.features.doubts.manager;
 
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
+import vacademy.io.admin_core_service.core.security.InstituteAccessValidator;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.doubts.dtos.DoubtsDto;
 import vacademy.io.admin_core_service.features.doubts.entity.DoubtActivity;
@@ -81,8 +88,22 @@ class DoubtsManagerActivityTrailTest {
     @Mock private AuthService authService;
     @Mock private WorkflowTriggerService workflowTriggerService;
     @Mock private SubOrgStaffLookupService subOrgStaffLookupService;
+    @Spy private InstituteAccessValidator instituteAccessValidator = new InstituteAccessValidator();
 
     @InjectMocks private DoubtsManager manager;
+
+    /** Staff principals act from the doubt's institute (clientId header), as the admin app sends it. */
+    @BeforeEach
+    void clientIdHeaderIsDoubtInstitute() {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.addHeader("clientId", INST);
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
+    }
+
+    @AfterEach
+    void resetRequestContext() {
+        RequestContextHolder.resetRequestAttributes();
+    }
 
     private static CustomUserDetails principal(String userId, String... authorities) {
         UserServiceDTO dto = new UserServiceDTO();

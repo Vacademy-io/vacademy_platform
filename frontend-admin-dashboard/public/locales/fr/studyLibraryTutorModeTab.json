@@ -17,13 +17,16 @@
         "youtube": "Vidéo YouTube",
         "videoUpload": "Vidéo téléchargée",
         "videoLink": "Lien vidéo",
+        "scorm": "SCORM",
         "other": "Non pris en charge"
     },
     "textKindLabel": {
         "script": "script de narration",
         "captions": "sous-titres",
         "transcript": "transcription",
-        "pdf": "texte du PDF"
+        "pdf": "texte du PDF",
+        "scorm": "texte SCORM",
+        "scormOcr": "images des diapositives (OCR)"
     },
     "toast": {
         "loadPlansFailed": "Impossible de charger les plans d'enseignement",

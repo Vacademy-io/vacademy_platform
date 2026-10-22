@@ -17,13 +17,16 @@
         "youtube": "فيديو يوتيوب",
         "videoUpload": "فيديو مرفوع",
         "videoLink": "رابط فيديو",
+        "scorm": "SCORM",
         "other": "غير مدعوم"
     },
     "textKindLabel": {
         "script": "نص السرد",
         "captions": "التسميات التوضيحية",
         "transcript": "النص المكتوب",
-        "pdf": "نص PDF"
+        "pdf": "نص PDF",
+        "scorm": "نص SCORM",
+        "scormOcr": "صور الشرائح (OCR)"
     },
     "toast": {
         "loadPlansFailed": "تعذّر تحميل خطط التدريس",

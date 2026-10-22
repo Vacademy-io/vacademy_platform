@@ -17,13 +17,16 @@
         "youtube": "YouTube वीडियो",
         "videoUpload": "अपलोड किया गया वीडियो",
         "videoLink": "वीडियो लिंक",
+        "scorm": "SCORM",
         "other": "समर्थित नहीं"
     },
     "textKindLabel": {
         "script": "कथन स्क्रिप्ट",
         "captions": "कैप्शन",
         "transcript": "प्रतिलेख",
-        "pdf": "पीडीएफ़ टेक्स्ट"
+        "pdf": "पीडीएफ़ टेक्स्ट",
+        "scorm": "SCORM टेक्स्ट",
+        "scormOcr": "स्लाइड छवियों (OCR)"
     },
     "toast": {
         "loadPlansFailed": "शिक्षण योजनाएँ लोड नहीं हो सकीं",

@@ -174,6 +174,7 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
             youtube: t('sourceKindLabel.youtube'),
             video_upload: t('sourceKindLabel.videoUpload'),
             video_link: t('sourceKindLabel.videoLink'),
+            scorm: t('sourceKindLabel.scorm'),
             other: t('sourceKindLabel.other'),
         }),
         [t]
@@ -184,6 +185,8 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
             captions: t('textKindLabel.captions'),
             transcript: t('textKindLabel.transcript'),
             pdf: t('textKindLabel.pdf'),
+            scorm: t('textKindLabel.scorm'),
+            scorm_ocr: t('textKindLabel.scormOcr'),
         }),
         [t]
     );

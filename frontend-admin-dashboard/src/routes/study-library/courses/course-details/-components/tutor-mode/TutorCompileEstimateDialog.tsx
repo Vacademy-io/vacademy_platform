@@ -20,6 +20,7 @@ const buildKindLabel = (t: TFunction): Record<string, string> => ({
     youtube: t('kindLabel.youtube'),
     video_upload: t('kindLabel.videoUpload'),
     video_link: t('kindLabel.videoLink'),
+    scorm: t('kindLabel.scorm'),
     other: t('kindLabel.notSupported'),
 });
 

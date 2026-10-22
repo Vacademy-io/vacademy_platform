@@ -17,13 +17,16 @@
         "youtube": "YouTube video",
         "videoUpload": "Uploaded video",
         "videoLink": "Video link",
+        "scorm": "SCORM",
         "other": "Not supported"
     },
     "textKindLabel": {
         "script": "narration script",
         "captions": "captions",
         "transcript": "transcript",
-        "pdf": "PDF text"
+        "pdf": "PDF text",
+        "scorm": "SCORM text",
+        "scormOcr": "slide images (OCR)"
     },
     "toast": {
         "loadPlansFailed": "Could not load teaching plans",

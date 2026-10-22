@@ -40,9 +40,9 @@ export interface TutorPlanStatusItem {
     topics: number;
     concepts: number;
     updated_at: string | null;
-    /** document | pdf | quiz | ai_video | youtube | video_upload | video_link | other */
+    /** document | pdf | quiz | ai_video | youtube | video_upload | video_link | scorm | other */
     source_kind?: string | null;
-    /** What the newest plan was compiled from: script | captions | transcript | pdf | null */
+    /** What the newest plan was compiled from: script | captions | transcript | pdf | scorm | scorm_ocr | null */
     text_kind?: string | null;
     /** Board-quality advice the compiler let go; the plan is READY and teachable. */
     quality_notes?: string[];

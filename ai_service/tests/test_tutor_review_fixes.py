@@ -108,6 +108,96 @@ def test_truncated_reply_is_never_repaired_into_a_plan(monkeypatch):
     assert seen == [2, 4, 6]            # initial + two repair rounds, each asking for a shorter plan
 
 
+def test_a_cut_off_reply_is_not_echoed_back_whole(monkeypatch):
+    """The partial goes back as a short head, not 60k chars that triple the
+    next prompt (2026-10-22: 11k → 40k prompt tokens)."""
+    from app.services.tutor import plan_compiler as pc
+    from app.services.tutor.slide_source import SlideSource
+
+    compiler = pc.PlanCompiler(institute_id="i", user_id="u")
+    echoes = []
+
+    async def fake_chat(messages, run):
+        if len(messages) > 2:
+            echoes.append(messages[-2]["content"])
+        return '{"language":"en","topics":[' + "x" * 50_000, "length"
+
+    async def no_kb(source):
+        return None
+
+    monkeypatch.setattr(compiler, "_chat", fake_chat)
+    monkeypatch.setattr(compiler, "_kb_block", no_kb)
+    src = SlideSource(slide_id="s", title="T", source_type="DOCUMENT", source_id="d", kind="document", text="body")
+    with pytest.raises(RuntimeError):
+        asyncio.run(compiler._build_draft(src, None, pc._Run()))
+    assert echoes and all(len(e) < pc.TRUNCATED_ECHO_CHARS + 100 and "cut off" in e for e in echoes)
+
+
+def test_long_material_gets_a_bigger_output_budget(monkeypatch):
+    from app.services.tutor import plan_compiler as pc
+    from app.services.tutor.slide_source import SlideSource
+
+    assert pc.compile_max_tokens(0) == pc.compile_max_tokens(pc.LONG_SOURCE_CHARS[0]) == pc.COMPILE_MAX_TOKENS
+    assert pc.compile_max_tokens(10**6) == pc.COMPILE_MAX_TOKENS_LONG
+    assert pc.COMPILE_MAX_TOKENS < pc.compile_max_tokens(24_000) < pc.COMPILE_MAX_TOKENS_LONG
+
+    compiler = pc.PlanCompiler(institute_id="i", user_id="u")
+    caps = []
+
+    async def fake_chat(messages, run):
+        caps.append(run.max_tokens)
+        return "{}", "stop"
+
+    async def no_kb(source):
+        return None
+
+    monkeypatch.setattr(compiler, "_chat", fake_chat)
+    monkeypatch.setattr(compiler, "_kb_block", no_kb)
+    src = SlideSource(slide_id="s", title="T", source_type="SCORM", source_id="d", kind="scorm", text="w " * 20_000)
+    with pytest.raises(RuntimeError):
+        asyncio.run(compiler._build_draft(src, None, pc._Run()))
+    assert caps and set(caps) == {pc.COMPILE_MAX_TOKENS_LONG}
+
+
+def test_a_huge_valid_plan_skips_the_quality_rewrite(monkeypatch):
+    from tests.test_tutor_compile import _plan
+    from app.services.tutor import plan_compiler as pc
+    from app.services.tutor.slide_source import SlideSource
+
+    body = json.dumps(_plan().model_dump(by_alias=True))
+    compiler = pc.PlanCompiler(institute_id="i", user_id="u")
+    calls = []
+
+    async def fake_chat(messages, run):
+        calls.append(1)
+        return body, "stop"
+
+    async def no_kb(source):
+        return None
+
+    async def no_media(draft, source, run):
+        return None
+
+    monkeypatch.setattr(compiler, "_chat", fake_chat)
+    monkeypatch.setattr(compiler, "_kb_block", no_kb)
+    monkeypatch.setattr(compiler, "_resolve_media", no_media)
+    monkeypatch.setattr(pc, "soft_errors", lambda *a, **k: ["add a recap"])
+    monkeypatch.setattr(pc, "QUALITY_ROUND_MAX_CHARS", 100)
+    src = SlideSource(slide_id="s", title="T", source_type="DOCUMENT", source_id="d", kind="document", text="body")
+    draft, _raw = asyncio.run(compiler._build_draft(src, None, pc._Run()))
+    assert draft is not None and len(calls) == 1
+
+
+def test_extract_json_takes_the_plan_out_of_trailing_text_and_value_lists():
+    from app.services.tutor import compile_prompts as cp
+    plan = {"language": "en", "topics": [{"id": "t1"}]}
+    assert cp.extract_json(json.dumps(plan) + '\n{"note": "second try"}') == plan
+    assert cp.extract_json(json.dumps(plan) + " } ] trailing") == plan
+    assert "strict parse OK" == cp.json_error_at(json.dumps(plan))
+    broken = '{"language":"en","topics":[{"id":"t1","svg":"<svg viewBox="0 0 1 1">"}]}'
+    assert "near" in cp.json_error_at(broken)
+
+
 def test_provider_rejection_falls_back_but_timeouts_do_not(monkeypatch):
     import httpx
     from app.services.tutor import plan_compiler as pc

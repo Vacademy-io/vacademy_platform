@@ -46,6 +46,19 @@ MAX_CONCURRENT_SLIDES = 3
 MAX_GENERATED_IMAGES_PER_SLIDE = 6
 IMAGE_CONCURRENCY = 3
 COMPILE_MAX_TOKENS = 12_000
+# Long material gets a bigger output budget, scaled linearly with its length.
+# A 5,100-word SCORM package (32k chars, en + hi narration) needs ~23k output
+# tokens for a whole plan; at the flat cap every reply was cut off or came back
+# broken and the slide failed (2026-10-22). Short slides keep the flat cap.
+LONG_SOURCE_CHARS = (12_000, 36_000)
+COMPILE_MAX_TOKENS_LONG = 24_000
+# The quality round rewrites the whole plan. Past this size the rewrite costs
+# as much as the plan and was the reply that hit the cap; the plan is kept
+# with its quality notes instead.
+QUALITY_ROUND_MAX_CHARS = 45_000
+# After a cut-off reply only this much of it goes back to the model: the whole
+# partial (60k chars) tripled the next prompt and is redone from scratch anyway.
+TRUNCATED_ECHO_CHARS = 2_000
 # Flash, not Pro: on this platform's credit pricing a single failed Pro compile
 # (3 × ~7k output tokens) cost 35 credits on 2026-09-03; Flash is an order of
 # magnitude cheaper and the validator + repair loop carries the quality. Raise
@@ -66,6 +79,16 @@ def resolve_compile_model(override: Optional[str] = None) -> Optional[str]:
     except Exception:  # noqa: BLE001
         val = DEFAULT_COMPILE_MODEL
     return val or None
+
+
+def compile_max_tokens(source_chars: int) -> int:
+    """The flat cap up to LONG_SOURCE_CHARS[0], COMPILE_MAX_TOKENS_LONG from
+    LONG_SOURCE_CHARS[1], linear in between."""
+    lo, hi = LONG_SOURCE_CHARS
+    if source_chars <= lo:
+        return COMPILE_MAX_TOKENS
+    frac = min(1.0, (source_chars - lo) / (hi - lo))
+    return int(COMPILE_MAX_TOKENS + frac * (COMPILE_MAX_TOKENS_LONG - COMPILE_MAX_TOKENS))
 
 
 def _pydantic_errors(exc: ValidationError) -> List[str]:
@@ -145,6 +168,8 @@ class _Run:
     ocr_pages: int = 0
     # Board-quality asks the model did not satisfy; stored with the plan.
     quality_notes: List[str] = field(default_factory=list)
+    # Output-token cap for this slide's model calls (compile_max_tokens).
+    max_tokens: int = COMPILE_MAX_TOKENS
 
 
 # Voice warm-ups outlive the compile that started them.
@@ -579,6 +604,7 @@ class PlanCompiler:
         asked_for_images = False
         asked_for_quality = False
         hard_repairs = 0
+        run.max_tokens = compile_max_tokens(len(source.text or "") + len(description or ""))
         for attempt in range(MAX_REPAIRS + 3):
             content, finish_reason = await self._chat(messages, run)
             data = None if finish_reason == "length" else prompts.extract_json(content)
@@ -586,14 +612,15 @@ class PlanCompiler:
                 # A cut-off reply repaired into "valid" JSON is a plan with
                 # its last topics missing. Ask for a shorter one instead.
                 logger.warning("Tutor compile: reply %d truncated at %d tokens for slide %s",
-                               attempt + 1, COMPILE_MAX_TOKENS, source.slide_id)
+                               attempt + 1, run.max_tokens, source.slide_id)
                 errors = ["the reply was cut off at the output-token limit: return a SHORTER plan — fewer, "
                           "simpler SVG diagrams (well under 20,000 characters each), fewer concepts per topic, "
                           "shorter narration — that still covers the whole slide"]
                 last_json = ""
             elif data is None:
                 shape = prompts.describe_reply(content)
-                logger.warning("Tutor compile: reply %d was not JSON for slide %s: %s", attempt + 1, source.slide_id, shape)
+                logger.warning("Tutor compile: reply %d was not JSON for slide %s: %s; %s", attempt + 1,
+                               source.slide_id, shape, prompts.json_error_at(content))
                 errors = [f"the reply was not a single JSON object ({shape})"]
                 last_json = (content or "")[:4000]
             else:
@@ -619,7 +646,10 @@ class PlanCompiler:
                         # Engagement and diagram quality: one round, never a
                         # failure — a plan that still misses them is kept.
                         soft = soft_errors(candidate, limits=self._limits(source), source_text=source.text)
-                        if soft and not asked_for_quality:
+                        if soft and not asked_for_quality and len(last_json) > QUALITY_ROUND_MAX_CHARS:
+                            logger.info("Tutor compile: plan for slide %s is %d chars; skipping the quality round",
+                                        source.slide_id, len(last_json))
+                        elif soft and not asked_for_quality:
                             asked_for_quality = True
                             logger.info("Tutor compile: %d quality ask(s) for slide %s: %s", len(soft), source.slide_id, "; ".join(soft[:3])[:400])
                             messages.append({"role": "assistant", "content": last_json[:60000]})
@@ -638,7 +668,11 @@ class PlanCompiler:
             if hard_repairs >= MAX_REPAIRS:
                 break
             hard_repairs += 1
-            messages.append({"role": "assistant", "content": last_json[:60000] or (content or "")[:60000]})
+            if finish_reason == "length":
+                echo = (content or "")[:TRUNCATED_ECHO_CHARS] + " …[cut off at the output-token limit]"
+            else:
+                echo = last_json[:60000] or (content or "")[:60000]
+            messages.append({"role": "assistant", "content": echo})
             messages.append({"role": "user", "content": prompts.repair_prompt(errors, last_json)})
         if draft is None:
             raise RuntimeError("plan failed validation after repairs: " + "; ".join(errors[:6]))
@@ -680,7 +714,7 @@ class PlanCompiler:
             client = ChatLLMClient(_FixedKeys(keys), disable_reasoning=True)
             try:
                 resp = await client.chat_completion(
-                    messages, temperature=0.2, max_tokens=COMPILE_MAX_TOKENS,
+                    messages, temperature=0.2, max_tokens=run.max_tokens,
                     institute_id=self.institute_id, user_id=self.user_id, model=model,
                 )
             except httpx.HTTPStatusError as exc:

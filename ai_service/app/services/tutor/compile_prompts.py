@@ -360,14 +360,42 @@ def extract_json(text: str) -> Optional[Dict[str, Any]]:
                 return obj
         except Exception:  # noqa: BLE001
             pass
+    if "{" in s:
+        # A complete object followed by stray text (a second attempt, a note).
+        try:
+            obj, _end = json.JSONDecoder().raw_decode(s[s.find("{"):])
+            if isinstance(obj, dict):
+                return obj
+        except Exception:  # noqa: BLE001
+            pass
     try:
         import json_repair  # type: ignore
         obj = json_repair.loads(s[s.find("{"):] if "{" in s else s)
+        # Text it reads as several values comes back as a list: the plan is
+        # the object that carries topics.
+        if isinstance(obj, list):
+            plans = [o for o in obj if isinstance(o, dict) and o.get("topics")]
+            obj = max(plans, key=lambda o: len(json.dumps(o, ensure_ascii=False))) if plans else None
         if isinstance(obj, dict) and obj:
             return obj
     except Exception:  # noqa: BLE001
         pass
     return None
+
+
+def json_error_at(text: str) -> str:
+    """Where strict parsing breaks, with the text around it, for the log: the
+    error column only shows the reply's head and tail."""
+    s = _strip_fences(text or "")
+    s = s[s.find("{"):] if "{" in s else s
+    try:
+        json.loads(s)
+        return "strict parse OK"
+    except json.JSONDecodeError as exc:
+        around = s[max(0, exc.pos - 80): exc.pos + 80].replace("\n", " ")
+        return f"strict parse: {exc.msg} at char {exc.pos} near {around!r}"
+    except Exception as exc:  # noqa: BLE001
+        return f"strict parse: {exc}"[:200]
 
 
 def describe_reply(text: str) -> str:

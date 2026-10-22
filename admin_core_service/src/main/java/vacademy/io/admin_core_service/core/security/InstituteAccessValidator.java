@@ -154,6 +154,14 @@ public class InstituteAccessValidator {
     private static final Set<String> LEARNER_ROLE_NAMES = Set.of("STUDENT", "PARENT", "GUARDIAN");
 
     /**
+     * Staff roles that outrank a learner role the same principal also holds. Only roles an
+     * admin hands out belong here: TEACHER does not, because self-signup assigns
+     * {@code [STUDENT, TEACHER]} to learners. COUNSELLOR is only ever assigned by an admin,
+     * and CRM institutes (e.g. ShikshaNation) enrol their counsellors as STUDENT too.
+     */
+    private static final Set<String> LEARNER_OVERRIDING_ROLE_NAMES = Set.of("ADMIN", "COUNSELLOR");
+
+    /**
      * Validates institute membership (see {@link #validateUserAccess}) AND that the caller is
      * institute STAFF -- for endpoints any staff member may use (award/revoke a learner badge,
      * read a learner's award list) but a learner or parent must not, even though they also
@@ -171,8 +179,9 @@ public class InstituteAccessValidator {
      * <ol>
      *   <li>root user -> allow (platform superadmin, same bypass as everywhere else);</li>
      *   <li>membership via {@link #validateUserAccess};</li>
-     *   <li>A contains a learner role (STUDENT/PARENT/GUARDIAN) and NOT ADMIN -> deny, whatever
-     *       else it holds (an admin who is also enrolled as a learner keeps their access);</li>
+     *   <li>A contains a learner role (STUDENT/PARENT/GUARDIAN) and neither ADMIN nor COUNSELLOR
+     *       -> deny, whatever else it holds (an admin or counsellor who is also enrolled as a
+     *       learner keeps their access);</li>
      *   <li>A contains a known staff role -> allow;</li>
      *   <li>else A non-empty -> allow (a custom institute role -- these are staff by construction,
      *       learners are always enrolled with the built-in STUDENT role);</li>
@@ -197,7 +206,7 @@ public class InstituteAccessValidator {
             }
         }
         boolean learner = authorities.stream().anyMatch(LEARNER_ROLE_NAMES::contains);
-        if (learner && !authorities.contains("ADMIN")) {
+        if (learner && authorities.stream().noneMatch(LEARNER_OVERRIDING_ROLE_NAMES::contains)) {
             // A learner principal stays a learner even when it also carries TEACHER
             // (self-signup with allowLearnersToCreateCourses) or stray permission names.
             throw new ForbiddenException("Access denied: staff role required");

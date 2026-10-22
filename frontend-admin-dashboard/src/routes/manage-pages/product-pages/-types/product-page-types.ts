@@ -70,6 +70,36 @@ export interface ProductPageResponse {
     gtm_container_id: string | null;
 }
 
+/** One card of the admin list: GET /product-page/list. No page JSON or mappings. */
+export interface ProductPageSummary {
+    id: string;
+    name: string;
+    code: string;
+    status: string;
+    short_url: string | null;
+    mapping_count: number;
+    created_at: string | null;
+    updated_at: string | null;
+}
+
+export type ProductPageListStatus = 'ALL' | 'ACTIVE' | 'DRAFT';
+export type ProductPageListSort = 'LATEST' | 'OLDEST' | 'NAME_ASC' | 'NAME_DESC';
+
+/**
+ * total_elements / total_pages count every filter; active_count and
+ * draft_count follow the search only, so the status chips keep their numbers
+ * while one is selected.
+ */
+export interface ProductPageListResponse {
+    content: ProductPageSummary[];
+    page: number;
+    size: number;
+    total_elements: number;
+    total_pages: number;
+    active_count: number;
+    draft_count: number;
+}
+
 export interface ProductPageInviteMappingRequest {
     ps_invite_payment_option_id: string;
     payment_plan_id: string;

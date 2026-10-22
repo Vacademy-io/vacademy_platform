@@ -13,11 +13,15 @@ import {
     REORDER_PRODUCT_PAGE_CUSTOM_FIELDS,
     UPDATE_PRODUCT_PAGE_CUSTOM_FIELD,
     SYNC_PRODUCT_PAGE_CATALOGUE,
+    PRODUCT_PAGE_BASE_URL,
 } from '@/constants/urls';
 import type {
     ProductPageResponse,
     ProductPageRequest,
     ProductPageCouponRequest,
+    ProductPageListResponse,
+    ProductPageListSort,
+    ProductPageListStatus,
 } from '../-types/product-page-types';
 import type { CatalogueSyncResponse } from '../-utils/catalogue-sync';
 
@@ -28,6 +32,43 @@ export const getAllProductPages = async (
         GET_ALL_PRODUCT_PAGES(instituteId)
     );
     return response.data || [];
+};
+
+export interface ListProductPagesParams {
+    search?: string;
+    status: ProductPageListStatus;
+    sort: ProductPageListSort;
+    page: number;
+    size: number;
+}
+
+/** One page of the admin list, filtered, sorted and paged on the server. */
+export const listProductPages = async (
+    instituteId: string,
+    { search, status, sort, page, size }: ListProductPagesParams
+): Promise<ProductPageListResponse> => {
+    const response = await authenticatedAxiosInstance.get<ProductPageListResponse>(
+        `${PRODUCT_PAGE_BASE_URL}/list`,
+        {
+            params: {
+                instituteId,
+                search: search?.trim() || undefined,
+                status: status === 'ALL' ? undefined : status,
+                sort,
+                page,
+                size,
+            },
+        }
+    );
+    const data = response.data;
+    return {
+        ...data,
+        content: data?.content ?? [],
+        total_elements: data?.total_elements ?? data?.content?.length ?? 0,
+        total_pages: data?.total_pages ?? 0,
+        active_count: data?.active_count ?? 0,
+        draft_count: data?.draft_count ?? 0,
+    };
 };
 
 export const createProductPage = async (

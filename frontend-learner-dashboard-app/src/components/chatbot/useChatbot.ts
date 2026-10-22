@@ -358,6 +358,14 @@ export const useChatbot = () => {
               ) as string[][];
             }
           }
+        } else if (
+          activeSlide.source_type === "SCORM" ||
+          activeSlide.source_type === "HTML_VIDEO" ||
+          activeSlide.source_type === "AUDIO"
+        ) {
+          // The app has no text for these (a package iframe, an AI video, a
+          // recording); the server fills `content` from the lesson using slide_id.
+          slideType = activeSlide.source_type;
         } else if (activeSlide.source_type === "ASSIGNMENT") {
           slideType = "ASSIGNMENT";
           if (activeSlide.assignment_slide) {

@@ -37,6 +37,7 @@ const SLIDE_TYPE_LABEL_KEYS: Record<string, string> = {
     VIDEO: 'slideTypes.video',
     DOCUMENT_DOC: 'slideTypes.documentDoc',
     AUDIO: 'slideTypes.audio',
+    IMAGE: 'slideTypes.image',
 };
 
 /**

@@ -10,7 +10,8 @@
         "assignment": "Assignment",
         "video": "Video",
         "documentDoc": "Document (Docs) — Download",
-        "audio": "Audio — Download"
+        "audio": "Audio — Download",
+        "image": "Images (in Docs) — Download"
     },
     "footer": {
         "saving": "Saving…",

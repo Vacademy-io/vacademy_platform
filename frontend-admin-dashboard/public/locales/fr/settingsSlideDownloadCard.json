@@ -10,7 +10,8 @@
         "assignment": "Devoir",
         "video": "Vidéo",
         "documentDoc": "Document (Docs) — Télécharger",
-        "audio": "Audio — Télécharger"
+        "audio": "Audio — Télécharger",
+        "image": "Images (dans les Docs) — Télécharger"
     },
     "footer": {
         "saving": "Enregistrement…",

@@ -119,11 +119,15 @@ describe("seriesWindow", () => {
     expect(numbers(path(3, 0), 3)).toEqual([1, 2, 3]);
   });
 
-  it("keeps a window of `limit` steps around the current course, with path numbers", () => {
-    expect(numbers(path(6, 0), 3)).toEqual([1, 2, 3]);
-    expect(numbers(path(6, 3), 3)).toEqual([3, 4, 5]);
-    expect(numbers(path(6, 5), 3)).toEqual([4, 5, 6]);
-    expect(seriesWindow(path(6, 3), 3).filter((s) => s.step.current).map((s) => s.number)).toEqual([4]);
+  it("keeps a window of `limit` steps around the current course, numbered from 1", () => {
+    const ids = (steps: ReturnType<typeof path>, limit: unknown) => seriesWindow(steps, limit).map((s) => s.step.id);
+    expect(ids(path(6, 0), 3)).toEqual([1, 2, 3]);
+    expect(ids(path(6, 3), 3)).toEqual([3, 4, 5]);
+    expect(ids(path(6, 5), 3)).toEqual([4, 5, 6]);
+    expect(ids(path(4, 3), 3)).toEqual([2, 3, 4]);
+    expect(numbers(path(6, 3), 3)).toEqual([1, 2, 3]);
+    expect(numbers(path(4, 3), 3)).toEqual([1, 2, 3]);
+    expect(seriesWindow(path(6, 3), 3).filter((s) => s.step.current).map((s) => s.number)).toEqual([2]);
   });
 
   it("starts at the first step when the course is not one", () => {

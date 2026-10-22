@@ -218,7 +218,7 @@
       "seriesHint": "Les puces « Part of … » listant les autres étapes du parcours auquel appartient le cours, et la carte « Next in the series ».",
       "seriesLimit": "Nombre maximal de puces « Part of »",
       "seriesLimitAll": "Toutes",
-      "seriesLimitHint": "Affiche ce nombre d'étapes autour du cours actuel, chacune avec son numéro dans le parcours. Laissez vide pour toutes les afficher."
+      "seriesLimitHint": "Affiche ce nombre d'étapes autour du cours actuel, numérotées à partir de 1. Laissez vide pour toutes les afficher."
     },
     "courseFormats": {
       "fromTags": {

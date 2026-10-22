@@ -63,6 +63,24 @@ public class FeeLedgerAllocationService {
         return computeAmountDue(bill).compareTo(BigDecimal.ZERO) <= 0;
     }
 
+    /**
+     * Whether oldest-first allocation may put money on this bill: something is still owed on it
+     * and it has not been written off. Without this a waived installment was paid (and turned
+     * PAID), an installment a discount took to zero was stamped PAID by a ₹0 allocation, and one
+     * already paid beyond its amount got a negative allocation that took money off it and moved
+     * it to the next installment.
+     */
+    static boolean takesPayment(StudentFeePayment bill) {
+        String status = bill.getStatus();
+        if ("PAID".equalsIgnoreCase(status) || "WAIVED".equalsIgnoreCase(status)
+                || "CANCELLED".equalsIgnoreCase(status) || "DELETED".equalsIgnoreCase(status)) {
+            return false;
+        }
+        BigDecimal expected = bill.getAmountExpected() != null ? bill.getAmountExpected() : BigDecimal.ZERO;
+        BigDecimal paid = bill.getAmountPaid() != null ? bill.getAmountPaid() : BigDecimal.ZERO;
+        return expected.compareTo(paid) > 0;
+    }
+
     @Transactional
     public void allocatePayment(String paymentLogId, BigDecimal totalPaymentAmount, String userPlanId) {
         log.info("Starting ledger allocation for PaymentLog: {}, Amount: {}, UserPlan: {}", paymentLogId,
@@ -77,6 +95,9 @@ public class FeeLedgerAllocationService {
         for (StudentFeePayment bill : unpaidBills) {
             if (remainingAmount.compareTo(BigDecimal.ZERO) <= 0) {
                 break; // No more money to allocate
+            }
+            if (!takesPayment(bill)) {
+                continue;
             }
 
             BigDecimal amountToPayOnThisBill = bill.getAmountExpected().subtract(bill.getAmountPaid());
@@ -187,6 +208,9 @@ public class FeeLedgerAllocationService {
         for (StudentFeePayment bill : unpaidBills) {
             if (remainingAmount.compareTo(BigDecimal.ZERO) <= 0) {
                 break;
+            }
+            if (!takesPayment(bill)) {
+                continue;
             }
 
             BigDecimal amountToPayOnThisBill = bill.getAmountExpected().subtract(bill.getAmountPaid());

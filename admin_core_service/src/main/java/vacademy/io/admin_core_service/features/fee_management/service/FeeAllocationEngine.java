@@ -81,8 +81,11 @@ public class FeeAllocationEngine {
             candidates = new ArrayList<>(enriched);
         }
 
-        // Remove bills with nothing left to pay
-        candidates.removeIf(b -> b.amountDue.compareTo(BigDecimal.ZERO) <= 0);
+        // Remove bills with nothing left to pay, and written-off ones
+        candidates.removeIf(b -> b.amountDue.compareTo(BigDecimal.ZERO) <= 0
+                || "WAIVED".equalsIgnoreCase(b.bill.getStatus())
+                || "CANCELLED".equalsIgnoreCase(b.bill.getStatus())
+                || "DELETED".equalsIgnoreCase(b.bill.getStatus()));
 
         if (candidates.isEmpty()) {
             log.info("No qualifying bills for scope {} and paymentLog {}", scope, paymentLogId);

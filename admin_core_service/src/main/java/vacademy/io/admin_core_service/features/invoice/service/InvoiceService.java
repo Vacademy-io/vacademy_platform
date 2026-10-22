@@ -4541,7 +4541,8 @@ public class InvoiceService {
                                 : null;
                         sfpIdToPdfInfo.put(e.getKey(),
                                 new String[]{realInvoiceId, pdfFileId, url, inv.getCurrency(),
-                                        inv.getInvoiceNumber()});
+                                        inv.getInvoiceNumber(),
+                                        inv.getTotalAmount() != null ? inv.getTotalAmount().toPlainString() : null});
                     }
                 }
             }
@@ -4567,6 +4568,12 @@ public class InvoiceService {
             log.warn("Could not resolve plan currency for SFP rows of user {}: {}", userId, e.getMessage());
         }
         List<InvoiceDTO> dtos = new ArrayList<>();
+        // One receipt can settle several installments: two of one course, or one of each course
+        // of an admission package. It is listed once, for what it was issued for, not once per
+        // installment with that installment's share (I2CAN, 2026-10-22: one admission receipt
+        // read as four).
+        Map<String, InvoiceDTO> receiptRows = new HashMap<>();
+        Map<String, BigDecimal> receiptTotals = new HashMap<>();
         for (StudentFeePayment sfp : sfps) {
             String status = sfp.getStatus();
             if (status == null || "DELETED".equalsIgnoreCase(status)) continue;
@@ -4630,7 +4637,20 @@ public class InvoiceService {
             // own label and carries the receipt and the amount paid alongside.
             boolean settled = "PAID".equalsIgnoreCase(status) || "WAIVED".equalsIgnoreCase(status);
             boolean labelWithReceipt = settled && StringUtils.hasText(realInvoiceNumber);
-            dtos.add(InvoiceDTO.builder()
+            if (labelWithReceipt && receiptRows.containsKey(dtoId)) {
+                InvoiceDTO first = receiptRows.get(dtoId);
+                first.setSubtotal(first.getSubtotal().add(displayAmount));
+                first.setTotalAmount(first.getTotalAmount().add(displayAmount));
+                if (dueDate != null && (first.getDueDate() == null || dueDate.isBefore(first.getDueDate()))) {
+                    first.setDueDate(dueDate);
+                    first.setInvoiceDate(dueDate);
+                }
+                if (pdfInfo.length > 5 && pdfInfo[5] != null) {
+                    receiptTotals.put(dtoId, new BigDecimal(pdfInfo[5]));
+                }
+                continue;
+            }
+            InvoiceDTO row = InvoiceDTO.builder()
                     .id(dtoId)
                     .invoiceNumber(labelWithReceipt
                             ? realInvoiceNumber
@@ -4654,8 +4674,21 @@ public class InvoiceService {
                     .pdfFileId(pdfFileId)
                     .pdfUrl(pdfUrl)
                     .lineItems(java.util.Collections.emptyList())
-                    .build());
+                    .build();
+            if (labelWithReceipt) {
+                receiptRows.put(dtoId, row);
+            }
+            dtos.add(row);
         }
+        // A receipt listed once shows what it was issued for: it may also have part-paid another
+        // installment, which that installment's own row reports.
+        receiptTotals.forEach((invoiceId, total) -> {
+            InvoiceDTO row = receiptRows.get(invoiceId);
+            if (total.signum() > 0 && total.compareTo(row.getTotalAmount()) > 0) {
+                row.setSubtotal(total);
+                row.setTotalAmount(total);
+            }
+        });
         return dtos;
     }
 

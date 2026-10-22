@@ -1,6 +1,8 @@
 package vacademy.io.admin_core_service.features.product_page.repository;
 
 import jakarta.persistence.LockModeType;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
@@ -15,6 +17,29 @@ import java.util.Optional;
 public interface ProductPageRepository extends JpaRepository<ProductPage, String> {
 
     List<ProductPage> findByInstituteIdAndStatusIn(String instituteId, List<String> statuses);
+
+    /**
+     * The admin list: an institute's pages in the given statuses whose name or
+     * code contains the search. The pattern is already lower-cased and wrapped
+     * in percent signs, with its own wildcards escaped by the exclamation mark.
+     * Order comes from the Pageable.
+     */
+    @Query(value = "SELECT p FROM ProductPage p WHERE p.instituteId = :instituteId AND p.status IN :statuses "
+            + "AND (LOWER(p.name) LIKE :pattern ESCAPE '!' OR LOWER(p.code) LIKE :pattern ESCAPE '!')",
+            countQuery = "SELECT COUNT(p) FROM ProductPage p WHERE p.instituteId = :instituteId AND p.status IN :statuses "
+                    + "AND (LOWER(p.name) LIKE :pattern ESCAPE '!' OR LOWER(p.code) LIKE :pattern ESCAPE '!')")
+    Page<ProductPage> searchForAdmin(@Param("instituteId") String instituteId,
+                                     @Param("statuses") List<String> statuses,
+                                     @Param("pattern") String pattern,
+                                     Pageable pageable);
+
+    /** {@link #searchForAdmin} counted per status, as rows of status and count. */
+    @Query("SELECT p.status, COUNT(p) FROM ProductPage p WHERE p.instituteId = :instituteId AND p.status IN :statuses "
+            + "AND (LOWER(p.name) LIKE :pattern ESCAPE '!' OR LOWER(p.code) LIKE :pattern ESCAPE '!') "
+            + "GROUP BY p.status")
+    List<Object[]> countByStatusForAdmin(@Param("instituteId") String instituteId,
+                                         @Param("statuses") List<String> statuses,
+                                         @Param("pattern") String pattern);
 
     Optional<ProductPage> findByCode(String code);
 

@@ -296,6 +296,12 @@ public class EnrollInviteService {
      */
     private static final Sort DEFAULT_INVITE_SORT = Sort.by(Sort.Direction.DESC, "created_at");
 
+    private static boolean hasAdminRole(CustomUserDetails user) {
+        return user.getAuthorities() != null && user.getAuthorities().stream()
+                .map(a -> a == null ? null : a.getAuthority())
+                .anyMatch("ADMIN"::equalsIgnoreCase);
+    }
+
     public Page<EnrollInviteListItemDTO> getEnrollInvitesByInstituteIdAndFilters(String instituteId,
             EnrollInviteFilterDTO enrollInviteFilterDTO, int pageNo, int pageSize, CustomUserDetails user) {
         Sort sortColumns = ListService.createSortObject(enrollInviteFilterDTO.getSortColumns());
@@ -308,8 +314,11 @@ public class EnrollInviteService {
         // Filter by faculty mapping: if user has EnrollInvite entries, scope to those
         // only.
         // No entries = full access.
+        // ADMIN is never scoped: an institute admin who is also a sub-org member
+        // holds ENROLL_INVITE rows for that sub-org, and scoping on them hid every
+        // other invite in the institute.
         List<String> allowedEnrollInviteIds = null;
-        if (user != null) {
+        if (user != null && !hasAdminRole(user)) {
             List<String> accessIds = facultyMappingRepository
                     .findEnrollInviteAccessIdsByUserIdAndInstituteId(
                             user.getUserId(), instituteId, List.of("ACTIVE"));

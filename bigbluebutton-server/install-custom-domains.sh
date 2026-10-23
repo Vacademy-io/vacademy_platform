@@ -82,7 +82,12 @@ if [ -f "$WEB" ]; then
         log "1/4 redirect rewrite already present"
     else
         cp -a "$WEB" "$WEB.bak-$STAMP"
-        perl -0pi -e 's{^(\s*)proxy_redirect(\s+)default;}{$1proxy_redirect$2default;\n$1'"$REWRITE"'}gm' "$WEB"
+        # The rule goes in through %ENV: spliced into the perl source, its $host,
+        # $1 and "$ https" (perl allows a space after the sigil) were read as perl
+        # variables and the line came out as "(.*):///" — nginx then refused the
+        # whole config. Only a fresh package file reaches this branch (a BBB
+        # upgrade), which is why snapshot restores never hit it.
+        REWRITE="$REWRITE" perl -0pi -e 's{^(\s*)proxy_redirect(\s+)default;}{$1proxy_redirect$2default;\n$1$ENV{REWRITE}}gm' "$WEB"
         log "1/4 redirect rewrite added ($(grep -c 'proxy_redirect     ~\^https' "$WEB") locations)"
     fi
 else

@@ -53,6 +53,26 @@ const RESUME_MAX_AGE_MS = 12 * 3600_000;
 
 const EMPTY_SCORE: Score = { score: null, onScreen: null, attention: null };
 
+/**
+ * Timer, event and async entry points run through this. An exception that escapes
+ * a plugin reaches the BBB client's global error handler, which can put a reload
+ * screen in front of the class — a broken score must only ever switch itself off.
+ */
+const guard =
+  <A extends unknown[]>(name: string, fn: (...args: A) => void, onError?: () => void) =>
+  (...args: A) => {
+    try {
+      fn(...args);
+    } catch (error) {
+      console.warn(`[activeness] ${name} failed`, error);
+      try {
+        onError?.();
+      } catch {
+        // Nothing more to do.
+      }
+    }
+  };
+
 const storage = {
   get(key: string): string | null {
     try {
@@ -160,13 +180,20 @@ export class ActivenessController {
 
   private set(patch: Partial<ViewState>) {
     this.state = { ...this.state, ...patch };
-    this.listeners.forEach((fn) => fn());
+    this.listeners.forEach((fn) => guard("render", fn)());
   }
 
   // ── actions ──────────────────────────────────────────────────────────────
 
   /** The learner turned the score on (or pressed Try again). */
-  start = async () => {
+  start = () => {
+    this.startInner().catch((error) => {
+      console.warn("[activeness] start failed", error);
+      guard("fail", () => this.fail("unknown"))();
+    });
+  };
+
+  private startInner = async () => {
     if (this.disposed) return;
     const gen = ++this.generation;
     storage.set(CHOICE_KEY, "on");
@@ -179,7 +206,7 @@ export class ActivenessController {
       this.video.srcObject = stream;
       void this.video.play().catch(() => undefined);
       stream.getVideoTracks().forEach((t) => t.addEventListener("ended", this.onTrackEnded));
-      void this.refreshCameras();
+      void this.refreshCameras().catch(() => undefined);
 
       if (!this.tracker) {
         const slow = window.setTimeout(() => gen === this.generation && this.set({ slowLoad: true }), SLOW_LOAD_MS);
@@ -237,7 +264,7 @@ export class ActivenessController {
   };
 
   /** The class ended or the plugin is being unloaded. */
-  dispose = () => {
+  dispose = guard("dispose", () => {
     if (this.disposed) return;
     this.report(true);
     this.disposed = true;
@@ -250,7 +277,7 @@ export class ActivenessController {
     navigator.mediaDevices?.removeEventListener?.("devicechange", this.onDeviceChange);
     this.parking.remove();
     this.listeners.clear();
-  };
+  });
 
   // ── loop ─────────────────────────────────────────────────────────────────
 
@@ -259,7 +286,9 @@ export class ActivenessController {
     this.timer = window.setTimeout(this.tick, this.interval);
   }
 
-  private tick = () => {
+  private tick = guard("tick", () => this.tickInner(), () => this.fail("unknown"));
+
+  private tickInner() {
     this.timer = null;
     if (this.state.phase !== "on" || !this.tracker) return;
     const now = Date.now();
@@ -312,7 +341,7 @@ export class ActivenessController {
     this.set({ live: this.meter.live(now), session: this.meter.session(), away, dark });
     if (now - this.lastReportAt >= REPORT_EVERY_MS) this.report(false);
     this.schedule();
-  };
+  }
 
   private fail(problem: CameraProblem) {
     this.generation += 1;
@@ -341,15 +370,15 @@ export class ActivenessController {
 
   // ── events ───────────────────────────────────────────────────────────────
 
-  private onTrackEnded = () => {
+  private onTrackEnded = guard("track-ended", () => {
     if (this.state.phase === "on") this.fail("ended");
-  };
+  });
 
-  private onDeviceChange = () => {
-    if (this.stream) void this.refreshCameras();
-  };
+  private onDeviceChange = guard("devicechange", () => {
+    if (this.stream) void this.refreshCameras().catch(() => undefined);
+  });
 
-  private onVisibility = () => {
+  private onVisibility = guard("visibility", () => {
     if (this.state.phase !== "on") return;
     const now = Date.now();
     if (document.visibilityState === "hidden") {
@@ -370,9 +399,9 @@ export class ActivenessController {
     this.lastFaceAt = now;
     this.faceRun = 0;
     this.set({ session: this.meter.session(), live: this.meter.live(now) });
-  };
+  });
 
-  private onPageHide = () => this.report(true, true);
+  private onPageHide = guard("pagehide", () => this.report(true, true));
 
   // ── reporting ────────────────────────────────────────────────────────────
 

@@ -1,6 +1,6 @@
 {
   "name": "vacademy-activeness-bbb-plugin",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "BBB HTML5 plugin: on-device camera activeness score for learners in Vacademy live classes",
   "scripts": {

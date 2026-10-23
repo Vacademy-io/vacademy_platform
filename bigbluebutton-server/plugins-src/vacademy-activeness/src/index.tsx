@@ -14,18 +14,47 @@ import { ActivenessController } from "./controller";
 import { isDesktop } from "./camera";
 import { Panel } from "./Panel";
 
-interface MetadataResult {
-  user_current: { userMetadata: { parameter: string; value: string }[] }[];
+/**
+ * Nothing this plugin does may reach BBB: an uncaught error here is caught by the
+ * client's global handler, which can offer the learner a reload mid-class. A
+ * failure only hides the score.
+ */
+class Contained extends React.Component<{ children: React.ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  componentDidCatch(error: unknown) {
+    console.warn("[activeness] disabled after an error", error);
+  }
+  render() {
+    return this.state.failed ? null : this.props.children;
+  }
 }
 
+interface MetadataRow {
+  parameter: string;
+  value: string;
+}
+interface MetadataResult {
+  user_metadata: MetadataRow[];
+}
+
+// The root `user_metadata` list (this user's join `userdata-*` params, filtered by
+// session server-side). Not `user_current.userMetadata`: that one is an OBJECT
+// relationship in BBB's schema and returns a single row, not a list.
 const METADATA_SUBSCRIPTION = `subscription VacademyActivenessMetadata {
-  user_current {
-    userMetadata {
-      parameter
-      value
-    }
+  user_metadata {
+    parameter
+    value
   }
 }`;
+
+const readParam = (rows: unknown, name: string): string | null => {
+  if (!Array.isArray(rows)) return null;
+  const row = rows.find((r: MetadataRow | null) => r && r.parameter === name) as MetadataRow | undefined;
+  return typeof row?.value === "string" ? row.value : null;
+};
 
 const TOKEN_PARAM = "vacademy_activeness";
 const URL_PARAM = "vacademy_activeness_url";
@@ -41,9 +70,9 @@ function ActivenessPlugin({ uuid, pluginName }: { uuid: string; pluginName: stri
   const metadata = pluginApi.useCustomSubscription?.<MetadataResult>(METADATA_SUBSCRIPTION);
   const shouldUnmount = pluginApi.useShouldUnmountPlugin?.() ?? false;
 
-  const params = metadata?.data?.user_current?.[0]?.userMetadata ?? [];
-  const token = params.find((p) => p.parameter === TOKEN_PARAM)?.value ?? null;
-  const reportUrl = params.find((p) => p.parameter === URL_PARAM)?.value ?? null;
+  const rows = metadata?.data?.user_metadata;
+  const token = readParam(rows, TOKEN_PARAM);
+  const reportUrl = readParam(rows, URL_PARAM);
   const role = currentUser?.data?.role;
   const eligible =
     !shouldUnmount && !!token && !!reportUrl && /^https:\/\//.test(reportUrl) && role === "VIEWER" && isDesktop();
@@ -64,7 +93,11 @@ function ActivenessPlugin({ uuid, pluginName }: { uuid: string; pluginName: stri
         dataTest: "vacademy-activeness",
         contentFunction: (element: HTMLElement) => {
           const root = ReactDOM.createRoot(element);
-          root.render(<Panel controller={controller} />);
+          root.render(
+            <Contained>
+              <Panel controller={controller} />
+            </Contained>
+          );
           return root;
         },
       }),
@@ -89,4 +122,8 @@ if (!mount) {
   mount.id = uuid;
   document.body.appendChild(mount);
 }
-ReactDOM.createRoot(mount).render(<ActivenessPlugin uuid={uuid} pluginName={pluginName} />);
+ReactDOM.createRoot(mount).render(
+  <Contained>
+    <ActivenessPlugin uuid={uuid} pluginName={pluginName} />
+  </Contained>
+);

@@ -51,7 +51,10 @@
         "raiseHands": "हाथ उठाना",
         "emojis": "इमोजी",
         "chats": "चैट",
-        "pollVotes": "पोल वोट"
+        "pollVotes": "पोल वोट",
+        "activeness": "एक्टिवनेस %",
+        "activenessOnScreen": "स्क्रीन के सामने %",
+        "activenessAttention": "ध्यान %"
     },
     "status": {
         "present": "उपस्थित",

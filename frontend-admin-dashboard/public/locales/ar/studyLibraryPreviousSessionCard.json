@@ -59,7 +59,10 @@
         "raiseHands": "رفع اليد",
         "emojis": "الرموز التعبيرية",
         "chats": "الدردشات",
-        "pollVotes": "أصوات الاستطلاع"
+        "pollVotes": "أصوات الاستطلاع",
+        "activeness": "النشاط %",
+        "activenessOnScreen": "أمام الشاشة %",
+        "activenessAttention": "الانتباه %"
     },
     "status": {
         "present": "حاضر",

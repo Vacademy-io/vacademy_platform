@@ -23,7 +23,8 @@
         "email": "ईमेल",
         "duration": "अवधि",
         "activePoints": "सक्रिय अंक",
-        "mode": "मोड"
+        "mode": "मोड",
+        "activeness": "एक्टिवनेस"
     },
     "status": {
         "present": "उपस्थित",
@@ -73,7 +74,12 @@
         "emojis": "इमोजी",
         "chats": "चैट",
         "pollVotes": "पोल वोट",
-        "feedbackColumn": "फीडबैक: {{column}}"
+        "feedbackColumn": "फीडबैक: {{column}}",
+        "activeness": "एक्टिवनेस %",
+        "activenessOnScreen": "स्क्रीन के सामने %",
+        "activenessAttention": "ध्यान %",
+        "activenessMinutes": "कैमरा ट्रैक किए गए मिनट",
+        "activenessAwayCount": "कितनी बार हटे"
     },
     "durationSeconds_one": "{{count}} सेकंड",
     "durationSeconds_other": "{{count}} सेकंड",
@@ -81,5 +87,13 @@
     "durationMinutesShort_other": "{{count}} मिनट",
     "durationMinutesAndSeconds": "{{m}} मिनट {{s}} सेकंड",
     "durationMinutes_one": "{{count}} मिनट",
-    "durationMinutes_other": "{{count}} मिनट"
+    "durationMinutes_other": "{{count}} मिनट",
+    "activeness": {
+        "onScreen": "स्क्रीन के सामने {{value}}%",
+        "attention": "ध्यान {{value}}%",
+        "tracked": "कैमरा चालू {{value}}",
+        "away_one": "{{count}} बार हटे",
+        "away_other": "{{count}} बार हटे",
+        "detail": "एक्टिवनेस {{value}}% — {{summary}}"
+    }
 }

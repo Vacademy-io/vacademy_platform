@@ -156,6 +156,10 @@ export default function PreviousSessionCard({
                       .filter(Boolean)
                       .join(' | ')
                 : '';
+        // Activeness columns only for classes that had the opt-in camera score on.
+        const withActiveness = (reportResponse || []).some((item) =>
+            (item.engagementData ?? '').includes('"activeness"')
+        );
         const csvData = (reportResponse || []).map((item, idx) => {
             const engagement = item.engagementData
                 ? (() => {
@@ -174,11 +178,17 @@ export default function PreviousSessionCard({
             const chats = engagement?.chats ?? '';
             const pollVotes = engagement?.pollVotes ?? '';
 
+            // The activeness score shares this JSON; on its own it is not BBB engagement.
+            const hasBbbCounters =
+                !!engagement &&
+                ['chats', 'talks', 'talkTime', 'raisehand', 'emojis', 'pollVotes'].some(
+                    (k) => typeof engagement[k] === 'number'
+                );
             let activePoints: number | string = '';
-            if (duration !== '' || engagement) {
+            if (duration !== '' || hasBbbCounters) {
                 let score = 0;
                 if (typeof duration === 'number') score += duration;
-                if (engagement) {
+                if (hasBbbCounters) {
                     score += ((engagement.talkTime ?? 0) / 60) * 2;
                     score += (engagement.talks ?? 0) * 0.5;
                     score += (engagement.raisehand ?? 0) * 3;
@@ -210,6 +220,13 @@ export default function PreviousSessionCard({
                 [t('csv.emojis')]: emojis,
                 [t('csv.chats')]: chats,
                 [t('csv.pollVotes')]: pollVotes,
+                ...(withActiveness
+                    ? {
+                          [t('csv.activeness')]: engagement?.activeness ?? '',
+                          [t('csv.activenessOnScreen')]: engagement?.activenessOnScreen ?? '',
+                          [t('csv.activenessAttention')]: engagement?.activenessAttention ?? '',
+                      }
+                    : {}),
             };
         });
         const csv = Papa.unparse(csvData);

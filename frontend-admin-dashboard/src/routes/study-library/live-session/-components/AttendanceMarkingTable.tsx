@@ -13,6 +13,7 @@ import {
     HandWaving,
     Smiley,
     ChartBar,
+    Eye,
     DownloadSimple,
     UsersThree,
 } from '@phosphor-icons/react';
@@ -32,7 +33,20 @@ interface EngagementData {
     raisehand?: number;
     emojis?: number;
     pollVotes?: number;
+    // Written during the class by the opt-in Vacademy Meet activeness plugin
+    // (on-device camera score); BBB's own counters above arrive after it ends.
+    activeness?: number;
+    activenessOnScreen?: number;
+    activenessAttention?: number;
+    activenessSeconds?: number;
+    activenessAwayCount?: number;
 }
+
+const BBB_COUNTERS = ['chats', 'talks', 'talkTime', 'raisehand', 'emojis', 'pollVotes'] as const;
+
+/** BBB's engagement counters are present (not just the activeness score). */
+const hasBbbCounters = (e: EngagementData | null): e is EngagementData =>
+    !!e && BBB_COUNTERS.some((k) => typeof e[k] === 'number');
 
 interface AttendanceMarkingTableProps {
     data: LiveSessionReport[];
@@ -48,7 +62,7 @@ interface AttendanceMarkingTableProps {
     onSaved?: () => void;
 }
 
-type SortField = 'status' | 'duration' | 'activePoints';
+type SortField = 'status' | 'duration' | 'activePoints' | 'activeness';
 type SortDir = 'asc' | 'desc';
 
 /**
@@ -73,10 +87,34 @@ const formatAttendedDuration = (
 function parseEngagement(json: string | null): EngagementData | null {
     if (!json) return null;
     try {
-        return JSON.parse(json);
+        const parsed = JSON.parse(json);
+        return parsed && typeof parsed === 'object' ? parsed : null;
     } catch {
         return null;
     }
+}
+
+const activenessOf = (student: LiveSessionReport): number | null => {
+    const v = parseEngagement(student.engagementData)?.activeness;
+    return typeof v === 'number' ? v : null;
+};
+
+function getActivenessBadgeColor(value: number) {
+    if (value >= 70) return 'border-green-200 bg-green-50 text-green-700';
+    if (value >= 40) return 'border-yellow-200 bg-yellow-50 text-yellow-700';
+    return 'border-red-200 bg-red-50 text-red-600';
+}
+
+/** "On screen 79% · Attention 78% · camera on 5m 52s · stepped away 4×" — missing parts left out. */
+function activenessSummary(t: TFunction, e: EngagementData): string {
+    const parts: string[] = [];
+    if (typeof e.activenessOnScreen === 'number') parts.push(t('activeness.onScreen', { value: e.activenessOnScreen }));
+    if (typeof e.activenessAttention === 'number') parts.push(t('activeness.attention', { value: e.activenessAttention }));
+    if (typeof e.activenessSeconds === 'number') {
+        parts.push(t('activeness.tracked', { value: formatAttendedDuration(t, null, e.activenessSeconds) }));
+    }
+    if (typeof e.activenessAwayCount === 'number') parts.push(t('activeness.away', { count: e.activenessAwayCount }));
+    return parts.join(' · ');
 }
 
 /**
@@ -93,7 +131,10 @@ function parseEngagement(json: string | null): EngagementData | null {
  */
 function computeActivePoints(student: LiveSessionReport): number | null {
     const duration = student.providerTotalDurationMinutes;
-    const engagement = parseEngagement(student.engagementData);
+    // The activeness score lands in the same JSON during the class; on its own it
+    // is not BBB engagement, so it must not read as "0 points, Low".
+    const parsed = parseEngagement(student.engagementData);
+    const engagement = hasBbbCounters(parsed) ? parsed : null;
 
     if (duration == null && !engagement) return null;
 
@@ -315,6 +356,11 @@ export function AttendanceMarkingTable({
                     bVal = computeActivePoints(b) ?? -1;
                     break;
                 }
+                case 'activeness': {
+                    aVal = activenessOf(a) ?? -1;
+                    bVal = activenessOf(b) ?? -1;
+                    break;
+                }
                 default:
                     return 0;
             }
@@ -337,6 +383,9 @@ export function AttendanceMarkingTable({
         }
         return { presentCount: present, absentCount: absent, unmarkedCount: unmarked };
     }, [data, getStatus]);
+
+    // The column only appears for classes that had the activeness score on.
+    const showActiveness = useMemo(() => data.some((s) => activenessOf(s) !== null), [data]);
 
     const handleSave = async () => {
         if (dirtyCount === 0) return;
@@ -405,6 +454,14 @@ export function AttendanceMarkingTable({
                 [t('csv.chats')]: engagement?.chats ?? '',
                 [t('csv.pollVotes')]: engagement?.pollVotes ?? '',
             };
+            if (showActiveness) {
+                row[t('csv.activeness')] = engagement?.activeness ?? '';
+                row[t('csv.activenessOnScreen')] = engagement?.activenessOnScreen ?? '';
+                row[t('csv.activenessAttention')] = engagement?.activenessAttention ?? '';
+                row[t('csv.activenessMinutes')] =
+                    typeof engagement?.activenessSeconds === 'number' ? Math.round(engagement.activenessSeconds / 60) : '';
+                row[t('csv.activenessAwayCount')] = engagement?.activenessAwayCount ?? '';
+            }
             customFieldColumns.forEach((cf) => {
                 row[cf.name] = getCfValue(item, cf.key);
             });
@@ -428,7 +485,7 @@ export function AttendanceMarkingTable({
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
         toast.success(t('toast.csvDownloaded'));
-    }, [sortedData, getStatus, sessionId, sessionTitle, packageSessionDetails, customFieldColumns, feedbackColumns, getCfValue, getFeedbackValue, t]);
+    }, [sortedData, getStatus, sessionId, sessionTitle, packageSessionDetails, customFieldColumns, feedbackColumns, getCfValue, getFeedbackValue, showActiveness, t]);
 
     const hasEngagementOrDuration = (student: LiveSessionReport) => {
         return student.providerTotalDurationMinutes || student.engagementData;
@@ -531,6 +588,17 @@ export function AttendanceMarkingTable({
                                     {t('columns.activePoints')} <SortIcon field="activePoints" />
                                 </button>
                             </th>
+                            {showActiveness && (
+                                <th className="px-3 py-2 w-28">
+                                    <button
+                                        type="button"
+                                        onClick={() => handleSort('activeness')}
+                                        className="flex items-center gap-1 hover:text-gray-700"
+                                    >
+                                        {t('columns.activeness')} <SortIcon field="activeness" />
+                                    </button>
+                                </th>
+                            )}
                             <th className="px-3 py-2 w-[80px]">{t('columns.mode')}</th>
                             <th className="px-3 py-2 w-[40px]"></th>
                         </tr>
@@ -545,6 +613,7 @@ export function AttendanceMarkingTable({
                             const canExpand = hasEngagementOrDuration(student);
                             const activePoints = computeActivePoints(student);
                             const pointsBadge = getActivePointsBadge(t, activePoints);
+                            const activeness = activenessOf(student);
 
                             return (
                                 <Fragment key={student.studentId}>
@@ -624,6 +693,21 @@ export function AttendanceMarkingTable({
                                                 <span className="text-gray-300">--</span>
                                             )}
                                         </td>
+                                        {showActiveness && (
+                                            <td className="px-3 py-2">
+                                                {activeness != null && engagement ? (
+                                                    <Badge
+                                                        variant="outline"
+                                                        className={`text-xs ${getActivenessBadgeColor(activeness)}`}
+                                                        title={activenessSummary(t, engagement)}
+                                                    >
+                                                        {activeness}%
+                                                    </Badge>
+                                                ) : (
+                                                    <span className="text-gray-300">--</span>
+                                                )}
+                                            </td>
+                                        )}
                                         <td className="px-3 py-2">
                                             {student.statusType && (
                                                 <Badge
@@ -656,7 +740,15 @@ export function AttendanceMarkingTable({
                                     </tr>
                                     {isExpanded && canExpand && (
                                         <tr key={`${student.studentId}-detail`} className="border-b bg-gray-50">
-                                            <td colSpan={8} className="px-6 py-3">
+                                            <td
+                                                colSpan={
+                                                    8 +
+                                                    (showActiveness ? 1 : 0) +
+                                                    customFieldColumns.length +
+                                                    feedbackColumns.length
+                                                }
+                                                className="px-6 py-3"
+                                            >
                                                 <div className="flex flex-wrap items-center gap-4 text-xs text-gray-600">
                                                     {student.providerTotalDurationMinutes != null && (
                                                         <span className="flex items-center gap-1">
@@ -667,6 +759,15 @@ export function AttendanceMarkingTable({
                                                                     student.providerTotalDurationMinutes,
                                                                     student.providerTotalDurationSeconds
                                                                 ),
+                                                            })}
+                                                        </span>
+                                                    )}
+                                                    {activeness != null && engagement && (
+                                                        <span className="flex items-center gap-1">
+                                                            <Eye size={14} className="text-green-500" />
+                                                            {t('activeness.detail', {
+                                                                value: activeness,
+                                                                summary: activenessSummary(t, engagement),
                                                             })}
                                                         </span>
                                                     )}

@@ -53,7 +53,10 @@
         "raiseHands": "Mains levées",
         "emojis": "Émojis",
         "chats": "Messages",
-        "pollVotes": "Votes de sondage"
+        "pollVotes": "Votes de sondage",
+        "activeness": "Activité %",
+        "activenessOnScreen": "À l'écran %",
+        "activenessAttention": "Attention %"
     },
     "status": {
         "present": "Présent",

@@ -51,7 +51,10 @@
         "raiseHands": "Raise Hands",
         "emojis": "Emojis",
         "chats": "Chats",
-        "pollVotes": "Poll Votes"
+        "pollVotes": "Poll Votes",
+        "activeness": "Activeness %",
+        "activenessOnScreen": "On screen %",
+        "activenessAttention": "Attention %"
     },
     "status": {
         "present": "Present",

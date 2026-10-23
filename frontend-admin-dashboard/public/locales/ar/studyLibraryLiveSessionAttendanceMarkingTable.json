@@ -43,7 +43,8 @@
         "email": "البريد الإلكتروني",
         "duration": "المدة",
         "activePoints": "نقاط النشاط",
-        "mode": "الوضع"
+        "mode": "الوضع",
+        "activeness": "النشاط"
     },
     "status": {
         "present": "حاضر",
@@ -121,7 +122,12 @@
         "emojis": "الرموز التعبيرية",
         "chats": "المحادثات",
         "pollVotes": "أصوات الاستطلاع",
-        "feedbackColumn": "الملاحظات: {{column}}"
+        "feedbackColumn": "الملاحظات: {{column}}",
+        "activeness": "النشاط %",
+        "activenessOnScreen": "أمام الشاشة %",
+        "activenessAttention": "الانتباه %",
+        "activenessMinutes": "دقائق تتبع الكاميرا",
+        "activenessAwayCount": "مرات الابتعاد"
     },
     "durationSeconds_zero": "{{count}} ثانية",
     "durationSeconds_one": "ثانية واحدة",
@@ -141,5 +147,17 @@
     "durationMinutes_two": "دقيقتان",
     "durationMinutes_few": "{{count}} دقائق",
     "durationMinutes_many": "{{count}} دقيقة",
-    "durationMinutes_other": "{{count}} دقيقة"
+    "durationMinutes_other": "{{count}} دقيقة",
+    "activeness": {
+        "onScreen": "أمام الشاشة {{value}}%",
+        "attention": "الانتباه {{value}}%",
+        "tracked": "الكاميرا تعمل {{value}}",
+        "away_one": "ابتعد {{count}} مرة",
+        "away_other": "ابتعد {{count}} مرات",
+        "detail": "النشاط {{value}}% — {{summary}}",
+        "away_zero": "ابتعد {{count}} مرات",
+        "away_two": "ابتعد {{count}} مرات",
+        "away_few": "ابتعد {{count}} مرات",
+        "away_many": "ابتعد {{count}} مرات"
+    }
 }

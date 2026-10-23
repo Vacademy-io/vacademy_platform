@@ -23,7 +23,8 @@
         "email": "Email",
         "duration": "Duration",
         "activePoints": "Active Pts",
-        "mode": "Mode"
+        "mode": "Mode",
+        "activeness": "Activeness"
     },
     "status": {
         "present": "Present",
@@ -73,7 +74,12 @@
         "emojis": "Emojis",
         "chats": "Chats",
         "pollVotes": "Poll Votes",
-        "feedbackColumn": "Feedback: {{column}}"
+        "feedbackColumn": "Feedback: {{column}}",
+        "activeness": "Activeness %",
+        "activenessOnScreen": "On screen %",
+        "activenessAttention": "Attention %",
+        "activenessMinutes": "Minutes camera tracked",
+        "activenessAwayCount": "Times stepped away"
     },
     "durationSeconds_one": "{{count}}s",
     "durationSeconds_other": "{{count}}s",
@@ -81,5 +87,13 @@
     "durationMinutesShort_other": "{{count}}m",
     "durationMinutesAndSeconds": "{{m}}m {{s}}s",
     "durationMinutes_one": "{{count}} min",
-    "durationMinutes_other": "{{count}} min"
+    "durationMinutes_other": "{{count}} min",
+    "activeness": {
+        "onScreen": "On screen {{value}}%",
+        "attention": "Attention {{value}}%",
+        "tracked": "camera on {{value}}",
+        "away_one": "stepped away {{count}}×",
+        "away_other": "stepped away {{count}}×",
+        "detail": "Activeness {{value}}% — {{summary}}"
+    }
 }

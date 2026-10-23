@@ -134,11 +134,17 @@ const toAttendanceCsvRow = (item: LiveSessionReport, idx: number, typeLabel: str
     const duration = item.providerTotalDurationMinutes ?? '';
     const talkTimeMin = engagement?.talkTime ? Math.round(engagement.talkTime / 60) : '';
 
+    // The activeness score shares this JSON; on its own it is not BBB engagement.
+    const hasBbbCounters =
+        !!engagement &&
+        ['chats', 'talks', 'talkTime', 'raisehand', 'emojis', 'pollVotes'].some(
+            (k) => typeof engagement[k] === 'number'
+        );
     let activePoints: number | string = '';
-    if (duration !== '' || engagement) {
+    if (duration !== '' || hasBbbCounters) {
         let score = 0;
         if (typeof duration === 'number') score += duration;
-        if (engagement) {
+        if (hasBbbCounters) {
             score += ((engagement.talkTime ?? 0) / 60) * 2;
             score += (engagement.talks ?? 0) * 0.5;
             score += (engagement.raisehand ?? 0) * 3;
@@ -165,6 +171,10 @@ const toAttendanceCsvRow = (item: LiveSessionReport, idx: number, typeLabel: str
         'Poll Votes': engagement?.pollVotes ?? '',
         // Appended last so the columns existing exports already had keep their positions.
         Type: typeLabel,
+        // Opt-in Vacademy Meet camera score; empty for classes without it.
+        'Activeness %': engagement?.activeness ?? '',
+        'On screen %': engagement?.activenessOnScreen ?? '',
+        'Attention %': engagement?.activenessAttention ?? '',
     };
 };
 

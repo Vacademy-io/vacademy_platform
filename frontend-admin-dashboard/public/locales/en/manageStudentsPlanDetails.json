@@ -123,5 +123,19 @@
         "saveFailed": "Could not save the remark",
         "addedBy": "Added by {{name}}",
         "unknownAdmin": "an admin"
+    },
+    "endDate": {
+        "button": "Change end date",
+        "title": "Change membership end date",
+        "explainer": "Moves when this membership ends (now {{date}}) without recording a payment. The member's course access moves to the same date. To bring back a lapsed membership, use Renew manually instead.",
+        "newEndDate": "New end date",
+        "remarks": "Reason",
+        "remarksPlaceholder": "e.g. Paid on 7 Oct but enrolled on 23 Oct, so the year runs from 7 Oct",
+        "remarksHint": "Required. Saved in this membership's remarks history with your name and the time.",
+        "submit": "Save end date",
+        "saving": "Saving…",
+        "cancel": "Cancel",
+        "success": "Membership now ends on {{date}}",
+        "failed": "Could not change the end date"
     }
 }

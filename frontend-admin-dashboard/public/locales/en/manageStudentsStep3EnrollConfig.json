@@ -31,7 +31,7 @@
         "paymentDate": {
             "label": "Payment Date (Optional)",
             "placeholder": "Select payment date",
-            "description": "Date when the payment was made"
+            "description": "Date when the payment was made. The membership and course access start from this date."
         },
         "transactionId": {
             "label": "Transaction ID (Optional)",

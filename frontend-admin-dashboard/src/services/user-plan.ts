@@ -6,6 +6,7 @@ import {
     GET_MANUAL_RENEWAL_PREVIEW,
     RECORD_MANUAL_RENEWAL,
     USER_PLAN_REMARKS,
+    CHANGE_USER_PLAN_END_DATE,
 } from '@/constants/urls';
 import type { OfflinePaymentDetails } from '@/services/offline-payment-modes';
 import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtility';
@@ -416,6 +417,23 @@ export const recordManualRenewal = async (
     const response = await authenticatedAxiosInstance.post(RECORD_MANUAL_RENEWAL(userPlanId), body, {
         params: { instituteId },
     });
+    return response.data;
+};
+
+/**
+ * Admin moves an active membership's end date (and its course access) without a payment.
+ * The remark, the admin's name and the time are kept in the plan's remarks history.
+ */
+export const changePlanEndDate = async (
+    userPlanId: string,
+    instituteId: string,
+    body: { new_end_date: string; remarks: string }
+): Promise<ManualRenewalResult> => {
+    const response = await authenticatedAxiosInstance.post(
+        CHANGE_USER_PLAN_END_DATE(userPlanId),
+        body,
+        { params: { instituteId } }
+    );
     return response.data;
 };
 

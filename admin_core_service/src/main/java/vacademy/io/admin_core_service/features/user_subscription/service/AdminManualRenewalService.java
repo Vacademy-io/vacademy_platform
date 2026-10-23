@@ -28,6 +28,7 @@ import vacademy.io.admin_core_service.features.timeline.dto.TimelineEventDTO;
 import vacademy.io.admin_core_service.features.timeline.dto.TimelineEventRequestDTO;
 import vacademy.io.admin_core_service.features.timeline.service.TimelineEventService;
 import vacademy.io.admin_core_service.features.user_account.service.UserAccountLedgerService;
+import vacademy.io.admin_core_service.features.user_subscription.dto.ChangePlanEndDateRequestDTO;
 import vacademy.io.admin_core_service.features.user_subscription.dto.ManualRenewalPreviewDTO;
 import vacademy.io.admin_core_service.features.user_subscription.dto.ManualRenewalRequestDTO;
 import vacademy.io.admin_core_service.features.user_subscription.dto.ManualRenewalResultDTO;
@@ -78,6 +79,7 @@ public class AdminManualRenewalService {
     public static final String REMARK_TYPE = "USER_PLAN";
     public static final String ACTION_RENEWAL = "MANUAL_RENEWAL";
     public static final String ACTION_REMARK = "PLAN_REMARK";
+    public static final String ACTION_END_DATE_CHANGE = "END_DATE_CHANGE";
 
     /** A terminated membership was ended on purpose; it is re-enrolled, not renewed. */
     private static final Set<String> NOT_RENEWABLE = Set.of(UserPlanStatusEnum.TERMINATED.name());
@@ -281,6 +283,110 @@ public class AdminManualRenewalService {
                 .build();
     }
 
+    /**
+     * Moves an active membership's end date, and its course access with it, without a payment.
+     * For corrections: the member paid on the 7th but was enrolled on the 23rd, a date typed
+     * wrong at import. A lapsed membership is brought back with {@link #renew} instead, which
+     * records what was paid.
+     *
+     * <p>Every change is traceable three ways: a remark on the membership (who, when, from and
+     * to, why), a learner_access_log row per access row, and the admin activity log entry the
+     * controller writes.
+     */
+    @Transactional
+    public ManualRenewalResultDTO changeEndDate(String userPlanId, String instituteId,
+                                                ChangePlanEndDateRequestDTO req, CustomUserDetails admin) {
+        if (req == null || req.getNewEndDate() == null) {
+            throw new VacademyException("Choose the new end date");
+        }
+        if (!StringUtils.hasText(req.getRemarks())) {
+            throw new VacademyException("Add a remark explaining why the end date is changing");
+        }
+        UserPlan plan = loadForInstitute(userPlanId, instituteId);
+        if (!UserPlanStatusEnum.ACTIVE.name().equalsIgnoreCase(plan.getStatus())) {
+            throw new VacademyException("Only an active membership's end date can be changed. "
+                    + "Use Renew manually to bring a lapsed membership back.");
+        }
+        Date now = new Date();
+        Date newEndDate = req.getNewEndDate();
+        if (!newEndDate.after(now)) {
+            throw new VacademyException("The new end date must be in the future. "
+                    + "To end a membership now, cancel it instead.");
+        }
+        if (plan.getStartDate() != null && !newEndDate.after(plan.getStartDate())) {
+            throw new VacademyException("The new end date must be after the membership started");
+        }
+
+        List<StudentSessionInstituteGroupMapping> touched = new ArrayList<>(mappingRepository
+                .findByUserPlanIdAndStatus(plan.getId(), LearnerSessionStatusEnum.ACTIVE.name()));
+        for (String status : REACTIVATABLE) {
+            touched.addAll(mappingRepository.findByUserPlanIdAndStatus(plan.getId(), status));
+        }
+        if (touched.isEmpty()) {
+            // Same adoption as a renewal for plans whose access was never linked. A course the
+            // member holds under another membership is left alone: the date fix still applies
+            // to this membership, and moving that course would take it from the other one.
+            try {
+                touched.addAll(accessForUnlinkedPlan(plan, instituteId));
+            } catch (VacademyException e) {
+                log.info("End-date change on plan {}: access not adopted ({})", plan.getId(), e.getMessage());
+            }
+        }
+
+        String adminId = admin != null ? admin.getUserId() : null;
+        String adminName = admin == null ? null
+                : StringUtils.hasText(admin.getFullName()) ? admin.getFullName() : admin.getUsername();
+        String remarks = req.getRemarks().trim();
+
+        Date previousEndDate = plan.getEndDate();
+        plan.setEndDate(newEndDate);
+        // A charge is only re-pointed where autopay is on; otherwise nothing is scheduled.
+        if (Boolean.TRUE.equals(plan.getAutoRenewalEnabled())) {
+            plan.setNextChargeAt(newEndDate);
+        }
+        userPlanRepository.save(plan);
+
+        for (StudentSessionInstituteGroupMapping m : touched) {
+            Date previousExpiry = m.getExpiryDate();
+            if (m.getUserPlanId() == null) {
+                m.setUserPlanId(plan.getId());
+            }
+            m.setStatus(LearnerSessionStatusEnum.ACTIVE.name());
+            m.setExpiryDate(newEndDate);
+            mappingRepository.save(m);
+            learnerAccessService.recordGrant(LearnerAccessSourceEnum.ADMIN_EXTENSION, instituteId, m, previousExpiry,
+                    null, plan.getId(), plan.getPaymentPlanId(), plan.getEnrollInviteId(),
+                    "Membership end date changed: " + remarks, adminId, adminName);
+        }
+
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("previous_end_date", previousEndDate != null ? isoDate(previousEndDate) : null);
+        metadata.put("new_end_date", isoDate(newEndDate));
+        metadata.put("access_rows_updated", touched.size());
+        timelineEventService.createManualEvent(TimelineEventRequestDTO.builder()
+                .type(REMARK_TYPE)
+                .typeId(plan.getId())
+                .actionType(ACTION_END_DATE_CHANGE)
+                .title(endDateChangeTitle(previousEndDate, newEndDate))
+                .description(remarks)
+                .metadata(metadata)
+                .studentUserId(plan.getUserId())
+                .build(), admin);
+
+        log.info("End date of plan {} changed by {}: {} -> {}, {} access row(s)",
+                plan.getId(), adminId, previousEndDate, newEndDate, touched.size());
+
+        return ManualRenewalResultDTO.builder()
+                .userPlanId(plan.getId())
+                .previousStatus(plan.getStatus())
+                .status(plan.getStatus())
+                .previousEndDate(previousEndDate)
+                .newEndDate(newEndDate)
+                .mappingsUpdated(touched.size())
+                .invoiceQueued(false)
+                .build();
+    }
+
     @Transactional
     public TimelineEventDTO addRemark(String userPlanId, String instituteId, String remark, CustomUserDetails admin) {
         if (!StringUtils.hasText(remark)) {
@@ -453,6 +559,13 @@ public class AdminManualRenewalService {
         return amount > 0
                 ? String.format("Manual renewal: %s %.2f received, access until %s", currency, amount, until)
                 : "Manual renewal: access extended until " + until;
+    }
+
+    private static String endDateChangeTitle(Date previousEndDate, Date newEndDate) {
+        SimpleDateFormat f = new SimpleDateFormat("dd MMM yyyy");
+        return previousEndDate != null
+                ? "End date changed from " + f.format(previousEndDate) + " to " + f.format(newEndDate)
+                : "End date set to " + f.format(newEndDate);
     }
 
     private static String isoDate(Date d) {

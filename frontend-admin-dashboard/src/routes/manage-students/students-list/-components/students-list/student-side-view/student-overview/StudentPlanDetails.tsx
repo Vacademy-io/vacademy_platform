@@ -16,12 +16,14 @@ import {
     Tag,
     TrendUp,
     ChatText,
+    CalendarCheck,
 } from '@phosphor-icons/react';
 import { useCallback, useEffect, useState } from 'react';
 import { getUserPlans, UserPlan } from '@/services/user-plan';
 import { getInstituteId } from '@/constants/helper';
 import { ChangePlanDialog } from '../student-membership/change-plan-dialog';
 import { ManualRenewalDialog } from '../student-membership/manual-renewal-dialog';
+import { ChangeEndDateDialog } from '../student-membership/change-end-date-dialog';
 import { PlanRemarksDialog } from '../student-membership/plan-remarks';
 import { useStudentSidebar } from '@/routes/manage-students/students-list/-context/selected-student-sidebar-context';
 import { toast } from 'sonner';
@@ -484,6 +486,7 @@ const PlanCard = ({
     onChangePlan,
     onRenew,
     onRemarks,
+    onChangeEndDate,
 }: {
     plan: UserPlan;
     enrollmentStatus: 'ACTIVE' | 'INACTIVE' | 'TERMINATED' | null;
@@ -493,6 +496,8 @@ const PlanCard = ({
     onRenew?: (plan: UserPlan) => void;
     /** Admin remarks on this membership. */
     onRemarks?: (plan: UserPlan) => void;
+    /** Correct when an active membership ends, without a payment. */
+    onChangeEndDate?: (plan: UserPlan) => void;
 }) => {
     const { t } = useTranslation('manageStudentsPlanDetails');
     const policy = getFirstPolicy(plan);
@@ -504,6 +509,8 @@ const PlanCard = ({
         Boolean(onRenew) &&
         (plan.status === 'ACTIVE' || LAPSED_STATUSES.includes(plan.status)) &&
         !isCpoPlan(plan);
+    // Lapsed memberships come back through Renew manually, which records what was paid.
+    const canChangeEndDate = Boolean(onChangeEndDate) && plan.status === 'ACTIVE';
     const planName = getPlanName(plan, t);
     const daysLeft = computeDaysLeft(plan.end_date);
     const tone = getDaysLeftTone(t, daysLeft);
@@ -606,7 +613,7 @@ const PlanCard = ({
 
             {/* CPO-backed memberships are excluded: their price comes from an installment
                 schedule that a plan swap would leave unreconciled. */}
-            {(canChangePlan || canRenew || onRemarks) && (
+            {(canChangePlan || canRenew || canChangeEndDate || onRemarks) && (
                 <div className="mt-3 flex flex-wrap justify-end gap-2 border-t border-neutral-100 pt-2">
                     {onRemarks && (
                         <MyButton
@@ -626,6 +633,16 @@ const PlanCard = ({
                         >
                             <CurrencyDollar className="mr-1 size-3" />
                             {t('manualRenewal.button')}
+                        </MyButton>
+                    )}
+                    {canChangeEndDate && (
+                        <MyButton
+                            buttonType="secondary"
+                            scale="small"
+                            onClick={() => onChangeEndDate?.(plan)}
+                        >
+                            <CalendarCheck className="mr-1 size-3" />
+                            {t('endDate.button')}
                         </MyButton>
                     )}
                     {canChangePlan && (
@@ -658,6 +675,7 @@ const StudentPlanDetails = ({ userId, instituteId }: StudentPlanDetailsProps) =>
     const [lapsedPlans, setLapsedPlans] = useState<UserPlan[]>([]);
     const [planToRenew, setPlanToRenew] = useState<UserPlan | null>(null);
     const [planForRemarks, setPlanForRemarks] = useState<UserPlan | null>(null);
+    const [planForEndDate, setPlanForEndDate] = useState<UserPlan | null>(null);
     const pageSize = 5;
     // The dialog needs an explicit institute id; the prop is optional here because most
     // callers let the service derive it from the token.
@@ -788,6 +806,7 @@ const StudentPlanDetails = ({ userId, instituteId }: StudentPlanDetailsProps) =>
                                     onChangePlan={setPlanToChange}
                                     onRenew={setPlanToRenew}
                                     onRemarks={setPlanForRemarks}
+                                    onChangeEndDate={setPlanForEndDate}
                                 />
                             ))}
                     </div>
@@ -820,6 +839,18 @@ const StudentPlanDetails = ({ userId, instituteId }: StudentPlanDetailsProps) =>
                 instituteId={resolvedInstituteId}
                 planLabel={planToRenew ? getCourseLabel(planToRenew, t) : undefined}
                 onRenewed={loadActivePlans}
+            />
+
+            <ChangeEndDateDialog
+                open={Boolean(planForEndDate)}
+                onOpenChange={(open) => {
+                    if (!open) setPlanForEndDate(null);
+                }}
+                userPlanId={planForEndDate?.id ?? null}
+                instituteId={resolvedInstituteId}
+                currentEndDate={planForEndDate?.end_date ?? null}
+                planLabel={planForEndDate ? getCourseLabel(planForEndDate, t) : undefined}
+                onChanged={loadActivePlans}
             />
 
             <PlanRemarksDialog

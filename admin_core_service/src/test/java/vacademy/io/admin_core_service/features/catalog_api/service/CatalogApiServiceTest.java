@@ -117,9 +117,11 @@ class CatalogApiServiceTest {
 
     @Test
     void theVedicParentingEbookSummary() {
+        // Word search: every course with "vedic" and "parenting" ("ebook" is filler); relevance puts the
+        // course whose title holds the whole query first.
         Map<String, Object> page = service.courses(BV_INSTITUTE, new CatalogApiService.CourseQuery(
-                "vedic parenting - ebook", null, null, null, null, null, null, 1, 24, null));
-        assertEquals(1, page.get("total"));
+                "vedic parenting - ebook", null, null, null, null, null, null, 1, 24, "relevance"));
+        assertEquals(7, page.get("total"));
         Map<String, Object> c = data(page).get(0);
         assertEquals(EBOOK_EN, c.get("id"));
         assertEquals("Vedic Parenting - eBook", c.get("title"));

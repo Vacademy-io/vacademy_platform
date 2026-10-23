@@ -381,7 +381,7 @@
             "name": "q",
             "in": "query",
             "required": false,
-            "description": "Case-insensitive substring of any version's title, its plain-text description, an instructor's name, or a course tag.",
+            "description": "Words, in any order, case-insensitive: the whole text as a substring of any version's title, plain-text description, an instructor's name or a course tag, or every word among those (3+ letter words also match a word's start). Month names = their short forms, 2024 = '24, singular = plural; filler such as pdf, ebook, course, notes is not required.",
             "schema": {
               "type": "string"
             },
@@ -564,7 +564,7 @@
             "name": "sort",
             "in": "query",
             "required": false,
-            "description": "`newest` (by `created_at`, default), `oldest`, `price_asc`, `price_desc` (by the lowest price on sale now among the matching versions), `rating` (highest first; unrated last), `title` (A–Z), `title_desc` (Z–A), `popular` (by `popularity_rank`; unranked courses after the ranked ones, in catalogue order). Ties keep catalogue order. Any other value is `400 invalid_request`.",
+            "description": "`newest` (by `created_at`, default), `oldest`, `price_asc`, `price_desc` (by the lowest price on sale now among the matching versions), `rating` (highest first; unrated last), `title` (A–Z), `title_desc` (Z–A), `popular` (by `popularity_rank`; unranked courses after the ranked ones, in catalogue order), `relevance` (with `q`: the closest titles first, then newest; without `q`, as `newest`). Ties keep catalogue order. Any other value is `400 invalid_request`.",
             "schema": {
               "type": "string",
               "enum": [
@@ -575,7 +575,8 @@
                 "rating",
                 "title",
                 "title_desc",
-                "popular"
+                "popular",
+                "relevance"
               ],
               "default": "newest"
             }

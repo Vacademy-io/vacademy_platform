@@ -77,7 +77,8 @@
             "paid": "Payé",
             "status": "Statut"
         },
-        "inPackage": "Fait partie du forfait d’inscription — enregistrez les paiements sur le forfait ci-dessus."
+        "inPackage": "Fait partie du forfait d’inscription — enregistrez les paiements sur le forfait ci-dessus.",
+        "packageManaged": "Fait partie d'un forfait d'admission : payez, reprogrammez ou scindez ses échéances sur le forfait ci-dessus, pour que tous les cours suivent un seul calendrier."
     },
     "loadingPlans": "Chargement des plans CPO…",
     "loadPlansError": "Impossible de charger les plans CPO.",

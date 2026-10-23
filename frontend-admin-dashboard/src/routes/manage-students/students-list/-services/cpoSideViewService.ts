@@ -4,11 +4,13 @@ import {
     GET_USER_ADMISSION_PACKAGES,
     GET_USER_CPO_USER_PLANS,
     GET_USER_PLAN_INSTALLMENTS,
+    POST_ADMISSION_PACKAGE_INSTALLMENT_SPLIT,
     POST_ADMISSION_PACKAGE_PAYMENT,
     POST_ADMISSION_PACKAGE_PAYMENT_PREVIEW,
     POST_SPLIT_INSTALLMENT,
     POST_USER_PLAN_CPO_DISCOUNT_PREVIEW,
     POST_USER_PLAN_OFFLINE_PAYMENT,
+    PUT_ADMISSION_PACKAGE_INSTALLMENT,
     PUT_INSTALLMENT,
     PUT_USER_PLAN_CPO_DISCOUNT,
 } from '@/constants/urls';
@@ -200,6 +202,44 @@ export const useRecordAdmissionPackagePayment = (packageId: string, userId?: str
                 POST_ADMISSION_PACKAGE_PAYMENT(packageId),
                 body
             );
+            return r.data;
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['cpo-side-view'] });
+            if (userId) {
+                queryClient.invalidateQueries({ queryKey: ['user-invoices', userId] });
+                queryClient.invalidateQueries({ queryKey: ['user-account-summary', userId] });
+                queryClient.invalidateQueries({ queryKey: ['user-account-ledger', userId] });
+            }
+        },
+    });
+};
+
+/** A change to one package installment, keyed by its current due date. */
+export interface AdmissionPackageInstallmentChange {
+    due_date: string;
+    new_due_date: string;
+    /** Split only: the part of the unpaid balance that moves to the new date. */
+    amount?: number;
+}
+
+/**
+ * Moves a package installment to a new date, or moves part of it onto a new one, on every course
+ * at once. The courses' installments, the invoices' due rows and the package card all move.
+ */
+export const useChangeAdmissionPackageInstallment = (packageId: string, userId?: string | null) => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async (input: { split: boolean; body: AdmissionPackageInstallmentChange }) => {
+            const r = input.split
+                ? await authenticatedAxiosInstance.post<AdmissionPackageSummary>(
+                      POST_ADMISSION_PACKAGE_INSTALLMENT_SPLIT(packageId),
+                      input.body
+                  )
+                : await authenticatedAxiosInstance.put<AdmissionPackageSummary>(
+                      PUT_ADMISSION_PACKAGE_INSTALLMENT(packageId),
+                      input.body
+                  );
             return r.data;
         },
         onSuccess: () => {

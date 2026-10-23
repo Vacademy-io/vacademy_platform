@@ -12,6 +12,7 @@ import { serverErrorMessage } from '@/services/payment-logs';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import {
     useAdmissionPackagePaymentPreview,
+    useChangeAdmissionPackageInstallment,
     useRecordAdmissionPackagePayment,
     useUserAdmissionPackages,
 } from '@/routes/manage-students/students-list/-services/cpoSideViewService';
@@ -79,6 +80,10 @@ const statusPill = (status: AdmissionPackageInstallment['status'], t: TFunction)
 interface PaymentPanelProps {
     pkg: AdmissionPackageSummary;
     userId: string;
+    /** Paying one installment: what clears it (and any earlier one still open). */
+    initialAmount?: number;
+    heading?: string;
+    note?: string | null;
     onDone: () => void;
 }
 
@@ -87,14 +92,20 @@ interface PaymentPanelProps {
  * due date first, a part-payment by what each course owes on it), records it on each course and
  * issues one receipt for all of them; the split is previewed before saving.
  */
-const PackagePaymentPanel = ({ pkg, userId, onDone }: PaymentPanelProps) => {
+const PackagePaymentPanel = ({
+    pkg,
+    userId,
+    initialAmount,
+    heading,
+    note,
+    onDone,
+}: PaymentPanelProps) => {
     const { t } = useTranslation('manageStudentsAdmissionPackage');
     const { mutateAsync, isPending } = useRecordAdmissionPackagePayment(pkg.id, userId);
     const nextDue = Number(pkg.next_due_amount) || 0;
     const outstanding = Number(pkg.outstanding_total) || 0;
-    const [amount, setAmount] = useState<string>(
-        nextDue > 0 ? String(nextDue) : outstanding > 0 ? String(outstanding) : ''
-    );
+    const start = initialAmount ?? (nextDue > 0 ? nextDue : outstanding);
+    const [amount, setAmount] = useState<string>(start > 0 ? String(start) : '');
     const [paymentDate, setPaymentDate] = useState<string>(todayIso());
     const [details, setDetails] = useState<OfflinePaymentDetails>({});
     const [detailsError, setDetailsError] = useState<string | null>(null);
@@ -147,9 +158,9 @@ const PackagePaymentPanel = ({ pkg, userId, onDone }: PaymentPanelProps) => {
     return (
         <div className="rounded-lg border border-primary-200 bg-primary-50/40 p-3">
             <p className="text-2xs font-semibold uppercase tracking-wide text-primary-700">
-                {t('side.pay.heading')}
+                {heading ?? t('side.pay.heading')}
             </p>
-            <p className="mt-0.5 text-2xs text-neutral-500">{t('side.pay.note')}</p>
+            <p className="mt-0.5 text-2xs text-neutral-500">{note ?? t('side.pay.note')}</p>
             <div className="mt-2 flex flex-wrap items-start gap-2">
                 <div>
                     <label className="block text-2xs text-neutral-500">
@@ -260,6 +271,220 @@ const PackagePaymentPanel = ({ pkg, userId, onDone }: PaymentPanelProps) => {
                 </div>
             </div>
         </div>
+    );
+};
+
+// ------------------------------------------------------- Package installment
+
+const actionButton =
+    'rounded border border-neutral-200 bg-white px-2 py-0.5 text-2xs font-medium text-neutral-700 hover:bg-neutral-50';
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+interface ChangeFormProps {
+    pkg: AdmissionPackageSummary;
+    userId: string;
+    row: AdmissionPackageInstallment;
+    /** Split: move part of the unpaid balance to a new date; otherwise move the whole installment. */
+    split: boolean;
+    onDone: () => void;
+}
+
+/**
+ * Moves a package installment to another date, or moves part of what is unpaid on it onto a new
+ * date (shared between the courses by what each owes on it). Every course changes together, so
+ * the package keeps one schedule.
+ */
+const InstallmentChangeForm = ({ pkg, userId, row, split, onDone }: ChangeFormProps) => {
+    const { t } = useTranslation('manageStudentsAdmissionPackage');
+    const { mutateAsync, isPending } = useChangeAdmissionPackageInstallment(pkg.id, userId);
+    const unpaid = Math.max(0, Number(row.outstanding) || 0);
+    const [amount, setAmount] = useState<string>(split && unpaid > 0 ? String(unpaid) : '');
+    const [dueDate, setDueDate] = useState<string>(split ? '' : row.due_date.slice(0, 10));
+    const amt = Number(amount);
+    const amountOk = !split || (amount !== '' && Number.isFinite(amt) && amt > 0 && amt <= unpaid);
+    const dateOk = !!dueDate && dueDate !== row.due_date.slice(0, 10);
+
+    const submit = async () => {
+        if (!amountOk) {
+            toast.error(t('side.change.amountError', { amount: fmt(unpaid, pkg.currency) }));
+            return;
+        }
+        if (!dateOk) {
+            toast.error(t('side.change.dateError'));
+            return;
+        }
+        try {
+            await mutateAsync({
+                split,
+                body: {
+                    due_date: row.due_date.slice(0, 10),
+                    new_due_date: dueDate,
+                    ...(split ? { amount: amt } : {}),
+                },
+            });
+            toast.success(
+                split
+                    ? t('side.change.splitSuccess', { amount: fmt(amt, pkg.currency) })
+                    : t('side.change.moveSuccess')
+            );
+            onDone();
+        } catch (e: unknown) {
+            toast.error(serverErrorMessage(e) || t('side.change.error'));
+        }
+    };
+
+    return (
+        <div className="rounded border border-primary-200 bg-primary-50/40 p-2.5">
+            <p className="text-2xs font-semibold uppercase tracking-wide text-primary-700">
+                {split
+                    ? t('side.change.splitHeading', { amount: fmt(unpaid, pkg.currency) })
+                    : t('side.change.moveHeading')}
+            </p>
+            <p className="mb-2 text-2xs text-neutral-500">
+                {split ? t('side.change.splitHint') : t('side.change.moveHint')}
+            </p>
+            <div className="flex flex-wrap items-end gap-2">
+                {split && (
+                    <div>
+                        <label className="block text-2xs text-neutral-500">
+                            {t('side.change.amount')}
+                        </label>
+                        <input
+                            type="number"
+                            step="any"
+                            min={0}
+                            max={unpaid}
+                            value={amount}
+                            onChange={(e) => setAmount(e.target.value)}
+                            onFocus={(e) => e.currentTarget.select()}
+                            className="w-28 rounded border border-neutral-200 bg-white px-2 py-1 text-2xs tabular-nums"
+                        />
+                    </div>
+                )}
+                <div>
+                    <label className="block text-2xs text-neutral-500">
+                        {split ? t('side.change.newDueDate') : t('side.change.dueDate')}
+                    </label>
+                    <input
+                        type="date"
+                        value={dueDate}
+                        onChange={(e) => setDueDate(e.target.value)}
+                        className="rounded border border-neutral-200 bg-white px-2 py-1 text-2xs"
+                    />
+                </div>
+                <button
+                    type="button"
+                    disabled={isPending || !amountOk || !dateOk}
+                    onClick={submit}
+                    className="rounded bg-primary-500 px-3 py-1 text-2xs font-medium text-white hover:bg-primary-600 disabled:opacity-50"
+                >
+                    {isPending ? t('side.pay.saving') : t('side.change.save')}
+                </button>
+                <button
+                    type="button"
+                    onClick={onDone}
+                    className="rounded border border-neutral-200 bg-white px-3 py-1 text-2xs text-neutral-600 hover:bg-neutral-50"
+                >
+                    {t('side.pay.cancel')}
+                </button>
+            </div>
+        </div>
+    );
+};
+
+type ItemPanel = 'pay' | 'move' | 'split' | null;
+
+interface ItemProps {
+    pkg: AdmissionPackageSummary;
+    userId: string;
+    index: number;
+}
+
+/**
+ * One package installment: its date, amount and status, and what can be done to it — pay it,
+ * move it to another date, or move part of it to a later date. Each acts on every course's bill
+ * for that date at once.
+ */
+const PackageInstallmentItem = ({ pkg, userId, index }: ItemProps) => {
+    const { t, i18n } = useTranslation('manageStudentsAdmissionPackage');
+    const row = pkg.installments[index]!;
+    const [panel, setPanel] = useState<ItemPanel>(null);
+    const toggle = (p: ItemPanel) => setPanel((cur) => (cur === p ? null : p));
+    const money = (n: number | null | undefined) => fmt(n, pkg.currency);
+    const outstanding = Number(row.outstanding) || 0;
+    const open = row.status !== 'PAID' && outstanding > 0;
+    const earlier = pkg.installments.slice(0, index).filter((r) => Number(r.outstanding) > 0);
+    // Paid oldest first, so this one is cleared only with every earlier one still open.
+    const clearsThrough = round2(
+        earlier.reduce((sum, r) => sum + Number(r.outstanding), 0) + outstanding
+    );
+    const date = shortDate(row.due_date, i18n.language);
+
+    return (
+        <li className="px-3 py-2">
+            <div className="flex items-center justify-between gap-2 text-2xs">
+                <span className="text-neutral-700">{date}</span>
+                <span className="flex items-center gap-2">
+                    <span className="tabular-nums text-neutral-800">{money(row.amount)}</span>
+                    {row.status === 'PARTIAL_PAID' && (
+                        <span className="tabular-nums text-neutral-500">
+                            {t('side.left', { amount: money(row.outstanding) })}
+                        </span>
+                    )}
+                    {statusPill(row.status, t)}
+                </span>
+            </div>
+            {open && (
+                <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                    <button
+                        type="button"
+                        onClick={() => toggle('pay')}
+                        className={
+                            panel === 'pay'
+                                ? 'rounded bg-primary-600 px-2.5 py-0.5 text-2xs font-semibold text-white'
+                                : 'rounded bg-primary-500 px-2.5 py-0.5 text-2xs font-semibold text-white hover:bg-primary-600'
+                        }
+                    >
+                        {t('side.item.pay')}
+                    </button>
+                    <button type="button" onClick={() => toggle('move')} className={actionButton}>
+                        {t('side.item.move')}
+                    </button>
+                    <button type="button" onClick={() => toggle('split')} className={actionButton}>
+                        {t('side.item.split')}
+                    </button>
+                </div>
+            )}
+            {panel === 'pay' && open && (
+                <div className="mt-2">
+                    <PackagePaymentPanel
+                        pkg={pkg}
+                        userId={userId}
+                        initialAmount={clearsThrough}
+                        heading={t('side.item.payHeading', { date })}
+                        note={
+                            earlier.length > 0
+                                ? t('side.item.coversEarlier', { count: earlier.length })
+                                : null
+                        }
+                        onDone={() => setPanel(null)}
+                    />
+                </div>
+            )}
+            {(panel === 'move' || panel === 'split') && open && (
+                <div className="mt-2">
+                    <InstallmentChangeForm
+                        key={panel}
+                        pkg={pkg}
+                        userId={userId}
+                        row={row}
+                        split={panel === 'split'}
+                        onDone={() => setPanel(null)}
+                    />
+                </div>
+            )}
+        </li>
     );
 };
 
@@ -396,28 +621,13 @@ const AdmissionPackageCard = ({ pkg, userId }: CardProps) => {
                                 {t('side.installments')}
                             </p>
                             <ul className="divide-y divide-neutral-100 rounded-lg border border-neutral-200">
-                                {pkg.installments.map((row) => (
-                                    <li
+                                {pkg.installments.map((row, idx) => (
+                                    <PackageInstallmentItem
                                         key={row.due_date}
-                                        className="flex items-center justify-between gap-2 px-3 py-1.5 text-2xs"
-                                    >
-                                        <span className="text-neutral-700">
-                                            {shortDate(row.due_date, i18n.language)}
-                                        </span>
-                                        <span className="flex items-center gap-2">
-                                            <span className="tabular-nums text-neutral-800">
-                                                {money(row.amount)}
-                                            </span>
-                                            {row.status === 'PARTIAL_PAID' && (
-                                                <span className="tabular-nums text-neutral-500">
-                                                    {t('side.left', {
-                                                        amount: money(row.outstanding),
-                                                    })}
-                                                </span>
-                                            )}
-                                            {statusPill(row.status, t)}
-                                        </span>
-                                    </li>
+                                        pkg={pkg}
+                                        userId={userId}
+                                        index={idx}
+                                    />
                                 ))}
                             </ul>
                         </div>

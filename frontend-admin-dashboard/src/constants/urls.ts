@@ -1627,6 +1627,10 @@ export const POST_ADMISSION_PACKAGE_PAYMENT = (packageId: string) =>
     `${BASE_URL}/admin-core-service/v1/fee-management/admission-package/${packageId}/record-offline-payment`;
 export const POST_ADMISSION_PACKAGE_PAYMENT_PREVIEW = (packageId: string) =>
     `${BASE_URL}/admin-core-service/v1/fee-management/admission-package/${packageId}/record-offline-payment/preview`;
+export const PUT_ADMISSION_PACKAGE_INSTALLMENT = (packageId: string) =>
+    `${BASE_URL}/admin-core-service/v1/fee-management/admission-package/${packageId}/installment`;
+export const POST_ADMISSION_PACKAGE_INSTALLMENT_SPLIT = (packageId: string) =>
+    `${BASE_URL}/admin-core-service/v1/fee-management/admission-package/${packageId}/installment/split`;
 
 // Offline Data Entry
 export const OFFLINE_CREATE_ATTEMPT = `${BASE_URL}/assessment-service/assessment/offline-entry/create-attempt`;

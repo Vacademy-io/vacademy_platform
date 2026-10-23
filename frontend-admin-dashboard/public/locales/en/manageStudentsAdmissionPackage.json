@@ -95,6 +95,29 @@
             "amountError": "Enter a positive amount",
             "success": "Recorded {{amount}} on the package",
             "error": "Could not record the payment"
+        },
+        "item": {
+            "pay": "Pay this installment",
+            "move": "Change date",
+            "split": "Split",
+            "payHeading": "Pay the {{date}} installment",
+            "coversEarlier_one": "Includes {{count}} earlier installment still open: payments clear the oldest first. Shared between the courses by what each owes.",
+            "coversEarlier_other": "Includes {{count}} earlier installments still open: payments clear the oldest first. Shared between the courses by what each owes."
+        },
+        "change": {
+            "moveHeading": "Change the due date",
+            "moveHint": "Moves this installment on every course in the package.",
+            "splitHeading": "Move part of the {{amount}} unpaid to a later date",
+            "splitHint": "Shared between the courses by what each owes on this installment. The package total does not change.",
+            "amount": "Amount to move",
+            "dueDate": "New due date",
+            "newDueDate": "Due on",
+            "save": "Save",
+            "amountError": "Enter an amount up to {{amount}}",
+            "dateError": "Pick a different date",
+            "moveSuccess": "Installment moved on every course",
+            "splitSuccess": "{{amount}} moved to the new date",
+            "error": "Could not change the installment"
         }
     }
 }

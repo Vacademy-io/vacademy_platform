@@ -96,6 +96,30 @@
             "amountError": "Saisissez un montant positif",
             "success": "{{amount}} enregistré sur le forfait",
             "error": "Le paiement n’a pas pu être enregistré"
+        },
+        "item": {
+            "pay": "Payer cette échéance",
+            "move": "Changer la date",
+            "split": "Scinder",
+            "payHeading": "Paiement de l'échéance du {{date}}",
+            "coversEarlier_one": "Inclut {{count}} échéance antérieure encore ouverte : les paiements soldent d'abord la plus ancienne. Réparti entre les cours selon ce que chacun doit.",
+            "coversEarlier_many": "Inclut {{count}} échéances antérieures encore ouvertes : les paiements soldent d'abord la plus ancienne. Réparti entre les cours selon ce que chacun doit.",
+            "coversEarlier_other": "Inclut {{count}} échéances antérieures encore ouvertes : les paiements soldent d'abord la plus ancienne. Réparti entre les cours selon ce que chacun doit."
+        },
+        "change": {
+            "moveHeading": "Changer la date d'échéance",
+            "moveHint": "Déplace cette échéance sur tous les cours du forfait.",
+            "splitHeading": "Reporter une partie des {{amount}} impayés à une date ultérieure",
+            "splitHint": "Réparti entre les cours selon ce que chacun doit sur cette échéance. Le total du forfait ne change pas.",
+            "amount": "Montant à reporter",
+            "dueDate": "Nouvelle échéance",
+            "newDueDate": "Dû le",
+            "save": "Enregistrer",
+            "amountError": "Saisissez un montant jusqu'à {{amount}}",
+            "dateError": "Choisissez une autre date",
+            "moveSuccess": "Échéance déplacée sur tous les cours",
+            "splitSuccess": "{{amount}} reporté à la nouvelle date",
+            "error": "Impossible de modifier l'échéance"
         }
     }
 }

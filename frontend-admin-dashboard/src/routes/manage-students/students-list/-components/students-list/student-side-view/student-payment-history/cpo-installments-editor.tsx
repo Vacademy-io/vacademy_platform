@@ -570,6 +570,8 @@ interface ItemProps {
     userPlanId: string;
     userId: string;
     currency?: string | null;
+    /** Part of an admission package: paid and changed on the package, so no actions here. */
+    readOnly?: boolean;
 }
 
 type ItemPanel = 'pay' | 'edit' | 'split' | null;
@@ -579,7 +581,7 @@ type ItemPanel = 'pay' | 'edit' | 'split' | null;
  * amount and status, what has been paid or taken off, and its actions — Record payment
  * (the quick path), Edit and Split — each opening below the line.
  */
-const InstallmentItem = ({ rows, index, userPlanId, userId, currency }: ItemProps) => {
+const InstallmentItem = ({ rows, index, userPlanId, userId, currency, readOnly }: ItemProps) => {
     const { t, i18n } = useTranslation('manageStudentsCpoInstallmentsEditor');
     const row = rows[index]!;
     const [panel, setPanel] = useState<ItemPanel>(null);
@@ -629,41 +631,43 @@ const InstallmentItem = ({ rows, index, userPlanId, userId, currency }: ItemProp
                     {facts.length > 0 && (
                         <p className="mt-0.5 text-2xs text-neutral-500">{facts.join(' · ')}</p>
                     )}
-                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                        {open && (
-                            <button
-                                type="button"
-                                onClick={() => toggle('pay')}
-                                className={
-                                    panel === 'pay'
-                                        ? 'rounded bg-primary-600 px-2.5 py-0.5 text-2xs font-semibold text-white'
-                                        : 'rounded bg-primary-500 px-2.5 py-0.5 text-2xs font-semibold text-white hover:bg-primary-600'
-                                }
-                            >
-                                {t('item.recordPayment')}
-                            </button>
-                        )}
-                        {/* A bill cancelled with its course is closed; nothing to edit. */}
-                        {row.status !== 'CANCELLED' && (
-                            <button
-                                type="button"
-                                onClick={() => toggle('edit')}
-                                className={actionButton}
-                            >
-                                {t('item.edit')}
-                            </button>
-                        )}
-                        {canSplit && (
-                            <button
-                                type="button"
-                                onClick={() => toggle('split')}
-                                title={t('row.splitTitle')}
-                                className={actionButton}
-                            >
-                                {t('row.split')}
-                            </button>
-                        )}
-                    </div>
+                    {!readOnly && (
+                        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                            {open && (
+                                <button
+                                    type="button"
+                                    onClick={() => toggle('pay')}
+                                    className={
+                                        panel === 'pay'
+                                            ? 'rounded bg-primary-600 px-2.5 py-0.5 text-2xs font-semibold text-white'
+                                            : 'rounded bg-primary-500 px-2.5 py-0.5 text-2xs font-semibold text-white hover:bg-primary-600'
+                                    }
+                                >
+                                    {t('item.recordPayment')}
+                                </button>
+                            )}
+                            {/* A bill cancelled with its course is closed; nothing to edit. */}
+                            {row.status !== 'CANCELLED' && (
+                                <button
+                                    type="button"
+                                    onClick={() => toggle('edit')}
+                                    className={actionButton}
+                                >
+                                    {t('item.edit')}
+                                </button>
+                            )}
+                            {canSplit && (
+                                <button
+                                    type="button"
+                                    onClick={() => toggle('split')}
+                                    title={t('row.splitTitle')}
+                                    className={actionButton}
+                                >
+                                    {t('row.split')}
+                                </button>
+                            )}
+                        </div>
+                    )}
                 </div>
             </div>
             {panel === 'pay' && open && (
@@ -1115,6 +1119,9 @@ const CpoUserPlanCard = ({ summary, userId }: CardProps) => {
     const { data, isLoading, isError } = useUserPlanInstallments(
         expanded ? summary.user_plan_id : null
     );
+    // A package course is paid and rescheduled on its package, so all its courses stay on one
+    // schedule; here it is shown, not changed.
+    const inPackage = !!summary.admission_package_id;
 
     return (
         <div className="rounded-xl border border-neutral-200 bg-white">
@@ -1180,26 +1187,35 @@ const CpoUserPlanCard = ({ summary, userId }: CardProps) => {
                                             userPlanId={data.user_plan_id}
                                             userId={userId}
                                             currency={summary.currency}
+                                            readOnly={inPackage}
                                         />
                                     ))}
                                 </ul>
                             )}
 
-                            <OfflinePaymentForm
-                                userPlanId={data.user_plan_id}
-                                userId={userId}
-                                outstanding={data.outstanding_total}
-                                nextDue={nextDueOutstanding(data.installments)}
-                                currency={summary.currency}
-                            />
+                            {inPackage ? (
+                                <p className="rounded-lg bg-primary-50 px-3 py-2 text-2xs text-primary-700">
+                                    {t('card.packageManaged')}
+                                </p>
+                            ) : (
+                                <>
+                                    <OfflinePaymentForm
+                                        userPlanId={data.user_plan_id}
+                                        userId={userId}
+                                        outstanding={data.outstanding_total}
+                                        nextDue={nextDueOutstanding(data.installments)}
+                                        currency={summary.currency}
+                                    />
 
-                            <CpoDiscountEditor
-                                userPlanId={data.user_plan_id}
-                                userId={userId}
-                                current={data.cpo_discount}
-                                rows={data.installments}
-                                currency={summary.currency}
-                            />
+                                    <CpoDiscountEditor
+                                        userPlanId={data.user_plan_id}
+                                        userId={userId}
+                                        current={data.cpo_discount}
+                                        rows={data.installments}
+                                        currency={summary.currency}
+                                    />
+                                </>
+                            )}
                         </>
                     )}
                 </div>

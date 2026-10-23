@@ -76,7 +76,8 @@
             "paid": "Paid",
             "status": "Status"
         },
-        "inPackage": "Part of the admission package — record payments on the package above."
+        "inPackage": "Part of the admission package — record payments on the package above.",
+        "packageManaged": "Part of an admission package: pay, reschedule or split its installments on the package above, so every course stays on one schedule."
     },
     "loadingPlans": "Loading CPO plans…",
     "loadPlansError": "Could not load CPO plans.",

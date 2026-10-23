@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { SELECTION_MIN_CHARS } from "./tutor-moments";
+import { FRAME_SELECTION_EVENT, type FrameSelectionDetail } from "./frame-selection";
 
 /** A usable text selection inside the watched container, in viewport coordinates. */
 export interface AskableSelection {
@@ -23,6 +24,10 @@ function isEditable(node: Node | null): boolean {
  * or editor. Listeners exist only while the container is mounted and
  * `enabled` is true; `selectionchange` has to be heard on the document, but
  * anything outside the container is ignored.
+ *
+ * Text selected inside a sandboxed document frame in the container (creative
+ * HTML slides) arrives as FRAME_SELECTION_EVENT, already in viewport
+ * coordinates (see frame-selection.ts).
  *
  * Mouse: evaluated on pointer-up, never mid-drag. Touch and keyboard (the
  * native handles, Shift+arrows): `selectionchange`, debounced. Hidden on
@@ -133,6 +138,28 @@ export function useSelectionAsk(
       document.removeEventListener("pointerup", onPointerUp);
       container.removeEventListener("keyup", onKeyUp);
     };
+  }, [containerRef, enabled]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    const onFrameSelection = (e: Event) => {
+      const { frame, text: raw, rect } = (e as CustomEvent<FrameSelectionDetail>).detail ?? {};
+      if (!frame || !containerRef.current?.contains(frame)) return;
+      const text = (raw ?? "").replace(/\s+/g, " ").trim();
+      if (!text || !rect) {
+        if (holdUntilRef.current > Date.now()) return; // the pill is being pressed
+        dismissedRef.current = null;
+        setSelection(null);
+        return;
+      }
+      if (text.length < SELECTION_MIN_CHARS || text === dismissedRef.current) {
+        setSelection(null);
+        return;
+      }
+      setSelection({ text, rect });
+    };
+    window.addEventListener(FRAME_SELECTION_EVENT, onFrameSelection);
+    return () => window.removeEventListener(FRAME_SELECTION_EVENT, onFrameSelection);
   }, [containerRef, enabled]);
 
   // While shown: hide on scroll (any scroller) and on resize. Not remembered as

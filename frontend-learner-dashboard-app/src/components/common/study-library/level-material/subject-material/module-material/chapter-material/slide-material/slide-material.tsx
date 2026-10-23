@@ -361,9 +361,13 @@ export const SlideMaterial = ({
   const isTextDocument =
     activeItem?.source_type === "DOCUMENT" &&
     (activeItem.document_slide?.type === "PDF" ||
-      activeItem.document_slide?.type === "DOC");
+      activeItem.document_slide?.type === "DOC" ||
+      // Creative HTML renders in a sandboxed frame that reports its selection.
+      activeItem.document_slide?.type === "HTML");
   const videoMoment = useVideoStuckMoment(
-    activeItem?.source_type === "VIDEO" ? activeItem.id : null,
+    ["VIDEO", "HTML_VIDEO", "AI_VIDEO"].includes(activeItem?.source_type?.toUpperCase() ?? "")
+      ? activeItem?.id
+      : null,
     !!momentTutor
   );
 
@@ -510,6 +514,7 @@ export const SlideMaterial = ({
                     timelineUrl={transformedData.timelineUrl}
                     audioUrl={transformedData.audioUrl}
                     className="w-full"
+                    onTimeUpdate={handleVideoTimeUpdate}
                   />
                 </div>
               </div>
@@ -678,6 +683,7 @@ export const SlideMaterial = ({
                       timelineUrl={htmlUrl}
                       audioUrl={audioUrl}
                       className="w-full"
+                      onTimeUpdate={handleVideoTimeUpdate}
                     />
                   </div>
                 </div>

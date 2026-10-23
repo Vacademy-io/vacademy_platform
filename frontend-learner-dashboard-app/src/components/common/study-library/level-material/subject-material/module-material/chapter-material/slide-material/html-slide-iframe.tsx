@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
+import {
+  FRAME_SELECTION_MSG,
+  FRAME_SELECTION_SCRIPT,
+  publishFrameSelection,
+} from "@/components/chatbot/moments/frame-selection";
 
 const HEIGHT_MSG = "vac-html-slide-height";
 const MAX_HEIGHT = 20000;
@@ -52,8 +57,10 @@ const RESIZE_SCRIPT = `<script>(function(){
 
 function withResizeScript(html: string): string {
   if (!html) return `<!DOCTYPE html><html><body></body></html>`;
-  if (/<\/body>/i.test(html)) return html.replace(/<\/body>/i, `${RESIZE_SCRIPT}</body>`);
-  return `${html}${RESIZE_SCRIPT}`;
+  // The selection reporter lets "Ask AI" work on text selected in the frame.
+  const scripts = `${RESIZE_SCRIPT}${FRAME_SELECTION_SCRIPT}`;
+  if (/<\/body>/i.test(html)) return html.replace(/<\/body>/i, `${scripts}</body>`);
+  return `${html}${scripts}`;
 }
 
 // ── Opt-in rendering (engagement runner) ──────────────────────────────────────
@@ -102,8 +109,9 @@ const CONTENT_RESIZE_SCRIPT = `<script>(function(){
 
 function withContentResizeScript(html: string): string {
   if (!html) return `<!DOCTYPE html><html><body>${CONTENT_RESIZE_SCRIPT}</body></html>`;
-  if (/<\/body>/i.test(html)) return html.replace(/<\/body>/i, `${CONTENT_RESIZE_SCRIPT}</body>`);
-  return `${html}${CONTENT_RESIZE_SCRIPT}`;
+  const scripts = `${CONTENT_RESIZE_SCRIPT}${FRAME_SELECTION_SCRIPT}`;
+  if (/<\/body>/i.test(html)) return html.replace(/<\/body>/i, `${scripts}</body>`);
+  return `${html}${scripts}`;
 }
 
 /** A CSS custom-property value, stripped of anything that could close the rule. */
@@ -237,6 +245,8 @@ export const HtmlSlideIframe = ({
         const next = Math.min(Math.max(data.height, minHeightRef.current), MAX_HEIGHT);
         setHeight(next);
         onMeasuredRef.current?.(next);
+      } else if (data?.type === FRAME_SELECTION_MSG && iframeRef.current) {
+        publishFrameSelection(iframeRef.current, data);
       } else if (data?.type === "vacademy:progress" && typeof data.percent === "number") {
         onProgressRef.current?.(data.percent);
       } else if (data?.type === "vacademy:complete") {

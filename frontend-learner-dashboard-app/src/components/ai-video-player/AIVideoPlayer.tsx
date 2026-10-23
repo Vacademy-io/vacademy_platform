@@ -60,6 +60,8 @@ export interface AIVideoPlayerProps {
   height?: number;
   onEntryChange?: (entry: Frame, index: number) => void;
   onContentComplete?: () => void;
+  /** Playback position in seconds (time-driven videos), reported as it moves and on seeks. */
+  onTimeUpdate?: (seconds: number) => void;
 }
 
 // Default meta for backward compatibility
@@ -82,7 +84,8 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
   width: propWidth,
   height: propHeight,
   onEntryChange,
-  onContentComplete, }) => {
+  onContentComplete,
+  onTimeUpdate, }) => {
   const { t } = useTranslation("courseComponentsExtra");
   // Core state
   const [frames, setFrames] = useState<Frame[]>([]);
@@ -127,10 +130,16 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
   const onEntryChangeRef = useRef(onEntryChange);
   const handlingNavChangeRef = useRef(false);
 
+  const onTimeUpdateRef = useRef(onTimeUpdate);
+  const lastReportedTimeRef = useRef<number | null>(null);
+
   // Keep callback ref up to date without causing effect re-runs
   useEffect(() => {
     onEntryChangeRef.current = onEntryChange;
   }, [onEntryChange]);
+  useEffect(() => {
+    onTimeUpdateRef.current = onTimeUpdate;
+  }, [onTimeUpdate]);
 
   // Web Audio API mixer for extra tracks (background music, SFX, etc.)
   useWebAudioMixer({
@@ -176,6 +185,16 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
     meta.entry_label ||
     t(`entryLabel.${contentType}`, CONTENT_TYPE_ENTRY_LABELS[contentType] || "segment");
   const isTimeDriven = navigationMode === "time_driven";
+
+  // Report the master clock to the parent (e.g. the "stuck at this part?" detector).
+  // It ticks every animation frame; half a second of change is enough.
+  useEffect(() => {
+    if (!isTimeDriven || !onTimeUpdateRef.current) return;
+    const last = lastReportedTimeRef.current;
+    if (last !== null && Math.abs(currentTime - last) < 0.5) return;
+    lastReportedTimeRef.current = currentTime;
+    onTimeUpdateRef.current(currentTime);
+  }, [currentTime, isTimeDriven]);
   const isUserDriven = navigationMode === "user_driven";
   const isSelfContained = navigationMode === "self_contained";
 

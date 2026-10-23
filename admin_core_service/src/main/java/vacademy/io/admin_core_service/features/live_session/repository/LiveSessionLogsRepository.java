@@ -116,12 +116,20 @@ public interface LiveSessionLogsRepository extends JpaRepository<LiveSessionLogs
      * jsonb_build_object() instead of ::jsonb / a brace literal, which Hibernate's
      * native-query parser can mangle.
      *
-     * Monotonic: a report only lands when its seconds are >= the stored
-     * activenessSeconds, so a stale or out-of-order beacon cannot overwrite a newer
-     * report. onScreen / attention use -1 for "not measured": the key is then left
-     * out of the merge (Hibernate binds a null Integer badly in native SQL).
+     * Monotonic: a report only lands when its seconds are > the stored
+     * activenessSeconds, so a stale, out-of-order or repeated beacon cannot overwrite
+     * a newer report (and a replayed one costs no write).
      *
-     * @return rows updated — 0 when the learner has no attendance row or the report is stale
+     * Plausible: the seconds tracked cannot exceed the time since the learner's first
+     * join (created_at, set once by the join upsert) plus a little slack. Without this
+     * a learner could post one report with a huge `seconds` and the guard above would
+     * then reject every honest report for the rest of the class.
+     *
+     * onScreen / attention use -1 for "not measured": the stored key is then removed
+     * rather than left at an older value (Hibernate binds a null Integer badly in
+     * native SQL).
+     *
+     * @return rows updated — 0 when the learner has no attendance row, or the report is stale or implausible
      */
     @Modifying
     @Transactional
@@ -133,6 +141,7 @@ public interface LiveSessionLogsRepository extends JpaRepository<LiveSessionLogs
                                         THEN CAST(engagement_data AS jsonb)
                                         ELSE jsonb_build_object() END)
                              ELSE jsonb_build_object() END)
+                       - 'activenessOnScreen' - 'activenessAttention'
                        || jsonb_strip_nulls(jsonb_build_object(
                               'activeness', CAST(:avg AS integer),
                               'activenessOnScreen', CASE WHEN CAST(:onScreen AS integer) >= 0
@@ -150,7 +159,9 @@ public interface LiveSessionLogsRepository extends JpaRepository<LiveSessionLogs
                          THEN (CASE WHEN jsonb_typeof(CAST(engagement_data AS jsonb) -> 'activenessSeconds') = 'number'
                                     THEN CAST(CAST(engagement_data AS jsonb) ->> 'activenessSeconds' AS numeric)
                                     ELSE -1 END)
-                         ELSE -1 END) <= CAST(:seconds AS integer)
+                         ELSE -1 END) < CAST(:seconds AS integer)
+               AND (created_at IS NULL
+                    OR CAST(:seconds AS integer) <= EXTRACT(EPOCH FROM (LOCALTIMESTAMP - created_at)) + 300)
             """, nativeQuery = true)
     int mergeActivenessReport(
             @Param("scheduleId") String scheduleId,

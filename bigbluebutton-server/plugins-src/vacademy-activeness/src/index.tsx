@@ -19,13 +19,19 @@ import { Panel } from "./Panel";
  * client's global handler, which can offer the learner a reload mid-class. A
  * failure only hides the score.
  */
-class Contained extends React.Component<{ children: React.ReactNode }, { failed: boolean }> {
+class Contained extends React.Component<{ children: React.ReactNode; onError?: () => void }, { failed: boolean }> {
   state = { failed: false };
   static getDerivedStateFromError() {
     return { failed: true };
   }
   componentDidCatch(error: unknown) {
     console.warn("[activeness] disabled after an error", error);
+    try {
+      // With the panel gone the learner could not turn the camera off: stop it.
+      this.props.onError?.();
+    } catch {
+      // Nothing more to do.
+    }
   }
   render() {
     return this.state.failed ? null : this.props.children;
@@ -74,16 +80,33 @@ function ActivenessPlugin({ uuid, pluginName }: { uuid: string; pluginName: stri
   const token = readParam(rows, TOKEN_PARAM);
   const reportUrl = readParam(rows, URL_PARAM);
   const role = currentUser?.data?.role;
-  const eligible =
-    !shouldUnmount && !!token && !!reportUrl && /^https:\/\//.test(reportUrl) && role === "VIEWER" && isDesktop();
+
+  // Latched: once a learner qualifies, a transient blip — the window snapped to
+  // half the screen, a GraphQL reconnect briefly returning no data — must not stop
+  // the camera and reload the face model. Only the meeting ending, or a real role
+  // change to moderator, turns it off.
+  const identity = useRef<{ token: string; reportUrl: string } | null>(null);
+  if (!identity.current && token && reportUrl && /^https:\/\//.test(reportUrl) && role === "VIEWER" && isDesktop()) {
+    identity.current = { token, reportUrl };
+  }
+  const eligible = !shouldUnmount && role !== "MODERATOR" && identity.current !== null;
+  const latched = identity.current;
 
   const controllerRef = useRef<ActivenessController | null>(null);
 
   useEffect(() => {
-    if (!eligible || !token || !reportUrl) return undefined;
-    const controller = new ActivenessController(token, reportUrl);
+    if (!eligible || !latched) return undefined;
+    let controller: ActivenessController;
+    try {
+      controller = new ActivenessController(latched.token, latched.reportUrl);
+    } catch (error) {
+      console.warn("[activeness] could not start", error);
+      return undefined;
+    }
     controllerRef.current = controller;
-    pluginApi.setFloatingWindows([
+    const stub = { render() {}, unmount() {} } as unknown as ReactDOM.Root;
+    try {
+      pluginApi.setFloatingWindows([
       new FloatingWindow({
         top: Math.max(72, window.innerHeight - PANEL_BOTTOM_GAP),
         left: PANEL_LEFT,
@@ -92,38 +115,63 @@ function ActivenessPlugin({ uuid, pluginName }: { uuid: string; pluginName: stri
         boxShadow: "0 8px 24px rgba(17,24,39,0.18)",
         dataTest: "vacademy-activeness",
         contentFunction: (element: HTMLElement) => {
-          const root = ReactDOM.createRoot(element);
-          root.render(
-            <Contained>
-              <Panel controller={controller} />
-            </Contained>
-          );
-          return root;
+          // Runs inside BBB's own React tree: nothing may throw out of here.
+          try {
+            const root = ReactDOM.createRoot(element);
+            root.render(
+              <Contained onError={controller.dispose}>
+                <Panel controller={controller} />
+              </Contained>
+            );
+            return root;
+          } catch (error) {
+            console.warn("[activeness] panel failed", error);
+            controller.dispose();
+            return stub;
+          }
         },
       }),
-    ]);
-    return () => {
-      pluginApi.setFloatingWindows([]);
+      ]);
+    } catch (error) {
+      console.warn("[activeness] floating window failed", error);
       controller.dispose();
       controllerRef.current = null;
+      return undefined;
+    }
+    return () => {
+      // Camera off first, whatever happens to the window removal after.
+      controller.dispose();
+      controllerRef.current = null;
+      try {
+        pluginApi.setFloatingWindows([]);
+      } catch {
+        // BBB is tearing the plugin down anyway.
+      }
     };
     // pluginApi is a stable per-uuid object; re-run only when eligibility or identity changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [eligible, token, reportUrl]);
+  }, [eligible, latched]);
 
   return null;
 }
 
-const uuid = document.currentScript?.getAttribute("uuid") || "root";
+const uuid = document.currentScript?.getAttribute("uuid");
 const pluginName = document.currentScript?.getAttribute("pluginName") || "VacademyActiveness";
-let mount = document.getElementById(uuid);
-if (!mount) {
-  mount = document.createElement("div");
-  mount.id = uuid;
-  document.body.appendChild(mount);
+// Only ever run as a BBB plugin: without BBB's uuid there is no plugin API to talk to.
+if (uuid) {
+  try {
+    let mount = document.getElementById(uuid);
+    if (!mount) {
+      mount = document.createElement("div");
+      mount.id = uuid;
+      document.body.appendChild(mount);
+    }
+    ReactDOM.createRoot(mount).render(
+      <Contained>
+        <ActivenessPlugin uuid={uuid} pluginName={pluginName} />
+      </Contained>
+    );
+  } catch (error) {
+    console.warn("[activeness] could not mount", error);
+  }
 }
-ReactDOM.createRoot(mount).render(
-  <Contained>
-    <ActivenessPlugin uuid={uuid} pluginName={pluginName} />
-  </Contained>
-);

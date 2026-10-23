@@ -2675,7 +2675,12 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                                         talkTime = engNode.path("talkTime").asInt(0);
                                         emojis = engNode.path("emojis").asInt(0);
                                         pollVotes = engNode.path("pollVotes").asInt(0);
-                                        hasEngagementJson = true;
+                                        // The opt-in activeness score lands in the same JSON during
+                                        // the class; on its own it is not BBB engagement and must not
+                                        // read as "0/100" before the analytics callback arrives.
+                                        hasEngagementJson = engNode.has("chats") || engNode.has("raisehand")
+                                                || engNode.has("talks") || engNode.has("talkTime")
+                                                || engNode.has("emojis") || engNode.has("pollVotes");
                                     } catch (Exception ignored) {}
                                 }
 

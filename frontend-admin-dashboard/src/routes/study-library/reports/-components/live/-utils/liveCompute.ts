@@ -36,6 +36,13 @@ export function parseEngagement(raw: string | null | undefined): Engagement | nu
     if (!raw) return null;
     try {
         const e = JSON.parse(raw);
+        // The opt-in activeness score lands in the same JSON during the class; with
+        // none of BBB's counters present there is no engagement data yet (not zeros).
+        const hasBbbCounters =
+            !!e &&
+            typeof e === 'object' &&
+            ['chats', 'talks', 'talkTime', 'raisehand', 'raiseHand', 'emojis', 'pollVotes'].some((k) => k in e);
+        if (!hasBbbCounters) return null;
         return {
             chats: Number(e.chats) || 0,
             talks: Number(e.talks) || 0,

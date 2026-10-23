@@ -93,4 +93,15 @@ class BbbActivenessTokenServiceTest {
         assertTrue(at(NOW, "  ").verify(token).isEmpty());
         assertNull(at(NOW, SECRET).mint(null, USER));
     }
+
+    @org.junit.jupiter.api.Test
+    void killSwitchTurnsEverythingOff() {
+        BbbActivenessTokenService on = new BbbActivenessTokenService("s3cret", java.time.Clock.systemUTC(), true);
+        BbbActivenessTokenService off = new BbbActivenessTokenService("s3cret", java.time.Clock.systemUTC(), false);
+        String token = on.mint("sched", "user");
+        org.junit.jupiter.api.Assertions.assertTrue(on.verify(token).isPresent());
+        org.junit.jupiter.api.Assertions.assertFalse(off.isConfigured());
+        org.junit.jupiter.api.Assertions.assertNull(off.mint("sched", "user"));
+        org.junit.jupiter.api.Assertions.assertTrue(off.verify(token).isEmpty());
+    }
 }

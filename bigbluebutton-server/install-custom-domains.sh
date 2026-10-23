@@ -115,6 +115,16 @@ fi
 # An exact-match location wins over the packaged `location /bigbluebutton`
 # prefix, so this overrides just this one endpoint and nothing else.
 API_SNIP=/etc/bigbluebutton/nginx/01-vacademy-api-index.nginx
+MSD_SNIP=/etc/bigbluebutton/nginx/02-vacademy-meeting-static-data.nginx
+# Keep the previous good snippets: if the final nginx test fails they are put
+# back. Deleting them instead (as this script used to) leaves every alias host
+# broken until the next successful run.
+SNIP_BAK=/var/backups/vacademy-custom-domains
+mkdir -p "$SNIP_BAK"
+rm -f "$SNIP_BAK"/*.nginx
+for f in "$API_SNIP" "$MSD_SNIP"; do
+    [ -f "$f" ] && cp -a "$f" "$SNIP_BAK/"
+done
 cat > "$API_SNIP" <<NGX
 location = /bigbluebutton/api {
     proxy_http_version 1.1;
@@ -154,7 +164,6 @@ echo "1b/5 API-index URL rewrite installed ($CANONICAL -> \$host)"
 # body now differs per hostname, $host MUST be part of the key, otherwise one
 # institute's cached payload gets served to another and both domains break in a
 # way that looks intermittent and random.
-MSD_SNIP=/etc/bigbluebutton/nginx/02-vacademy-meeting-static-data.nginx
 cat > "$MSD_SNIP" <<NGX
 location = /api/rest/meetingStaticData {
     auth_request /bigbluebutton/connection/checkGraphqlAuthorization;
@@ -251,7 +260,9 @@ else
     log "4/4 ERROR: nginx config test failed — rolling back"
     cp -a "$SITE.bak-$STAMP" "$SITE"
     [ -f "$WEB.bak-$STAMP" ] && cp -a "$WEB.bak-$STAMP" "$WEB"
-    rm -f "$API_SNIP" "$MSD_SNIP"
+    for f in "$API_SNIP" "$MSD_SNIP"; do
+        if [ -f "$SNIP_BAK/$(basename "$f")" ]; then cp -a "$SNIP_BAK/$(basename "$f")" "$f"; else rm -f "$f"; fi
+    done
     nginx -t >/dev/null 2>&1 && systemctl reload nginx
     log "4/4 rolled back to the previous config"
     exit 1

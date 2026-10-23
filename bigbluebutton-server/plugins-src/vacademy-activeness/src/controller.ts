@@ -25,17 +25,27 @@ export interface ViewState {
   collapsed: boolean;
   /** First-time model download is taking a while. */
   slowLoad: boolean;
+  /** The browser's camera prompt has been open a while — tell the learner to answer it. */
+  askingPermission: boolean;
+  /** Still learning this learner's normal head position. */
+  calibrating: boolean;
   cameras: { id: string; label: string }[];
   cameraId: string | null;
 }
 
 const BASE_INTERVAL_MS = 1000;
 const MAX_INTERVAL_MS = 3000;
-/** A reading slower than this on average = the computer is struggling; turn off. */
-const TOO_SLOW_MS = 600;
+/**
+ * Readings this slow on average (or two in a row over SLOW_READING_MS) mean the
+ * computer is struggling: turn off rather than freeze the class a little every
+ * second. A normal laptop takes 15–60 ms.
+ */
+const TOO_SLOW_MS = 250;
+const SLOW_READING_MS = 1500;
 const SLOW_LOAD_MS = 15_000;
 const LOAD_TIMEOUT_MS = 120_000;
-/** No face this long = stepped away. */
+const ASKING_PERMISSION_AFTER_MS = 4000;
+/** No face this long (or the tab hidden this long) = stepped away. */
 const AWAY_AFTER_MS = 8000;
 const BACK_AFTER_SAMPLES = 2;
 /** Away at least this long = re-learn the resting pose on return. */
@@ -45,8 +55,23 @@ const DARK_AFTER_MS = 8000;
 /** This many readings in a row without a frame = the camera stopped. */
 const FRAMELESS_LIMIT = 15;
 const REPORT_EVERY_MS = 60_000;
+/** A hidden-tab beacon only if nothing was sent this recently (alt-tabbing to notes). */
+const HIDE_BEACON_GAP_MS = 15_000;
+/**
+ * Most background time one tick may add. Timers do not run while the computer
+ * sleeps, so a lid closed overnight shows up as one huge gap — it must not count.
+ */
+const HIDDEN_TICK_CAP_MS = 65_000;
 /** Nothing is reported before this much tracked time. */
 const MIN_REPORT_MS = 10_000;
+/** Collapse to the small pill after this long on, so the panel never sits over BBB's chat. */
+const AUTO_COLLAPSE_MS = 20_000;
+/**
+ * Before our own camera prompt, let BBB's microphone prompt / audio dialog go
+ * first (two browser prompts at once confuse learners and can block the mic).
+ */
+const MIC_SETTLE_MAX_MS = 20_000;
+const MIC_SETTLE_FALLBACK_MS = 8000;
 const CAMERA_KEY = "vacademy.activeness.camera";
 const RESUME_MAX_AGE_MS = 12 * 3600_000;
 
@@ -89,6 +114,52 @@ const storage = {
   },
 };
 
+const sleep = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms));
+
+type PermissionName = "camera" | "microphone";
+const permissionState = async (name: PermissionName): Promise<PermissionState | null> => {
+  try {
+    // "camera"/"microphone" are not in every browser's PermissionName list (Firefox).
+    const status = await navigator.permissions.query({ name: name as unknown as globalThis.PermissionName });
+    return status.state;
+  } catch {
+    return null;
+  }
+};
+
+/** Resolves once the microphone permission is no longer being asked (or after maxMs). */
+const waitForMicSettled = async (maxMs: number) => {
+  let status: PermissionStatus | null = null;
+  try {
+    status = await navigator.permissions.query({ name: "microphone" as unknown as globalThis.PermissionName });
+  } catch {
+    status = null;
+  }
+  if (!status) return sleep(MIC_SETTLE_FALLBACK_MS);
+  if (status.state !== "prompt") return sleep(1500);
+  const settled = status;
+  await new Promise<void>((resolve) => {
+    const done = () => {
+      window.clearTimeout(timer);
+      settled.removeEventListener("change", done);
+      resolve();
+    };
+    const timer = window.setTimeout(done, maxMs);
+    settled.addEventListener("change", done);
+  });
+  return sleep(1500);
+};
+
+/** The learner is watching the class in BBB's picture-in-picture window, not "away". */
+const watchingInPip = (): boolean => {
+  try {
+    const dpip = (window as unknown as { documentPictureInPicture?: { window?: Window | null } }).documentPictureInPicture;
+    return !!dpip?.window || !!document.pictureInPictureElement;
+  } catch {
+    return false;
+  }
+};
+
 export class ActivenessController {
   private state: ViewState;
   private listeners = new Set<() => void>();
@@ -102,6 +173,7 @@ export class ActivenessController {
   private interval = BASE_INTERVAL_MS;
   private costEma = 0;
   private readings = 0;
+  private slowStreak = 0;
   private lastTickAt = 0;
   private lastFaceAt = 0;
   private awaySince: number | null = null;
@@ -110,6 +182,9 @@ export class ActivenessController {
   private frameless = 0;
   private hiddenAt: number | null = null;
   private lastReportAt = 0;
+  private onSince: number | null = null;
+  /** The learner opened or closed the panel themselves: never auto-collapse over that. */
+  private userChoseLayout = false;
   private disposed = false;
 
   constructor(
@@ -157,6 +232,8 @@ export class ActivenessController {
       dark: false,
       collapsed: turnedOff,
       slowLoad: false,
+      askingPermission: false,
+      calibrating: true,
       cameras: [],
       cameraId: storage.get(CAMERA_KEY),
     };
@@ -165,7 +242,7 @@ export class ActivenessController {
     window.addEventListener("pagehide", this.onPageHide);
     navigator.mediaDevices?.addEventListener?.("devicechange", this.onDeviceChange);
 
-    if (!turnedOff) this.start();
+    if (!turnedOff) this.autoStart();
   }
 
   private get offKey() {
@@ -190,6 +267,22 @@ export class ActivenessController {
 
   // ── actions ──────────────────────────────────────────────────────────────
 
+  /**
+   * Default-on start. With the camera already allowed for this site it starts at
+   * once; otherwise it waits for BBB's microphone prompt to be answered first.
+   */
+  private autoStart() {
+    const gen = this.generation;
+    (async () => {
+      if ((await permissionState("camera")) !== "granted") await waitForMicSettled(MIC_SETTLE_MAX_MS);
+      if (this.disposed || gen !== this.generation || this.state.phase !== "starting") return;
+      this.start();
+    })().catch((error) => {
+      console.warn("[activeness] auto start failed", error);
+      guard("fail", () => this.fail("unknown"))();
+    });
+  }
+
   /** The learner turned the score on (or pressed Try again). */
   start = () => {
     this.startInner().catch((error) => {
@@ -203,40 +296,43 @@ export class ActivenessController {
     const gen = ++this.generation;
     storage.set(this.offKey, "0");
     this.releaseCamera();
-    this.set({ phase: "starting", problem: null, slowLoad: false, collapsed: false });
+    this.set({ phase: "starting", problem: null, slowLoad: false, askingPermission: false, collapsed: false });
+    const asking = window.setTimeout(
+      () => gen === this.generation && this.set({ askingPermission: true }),
+      ASKING_PERMISSION_AFTER_MS
+    );
     try {
-      const stream = await openCamera(this.state.cameraId ?? undefined);
+      let stream: MediaStream;
+      try {
+        stream = await openCamera(this.state.cameraId ?? undefined);
+      } finally {
+        window.clearTimeout(asking);
+      }
       if (gen !== this.generation) return stopStream(stream);
       this.stream = stream;
       this.video.srcObject = stream;
       void this.video.play().catch(() => undefined);
       stream.getVideoTracks().forEach((t) => t.addEventListener("ended", this.onTrackEnded));
+      this.set({ askingPermission: false });
       void this.refreshCameras().catch(() => undefined);
 
       if (!this.tracker) {
-        const slow = window.setTimeout(() => gen === this.generation && this.set({ slowLoad: true }), SLOW_LOAD_MS);
-        try {
-          this.tracker = await Promise.race([
-            createAttentionTracker(),
-            new Promise<never>((_, reject) => window.setTimeout(() => reject(new Error("timeout")), LOAD_TIMEOUT_MS)),
-          ]);
-        } catch (error) {
-          console.warn("[activeness] face model unavailable", error);
-          if (gen === this.generation) this.fail("load");
-          return;
-        } finally {
-          window.clearTimeout(slow);
-        }
-        if (gen !== this.generation) return;
+        const tracker = await this.loadTracker(gen);
+        if (!tracker) return;
+        this.tracker = tracker;
       }
+      // A new camera (or a retry) is a new angle: learn the normal position again.
+      this.tracker.recalibrate();
 
       this.costEma = 0;
       this.readings = 0;
+      this.slowStreak = 0;
       this.interval = BASE_INTERVAL_MS;
       this.frameless = 0;
       this.lastTickAt = Date.now();
       this.lastFaceAt = Date.now();
-      this.set({ phase: "on", slowLoad: false, away: false, dark: false });
+      this.onSince = Date.now();
+      this.set({ phase: "on", slowLoad: false, away: false, dark: false, calibrating: true });
       this.schedule();
     } catch (error) {
       if (gen !== this.generation) return;
@@ -244,16 +340,50 @@ export class ActivenessController {
     }
   };
 
-  /** The learner turned it off: report what we have, free the camera. */
-  stop = () => {
+  /** Loads the face model; never leaves an instance behind if the start was overtaken. */
+  private async loadTracker(gen: number): Promise<AttentionTracker | null> {
+    const slow = window.setTimeout(() => gen === this.generation && this.set({ slowLoad: true }), SLOW_LOAD_MS);
+    let timeout = 0;
+    const loading = createAttentionTracker();
+    try {
+      const tracker = await Promise.race([
+        loading,
+        new Promise<never>((_, reject) => {
+          timeout = window.setTimeout(() => reject(new Error("timeout")), LOAD_TIMEOUT_MS);
+        }),
+      ]);
+      if (this.disposed || gen !== this.generation) {
+        tracker.close();
+        return null;
+      }
+      return tracker;
+    } catch (error) {
+      // A load that finishes after the timeout must still be closed.
+      loading.then((late) => late.close()).catch(() => undefined);
+      console.warn("[activeness] face model unavailable", error);
+      if (gen === this.generation) this.fail("load");
+      return null;
+    } finally {
+      window.clearTimeout(slow);
+      window.clearTimeout(timeout);
+    }
+  }
+
+  /** The learner turned it off: report what we have, free the camera and the model. */
+  stop = guard("stop", () => {
     storage.set(this.offKey, "1");
     this.generation += 1;
     this.report(false);
     this.releaseCamera();
+    this.closeTracker();
+    this.userChoseLayout = true;
     this.set({ phase: "off", problem: null, away: false, dark: false, collapsed: true, live: EMPTY_LIVE });
-  };
+  });
 
-  setCollapsed = (collapsed: boolean) => this.set({ collapsed });
+  setCollapsed = guard("collapse", (collapsed: boolean) => {
+    this.userChoseLayout = true;
+    this.set({ collapsed });
+  });
 
   /**
    * "I'm facing the screen": re-learn this learner's normal head position now.
@@ -264,31 +394,30 @@ export class ActivenessController {
     if (this.state.phase !== "on" || !this.tracker) return;
     this.tracker.recalibrate();
     this.meter.resetLive();
-    this.set({ live: this.meter.live(Date.now()) });
+    this.set({ live: this.meter.live(Date.now()), calibrating: true });
   });
 
-  switchCamera = (id: string) => {
+  switchCamera = guard("switch-camera", (id: string) => {
     storage.set(CAMERA_KEY, id);
     this.set({ cameraId: id });
-    if (this.state.phase === "on" || this.state.phase === "problem") void this.start();
-  };
+    if (this.state.phase === "on" || this.state.phase === "problem") this.start();
+  });
 
   /** The panel mounts the live preview here; null when it unmounts. */
-  attachPreview = (container: HTMLElement | null) => {
+  attachPreview = guard("preview", (container: HTMLElement | null) => {
     const target = container ?? this.parking;
     if (this.video.parentElement !== target) target.appendChild(this.video);
     if (this.stream) void this.video.play().catch(() => undefined);
-  };
+  });
 
-  /** The class ended or the plugin is being unloaded. */
+  /** The class ended, the plugin is being unloaded, or its panel crashed. */
   dispose = guard("dispose", () => {
     if (this.disposed) return;
     this.report(true);
     this.disposed = true;
     this.generation += 1;
     this.releaseCamera();
-    this.tracker?.close();
-    this.tracker = null;
+    this.closeTracker();
     document.removeEventListener("visibilitychange", this.onVisibility);
     window.removeEventListener("pagehide", this.onPageHide);
     navigator.mediaDevices?.removeEventListener?.("devicechange", this.onDeviceChange);
@@ -309,14 +438,23 @@ export class ActivenessController {
     this.timer = null;
     if (this.state.phase !== "on" || !this.tracker) return;
     const now = Date.now();
-    const dt = Math.min(5000, Math.max(0, now - this.lastTickAt));
+    const gap = Math.max(0, now - this.lastTickAt);
     this.lastTickAt = now;
-    if (document.visibilityState === "hidden") return this.schedule();
+    if (document.visibilityState === "hidden") {
+      this.tickHidden(now, gap);
+      return this.schedule();
+    }
+    const dt = Math.min(5000, gap);
 
     const t0 = performance.now();
     const reading = this.tracker.read(this.video);
     const cost = performance.now() - t0;
 
+    if (this.tracker.broken) {
+      // The model threw (e.g. a WASM abort): load a fresh one on Try again.
+      this.closeTracker();
+      return this.fail("load");
+    }
     if (!reading) {
       this.frameless += 1;
       if (this.frameless >= FRAMELESS_LIMIT) return this.fail("ended");
@@ -327,7 +465,11 @@ export class ActivenessController {
     // Back off on slow machines; give up before the class itself suffers.
     this.readings += 1;
     this.costEma = this.readings === 1 ? cost : this.costEma * 0.8 + cost * 0.2;
-    if (this.readings >= 10 && this.costEma > TOO_SLOW_MS) return this.fail("slow");
+    this.slowStreak = cost > SLOW_READING_MS ? this.slowStreak + 1 : 0;
+    if (this.slowStreak >= 2 || (this.readings >= 10 && this.costEma > TOO_SLOW_MS)) {
+      this.closeTracker();
+      return this.fail("slow");
+    }
     this.interval = Math.min(MAX_INTERVAL_MS, Math.max(BASE_INTERVAL_MS, Math.round(this.costEma * 8)));
 
     const { brightness } = reading;
@@ -355,16 +497,51 @@ export class ActivenessController {
       }
     }
 
-    this.set({ live: this.meter.live(now), session: this.meter.session(), away, dark });
+    const patch: Partial<ViewState> = {
+      live: this.meter.live(now),
+      session: this.meter.session(),
+      away,
+      dark,
+      calibrating: this.tracker.calibrating,
+    };
+    // Get out of the way of BBB's chat once the learner has seen it working.
+    if (!this.userChoseLayout && !this.state.collapsed && this.onSince !== null && now - this.onSince >= AUTO_COLLAPSE_MS) {
+      patch.collapsed = true;
+    }
+    this.set(patch);
     if (now - this.lastReportAt >= REPORT_EVERY_MS) this.report(false);
     this.schedule();
+  }
+
+  /**
+   * Background-tab time, counted tick by tick (so a sleeping laptop adds nothing,
+   * and time in another tab counts even if the learner never comes back). Watching
+   * the class in the picture-in-picture window is neither away nor counted.
+   */
+  private tickHidden(now: number, gap: number) {
+    if (watchingInPip()) return;
+    this.meter.addHidden(now, Math.min(gap, HIDDEN_TICK_CAP_MS));
+    if (this.hiddenAt !== null && !this.state.away && now - this.hiddenAt >= AWAY_AFTER_MS) {
+      this.meter.markAway();
+      this.awaySince = this.hiddenAt;
+      this.set({ away: true });
+    }
+    if (now - this.lastReportAt >= REPORT_EVERY_MS) this.report(false, true);
   }
 
   private fail(problem: CameraProblem) {
     this.generation += 1;
     this.report(false);
     this.releaseCamera();
-    this.set({ phase: "problem", problem, slowLoad: false, away: false, dark: false, collapsed: false });
+    this.set({
+      phase: "problem",
+      problem,
+      slowLoad: false,
+      askingPermission: false,
+      away: false,
+      dark: false,
+      collapsed: false,
+    });
   }
 
   private releaseCamera() {
@@ -374,6 +551,11 @@ export class ActivenessController {
     stopStream(this.stream);
     this.stream = null;
     this.video.srcObject = null;
+  }
+
+  private closeTracker() {
+    this.tracker?.close();
+    this.tracker = null;
   }
 
   private async refreshCameras() {
@@ -400,16 +582,15 @@ export class ActivenessController {
     const now = Date.now();
     if (document.visibilityState === "hidden") {
       this.hiddenAt = now;
-      if (!this.state.away) {
-        this.meter.markAway();
-        this.awaySince = now;
-        this.set({ away: true });
-      }
-      // The last moment the browser reliably lets us send anything.
-      this.report(false, true);
+      // Possibly the last moment the browser lets us send anything — but not for
+      // every quick switch to notes and back.
+      if (now - this.lastReportAt >= HIDE_BEACON_GAP_MS) this.report(false, true);
       return;
     }
-    if (this.hiddenAt !== null) this.meter.addHidden(now, now - this.hiddenAt);
+    // The background stretch since the last hidden tick (ticks counted the rest).
+    if (this.hiddenAt !== null && !watchingInPip()) {
+      this.meter.addHidden(now, Math.min(Math.max(0, now - this.lastTickAt), HIDDEN_TICK_CAP_MS));
+    }
     this.hiddenAt = null;
     // Presence comes back with the next face on camera, not with the tab.
     this.lastTickAt = now;

@@ -29,6 +29,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *
  * Secret: bbb.activeness.token-secret, falling back to the internal service token.
  * When neither is set the feature is OFF: mint returns null and nothing verifies.
+ *
+ * Kill switch: bbb.plugins.activeness.enabled=false turns the feature off everywhere
+ * at once — no plugin at meeting create, no token at join, nothing stored from
+ * meetings already running.
  */
 @Service
 @Slf4j
@@ -42,6 +46,7 @@ public class BbbActivenessTokenService {
 
     private final String secret;
     private final Clock clock;
+    private final boolean enabled;
     private final AtomicBoolean warnedBlank = new AtomicBoolean(false);
 
     /** Verified token contents. */
@@ -50,17 +55,26 @@ public class BbbActivenessTokenService {
 
     @Autowired
     public BbbActivenessTokenService(
-            @Value("${bbb.activeness.token-secret:${internal.service.token:${ai.service.internal.token:}}}") String secret) {
-        this(secret, Clock.systemUTC());
+            @Value("${bbb.activeness.token-secret:${internal.service.token:${ai.service.internal.token:}}}") String secret,
+            @Value("${bbb.plugins.activeness.enabled:true}") boolean enabled) {
+        this(secret, Clock.systemUTC(), enabled);
     }
 
     BbbActivenessTokenService(String secret, Clock clock) {
-        this.secret = secret;
-        this.clock = clock;
+        this(secret, clock, true);
     }
 
-    /** True when a signing secret is configured, i.e. the feature can run at all. */
+    BbbActivenessTokenService(String secret, Clock clock, boolean enabled) {
+        this.secret = secret;
+        this.clock = clock;
+        this.enabled = enabled;
+    }
+
+    /** True when the feature is switched on and a signing secret is configured. */
     public boolean isConfigured() {
+        if (!enabled) {
+            return false;
+        }
         boolean ok = secret != null && !secret.isBlank();
         if (!ok && warnedBlank.compareAndSet(false, true)) {
             log.warn("[BBB] Activeness score disabled: no bbb.activeness.token-secret / internal.service.token configured");

@@ -156,8 +156,12 @@ public class LiveClassDashboardService {
                        l.status,
                        COALESCE(l.provider_total_duration_seconds, l.provider_total_duration_minutes * 60) AS secs,
                        (a.user_id IS NOT NULL) AS in_audience,
+                       -- Only BBB's counters make a row "engagement tracked": the opt-in
+                       -- activeness score shares this JSON and lands during the class.
                        CASE WHEN l.engagement_data IS NOT NULL AND pg_input_is_valid(l.engagement_data, 'jsonb')
-                            THEN CAST(l.engagement_data AS jsonb) END AS eng
+                            THEN (CASE WHEN jsonb_exists_any(CAST(l.engagement_data AS jsonb),
+                                           ARRAY['chats', 'talks', 'talkTime', 'raisehand', 'emojis', 'pollVotes'])
+                                       THEN CAST(l.engagement_data AS jsonb) END) END AS eng
                 FROM live_session_logs l
                 JOIN scoped s ON s.schedule_id = l.schedule_id
                 LEFT JOIN aud a ON a.schedule_id = l.schedule_id

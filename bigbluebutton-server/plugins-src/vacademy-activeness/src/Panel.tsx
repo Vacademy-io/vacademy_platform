@@ -170,6 +170,17 @@ const REASONS: Record<Reason, { now: string; earlier: string; tip: string }> = {
   },
 };
 
+/** One-line version for the collapsed pill. */
+const SHORT_REASON: Record<Reason, string> = {
+  away: "Not in front of the camera",
+  dark: "Camera can't see you",
+  side: "Turned away from the screen",
+  down: "Looking down",
+  up: "Looking away",
+  eyes: "Eyes closed",
+  hidden: "Class tab in background",
+};
+
 /** A camera at an odd angle can read as "turned away" while the learner is facing the class. */
 const CAN_RECALIBRATE: Reason[] = ["side", "up", "down"];
 
@@ -196,8 +207,8 @@ function OnBody({ controller, state }: { controller: ActivenessController; state
         <Stat label="Right now" value={live.score} />
         <Stat label="This class" value={state.session.score} />
       </div>
-      {live.score === null ? (
-        <div style={{ ...s.note, marginTop: 8 }}>Getting to know your normal position…</div>
+      {live.score === null || (state.calibrating && !text) ? (
+        <div style={{ ...s.note, marginTop: 8 }}>Getting to know your normal position — look at the class for a few seconds…</div>
       ) : text ? (
         <div
           role="status"
@@ -261,6 +272,11 @@ export function Panel({ controller }: { controller: ActivenessController }) {
               <>
                 Now <b style={{ color: scoreColor(state.live.score) }}>{state.live.score ?? "…"}</b>
                 {" · "}Class <b style={{ color: scoreColor(state.session.score) }}>{state.session.score ?? "…"}</b>
+                {state.live.reason && state.live.reasonIsCurrent && (
+                  <span style={{ display: "block", color: "#92400e", fontSize: 11.5, fontWeight: 600 }}>
+                    {SHORT_REASON[state.live.reason]}
+                  </span>
+                )}
               </>
             ) : phase === "problem" ? (
               "Activeness · needs attention"
@@ -297,7 +313,16 @@ export function Panel({ controller }: { controller: ActivenessController }) {
         <div style={s.body}>
           <Preview controller={controller} state={state} />
           <div style={{ ...s.note, marginTop: 8 }}>
-            {state.slowLoad ? "First-time setup — downloading the face model (about 10 MB)…" : "Starting camera…"}
+            {state.askingPermission
+              ? "Your browser is asking to use the camera — choose Allow."
+              : state.slowLoad
+                ? "First-time setup — downloading the face model (about 10 MB)…"
+                : "Starting camera…"}
+          </div>
+          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 4 }}>
+            <button type="button" style={s.link} onClick={controller.stop}>
+              Turn off for this class
+            </button>
           </div>
         </div>
       )}

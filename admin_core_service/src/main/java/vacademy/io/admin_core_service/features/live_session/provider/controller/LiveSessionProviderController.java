@@ -73,6 +73,15 @@ public class LiveSessionProviderController {
     private static final int ACTIVENESS_MAX_BODY_CHARS = 4096;
     /** Longest class an activeness report may claim (12h). */
     private static final int ACTIVENESS_MAX_SECONDS = 43_200;
+    /**
+     * At most one stored report per learner per class in this window (the plugin
+     * reports once a minute); a final report gets a shorter one. Per pod — with four
+     * replicas a replaying client still gets only a handful of writes a minute.
+     */
+    private static final long ACTIVENESS_MIN_WRITE_GAP_MS = 20_000;
+    private static final long ACTIVENESS_MIN_FINAL_GAP_MS = 2_000;
+    private final java.util.concurrent.ConcurrentHashMap<String, Long> activenessLastWriteAt =
+            new java.util.concurrent.ConcurrentHashMap<>();
 
     // -----------------------------------------------------------------------
     // OAuth connect / status
@@ -846,16 +855,33 @@ public class LiveSessionProviderController {
      * navigator.sendBeacon for the final report on leave.
      *
      * Body: {"token","avg","on_screen","attention","seconds","away_count","away_seconds","final"}.
-     * 204 stored (or stale/no attendance row), 400 malformed, 401 bad/expired token,
-     * 413 oversized.
+     * 204 stored (or stale/throttled/no attendance row, or the feature is switched
+     * off), 400 malformed, 401 bad/expired token, 413 oversized.
+     *
+     * The body is read by hand with a hard cap: this endpoint is unauthenticated, and
+     * @RequestBody String would buffer whatever the ingress lets through (hundreds of
+     * MB) before any size check could run.
      */
     @PostMapping(value = "/meeting/bbb-activeness", consumes = MediaType.ALL_VALUE)
-    public ResponseEntity<Void> bbbActivenessReport(@RequestBody(required = false) String body) {
-        if (body == null || body.isBlank()) {
+    public ResponseEntity<Void> bbbActivenessReport(jakarta.servlet.http.HttpServletRequest request) {
+        if (!activenessTokenService.isConfigured()) {
+            return ResponseEntity.noContent().build();
+        }
+        if (request.getContentLengthLong() > ACTIVENESS_MAX_BODY_CHARS) {
+            return ResponseEntity.status(413).build();
+        }
+        String body;
+        try {
+            byte[] bytes = request.getInputStream().readNBytes(ACTIVENESS_MAX_BODY_CHARS + 1);
+            if (bytes.length > ACTIVENESS_MAX_BODY_CHARS) {
+                return ResponseEntity.status(413).build();
+            }
+            body = new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
+        } catch (java.io.IOException e) {
             return ResponseEntity.badRequest().build();
         }
-        if (body.length() > ACTIVENESS_MAX_BODY_CHARS) {
-            return ResponseEntity.status(413).build();
+        if (body.isBlank()) {
+            return ResponseEntity.badRequest().build();
         }
         com.fasterxml.jackson.databind.JsonNode root;
         try {
@@ -889,6 +915,10 @@ public class LiveSessionProviderController {
         int secs = clamp(seconds, 0, ACTIVENESS_MAX_SECONDS);
         String scheduleId = claims.get().scheduleId();
         String userId = claims.get().userId();
+        boolean isFinal = root.path("final").asBoolean(false);
+        if (!activenessWriteAllowed(scheduleId + ":" + userId, isFinal)) {
+            return ResponseEntity.noContent().build();
+        }
         try {
             int updated = liveSessionLogsRepository.mergeActivenessReport(
                     scheduleId, userId,
@@ -903,7 +933,7 @@ public class LiveSessionProviderController {
                 // No attendance row yet, or an older/out-of-order report than the stored one.
                 log.debug("[BBB] Activeness report not stored (stale or no attendance row); scheduleId={}, userId={}",
                         scheduleId, userId);
-            } else if (root.path("final").asBoolean(false)) {
+            } else if (isFinal) {
                 log.info("[BBB] Activeness final report stored; scheduleId={}, userId={}, avg={}, seconds={}",
                         scheduleId, userId, clamp(avg, 0, 100), secs);
             }
@@ -913,6 +943,25 @@ public class LiveSessionProviderController {
             return ResponseEntity.status(500).build();
         }
         return ResponseEntity.noContent().build();
+    }
+
+    /** Per-learner write throttle for activeness reports (see ACTIVENESS_MIN_WRITE_GAP_MS). */
+    private boolean activenessWriteAllowed(String key, boolean isFinal) {
+        long now = System.currentTimeMillis();
+        long gap = isFinal ? ACTIVENESS_MIN_FINAL_GAP_MS : ACTIVENESS_MIN_WRITE_GAP_MS;
+        boolean[] allowed = {false};
+        activenessLastWriteAt.compute(key, (k, last) -> {
+            if (last == null || now - last >= gap) {
+                allowed[0] = true;
+                return now;
+            }
+            return last;
+        });
+        // Bounded memory: a 400-learner class is 400 keys; drop anything idle 30+ minutes.
+        if (activenessLastWriteAt.size() > 20_000) {
+            activenessLastWriteAt.values().removeIf(t -> now - t > 30 * 60_000L);
+        }
+        return allowed[0];
     }
 
     /** A whole number from the report; null when absent, null or non-numeric. Fractions are rounded. */

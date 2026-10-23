@@ -284,22 +284,36 @@ fi
 echo "[8b/10] Installing repo HTML5 plugins..."
 PLUGINS_SRC="$SCRIPT_DIR/plugins"
 PLUGINS_DEST="/var/www/bigbluebutton-default/assets/plugins"
-if [ -d "$PLUGINS_SRC" ]; then
-    mkdir -p "$PLUGINS_DEST"
+# Every step is checked explicitly: a failed copy (disk full has happened) warns,
+# keeps the previous version in place and moves on — it must never abort the
+# recording-isolation steps below (set -e is not reliable inside `|| …` lists).
+if [ -d "$PLUGINS_SRC" ] && mkdir -p "$PLUGINS_DEST"; then
     for plugin_dir in "$PLUGINS_SRC"/*/; do
         [ -f "$plugin_dir/manifest.json" ] || continue
         name="$(basename "$plugin_dir")"
-        rm -rf "$PLUGINS_DEST/.$name.new"
-        cp -r "$plugin_dir" "$PLUGINS_DEST/.$name.new"
-        chmod -R a+rX "$PLUGINS_DEST/.$name.new"
-        rm -rf "$PLUGINS_DEST/.$name.old"
-        [ -d "$PLUGINS_DEST/$name" ] && mv "$PLUGINS_DEST/$name" "$PLUGINS_DEST/.$name.old"
-        mv "$PLUGINS_DEST/.$name.new" "$PLUGINS_DEST/$name"
-        rm -rf "$PLUGINS_DEST/.$name.old"
-        echo "  ✓ $name ($(grep -o '"version": *"[^"]*"' "$PLUGINS_DEST/$name/manifest.json" | cut -d'"' -f4))"
+        new="$PLUGINS_DEST/.$name.new"
+        old="$PLUGINS_DEST/.$name.old"
+        rm -rf "$new" "$old" 2>/dev/null || true
+        if ! { cp -r "$plugin_dir" "$new" && chmod -R a+rX "$new"; }; then
+            rm -rf "$new" 2>/dev/null || true
+            echo "  WARN: could not stage $name — the previous version stays live"
+            continue
+        fi
+        if [ -d "$PLUGINS_DEST/$name" ] && ! mv "$PLUGINS_DEST/$name" "$old"; then
+            rm -rf "$new" 2>/dev/null || true
+            echo "  WARN: could not replace $name — the previous version stays live"
+            continue
+        fi
+        if mv "$new" "$PLUGINS_DEST/$name"; then
+            rm -rf "$old" 2>/dev/null || true
+            echo "  ✓ $name ($(grep -o '"version": *"[^"]*"' "$PLUGINS_DEST/$name/manifest.json" 2>/dev/null | cut -d'"' -f4))"
+        else
+            [ -d "$old" ] && mv "$old" "$PLUGINS_DEST/$name" 2>/dev/null
+            echo "  WARN: could not install $name — the previous version stays live"
+        fi
     done
 else
-    echo "  (no plugins/ directory — skipped)"
+    echo "  (no plugins/ directory, or $PLUGINS_DEST not writable — skipped)"
 fi
 
 # ── 9. Resource isolation drop-ins + deferred-upload drainer ──

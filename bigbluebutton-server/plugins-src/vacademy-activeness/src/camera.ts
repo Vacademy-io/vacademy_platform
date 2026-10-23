@@ -42,13 +42,15 @@ export const isDesktop = (): boolean =>
   !/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
 const constraints = (deviceId?: string): MediaStreamConstraints => ({
-  // Small frames: the face model needs ~320 px, and a low resolution keeps the
-  // camera shareable with BBB's own webcam in the same browser.
+  // BBB's own webcam default (640x480 @ 15): when a second getUserMedia shares an
+  // already-open camera it gets that capture format, so opening ours small first
+  // would cap a webcam the learner shares later. The tracker scales frames down
+  // to 320 px before detection, so the reading cost does not change.
   video: {
     ...(deviceId ? { deviceId: { exact: deviceId } } : { facingMode: "user" }),
-    width: { ideal: 320 },
-    height: { ideal: 240 },
-    frameRate: { ideal: 10, max: 15 },
+    width: { ideal: 640 },
+    height: { ideal: 480 },
+    frameRate: { ideal: 15, max: 15 },
   },
   audio: false,
 });

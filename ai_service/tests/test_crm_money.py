@@ -592,3 +592,66 @@ def test_module_never_names_blocked_endpoints():
     src = Path(money.__file__).read_text(encoding="utf-8")
     for bad in cd.NEVER_CALL:
         assert bad not in src
+
+
+# ── collections group_by / date_basis ────────────────────────────────────
+
+async def test_collections_group_by_state_with_previous_rows(backend):
+    backend.sql.on("FROM institute_custom_fields icf", [{"id": "f-city", "field_key": "city", "field_name": "City"}])
+    backend.sql.on("WITH people AS", [{"k": "pune", "n": 4}])
+    current = [{"g": 0, "d1": "Maharashtra", "amount": 100, "payments": 2, "payers": 2, "currencies": "INR"},
+               {"g": 0, "d1": None, "amount": 50, "payments": 1, "payers": 1, "currencies": "INR"},
+               {"g": 3, "amount": 150, "payments": 3, "payers": 3, "currencies": "INR"}]
+    previous = [{"g": 0, "d1": "Maharashtra", "amount": 80, "payments": 1, "payers": 1, "currencies": "INR"},
+                {"g": 3, "amount": 80, "payments": 1, "payers": 1, "currencies": "INR"}]
+    calls = []
+
+    def grouped(params, sql):
+        calls.append(params["w_from"])
+        return current if len(calls) == 1 else previous
+
+    backend.sql.on("crm_money.collections_grouped", grouped)
+    out = await read(make_ctx(), action="collections", period="last_30_days", group_by=["state"],
+                     compare_to="previous_period")
+    assert out["group_by"] == ["state"] and out["date_basis"] == "paid_on"
+    assert out["rows"][0] == {"state": "Maharashtra", "amount": 100.0, "payments": 2, "payers": 2,
+                              "previous": {"amount": 80.0, "payments": 1, "payers": 1, "change": 20.0,
+                                           "change_pct": 25.0}}
+    assert out["rows"][1]["state"] == "(unknown)" and out["rows"][1]["previous"]["amount"] == 0.0
+    assert out["totals"]["amount"] == 150 and out["previous_period"]["change_pct"] == 87.5
+    [(sql, params)] = backend.sql.matching("crm_money.collections_grouped")[:1]
+    assert "s.user_id = r.payer_id" in sql and params["geo_k"] == ["pune"] and params["gl1_city_ids"] == ["f-city"]
+    assert "pl.date = CAST(pl.created_at AS date)" in sql and len(calls) == 2 and calls[1] < calls[0]
+
+
+async def test_collections_group_by_month_and_source_and_recorded_on(backend):
+    backend.sql.on("crm_money.collections_grouped", [
+        {"g": 0, "d1": "2030-01", "d2": "WEBSITE", "amount": 10, "payments": 1, "payers": 1},
+        {"g": 0, "d1": "2029-12", "d2": "~no_lead~", "amount": 30, "payments": 1, "payers": 1},
+        {"g": 1, "d1": "2030-01", "amount": 10, "payments": 1, "payers": 1},
+        {"g": 1, "d1": "2029-12", "amount": 30, "payments": 1, "payers": 1},
+        {"g": 2, "d2": "WEBSITE", "amount": 10, "payments": 1, "payers": 1},
+        {"g": 2, "d2": "~no_lead~", "amount": 30, "payments": 1, "payers": 1},
+        {"g": 3, "amount": 40, "payments": 2, "payers": 2, "currencies": "INR"}])
+    out = await read(make_ctx(), action="collections", days=60, group_by=["month", "source"],
+                     date_basis="recorded_on")
+    assert [r["month"] for r in out["rows"]] == ["2029-12", "2030-01"]
+    assert out["rows"][0]["source"] == "(no lead)" and out["date_basis"] == "recorded_on"
+    assert [s["month"] for s in out["subtotals"]["month"]] == ["2029-12", "2030-01"]
+    assert out["subtotals"]["source"][0]["source"] == "(no lead)"
+    [(sql, params)] = backend.sql.matching("crm_money.collections_grouped")
+    assert "pl.created_at >= :w_from" in sql and "pl.date" not in sql and params["no_lead"] == "~no_lead~"
+    assert "GROUPING SETS ((d1, d2), (d1), (d2), ())" in sql
+
+
+@pytest.mark.parametrize("args", [
+    {"group_by": ["state; drop table x"]},
+    {"group_by": ["day", "month"]},
+    {"group_by": ["state", "city", "month"]},
+    {"group_by": ["list_tag:not ok!"]},
+    {"group_by": ["state"], "date_basis": "someday"},
+])
+async def test_collections_group_by_refuses_unknown_input(backend, args):
+    out = await read(make_ctx(), action="collections", **args)
+    assert out["error"] == "invalid_argument"
+    assert backend.sql.matching("crm_money.") == []

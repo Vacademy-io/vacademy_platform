@@ -585,8 +585,20 @@ def test_institute_tz_reads_the_right_setting(monkeypatch):
 
 
 def test_definitions():
-    assert "UTC" in cd.definition("utc_days")
+    assert "timezone" in cd.definition("window")
+    assert "paid_on" in cd.definition("date_basis")
     assert cd.definition("something_new") == "something new"
+
+
+def test_date_basis_parsing_and_sql():
+    assert cd.date_basis({}) == "paid_on"
+    assert cd.date_basis({"date_basis": "Recorded_On"}) == "recorded_on"
+    assert cd.is_error(cd.date_basis({"date_basis": "entered"}))
+    assert cd.payment_at_sql("recorded_on") == "pl.created_at"
+    paid = cd.payment_at_sql("paid_on", "p")
+    # The stored date only wins when it differs from the record's own (UTC) day.
+    assert "p.date = CAST(p.created_at AS date) THEN p.created_at" in paid
+    assert "AT TIME ZONE :tz" in paid
 
 
 # ── entitlements via ctx ─────────────────────────────────────────────────

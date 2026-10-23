@@ -1284,7 +1284,6 @@ DEFINITIONS: Dict[str, str] = {
               "assigned counsellor."),
     "unassigned": "Leads with no counsellor in either ownership store.",
     "stalled": "Live open leads with no staff activity since the cut-off.",
-    "utc_days": "Bucketed by UTC calendar day by admin-core, not by the institute's timezone.",
     "window": "Day boundaries are midnight in the institute's timezone; 'to' is included.",
     "score": "Lead score (lead_score.raw_score, 0 when unscored).",
     "tier": "The lead profile's tier, else the institute's score bands, else HOT >= 80, WARM >= 50, COLD.",
@@ -1295,6 +1294,37 @@ DEFINITIONS: Dict[str, str] = {
 
 def definition(key: str) -> str:
     return DEFINITIONS.get(key, key.replace("_", " "))
+
+
+# ── payment dates ────────────────────────────────────────────────────────
+
+#: paid_on = the day the payment was made; recorded_on = when it was entered in the system.
+DATE_BASES = ("paid_on", "recorded_on")
+DEFINITIONS["date_basis"] = (
+    "paid_on (default): the day the payment was made — the payment date stored with it (offline and backfilled "
+    "payments keep the date entered), else the day it was recorded; recorded_on: the moment it was entered in the "
+    "system, so a bulk entry of old payments all lands on the day it was entered.")
+
+
+def date_basis(args: Optional[Dict[str, Any]]) -> Union[str, Dict[str, Any]]:
+    raw = str((args or {}).get("date_basis") or "").strip().lower() or DATE_BASES[0]
+    if raw not in DATE_BASES:
+        return err("invalid_argument", message="date_basis is paid_on or recorded_on.")
+    return raw
+
+
+def payment_at_sql(basis: str, pl: str = "pl") -> str:
+    """
+    A payment's instant (naive UTC, like the columns) on ``basis``. paid_on: the
+    stored payment date when it was entered as another day than the record (a
+    backfill or an offline entry; that day's midnight in the institute timezone
+    ``:tz``), else the record's own time — the system stamps the payment date with
+    the UTC day of the record, which says nothing more than created_at.
+    """
+    if basis == "recorded_on":
+        return f"{pl}.created_at"
+    return (f"(CASE WHEN {pl}.date IS NULL OR {pl}.date = CAST({pl}.created_at AS date) THEN {pl}.created_at "
+            f"ELSE (CAST({pl}.date AS timestamp) AT TIME ZONE :tz) AT TIME ZONE 'UTC' END)")
 
 
 # ── confirm tokens: stateless edits ──────────────────────────────────────
@@ -1887,7 +1917,8 @@ __all__ = [
     "owner_display_sql", "live_lead_sql", "scope_sql",
     "is_live", "lead_flags", "resolve_lead", "resolve_leads", "find_people", "FILTER_KEYS", "resolve_filter",
     "SOURCE_ALIASES", "institute_sources", "source_keys", "ID_KINDS", "verify_ids", "counsellor_roster",
-    "zone", "institute_tz", "iso", "PERIODS", "Window", "window", "DEFINITIONS", "definition",
+    "zone", "institute_tz", "iso", "PERIODS", "Window", "window", "DEFINITIONS", "definition", "DATE_BASES",
+    "date_basis", "payment_at_sql",
     "canonical", "edit_token", "check_edit_token", "token_error",
     "ONCE_TTL", "CAPS", "DEFAULT_CAP", "purpose_of", "cap_for", "request_sha", "issue_once", "spend_once",
     "mark_outcome", "hourly_count", "quota", "CONFIRM_KINDS", "preview_or_apply",

@@ -691,3 +691,53 @@ async def test_log_interaction_reports_a_refused_status_change(backend):
     out = await run(m.ACTIVITY_TOOL, admin(), action="log_interaction", lead_id="r-1", note="x", status="INTERESTED")
     assert out["done"] is False and out["failed"][0]["what"] == "status"
     assert out["saved"]["activity"]["event_id"] == "ev-1"                     # the note itself was saved
+
+
+# ── tag_lists ────────────────────────────────────────────────────────────
+
+def _list_tags(backend, saved):
+    backend.sql.on("a.tags_json FROM audience a", lambda p, sql: [
+        {"id": i, "campaign_name": f"List {i}", "status": "ACTIVE", "tags_json": saved.get(i)} for i in p["ids"]
+        if i in ("list-1", "list-2")])
+    backend.admin_core.on("PUT", "/admin-core-service/v1/audience/campaign/",
+                          lambda mth, path, params, body: {"audience_id": path.split("/")[-2], "tags": body["tags"]})
+
+
+async def test_tag_lists_merges_previews_and_applies(backend):
+    backend.lead_scope("ADMIN")
+    _list_tags(backend, {"list-1": json.dumps({"channel": "Meta"}), "list-2": None})
+    ctx = admin(db=confirm_db())
+    args = dict(action="tag_lists", lists=[{"list_id": "list-1", "tags": {"State": "Maharashtra", "channel": None}},
+                                           {"list_id": "list-2", "tags": {"course": "MBA"}}])
+    shown = await run(m.EDIT_TOOL, ctx, **args)
+    assert shown["applied"] is False and writes(backend) == []
+    assert shown["lists"][0] == {"list_id": "list-1", "list": "List list-1", "tags_before": {"channel": "Meta"},
+                                 "tags_after": {"state": "Maharashtra"}}
+    assert shown["confirm_token"].startswith(cd.ONCE_PREFIX)
+    done = await run(m.EDIT_TOOL, ctx, **args, confirm_token=shown["confirm_token"])
+    calls = backend.admin_core.called("/admin-core-service/v1/audience/campaign/list-1/tags", "PUT")
+    assert done["updated"] == 2 and done["done"] and calls[0]["body"] == {"tags": {"state": "Maharashtra"}}
+    assert calls[0]["params"] == {"instituteId": "inst-1"}
+
+
+async def test_tag_lists_one_list_replace_and_refusals(backend):
+    backend.lead_scope("ADMIN")
+    _list_tags(backend, {"list-1": json.dumps({"channel": "Meta", "course": "MBA"})})
+    ctx = admin()
+    args = dict(action="tag_lists", lists=[{"list_id": "list-1", "tags": {"state": "Goa"}}], replace=True)
+    shown = await run(m.EDIT_TOOL, ctx, **args)
+    assert shown["lists"][0]["tags_after"] == {"state": "Goa"} and not shown["confirm_token"].startswith(cd.ONCE_PREFIX)
+    same = await run(m.EDIT_TOOL, ctx, action="tag_lists", lists=[{"list_id": "list-1", "tags": {"course": "MBA"}}])
+    assert same["applied"] is False and same["skipped"][0]["reason"] == "already tagged like that"
+    for bad in ({"lists": [{"list_id": "list-1", "tags": {"bad key!": "x"}}]},
+                {"lists": [{"list_id": "list-1", "tags": {"state": "x" * 61}}]},
+                {"lists": [{"list_id": "list-1", "tags": {"state": "a\nb"}}]},
+                {"lists": [{"list_id": "list-1", "tags": {f"k{i}": "v" for i in range(11)}}]},
+                {"lists": [{"list_id": "list-1"}]}):
+        out = await run(m.EDIT_TOOL, ctx, action="tag_lists", **bad)
+        assert out["error"] == "invalid_argument", bad
+    assert (await run(m.EDIT_TOOL, ctx, action="tag_lists", lists=[{"list_id": "list-9", "tags": {"a": "b"}}])
+            )["error"] == "unknown_list"
+    backend.lead_scope("COUNSELLOR_TREE", owner_ids=["c-1"])
+    out = await run(m.EDIT_TOOL, counsellor(), **args)
+    assert out["error"] == "admin_only" and writes(backend) == []

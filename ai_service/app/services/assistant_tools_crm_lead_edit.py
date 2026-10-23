@@ -54,7 +54,7 @@ LEADS_FEATURE = "crm.leads"
 CALLING_FEATURE = "crm.calling"
 
 ACTIVITY_ACTIONS = ("log_interaction", "add_note", "schedule_followup", "reschedule_followup", "complete_followup")
-EDIT_ACTIONS = ("set_status", "set_tier", "update_details", "tag", "untag")
+EDIT_ACTIONS = ("set_status", "set_tier", "update_details", "tag", "untag", "tag_lists")
 INTAKE_ACTIONS = ("add_lead", "import_leads")
 
 #: Same prefix as crm_data.AC — repeated here because this module may be imported while crm_data is still
@@ -71,6 +71,7 @@ BULK_SUBMIT_PATH = f"{AC}/v1/audience/lead/bulk-submit"
 TAG_ADD_PATH = f"{AC}/tag-management/institutes/{{inst}}/tags/{{tag}}/users/add"
 TAG_REMOVE_PATH = f"{AC}/tag-management/institutes/{{inst}}/users/tags/deactivate"
 DISPOSITION_PATH = f"{AC}/v1/telephony/calls/{{cid}}/disposition"
+LIST_TAGS_PATH = f"{AC}/v1/audience/campaign/{{aid}}/tags"
 
 #: kind → crm_data.write_activity kind. REACHOUT is written by the messaging tools only.
 INTERACTION_KINDS = ("CALL", "WHATSAPP", "MEETING", "NOTE", "VISIT", "EMAIL")
@@ -113,6 +114,8 @@ ACTION_SPEC: Dict[str, Dict[str, Any]] = {
     "update_details": _spec("Correct one lead's contact details or form answers.", True, "edit_token"),
     "tag": _spec("Add existing tags to leads (per person).", True, "single_use", confirm_one_lead="edit_token"),
     "untag": _spec("Remove tags from leads (per person).", True, "single_use", confirm_one_lead="edit_token"),
+    "tag_lists": _spec("Set key → value tags (state, course, channel …) on up to 50 lead lists, so reports can "
+                       "group by them.", True, "single_use", admin_only=True, confirm_one_lead="edit_token"),
     # crm_lead_intake
     "add_lead": _spec("Add one lead (a walk-in, a phone enquiry) to a lead list.", True, "single_use"),
     "import_leads": _spec("Add up to 100 leads to one lead list.", True, "single_use"),
@@ -216,6 +219,12 @@ EDIT_SCHEMA: Dict[str, Any] = {
             "the person's own details are refused (shared_account) when another institute uses their account.\n"
             "- tag / untag (targets, tag_ids): EXISTING tag ids from crm_leads catalog (never invent or create tags); "
             "tags belong to the person.\n"
+            "- tag_lists (institute admins; lists: [{list_id, tags: {key: value | null}}] ≤50, replace?): label LEAD "
+            "LISTS (not leads) with key → value tags such as state, course, channel, so crm_reports custom can "
+            "group by list_tag:<key>. Keys: letters, digits, _ (≤40); values ≤60 characters; null removes a key; "
+            "at most 10 tags per list. By default the given keys are merged into the list's tags; replace: true "
+            "makes them the list's only tags. When the tags come from list names, show the user the mapping in "
+            "the preview — never guess silently.\n"
             "For a single lead you get an edit confirm_token; for several, a single-use one (hourly limits apply). "
             "The confirm is refused when a lead changed after the preview — preview again. "
             + _TWO_STEP + " " + _LEAD_TEXT
@@ -236,6 +245,11 @@ EDIT_SCHEMA: Dict[str, Any] = {
                                                               "email?} on this lead's record — new values."},
                 "answers": _ANSWERS_PROP,
                 "tag_ids": {"type": "array", "items": {"type": "string"}, "description": "tag / untag: existing tag ids."},
+                "lists": {"type": "array", "description": "tag_lists: [{list_id, tags: {key: value | null}}], ≤50.",
+                          "items": {"type": "object", "properties": {"list_id": {"type": "string"},
+                                                                     "tags": {"type": "object"}}}},
+                "replace": {"type": "boolean", "description": "tag_lists: the given tags become the list's only "
+                                                             "tags (default: merged into the existing ones)."},
                 "confirm_token": _CONFIRM_PROP,
             },
             "required": ["action"],
@@ -1777,11 +1791,157 @@ async def _import_leads(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any
 
 # ── executors ────────────────────────────────────────────────────────────
 
+# ── list tags ────────────────────────────────────────────────────────────
+
+MAX_TAGGED_LISTS = 50
+MAX_LIST_TAGS = 10
+_LIST_TAG_KEY_RE = re.compile(r"^[a-z0-9_]{1,40}$")
+_LIST_TAGS_SQL = ("SELECT a.id, a.campaign_name, a.status, a.tags_json FROM audience a "
+                  "WHERE a.institute_id = :inst AND a.id = ANY(:ids)")
+
+
+def _list_tag_key(raw: Any) -> Optional[str]:
+    key = re.sub(r"[\s-]+", "_", str(raw or "").strip().lower())
+    return key if _LIST_TAG_KEY_RE.match(key) else None
+
+
+def _saved_tags(raw: Any) -> Dict[str, str]:
+    try:
+        parsed = json.loads(raw) if raw else {}
+    except (TypeError, ValueError):
+        return {}
+    return {str(k): v for k, v in parsed.items() if isinstance(v, str) and v.strip()} \
+        if isinstance(parsed, dict) else {}
+
+
+def _tag_changes(raw: Any) -> Tuple[Optional[Dict[str, Optional[str]]], List[str]]:
+    """{key: value | None (remove)} from one list's ``tags``, and the problems found."""
+    if not isinstance(raw, dict) or not raw:
+        return None, ["tags is an object {key: value | null} with at least one key."]
+    out: Dict[str, Optional[str]] = {}
+    problems: List[str] = []
+    for k, v in raw.items():
+        key = _list_tag_key(k)
+        if key is None:
+            problems.append(f"Tag name '{cd.clean(k, 50)}' is not valid: up to 40 letters, digits or _.")
+            continue
+        if key in out:
+            problems.append(f"Tag '{key}' is given twice.")
+            continue
+        if v is None or (isinstance(v, str) and not v.strip()):
+            out[key] = None
+            continue
+        if not isinstance(v, (str, int, float)) or isinstance(v, bool):
+            problems.append(f"The value of tag '{key}' is text.")
+            continue
+        value = str(v).strip()
+        if len(value) > 60 or any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
+            problems.append(f"The value of tag '{key}' must be one line of at most 60 characters.")
+            continue
+        out[key] = value
+    return out, problems
+
+
+async def _tag_lists(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
+    refusal = await cd.require_admin(ctx)
+    if refusal:
+        return refusal
+    items = args.get("lists")
+    if not isinstance(items, list) or not items:
+        return _missing("lists", message="Pass lists: [{list_id, tags: {key: value | null}}].")
+    if len(items) > MAX_TAGGED_LISTS:
+        return cd.err("too_many", max=MAX_TAGGED_LISTS, message=f"At most {MAX_TAGGED_LISTS} lists per call.")
+    replace = bool(args.get("replace"))
+    wanted: Dict[str, Dict[str, Optional[str]]] = {}
+    problems: List[str] = []
+    for item in items:
+        lid = str((item or {}).get("list_id") or "").strip() if isinstance(item, dict) else ""
+        if not lid:
+            problems.append("Every entry needs a list_id.")
+            continue
+        if lid in wanted:
+            problems.append(f"List {lid} is given twice.")
+            continue
+        changes, bad = _tag_changes(item.get("tags"))
+        problems += [f"{lid}: {b}" for b in bad]
+        if changes is not None:
+            wanted[lid] = changes
+    if problems:
+        return _invalid(problems)
+    known = await cd.verify_ids(ctx, "lists", list(wanted))
+    if cd.is_error(known):
+        return known
+    found, ok = cd.rows(ctx, _LIST_TAGS_SQL, {"inst": ctx.principal.institute_id, "ids": list(wanted)})
+    if not ok:
+        return cd.err("query_failed")
+    rows = {r["id"]: r for r in found}
+    plan: Dict[str, Dict[str, Any]] = {}
+    skipped: List[Dict[str, Any]] = []
+    for lid, changes in wanted.items():
+        r = rows.get(lid)
+        if r is None or str(r.get("status") or "").upper() == "DELETED":
+            skipped.append({"list_id": lid, "reason": "deleted list"})
+            continue
+        before = _saved_tags(r.get("tags_json"))
+        after = {} if replace else dict(before)
+        for k, v in changes.items():
+            if v is None:
+                after.pop(k, None)
+            else:
+                after[k] = v
+        after = dict(sorted(after.items()))
+        if len(after) > MAX_LIST_TAGS:
+            problems.append(f"{lid}: a list can have at most {MAX_LIST_TAGS} tags (this would give {len(after)}).")
+        elif after != dict(sorted(before.items())):
+            plan[lid] = {"list": cd.clean(r.get("campaign_name")), "before": before, "after": after}
+        else:
+            skipped.append({"list_id": lid, "reason": "already tagged like that"})
+    if problems:
+        return _invalid(problems)
+    if not plan:
+        return {"applied": False, "skipped": skipped, "message": "Every list already has those tags. Nothing to change."}
+    state = {lid: rows[lid].get("tags_json") for lid in plan}
+    request = {"action": "tag_lists", "lists": [{"list_id": lid, "tags": wanted[lid]} for lid in sorted(wanted)],
+               "replace": replace}
+
+    async def preview() -> Dict[str, Any]:
+        view: Dict[str, Any] = {"lists": [{"list_id": lid, "list": p["list"], "tags_before": p["before"],
+                                           "tags_after": p["after"]} for lid, p in plan.items()],
+                                "effects": ["Tags label the list itself (not its leads) and only change how reports "
+                                            "group it: crm_reports custom with group_by list_tag:<key>. No "
+                                            "automation runs."]}
+        if skipped:
+            view["skipped"] = skipped
+        return view
+
+    async def apply(summary: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        keep, moved = _still_same(summary, state)
+        if not keep:
+            return cd.err("confirm_token_mismatch", changed=moved[:50])
+        done, failed = [], []
+        for lid in keep:
+            resp = await cd.ac(ctx, "PUT", LIST_TAGS_PATH.format(aid=lid),
+                               params={"instituteId": ctx.principal.institute_id}, body={"tags": plan[lid]["after"]})
+            if cd.is_error(resp):
+                failed.append({"list_id": lid, "status": resp.get("status")})
+            else:
+                done.append({"list_id": lid, "tags": (resp or {}).get("tags", plan[lid]["after"])})
+        out: Dict[str, Any] = {"updated": len(done), "lists": done, "done": not failed and not moved}
+        if failed:
+            out["failed"] = failed
+        if moved:
+            out["not_changed_because_they_changed_since_preview"] = moved[:50]
+        return out
+
+    return await _two_step(ctx, args, tool=EDIT_TOOL, action="tag_lists", many=len(plan) > 1, request=request,
+                           state=state, preview=preview, apply=apply)
+
+
 _HANDLERS: Dict[str, Callable[[Dict[str, Any], ToolContext], Awaitable[Dict[str, Any]]]] = {
     "log_interaction": _log_interaction, "add_note": _add_note, "schedule_followup": _schedule_followup,
     "reschedule_followup": _reschedule_followup, "complete_followup": _complete_followup,
     "set_status": _set_status, "set_tier": _set_tier, "update_details": _update_details,
-    "tag": _tag_add, "untag": _tag_remove,
+    "tag": _tag_add, "untag": _tag_remove, "tag_lists": _tag_lists,
     "add_lead": _add_lead, "import_leads": _import_leads,
 }
 

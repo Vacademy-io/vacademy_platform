@@ -177,7 +177,8 @@ MCP_ALLOWED_WRITE_TOOLS: Dict[str, str] = {
     ),
     "crm_lead_edit": (
         "confirm-gated live edit, the admin's explicit choice: changes the status, tier, details or tags of leads "
-        "in the caller's lead scope (at most 500 per call); never deletes a lead; every write needs the "
+        "in the caller's lead scope (at most 500 per call), and institute admins can label lead lists with "
+        "report tags (at most 50 lists per call); never deletes a lead; every write needs the "
         "confirm_token of a preview that showed each before → after, signed over the resolved leads and their "
         "current state (single-use for more than one lead), so a changed lead or target list is refused"
     ),
@@ -419,9 +420,9 @@ MCP_TOOL_GROUP_SUMMARIES: Dict[str, str] = {
         "never removes anything. Follow-ups can trigger your follow-up automations. Turned on separately."
     ),
     "crm_lead_edits": (
-        "Let the connected AI app change leads' status, tier, details and tags, one lead or up to 500 at a time. It "
-        "always shows you each change first and applies it only after you confirm. Status changes can trigger your "
-        "automations. Turned on separately."
+        "Let the connected AI app change leads' status, tier, details and tags, one lead or up to 500 at a time, and "
+        "(admins) tag lead lists with state, course or channel for reports. It always shows you each change first "
+        "and applies it only after you confirm. Status changes can trigger your automations. Turned on separately."
     ),
     "crm_team_edits": (
         "Let the connected AI app assign or reassign leads between counsellors (for example while someone is on "

@@ -43,6 +43,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Sequence, Tuple
 
 from . import crm_data as cd
+from . import crm_geo as geo
 from .assistant_tool_registry import ToolContext, ToolSpec
 
 logger = logging.getLogger(__name__)
@@ -122,7 +123,7 @@ DEFINITIONS: Dict[str, str] = {
     "owes": ("Only enrolments with access count (plan ACTIVE): unpaid installments, PENDING_PAYMENT invoices with no "
              "PAID payment, and subscription renewals whose period has ended (at the plan's price). One-time "
              "purchases never owe."),
-    "collected": ("PAID payments created in the window whose plan was bought through one of this institute's "
+    "collected": ("PAID payments in the window (on date_basis) whose plan was bought through one of this institute's "
                   "invites, or that pay one of its invoices — the Payment Dashboard's Collected card. Voided "
                   "payments are not PAID."),
     "method": "The payment vendor (RAZORPAY, STRIPE, CASHFREE, MANUAL, OFFLINE, …); mode = the offline mode recorded "
@@ -131,6 +132,8 @@ DEFINITIONS: Dict[str, str] = {
     "counsellor": "The payer's lead-profile counsellor here; null = no counsellor or not a lead.",
     "currency": ("Amounts are summed as stored, per currency where they are split; 'currencies' lists every currency "
                  "a total adds up."),
+    "vs_revenue": ("crm_reports(action='revenue') counts only payers whose lead profile here is CONVERTED, so it is "
+                   "lower than collected; its reconciliation splits the difference."),
     "converted": ("People whose lead profile here became CONVERTED in the window (user_lead_profile.converted_at) "
                   "and is still CONVERTED."),
     "not_paid": "No PAID payment to this institute at any time by the person (lead user or linked student account).",
@@ -326,14 +329,16 @@ WHERE x.payment_status IS NOT NULL
 ORDER BY x.created_at DESC NULLS LAST, x.id
 LIMIT 10"""
 
-#: PAID payments to this institute in [:w_from, :w_to) — the Collected card's rows — sliced several ways.
-_PAID_ROWS_CTE = """paid_rows AS (
+#: PAID payments to this institute in [:w_from, :w_to) on a date basis — the Collected card's rows.
+def _paid_rows_cte(basis: str) -> str:
+    at = cd.payment_at_sql(basis)
+    return f"""paid_rows AS (
     SELECT pl.id, pl.payment_amount AS amount, COALESCE(up.user_id, pl.user_id, inv.user_id) AS payer_id,
            UPPER(COALESCE(NULLIF(TRIM(pl.vendor), ''), 'OTHER')) AS method,
            NULLIF(UPPER(TRIM(COALESCE(pl.payment_mode, ''))), '') AS mode,
            COALESCE(ei.name, CASE WHEN inv.institute_id IS NOT NULL THEN 'Invoice' END) AS course,
            COALESCE(UPPER(NULLIF(TRIM(pl.currency), '')), 'UNKNOWN') AS currency,
-           CAST((pl.created_at AT TIME ZONE 'UTC') AT TIME ZONE :tz AS date) AS day
+           CAST(({at} AT TIME ZONE 'UTC') AT TIME ZONE :tz AS date) AS day
     FROM payment_log pl
     LEFT JOIN user_plan up ON up.id = pl.user_plan_id
     LEFT JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
@@ -343,11 +348,13 @@ _PAID_ROWS_CTE = """paid_rows AS (
         ORDER BY CASE WHEN i2.institute_id = :inst THEN 0 ELSE 1 END, i2.created_at, i2.id
         LIMIT 1
     ) inv ON true
-    WHERE pl.payment_status = 'PAID' AND pl.created_at >= :w_from AND pl.created_at < :w_to
+    WHERE pl.payment_status = 'PAID' AND {at} >= :w_from AND {at} < :w_to
       AND (ei.institute_id = :inst OR inv.institute_id = :inst)
 )"""
 
-_COLLECTED_SQL = """-- crm_money.collections
+
+def _collected_sql(basis: str) -> str:
+    return """-- crm_money.collections
 WITH {paid}, rows_owned AS (
     SELECT r.*, ulp.assigned_counselor_id AS owner_id
     FROM paid_rows r LEFT JOIN user_lead_profile ulp ON ulp.user_id = r.payer_id AND ulp.institute_id = :inst
@@ -358,13 +365,105 @@ SELECT GROUPING(day) AS g_day, GROUPING(method) AS g_method, GROUPING(course) AS
        COALESCE(SUM(amount), 0) AS amount, COUNT(*) AS payments, COUNT(DISTINCT payer_id) AS payers,
        string_agg(DISTINCT currency, ',') AS currencies
 FROM rows_owned
-GROUP BY GROUPING SETS ((), (day), (method, mode), (course), (owner_id), (currency))""".format(paid=_PAID_ROWS_CTE)
+GROUP BY GROUPING SETS ((), (day), (method, mode), (course), (owner_id), (currency))""".format(
+        paid=_paid_rows_cte(basis))
 
-_COLLECTED_TOTAL_SQL = """-- crm_money.collections_total
+
+def _collected_total_sql(basis: str) -> str:
+    return """-- crm_money.collections_total
 WITH {paid}
 SELECT COALESCE(SUM(amount), 0) AS amount, COUNT(*) AS payments, COUNT(DISTINCT payer_id) AS payers,
        string_agg(DISTINCT currency, ',') AS currencies
-FROM paid_rows""".format(paid=_PAID_ROWS_CTE)
+FROM paid_rows""".format(paid=_paid_rows_cte(basis))
+
+
+#: collections group_by: dimension → what it is. list_tag:<key> groups by a tag set on the payer's lead list.
+COLLECTION_DIMS: Dict[str, str] = {
+    "day": "The payment day (date_basis, institute timezone).",
+    "week": "The week of the payment day (Monday start).",
+    "month": "The month of the payment day.",
+    "method": "The payment vendor, with the offline mode recorded with it (e.g. OFFLINE / CASH).",
+    "course": "The invite (course / package) the plan was bought through; 'Invoice' for invoice payments.",
+    "counsellor": "The payer's lead-profile counsellor here; (none) = no counsellor or not a lead.",
+    "currency": "The payment currency.",
+    "source": "The source of the payer's first live lead here; (no lead) when they have none.",
+    "list": "The list (campaign) of the payer's first live lead here; (no lead) when they have none.",
+    "state": geo.DEFINITION_STATE + " The person is the payer.",
+    "city": geo.DEFINITION_CITY,
+}
+_COLLECTION_TIME = {"day": ("day", "YYYY-MM-DD"), "week": ("week", "YYYY-MM-DD"), "month": ("month", "YYYY-MM")}
+_TAG_PREFIX = "list_tag:"
+_TAG_KEY_RE = re.compile(r"^[a-z0-9_]{1,40}$")
+_NO_LEAD = "~no_lead~"
+MAX_COLLECTION_ROWS = 200
+
+
+def _collection_dim_sql(dim: str, n: int, params: Dict[str, Any], geo_params: Dict[str, Any],
+                        fids: geo.FieldIds) -> Tuple[str, str, str]:
+    """(value expr, label expr, extra joins) of one collections dimension over ``r`` (+ ar, a)."""
+    none = "CAST(NULL AS text)"
+    lead_or = f"CASE WHEN r.lead_id IS NULL THEN CAST(:no_lead AS text) ELSE {{}} END"
+    if dim in _COLLECTION_TIME:
+        unit, fmt = _COLLECTION_TIME[dim]
+        return f"to_char(date_trunc('{unit}', CAST(r.day AS timestamp)), '{fmt}')", none, ""
+    if dim == "method":
+        return "r.method || COALESCE(' / ' || r.mode, '')", none, ""
+    if dim == "course":
+        return "COALESCE(r.course, '(none)')", none, ""
+    if dim == "counsellor":
+        return "r.owner_id", none, ""
+    if dim == "currency":
+        return "r.currency", none, ""
+    if dim == "source":
+        return lead_or.format("COALESCE(ar.source_type, 'UNKNOWN')"), none, ""
+    if dim == "list":
+        return lead_or.format("ar.audience_id"), "a.campaign_name", ""
+    if dim in ("state", "city"):
+        params.update(geo_params)
+        joins, cols = geo.person_location_sql(f"gl{n}", "r.payer_id", "r.lead_id", fids, params)
+        loc_joins, state, city = geo.location_sql(f"geo{n}", cols)
+        return (state if dim == "state" else city), none, joins + loc_joins
+    params[f"tag{n}"] = dim[len(_TAG_PREFIX):]
+    return lead_or.format(f"CASE WHEN pg_input_is_valid(a.tags_json, 'jsonb') THEN NULLIF(left(btrim("
+                          f"CAST(a.tags_json AS jsonb) ->> CAST(:tag{n} AS text)), 60), '') END"), none, ""
+
+
+def _collections_grouped_sql(basis: str, dims: Sequence[str], params: Dict[str, Any],
+                             geo_params: Dict[str, Any], fids: geo.FieldIds) -> str:
+    params["no_lead"] = _NO_LEAD
+    cols, joins = [], ""
+    for n in (1, 2):
+        if n <= len(dims):
+            value, label, join = _collection_dim_sql(dims[n - 1], n, params, geo_params, fids)
+            joins += join
+        else:
+            value, label = "CAST(NULL AS text)", "CAST(NULL AS text)"
+        cols.append(f"{value} AS d{n}, {label} AS l{n}")
+    sets = "(d1, d2), (d1), (d2), ()" if len(dims) == 2 else "(d1, d2), ()"
+    return f"""-- crm_money.collections_grouped
+WITH {_paid_rows_cte(basis)}, r AS (
+    SELECT p.*, ulp.assigned_counselor_id AS owner_id, fl.id AS lead_id
+    FROM paid_rows p
+    LEFT JOIN user_lead_profile ulp ON ulp.user_id = p.payer_id AND ulp.institute_id = :inst
+    LEFT JOIN LATERAL (
+        SELECT r0.id FROM audience_response r0
+        JOIN audience a0 ON a0.id = r0.audience_id AND a0.institute_id = :inst
+        WHERE r0.user_id = p.payer_id AND r0.audience_status = 'ACTIVE'
+        ORDER BY r0.submitted_at ASC NULLS LAST, r0.id LIMIT 1
+    ) fl ON true
+), b AS (
+    SELECT {", ".join(cols)}, r.amount, r.payer_id, r.currency
+    FROM r
+    LEFT JOIN audience_response ar ON ar.id = r.lead_id
+    LEFT JOIN audience a ON a.id = ar.audience_id{joins}
+)
+SELECT GROUPING(d1, d2) AS g, d1, d2, mode() WITHIN GROUP (ORDER BY l1) AS l1,
+       mode() WITHIN GROUP (ORDER BY l2) AS l2,
+       COALESCE(SUM(amount), 0) AS amount, COUNT(*) AS payments, COUNT(DISTINCT payer_id) AS payers,
+       string_agg(DISTINCT currency, ',') AS currencies
+FROM b
+GROUP BY GROUPING SETS ({sets})"""
+
 
 #: Converted in the window, no PAID payment to this institute ever (plan or invoice), by the person or their
 #: linked student accounts.
@@ -856,6 +955,32 @@ async def _due_soon(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
             "definitions": {k: DEFINITIONS[k] for k in ("installment_due", "owes", "person", "scope", "currency")}}
 
 
+def _collection_dims(args: Dict[str, Any]) -> Any:
+    raw = args.get("group_by")
+    if raw in (None, "", []):
+        return []
+    items = [raw] if isinstance(raw, str) else raw if isinstance(raw, (list, tuple)) else None
+    if items is None:
+        return cd.err("invalid_argument", message="group_by is a list of up to two dimensions.")
+    dims: List[str] = []
+    for item in items:
+        d = _str(item).lower()
+        if d.startswith(_TAG_PREFIX):
+            key = re.sub(r"[\s-]+", "_", d[len(_TAG_PREFIX):].strip())
+            if not _TAG_KEY_RE.match(key):
+                return cd.err("invalid_argument", message="list_tag:<key> takes a tag key (letters, digits, _).")
+            d = _TAG_PREFIX + key
+        elif d not in COLLECTION_DIMS:
+            return cd.err("invalid_argument", message="Unknown group_by dimension.", unknown=[cd.clean(d, 60)],
+                          allowed=list(COLLECTION_DIMS) + ["list_tag:<key>"])
+        dims.append(d)
+    if len(dims) > 2 or len(set(dims)) != len(dims):
+        return cd.err("invalid_argument", message="group_by takes up to two different dimensions.")
+    if sum(1 for d in dims if d in _COLLECTION_TIME) > 1:
+        return cd.err("invalid_argument", message="Group by at most one of day / week / month.")
+    return dims
+
+
 async def _collections(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
     w = _window(ctx, args)
     if cd.is_error(w):
@@ -863,10 +988,18 @@ async def _collections(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]
     compare = _str(args.get("compare_to")).lower() or "none"
     if compare not in ("none", "previous_period"):
         return cd.err("invalid_argument", message="compare_to is previous_period or none.")
+    basis = cd.date_basis(args)
+    if cd.is_error(basis):
+        return basis
+    dims = _collection_dims(args)
+    if cd.is_error(dims):
+        return dims
+    if dims:
+        return await _collections_grouped(args, ctx, w, basis, dims, compare == "previous_period")
     inst = ctx.principal.institute_id
     w_from, w_to = w.utc_naive()
     params = {"inst": inst, "tz": w.tz, "w_from": w_from, "w_to": w_to}
-    found, ok = cd.rows(ctx, _COLLECTED_SQL, params, timeout_ms=25000)
+    found, ok = cd.rows(ctx, _collected_sql(basis), params, timeout_ms=25000)
     if not ok:
         return cd.err("query_failed")
 
@@ -874,49 +1007,177 @@ async def _collections(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]
         return {"amount": _num(r.get("amount")) or 0.0, "payments": int(r.get("payments") or 0),
                 "payers": int(r.get("payers") or 0)}
 
-    def dims(flag: str) -> List[Dict[str, Any]]:
+    def dims_of(flag: str) -> List[Dict[str, Any]]:
         others = [g for g in ("g_day", "g_method", "g_course", "g_owner", "g_currency") if g != flag]
         return [r for r in found if r.get(flag) == 0 and all(r.get(g) == 1 for g in others)]
 
     total = next((r for r in found if all(r.get(g) == 1 for g in ("g_day", "g_method", "g_course", "g_owner",
                                                                     "g_currency"))), {})
     currencies = _currencies(total.get("currencies"))
-    owners = dims("g_owner")
+    owners = dims_of("g_owner")
     onames = await _owner_names(ctx, [r.get("owner_id") for r in owners])
-    by_day = sorted(({"date": cd.iso(r.get("day")), **line(r)} for r in dims("g_day")), key=lambda x: x["date"] or "")
+    by_day = sorted(({"date": cd.iso(r.get("day")), **line(r)} for r in dims_of("g_day")),
+                    key=lambda x: x["date"] or "")
     out: Dict[str, Any] = {
         "window": w.as_dict(),
+        "date_basis": basis,
         "totals": {**line(total), **_money(total.get("amount"), currencies)},
         "currencies": currencies,
         "by_day": by_day,
-        "by_method": sorted(({"method": r.get("method"), "mode": r.get("mode"), **line(r)} for r in dims("g_method")),
-                            key=lambda x: -x["amount"]),
-        "by_course": sorted(({"course": cd.clean(r.get("course")) or "(none)", **line(r)} for r in dims("g_course")),
-                            key=lambda x: -x["amount"])[:30],
+        "by_method": sorted(({"method": r.get("method"), "mode": r.get("mode"), **line(r)}
+                             for r in dims_of("g_method")), key=lambda x: -x["amount"]),
+        "by_course": sorted(({"course": cd.clean(r.get("course")) or "(none)", **line(r)}
+                             for r in dims_of("g_course")), key=lambda x: -x["amount"])[:30],
         "by_counsellor": sorted(({"counsellor": _who(r.get("owner_id"), onames), **line(r)} for r in owners),
                                 key=lambda x: -x["amount"])[:30],
-        "by_currency": sorted(({"currency": r.get("currency"), **line(r)} for r in dims("g_currency")),
+        "by_currency": sorted(({"currency": r.get("currency"), **line(r)} for r in dims_of("g_currency")),
                               key=lambda x: -x["amount"]),
-        "definitions": {k: DEFINITIONS[k] for k in ("collected", "method", "course", "counsellor", "currency",
-                                                    "window")},
+        "definitions": {**{k: DEFINITIONS[k] for k in ("collected", "method", "course", "counsellor", "currency",
+                                                       "window")},
+                        "date_basis": cd.definition("date_basis"), "revenue_report": DEFINITIONS["vs_revenue"]},
     }
     if compare == "previous_period":
         prev = w.previous()
         p_from, p_to = prev.utc_naive()
-        got, ok = cd.rows(ctx, _COLLECTED_TOTAL_SQL, {**params, "w_from": p_from, "w_to": p_to}, timeout_ms=25000)
+        got, ok = cd.rows(ctx, _collected_total_sql(basis), {**params, "w_from": p_from, "w_to": p_to},
+                          timeout_ms=25000)
         if not ok:
             out["previous_period"] = cd.err("query_failed")
         else:
             p = got[0] if got else {}
-            prev_amount = _num(p.get("amount")) or 0.0
-            cur_amount = out["totals"]["amount"]
             out["previous_period"] = {"window": prev.as_dict(), **line(p),
                                       **_money(p.get("amount"), _currencies(p.get("currencies"))),
-                                      "change": round(cur_amount - prev_amount, 2),
-                                      "change_pct": round((cur_amount - prev_amount) * 100.0 / prev_amount, 1)
-                                      if prev_amount else None}
+                                      **_change(out["totals"]["amount"], p.get("amount"))}
     if len(currencies) > 1:
         out["note"] = "Totals add up amounts in several currencies; see by_currency."
+    return out
+
+
+def _change(current: Any, previous: Any) -> Dict[str, Any]:
+    cur, prev = _num(current) or 0.0, _num(previous) or 0.0
+    return {"change": round(cur - prev, 2), "change_pct": round((cur - prev) * 100.0 / prev, 1) if prev else None}
+
+
+def _collection_value(dim: str, key: Optional[str], label: Optional[str], onames: Dict[str, str]) -> Any:
+    if key == _NO_LEAD:
+        return "(no lead)"
+    if dim == "counsellor":
+        return _who(key, onames) or {"user_id": None, "name": "(none)"}
+    if dim == "list":
+        return {"list_id": key, "list": cd.clean(label)} if key else "(none)"
+    if dim in ("state", "city"):
+        return key or "(unknown)"
+    if dim.startswith(_TAG_PREFIX):
+        return cd.clean(key, 60) if key else "(untagged)"
+    if dim == "course":
+        return cd.clean(key) or "(none)"
+    return key
+
+
+async def _collections_grouped(args: Dict[str, Any], ctx: ToolContext, w: Any, basis: str, dims: List[str],
+                               compare: bool) -> Dict[str, Any]:
+    inst = ctx.principal.institute_id
+    geo_params: Dict[str, Any] = {}
+    fids = geo.FieldIds()
+    if any(d in ("state", "city") for d in dims):
+        def run(sql: str, params: Dict[str, Any]) -> Optional[List[Dict[str, Any]]]:
+            found, ok = cd.rows(ctx, sql, params, timeout_ms=25000)
+            return found if ok else None
+        got = geo.prepare(run, inst)
+        if got is None:
+            return cd.err("query_failed")
+        fids, geo_params = got
+    try:
+        limit = max(1, min(int(args.get("limit") or 50), MAX_COLLECTION_ROWS))
+    except (TypeError, ValueError):
+        return cd.err("invalid_argument", message="limit is a whole number.")
+
+    def fetch(win: Any) -> Optional[List[Dict[str, Any]]]:
+        w_from, w_to = win.utc_naive()
+        params: Dict[str, Any] = {"inst": inst, "tz": win.tz, "w_from": w_from, "w_to": w_to}
+        sql = _collections_grouped_sql(basis, dims, params, geo_params, fids)
+        found, ok = cd.rows(ctx, sql, params, timeout_ms=25000)
+        return found if ok else None
+
+    found = fetch(w)
+    if found is None:
+        return cd.err("query_failed")
+
+    def line(r: Dict[str, Any]) -> Dict[str, Any]:
+        return {"amount": _num(r.get("amount")) or 0.0, "payments": int(r.get("payments") or 0),
+                "payers": int(r.get("payers") or 0)}
+
+    cells = [r for r in found if int(r.get("g") or 0) == 0]
+    total = next((r for r in found if int(r.get("g") or 0) == 3), {})
+    owner_ids = [r.get(f"d{n}") for r in cells for n, d in enumerate(dims, start=1) if d == "counsellor"]
+    onames = await _owner_names(ctx, owner_ids)
+    time_dim = next((d for d in dims if d in _COLLECTION_TIME), None)
+
+    def key(r: Dict[str, Any]) -> Tuple[Any, Any]:
+        return r.get("d1"), r.get("d2")
+
+    if time_dim:
+        n = dims.index(time_dim) + 1
+        cells.sort(key=lambda r: (str(r.get(f"d{n}") or ""), -(_num(r.get("amount")) or 0.0)))
+        shown = cells[-limit:]
+    else:
+        cells.sort(key=lambda r: -(_num(r.get("amount")) or 0.0))
+        shown = cells[:limit]
+    prev_rows: Dict[Tuple[Any, Any], Dict[str, Any]] = {}
+    prev_total: Optional[Dict[str, Any]] = None
+    prev_w = None
+    if compare:
+        prev_w = w.previous()
+        got = fetch(prev_w)
+        if got is not None:
+            prev_rows = {key(r): r for r in got if int(r.get("g") or 0) == 0}
+            prev_total = next((r for r in got if int(r.get("g") or 0) == 3), {})
+    rows = []
+    for r in shown:
+        row: Dict[str, Any] = {d: _collection_value(d, r.get(f"d{n}"), r.get(f"l{n}"), onames)
+                               for n, d in enumerate(dims, start=1)}
+        row.update(line(r))
+        if compare and prev_total is not None and not time_dim:
+            p = prev_rows.get(key(r), {})
+            row["previous"] = {**line(p), **_change(r.get("amount"), p.get("amount"))}
+        rows.append(row)
+    out: Dict[str, Any] = {
+        "window": w.as_dict(), "date_basis": basis, "group_by": dims,
+        "totals": {**line(total), **_money(total.get("amount"), _currencies(total.get("currencies")))},
+        "rows": rows,
+        "definitions": {**{d: COLLECTION_DIMS.get(d) or ("The value of the tag '" + d[len(_TAG_PREFIX):] + "' set "
+                                                          "on the payer's first live lead's list; (untagged) when "
+                                                          "that list has no such tag.") for d in dims},
+                        "collected": DEFINITIONS["collected"], "date_basis": cd.definition("date_basis"),
+                        "revenue_report": DEFINITIONS["vs_revenue"], "window": DEFINITIONS["window"]},
+    }
+    if len(cells) > len(shown):
+        out["more_rows"] = len(cells) - len(shown)
+        out["note"] = (f"{len(cells) - len(shown)} more groups are left out (" +
+                       ("the oldest; " if time_dim else "the smallest; ") + f"limit up to {MAX_COLLECTION_ROWS}).")
+    if len(dims) == 2:
+        subs: Dict[str, Any] = {}
+        for n, d in enumerate(dims, start=1):
+            g = 1 if n == 1 else 2
+            part = [r for r in found if int(r.get("g") or 0) == g]
+            part.sort(key=(lambda r: str(r.get(f"d{n}") or "")) if d in _COLLECTION_TIME
+                      else (lambda r: -(_num(r.get("amount")) or 0.0)))
+            subs[d] = [{d: _collection_value(d, r.get(f"d{n}"), r.get(f"l{n}"), onames), **line(r)}
+                       for r in part[:50]]
+        out["subtotals"] = subs
+    if compare:
+        if prev_total is None:
+            out["previous_period"] = cd.err("query_failed")
+        else:
+            out["previous_period"] = {"window": prev_w.as_dict(), **line(prev_total),
+                                      **_change(total.get("amount"), prev_total.get("amount"))}
+            if time_dim:
+                out["previous_period"]["note"] = "Rows are not compared when grouping by date; the totals are."
+    if any(d in ("state", "city") for d in dims):
+        out["note_location"] = ("State / city come from what learners and leads typed; (unknown) means none of it "
+                                "was filled in or recognised.")
+    if len(_currencies(total.get("currencies"))) > 1:
+        out["note_currency"] = "Totals add up amounts in several currencies; group by currency to split them."
     return out
 
 
@@ -1519,8 +1780,15 @@ READ_SCHEMA: Dict[str, Any] = {
             "- who_owes (status: overdue (default) | outstanding; min_days_overdue?; sort: amount | days; limit, "
             "page): people who owe, with amount, oldest due date, days overdue, counsellor and course.\n"
             "- due_soon (days?: default 7, max 60; limit, page): installments and invoices falling due.\n"
-            "- collections (institute admins; from/to | days | period, compare_to?: previous_period): money "
-            "collected — totals, by day, by method and offline mode, by course, by counsellor, by currency.\n"
+            "- collections (institute admins; from/to | days | period, compare_to?: previous_period, date_basis?: "
+            "paid_on (default, the day the payment was made — offline and backfilled payments keep the date "
+            "entered) | recorded_on (when it was entered)): money collected — totals, by day, by method and "
+            "offline mode, by course, by counsellor, by currency. With `group_by` (1-2 of day, week, month, "
+            "method, course, counsellor, currency, source, list, state, city, list_tag:<key>) it returns rows "
+            "per group (limit up to 200) with subtotals, and with compare_to each row's previous-period figures — "
+            "e.g. revenue by state by month: group_by ['state', 'month']. state / city are worked out from the "
+            "payer's profile and lead-form PIN / state / city. This is every payment; crm_reports revenue counts "
+            "only converted leads (its reconciliation shows the gap).\n"
             "- converted_not_paid (window; limit, page): people converted in the window with no PAID payment here.\n"
             "- abandoned_checkouts (window, max 180 days; limit, page): failed or never-completed payment attempts "
             "with no later successful payment.\n"
@@ -1540,7 +1808,14 @@ READ_SCHEMA: Dict[str, Any] = {
                 "sort": {"type": "string", "enum": ["amount", "days"], "description": "who_owes: biggest amount "
                                                                                       "(default) or oldest due date."},
                 "compare_to": {"type": "string", "enum": ["previous_period", "none"],
-                               "description": "collections: also total the same number of days just before."},
+                               "description": "collections: also total the same number of days just before (with "
+                                              "group_by: per row too, except date rows)."},
+                "date_basis": {"type": "string", "enum": ["paid_on", "recorded_on"],
+                               "description": "collections: which day a payment counts on — paid_on (default) or "
+                                              "recorded_on."},
+                "group_by": {"type": "array", "items": {"type": "string"},
+                             "description": "collections: 1-2 of day, week, month, method, course, counsellor, "
+                                            "currency, source, list, state, city, list_tag:<key>."},
                 **_PAGE_PROPS,
             },
             "required": ["action"],

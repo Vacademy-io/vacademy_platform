@@ -15,7 +15,7 @@ and read the CRM reports, build custom reports and follow the live activity feed
 |---|---|---|---|
 | CRM: Leads | `crm_leads` | find, list, get, timeline, my_day, check_exists, catalog, automations, export | – |
 | | `crm_lead_activity` | log_interaction, add_note, schedule / reschedule / complete follow-up | opt-in |
-| | `crm_lead_edit` | set_status, set_tier, update_details, tag, untag | opt-in, two-step |
+| | `crm_lead_edit` | set_status, set_tier, update_details, tag, untag, tag_lists (admins: key → value tags on lead lists) | opt-in, two-step |
 | | `crm_team_edit` | assign_leads, reassign_from_counsellor, pause / resume routing | opt-in, two-step |
 | | `crm_lead_intake` | add_lead, import_leads | opt-in, two-step |
 | CRM: Calls | `crm_calls` | call log, transcripts, callbacks due, missed inbound, AI agents / queue / runs / status | – |
@@ -25,14 +25,20 @@ and read the CRM reports, build custom reports and follow the live activity feed
 | | `crm_meetings_edit` | book a meeting, log its outcome | opt-in, outbound |
 | CRM: Messages | `crm_messages` | message history, WhatsApp inbox, templates, can_message, escalations | – |
 | | `crm_send` | send an approved WhatsApp template or an email (institute template, or subject + body) to one lead, quota | opt-in, outbound |
-| CRM: Reports | `crm_reports` | overview, sources, campaigns, funnel, status changes, counsellors, workload, targets, calling, AI calling, follow-up aging, SLA breaches, stalled, unassigned, meetings, activity, revenue, UTM, custom reports (`custom_options`, `custom`), live activity (`live_feed`, `live_counts`) | – |
-| CRM: Payments | `crm_collections` | a lead's dues, who owes, due soon, converted but not paid, failed checkouts, collections (admins) | – |
+| CRM: Reports | `crm_reports` | overview, sources, campaigns, funnel, status changes, counsellors, workload, targets, calling, AI calling, follow-up aging, SLA breaches, stalled, unassigned, meetings, activity, revenue (with a reconciliation against collections), UTM, custom reports (`custom_options`, `custom`: incl. state / city, `list_tag:<key>`, `collected`, `converted_within_7d / 30d`), live activity (`live_feed`, `live_counts`) | – |
+| CRM: Payments | `crm_collections` | a lead's dues, who owes, due soon, converted but not paid, failed checkouts, collections (admins; `group_by` up to two of day / week / month / method / course / counsellor / currency / source / list / state / city / `list_tag:<key>`, per-row `compare_to`) | – |
 | | `crm_payment_reminders` | installment and invoice reminders (admins, ≤50 per batch), quota | opt-in, outbound |
 
 Not in v1: meeting cancel / reschedule and meeting outcomes as statuses, the engagement copilot inbox, onboarding
 flows, target editing, connector management, retrying an automation run,
 pausing / blasting a whole lead list, scheduled digest sends. There are no deals / pipeline value, call scripts,
 lead attachments or lead merge in the CRM, so the tools do not offer them.
+
+Money reports take `date_basis`: `paid_on` (default) counts a payment on the day it was made —
+`payment_log.date` when it was entered as another day than the record (offline / backfilled), else the record's
+own time — and `recorded_on` on `payment_log.created_at`. State and city come from `crm_geo`: the person's learner
+profile (PIN, region, city), else their lead-form PIN / state / city answers, resolved PIN circle → state named in
+the text → known city (aliases and close spellings).
 
 ## 2. Rules every CRM tool follows
 

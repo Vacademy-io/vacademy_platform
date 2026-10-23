@@ -37,6 +37,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from . import assistant_tools_crm_reports as rep
 from . import crm_data as cd
+from . import crm_geo as geo
 
 Result = Dict[str, Any]
 
@@ -107,8 +108,14 @@ DIMENSIONS: Dict[str, str] = {
                      "week of the event. Alias: week."),
     "created_month": ("Month (institute timezone) the lead was submitted; for activity metrics, the month of the "
                       "event. Alias: month."),
+    "state": geo.DEFINITION_STATE + " The person is the lead's.",
+    "city": geo.DEFINITION_CITY,
 }
 FIELD_PREFIX = "field:"
+#: list_tag:<key> — the value of a tag an admin set on the lead's list (state, course, channel …).
+TAG_PREFIX = "list_tag:"
+_TAG_KEY_RE = re.compile(r"^[a-z0-9_]{1,40}$")
+GEO_DIMS = ("state", "city")
 
 # ── metrics ──────────────────────────────────────────────────────────────
 
@@ -175,12 +182,31 @@ METRICS: Dict[str, Metric] = {
                                 "profile's counsellor). Time dimensions use the payment day. Amounts in several "
                                 "currencies are summed (see currencies).",
                       ("revenue", "payments", "currencies"), admin_only=True),
+    "collected": Metric(ACTIVITY, "Every PAID payment made to this institute (a plan bought through its invite links, "
+                                  "or its own invoices) in the window, whoever paid — the collections figure, which "
+                                  "revenue narrows to converted payers. Attributed like revenue: to the payer's first "
+                                  "live lead here, else a '(no lead)' row. Day = date_basis. Also returns "
+                                  "collected_payments.", ("collected", "collected_payments", "currencies"),
+                        admin_only=True),
+    "converted_within_7d": Metric(LEAD, "Leads submitted at least 7 days ago (and in the window) whose person "
+                                        "became CONVERTED within 7 days of submitting and is CONVERTED now.",
+                                  ("cw7", "mat7")),
+    "converted_within_7d_pct": Metric(LEAD, "converted_within_7d ÷ leads submitted at least 7 days ago, %: every "
+                                            "lead counted has had the full 7 days, so recent weeks compare fairly "
+                                            "with older ones (eligible_leads_7d is the base).", ("cw7", "mat7")),
+    "converted_within_30d": Metric(LEAD, "The same within 30 days of submitting, over leads submitted at least 30 "
+                                         "days ago.", ("cw30", "mat30")),
+    "converted_within_30d_pct": Metric(LEAD, "converted_within_30d ÷ leads submitted at least 30 days ago, % "
+                                             "(eligible_leads_30d is the base).", ("cw30", "mat30")),
 }
 CUSTOM_METRICS = tuple(METRICS)
+#: Metrics counting payments (they take date_basis).
+PAYMENT_METRICS = frozenset({"revenue", "collected"})
 #: Metrics that describe now, not the window.
 POINT_IN_TIME_METRICS = frozenset({"followups_overdue"})
 #: rate metric → the raw column its base is counted in (for min_base).
-_RATE_BASE = {"contacted_pct": "leads", "conversion_pct": "leads", "connect_rate": "calls"}
+_RATE_BASE = {"contacted_pct": "leads", "conversion_pct": "leads", "connect_rate": "calls",
+              "converted_within_7d_pct": "mat7", "converted_within_30d_pct": "mat30"}
 #: Lead metrics that are an outcome "as of now" (older cohorts have had longer to reach it).
 _OUTCOME_METRICS = frozenset({"contacted", "contacted_pct", "converted", "conversion_pct", "lost", "open"})
 
@@ -194,6 +220,12 @@ _LEAD_AGG: Dict[str, str] = {
     "avg_score": "ROUND(CAST(AVG(score) AS numeric), 1)",
     "median_first_response_minutes":
         "ROUND(CAST(percentile_cont(0.5) WITHIN GROUP (ORDER BY resp_min) AS numeric), 1)",
+    "cw7": ("COUNT(*) FILTER (WHERE st = 'CONVERTED' AND conv_at >= sub_at AND conv_at < sub_at + INTERVAL '7 days' "
+            "AND sub_at <= CAST(:now AS timestamp) - INTERVAL '7 days')"),
+    "mat7": "COUNT(*) FILTER (WHERE sub_at <= CAST(:now AS timestamp) - INTERVAL '7 days')",
+    "cw30": ("COUNT(*) FILTER (WHERE st = 'CONVERTED' AND conv_at >= sub_at AND conv_at < sub_at + INTERVAL '30 days' "
+             "AND sub_at <= CAST(:now AS timestamp) - INTERVAL '30 days')"),
+    "mat30": "COUNT(*) FILTER (WHERE sub_at <= CAST(:now AS timestamp) - INTERVAL '30 days')",
 }
 _ACTIVITY_AGG: Dict[str, str] = {
     "calls": "COUNT(*) FILTER (WHERE k = 'call')",
@@ -208,6 +240,8 @@ _ACTIVITY_AGG: Dict[str, str] = {
     "conversions": "COUNT(*) FILTER (WHERE k = 'conversion')",
     "revenue": "COALESCE(SUM(amount) FILTER (WHERE k = 'payment'), 0)",
     "payments": "COUNT(*) FILTER (WHERE k = 'payment')",
+    "collected": "COALESCE(SUM(amount) FILTER (WHERE k = 'payment_all'), 0)",
+    "collected_payments": "COUNT(*) FILTER (WHERE k = 'payment_all')",
     "currencies": "string_agg(DISTINCT currency, ',')",
 }
 #: activity column → the event kind (ev.k) it needs.
@@ -215,10 +249,10 @@ _BRANCH_OF: Dict[str, str] = {
     "calls": "call", "connected_calls": "call", "talk_seconds": "call", "ai_calls": "call", "human_calls": "call",
     "meetings": "meeting", "followups_created": "fu_created", "followups_completed": "fu_done",
     "followups_overdue": "fu_overdue", "conversions": "conversion", "revenue": "payment", "payments": "payment",
-    "currencies": "payment",
+    "currencies": "payment", "collected": "payment_all", "collected_payments": "payment_all",
 }
 #: Event kinds that can belong to a person with no live lead here.
-_PERSON_KINDS = ("conversion", "payment")
+_PERSON_KINDS = ("conversion", "payment", "payment_all")
 
 # ── lead-form fields ─────────────────────────────────────────────────────
 
@@ -516,6 +550,10 @@ class Plan:
     min_base: int = MIN_RATE_BASE
     bands: List[Dict[str, Any]] = dc_field(default_factory=list)
     notes: List[str] = dc_field(default_factory=list)
+    date_basis: str = "paid_on"
+    #: Location maps (crm_geo.bind_texts) and the lead-form fields holding a location, when grouping by state / city.
+    geo_params: Dict[str, Any] = dc_field(default_factory=dict)
+    geo_fields: geo.FieldIds = dc_field(default_factory=geo.FieldIds)
 
     @property
     def lead_metrics(self) -> List[str]:
@@ -748,6 +786,20 @@ async def _parse_filters(rq: "rep._Req", raw: Any, cache: Dict[str, Any]) -> Any
     return f
 
 
+def _tag_key(raw: Any) -> Optional[str]:
+    key = re.sub(r"[\s-]+", "_", str(raw or "").strip().lower())
+    return key if _TAG_KEY_RE.match(key) else None
+
+
+async def _geo(rq: "rep._Req", plan: Plan) -> Any:
+    """Bind the location maps (crm_geo) a state / city dimension reads: this institute's typed places, resolved."""
+    got = geo.prepare(lambda sql, params: rep._sql(rq, sql, params, timeout_ms=_TIMEOUT_MS), rq.inst)
+    if got is None:
+        return cd.err("query_failed")
+    plan.geo_fields, plan.geo_params = got
+    return plan
+
+
 def _window_given(args: Dict[str, Any]) -> bool:
     return any(args.get(k) for k in ("from", "to", "period", "days"))
 
@@ -773,9 +825,14 @@ async def _plan(rq: "rep._Req", cache: Dict[str, Any]) -> Any:
                 return f
             dims[i] = FIELD_PREFIX + f.key
             fields[dims[i]] = f
+        elif d.lower().startswith(TAG_PREFIX):
+            key = _tag_key(d[len(TAG_PREFIX):])
+            if not key:
+                return _bad("list_tag:<key> takes a tag key as custom_options lists it (letters, digits, _).")
+            dims[i] = TAG_PREFIX + key
         elif d not in DIMENSIONS:
             return _bad("Unknown dimension.", unknown=[cd.clean(d, 60)],
-                        allowed=list(DIMENSIONS) + list(TIME_ALIASES) + ["field:<field_key>"])
+                        allowed=list(DIMENSIONS) + list(TIME_ALIASES) + ["field:<field_key>", "list_tag:<key>"])
     if len(set(dims)) != len(dims):
         return _bad("group_by takes two different dimensions.")
     if sum(1 for d in dims if d in TIME_DIMS) > 1:
@@ -794,7 +851,13 @@ async def _plan(rq: "rep._Req", cache: Dict[str, Any]) -> Any:
     if len(metrics) > MAX_METRICS:
         return _bad(f"At most {MAX_METRICS} metrics per report.")
     if any(METRICS[m].admin_only for m in metrics) and not rq.admin:
-        return cd.err("admin_only", metric="revenue", message="Only an institute admin can see revenue.")
+        return cd.err("admin_only", metric=next(m for m in metrics if METRICS[m].admin_only),
+                      message="Only an institute admin can see revenue and collections.")
+    basis = cd.date_basis(args)
+    if cd.is_error(basis):
+        return basis
+    if args.get("date_basis") and not PAYMENT_METRICS & set(metrics):
+        return _bad("date_basis applies to the payment metrics (revenue, collected); none was asked for.")
     if "followups_overdue" in metrics and any(d in TIME_DIMS for d in dims):
         return _bad("followups_overdue counts open follow-ups overdue right now, so it cannot be grouped by date; "
                     "group it by another dimension, or ask for it in a separate report.")
@@ -829,7 +892,12 @@ async def _plan(rq: "rep._Req", cache: Dict[str, Any]) -> Any:
         return _bad("min_base is a whole number (0 to 1000).")
     if not 0 <= min_base <= 1000:
         return _bad("min_base is a whole number (0 to 1000).")
-    plan = Plan(dims, metrics, filters, _rows_limit(args, dims), sort_key, sort_desc, fields, min_base)
+    plan = Plan(dims, metrics, filters, _rows_limit(args, dims), sort_key, sort_desc, fields, min_base,
+                date_basis=basis)
+    if any(d in GEO_DIMS for d in dims):
+        placed = await _geo(rq, plan)
+        if cd.is_error(placed):
+            return placed
     if "tier" in dims or filters.tiers:
         bands = await _bands(rq, cache)
         if cd.is_error(bands):
@@ -901,6 +969,15 @@ def _dim_sql(dim: str, n: int, ts: Optional[str], plan: Plan, params: Dict[str, 
         if ts is None:  # activity: bucketed per event before the lead join (ea.t)
             return "ea.t", none, ""
         return _bucket_sql(dim, ts), none, ""
+    if dim in GEO_DIMS:
+        params.update(plan.geo_params)
+        joins, cols = geo.person_location_sql(f"gl{n}", "ar.user_id", "ar.id", plan.geo_fields, params)
+        loc_joins, state, city = geo.location_sql(f"geo{n}", cols)
+        return (state if dim == "state" else city), none, joins + loc_joins
+    if dim.startswith(TAG_PREFIX):
+        params[f"tag{n}"] = dim[len(TAG_PREFIX):]
+        return (f"CASE WHEN pg_input_is_valid(a.tags_json, 'jsonb') "
+                f"THEN NULLIF(left(btrim(CAST(a.tags_json AS jsonb) ->> CAST(:tag{n} AS text)), 60), '') END"), none, ""
     f = plan.fields[dim]
     params[f"fd{n}"] = list(f.ids)
     params.update(pii_phone=PII_PHONE, pii_email=PII_EMAIL, contact=CONTACT)
@@ -1073,13 +1150,19 @@ def lead_sql(rq: "rep._Req", plan: Plan, keep: Optional[Keep] = None) -> Tuple[s
     dims, joins = _dims_select(plan, "ar.submitted_at", params)
     cols = set(c for m in plan.lead_metrics for c in METRICS[m].columns)
     extra = ["ar.id AS lid"]
-    if cols & {"converted", "lost", "open"}:
+    cohort = bool(cols & {"cw7", "mat7", "cw30", "mat30"})
+    if cols & {"converted", "lost", "open"} or cohort:
         extra.append(f"{cd.STATUS_KEY_SQL} AS st")
     if "people" in cols:
         extra.append("COALESCE(ar.user_id, ar.id) AS person")
     first_response = bool(cols & {"contacted", "median_first_response_minutes"})
+    if first_response or cohort:
+        extra.append("ar.submitted_at AS sub_at")
     if first_response:
-        extra += ["ar.submitted_at AS sub_at", "ar.user_id AS uid", "ulp.id AS ulp_id"]
+        extra += ["ar.user_id AS uid", "ulp.id AS ulp_id"]
+    if cohort:
+        extra.append("ulp.converted_at AS conv_at")
+        params["now"] = rep._now_naive()
     if "avg_score" in cols:
         joins += "\nLEFT JOIN lead_score ls ON ls.audience_response_id = ar.id"
         extra.append("ls.raw_score AS score")
@@ -1117,7 +1200,17 @@ def _first_live_lead(alias: str, user: str, left: bool) -> str:
             f"    ) {alias} ON true")
 
 
-def _branches(kinds: Sequence[str], no_lead: bool) -> List[str]:
+#: A payment to this institute: a plan bought through one of its invites, or one of its invoices.
+_PAID_HERE = ("pl.payment_status = 'PAID' AND pl.payment_amount IS NOT NULL\n"
+              "      AND (EXISTS (SELECT 1 FROM user_plan up\n"
+              "                   JOIN enroll_invite ei ON ei.id = up.enroll_invite_id\n"
+              "                   WHERE up.id = pl.user_plan_id AND ei.institute_id = :inst)\n"
+              "           OR EXISTS (SELECT 1 FROM invoice_payment_log_mapping m\n"
+              "                      JOIN invoice i ON i.id = m.invoice_id\n"
+              "                      WHERE m.payment_log_id = pl.id AND i.institute_id = :inst))")
+
+
+def _branches(kinds: Sequence[str], no_lead: bool, basis: str = "paid_on") -> List[str]:
     out = []
     call_lead = "COALESCE(tcl.response_id, CASE WHEN tcl.subject_type = 'LEAD' THEN tcl.subject_id END)"
     call_at = "COALESCE(tcl.start_time, tcl.created_at)"
@@ -1150,19 +1243,20 @@ def _branches(kinds: Sequence[str], no_lead: bool) -> List[str]:
                        "pc.institute_id = :inst AND pc.conversion_status = 'CONVERTED' "
                        "AND pc.converted_at >= :w_from AND pc.converted_at < :w_to",
                        owner="pc.assigned_counselor_id"))
+    paid_at = cd.payment_at_sql(basis)
     if "payment" in kinds:
         frm = ("payment_log pl\n"
                "    JOIN user_lead_profile pu ON pu.user_id = pl.user_id AND pu.institute_id = :inst "
                "AND pu.conversion_status = 'CONVERTED'\n" + _first_live_lead("fl", "pl.user_id", no_lead))
-        out.append(_ev("payment", "fl.id", "pl.created_at", frm,
-                       "pl.payment_status = 'PAID' AND pl.payment_amount IS NOT NULL "
-                       "AND pl.created_at >= :w_from AND pl.created_at < :w_to\n"
-                       "      AND (EXISTS (SELECT 1 FROM user_plan up\n"
-                       "                   JOIN enroll_invite ei ON ei.id = up.enroll_invite_id\n"
-                       "                   WHERE up.id = pl.user_plan_id AND ei.institute_id = :inst)\n"
-                       "           OR EXISTS (SELECT 1 FROM invoice_payment_log_mapping m\n"
-                       "                      JOIN invoice i ON i.id = m.invoice_id\n"
-                       "                      WHERE m.payment_log_id = pl.id AND i.institute_id = :inst))",
+        out.append(_ev("payment", "fl.id", paid_at, frm,
+                       f"{paid_at} >= :w_from AND {paid_at} < :w_to AND {_PAID_HERE}",
+                       amount="pl.payment_amount", currency="pl.currency", owner="pu.assigned_counselor_id"))
+    if "payment_all" in kinds:
+        frm = ("payment_log pl\n"
+               "    LEFT JOIN user_lead_profile pu ON pu.user_id = pl.user_id AND pu.institute_id = :inst\n"
+               + _first_live_lead("fa", "pl.user_id", no_lead))
+        out.append(_ev("payment_all", "fa.id", paid_at, frm,
+                       f"{paid_at} >= :w_from AND {paid_at} < :w_to AND {_PAID_HERE}",
                        amount="pl.payment_amount", currency="pl.currency", owner="pu.assigned_counselor_id"))
     return out
 
@@ -1170,15 +1264,19 @@ def _branches(kinds: Sequence[str], no_lead: bool) -> List[str]:
 def _no_lead_rows(rq: "rep._Req", plan: Plan) -> bool:
     """Conversions / payments by a person with no live lead here get a '(no lead)' row: whole-institute callers,
     no lead filters."""
-    kinds = {_BRANCH_OF[c] for m in plan.activity_metrics for c in METRICS[m].columns}
-    return bool(kinds & set(_PERSON_KINDS)) and rq.scope.whole_institute and not plan.filters.any()
+    return bool(_kinds(plan) & set(_PERSON_KINDS)) and rq.scope.whole_institute and not plan.filters.any()
+
+
+def _kinds(plan: Plan) -> set:
+    """The event kinds the activity metrics need (currencies follows whichever payment kind is asked for)."""
+    return {_BRANCH_OF[c] for m in plan.activity_metrics for c in METRICS[m].columns if c != "currencies"}
 
 
 def activity_sql(rq: "rep._Req", plan: Plan, keep: Optional[Keep] = None) -> Tuple[str, Dict[str, Any]]:
     pred, params = cd.scope_sql(rq.scope)
     params.update(rep._utc_bounds(rq))
     cols = [c for m in plan.activity_metrics for c in METRICS[m].columns]
-    kinds = list(dict.fromkeys(_BRANCH_OF[c] for c in cols))
+    kinds = [k for k in dict.fromkeys(_BRANCH_OF[c] for c in cols if c != "currencies")]
     no_lead = _no_lead_rows(rq, plan)
     if "call" in kinds:
         params["connected"] = rep._connected_statuses(rq.ctx)
@@ -1206,7 +1304,7 @@ def activity_sql(rq: "rep._Req", plan: Plan, keep: Optional[Keep] = None) -> Tup
         frm = f"FROM ea\n    JOIN audience_response ar ON ar.id = ea.lead_id\n{cd.LEAD_OWNER_JOINS}{joins}{fjoins}"
         where = "\n      AND ".join(lead_where)
     # Events are summed per lead (and date bucket) first, so each lead's dimensions are read once.
-    sql = ("WITH ev AS (\n" + "\n    UNION ALL\n".join(_branches(kinds, no_lead)) + "\n),\n"
+    sql = ("WITH ev AS (\n" + "\n    UNION ALL\n".join(_branches(kinds, no_lead, plan.date_basis)) + "\n),\n"
            f"ea AS (\n    SELECT {ea_cols.format(bucket=bucket)},\n           {per_lead}\n"
            f"    FROM ev\n    GROUP BY {ea_group}\n),\n"
            f"base AS (\n    SELECT {dims}, ea.lead_id AS lid, {', '.join('ea.' + c for c in used)}\n"
@@ -1327,6 +1425,16 @@ def _metric_values(raw: Dict[str, Any], metrics: Sequence[str]) -> Dict[str, Any
         elif m == "revenue":
             out[m] = round(float(raw.get("revenue") or 0), 2)
             out["payments"] = rep._num(raw.get("payments"))
+        elif m == "collected":
+            out[m] = round(float(raw.get("collected") or 0), 2)
+            out["collected_payments"] = rep._num(raw.get("collected_payments"))
+        elif m.startswith("converted_within_"):
+            days = m[len("converted_within_"):].split("d")[0]
+            if m.endswith("_pct"):
+                out[m] = rep._rate(raw.get(f"cw{days}"), raw.get(f"mat{days}"))
+                out[f"eligible_leads_{days}d"] = rep._num(raw.get(f"mat{days}"))
+            else:
+                out[m] = rep._num(raw.get(f"cw{days}"))
         elif m in ("avg_score", "median_first_response_minutes"):
             v = raw.get(m)
             out[m] = None if v is None else rep._num(v)
@@ -1356,6 +1464,10 @@ def _dim_value(dim: str, n: int, key: Optional[str], grid: Grid, names: Dict[str
         return "(other values)"
     if no_lead:
         return "(no lead)"
+    if dim in GEO_DIMS:
+        return key or "(unknown)"
+    if dim.startswith(TAG_PREFIX):
+        return cd.clean(key, 60) if key else "(untagged)"
     if dim.startswith(FIELD_PREFIX):
         if key == CONTACT:
             return "(contact details, hidden)"
@@ -1482,8 +1594,13 @@ def _definitions(plan: Plan, rq: "rep._Req") -> Dict[str, str]:
                                      "most common spelling; (no answer) when the lead has none; answers that look "
                                      "like a phone number or an email address are counted under (contact details, "
                                      "hidden).")
+        elif d.startswith(TAG_PREFIX):
+            out[f"dimension:{d}"] = (f"The value of the tag '{d[len(TAG_PREFIX):]}' an admin set on the lead's list "
+                                     "(campaign); (untagged) when the list has no such tag.")
         else:
             out[f"dimension:{d}"] = DIMENSIONS[d]
+    if PAYMENT_METRICS & set(plan.metrics):
+        out["date_basis"] = f"{plan.date_basis}. " + cd.definition("date_basis")
     if plan.lead_metrics:
         out["lead_basis"] = ("Lead metrics count the leads SUBMITTED in the window (not deleted, not opted out), with "
                              "their outcome as of now.")
@@ -1550,7 +1667,7 @@ def _format(rq: "rep._Req", plan: Plan, grid: Grid, names: Dict[str, str],
                      "(min_base changes this).")
     rows = [_row(plan, key, vals, grid, names, labels) for key, vals in shown]
     totals = _metric_values(grid.totals, plan.metrics)
-    if "revenue" in plan.metrics:
+    if PAYMENT_METRICS & set(plan.metrics):
         cur = sorted({c for c in str(grid.totals.get("currencies") or "").split(",") if c})
         totals["currencies"] = cur
     return rows, totals, more, [k for k, _ in shown], notes
@@ -1631,8 +1748,20 @@ async def run_custom(rq: "rep._Req", compare: bool) -> Result:
             notes.append(partial)
     if "followups_overdue" in plan.metrics:
         notes.append("followups_overdue describes now, not the window.")
-    if "revenue" in plan.metrics and len(totals.get("currencies") or []) > 1:
-        notes.append("Revenue mixes several currencies; see totals.currencies.")
+    if PAYMENT_METRICS & set(plan.metrics) and len(totals.get("currencies") or []) > 1:
+        notes.append("Payment amounts mix several currencies; see totals.currencies.")
+    young = sorted({int(m[len("converted_within_"):].split("d")[0]) for m in plan.metrics
+                    if m.startswith("converted_within_")})
+    for days in young:
+        cut = (rep._now_naive() - timedelta(days=days)).date()
+        if rq.window.end.date() - timedelta(days=1) > cut:
+            notes.append(f"converted_within_{days}d counts only leads submitted on or before about {cut.isoformat()} "
+                         f"(they have had the full {days} days); later leads are left out of it, not counted as "
+                         "unconverted.")
+    if any(d in GEO_DIMS for d in plan.dims):
+        notes.append("State / city come from what learners and leads typed (profile and lead-form PIN, state, city); "
+                     "(unknown) means none of it was filled in or recognised. Use crm_collections(action="
+                     "'collections', group_by=['state']) for every payer, including people with no lead.")
     if plan.filters.fields and plan.lead_metrics and not rep._num(grid.totals.get(plan.lead_metrics[0])):
         notes.append("No lead matched the form-field filter; check the spelling against custom_options values, or "
                      "use {contains: …} (multi-select answers are stored as lists).")
@@ -1730,6 +1859,35 @@ async def _compare(rq: "rep._Req", plan: Plan, grid: Grid, shown_keys: List[Key]
 
 # ── custom_options ───────────────────────────────────────────────────────
 
+LIST_TAGS_SQL = """
+WITH tagged AS MATERIALIZED (
+    SELECT CAST(a.tags_json AS jsonb) AS tags FROM audience a
+    WHERE a.institute_id = :inst AND a.tags_json IS NOT NULL AND pg_input_is_valid(a.tags_json, 'jsonb')
+)
+SELECT t.key, t.value, COUNT(*) AS lists
+FROM tagged
+CROSS JOIN LATERAL jsonb_each_text(CASE WHEN jsonb_typeof(tagged.tags) = 'object' THEN tagged.tags
+                                        ELSE '{}'::jsonb END) AS t(key, value)
+GROUP BY t.key, t.value
+ORDER BY t.key, COUNT(*) DESC, t.value
+LIMIT 500
+"""
+
+
+def list_tags(rq: "rep._Req") -> List[Dict[str, Any]]:
+    """Tag keys set on this institute's lists, each with its values and how many lists carry them."""
+    found = rep._sql(rq, LIST_TAGS_SQL, {"inst": rq.inst}) or []
+    out: Dict[str, Dict[str, Any]] = {}
+    for r in found:
+        key = _tag_key(r.get("key"))
+        if not key:
+            continue
+        entry = out.setdefault(key, {"dimension": TAG_PREFIX + key, "key": key, "values": []})
+        if len(entry["values"]) < 30:
+            entry["values"].append({"value": cd.clean(r.get("value"), 60), "lists": rep._num(r.get("lists"))})
+    return list(out.values())
+
+
 def _options_window(rq: "rep._Req") -> "rep._Req":
     if _window_given(rq.args):
         return rq
@@ -1787,6 +1945,7 @@ async def run_options(rq: "rep._Req") -> Result:
     tiers = rep._sql(rq, TIERS_SQL, {"inst": rq.inst})
     if statuses is None or tiers is None:
         return cd.err("query_failed")
+    tags = list_tags(rq)
     present = cd.institute_sources(rq.ctx)
     calls_on = cd.feature_on(rq.ctx, _CALLS)
     metrics = []
@@ -1801,6 +1960,7 @@ async def run_options(rq: "rep._Req") -> Result:
     out: Result = {
         "report": "custom_options",
         "dimensions": [{"dimension": d, "definition": t} for d, t in DIMENSIONS.items()],
+        "list_tags": tags,
         "form_fields": form,
         "form_fields_window": vq.window.as_dict(),
         "contact_fields_hidden": len(hidden),
@@ -1834,7 +1994,10 @@ async def run_options(rq: "rep._Req") -> Result:
                                             "with one, the top `limit` values"),
                    "window": "at most 366 days", "time_buckets": f"at most {MAX_TIME_BUCKETS}",
                    "min_base": f"rate sorts rank rows with fewer than {MIN_RATE_BASE} leads / calls last by default"},
-        "definitions": {"form_fields": ("Lead-form fields of this institute, with their usable_as and (for fields "
+        "definitions": {"list_tags": ("Tags admins set on lead lists (state, course, channel …): group by "
+                                      "list_tag:<key>; values are the lists' tag values with how many lists use "
+                                      "each. Empty when no list is tagged."),
+                        "form_fields": ("Lead-form fields of this institute, with their usable_as and (for fields "
                                         f"that can group a report) their {TOP_VALUES} most common answers on leads "
                                         "you can see submitted in form_fields_window (this action takes the same "
                                         "window arguments; default the last 90 days). Free-text fields and fields "

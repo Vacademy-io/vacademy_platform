@@ -154,7 +154,8 @@ CRM_REPORTS_SCHEMA: Dict[str, Any] = {
             "one alias (meta, google, website, walk-in, manual, phone, referral…); every figure lists the raw "
             "source keys it counted.\n"
             "- campaigns: per lead list (campaign): leads, converted, lost, unassigned.\n"
-            "- funnel: per status, leads that entered it in the window and leads sitting in it now.\n"
+            "- funnel: per status, leads that entered it in the window, how many of the window's leads sit in it "
+            "now (current_from_window) and every lead sitting in it now (current_all_time).\n"
             "- status_changes: who changed lead statuses, to what.\n"
             "- counsellors: per counsellor: leads, conversions, open leads, calls (AI vs human), rating.\n"
             "- workload: right now, per owner: open leads, new this week, open and overdue follow-ups.\n"
@@ -167,16 +168,22 @@ CRM_REPORTS_SCHEMA: Dict[str, Any] = {
             "- unassigned: open leads with no counsellor.\n"
             "- meetings: booked meetings per host and status.\n"
             "- activity: per staff member: notes, calls, status changes, follow-ups created / closed.\n"
-            "- revenue (institute admins): payments by converted leads.\n"
+            "- revenue (institute admins): payments by converted leads, with a reconciliation against every "
+            "payment collected (crm_collections). `date_basis`: paid_on (default) | recorded_on.\n"
             "- utm (institute admins): UTM campaign attribution.\n"
             "- custom: a report the fixed ones above do not cover — group leads by up to two dimensions (source, "
-            "source_alias, list, owner, status, tier, created_day / created_week / created_month (or day / week / "
-            "month), or a lead-form field as `field:<field_key>`, e.g. city or course interest; `group_by: []` gives "
-            "totals only) and pick 1-8 `metrics`: lead metrics (leads, people, contacted, contacted_pct, converted, "
-            "conversion_pct, lost, open, avg_score, median_first_response_minutes — over leads submitted in the "
-            "window, outcome as of now) and activity metrics (calls, connected_calls, connect_rate, talk_minutes, "
-            "ai_calls, human_calls, meetings, followups_created, followups_completed, followups_overdue, conversions "
-            "= conversions made in the window, revenue for admins — events in the window on those leads). `owner` is "
+            "source_alias, list, owner, status, tier, state, city, created_day / created_week / created_month (or "
+            "day / week / month), a lead-form field as `field:<field_key>`, e.g. course interest, or a tag on the "
+            "lead's list as `list_tag:<key>`; `group_by: []` gives totals only) and pick 1-8 `metrics`: lead metrics "
+            "(leads, people, contacted, contacted_pct, converted, conversion_pct, lost, open, avg_score, "
+            "median_first_response_minutes — over leads submitted in the window, outcome as of now; "
+            "converted_within_7d / _30d and their _pct — conversions within N days of submitting, over leads old "
+            "enough to have had N days, so recent cohorts compare fairly) and activity metrics (calls, "
+            "connected_calls, connect_rate, talk_minutes, ai_calls, human_calls, meetings, followups_created, "
+            "followups_completed, followups_overdue, conversions = conversions made in the window; for admins "
+            "revenue = payments by converted payers and collected = every payment, both on `date_basis` — events in "
+            "the window on those leads). state / city are worked out from the lead's profile and form PIN / state / "
+            "city. `owner` is "
             "the LEAD's counsellor, also for calls; for calls or work per person who did them use calling or "
             "activity. `filters` narrows by status, tier, list, source, owner or form-field answers, e.g. "
             "{\"field\": {\"city\": \"Pune\", \"course\": {\"contains\": \"neet\"}}}; `sort` (rates rank "
@@ -234,8 +241,9 @@ CRM_REPORTS_SCHEMA: Dict[str, Any] = {
                                          "(default 50, max 200); live_feed: events listed (default 50, max 200)."},
                 "group_by": {"type": "array", "items": {"type": "string"},
                              "description": "custom: 0 (totals only), 1 or 2 dimensions — source, source_alias, "
-                                            "list, owner, status, tier, created_day (day), created_week (week), "
-                                            "created_month (month), or field:<field_key> from custom_options."},
+                                            "list, owner, status, tier, state, city, created_day (day), created_week "
+                                            "(week), created_month (month), field:<field_key> or list_tag:<key> "
+                                            "from custom_options."},
                 "metrics": {"type": "array", "items": {"type": "string"},
                             "description": "custom: 1-8 metrics from custom_options (default leads, converted, "
                                            "conversion_pct)."},
@@ -263,6 +271,10 @@ CRM_REPORTS_SCHEMA: Dict[str, Any] = {
                          "description": "custom: {metric: <a metric or dimension asked for>, desc: true|false}; "
                                         "default the first metric, descending (date dimensions: by date).",
                          "properties": {"metric": {"type": "string"}, "desc": {"type": "boolean"}}},
+                "date_basis": {"type": "string", "enum": ["paid_on", "recorded_on"],
+                               "description": "revenue, and custom payment metrics: the day a payment counts on — "
+                                              "paid_on (default; offline and backfilled payments keep the date "
+                                              "entered) or recorded_on (when it was entered)."},
                 "min_base": {"type": "integer",
                              "description": "custom: when sorting by a rate, groups with fewer leads / calls than "
                                             "this rank last (default 5, 0 = off)."},
@@ -304,13 +316,14 @@ _DEFS: Dict[str, str] = {
                  "(notes, call logs, meetings, outreach) on a lead; calls = telephony calls placed on a lead; "
                  "status changes; follow-ups created and closed."),
     "revenue": ("PAID payments made to this institute (a plan bought through its invite links, or its own "
-                "invoices) by people whose lead profile here is CONVERTED, by payment date in the window. Source = "
+                "invoices) by people whose lead profile here is CONVERTED, by payment day in the window (see date_basis). "
+                "Source = "
                 "the person's first lead source here; counsellor = their current owner. Amounts in several "
                 "currencies are summed (see currency)."),
     "utm": ("UTM touches recorded from tracked links in the window, counted per person; enrolled = of those "
             "people, how many hold an active enrolment now. UTM values come from the links themselves."),
     "targets": ("Workbench targets (set per counsellor in the CRM) vs completed: conversions and leads assigned "
-                "from the counsellor performance report (UTC days), calls made from the call log. CUSTOM targets "
+                "from the counsellor performance report, calls made from the call log. CUSTOM targets "
                 "only match a period with exactly the same start and end."),
     "rating": "The counsellor rating the CRM computes (score, conversion and velocity parts, sample size).",
     "scope": "Only leads you can see in the CRM are counted.",
@@ -570,6 +583,21 @@ FROM audience_response ar
 {joins}
 WHERE {where}
 GROUP BY 2
+UNION ALL
+SELECT 'window_stock', {status}, COUNT(*)
+FROM audience_response ar
+{joins}
+WHERE {where} AND ar.submitted_at >= :w_from AND ar.submitted_at < :w_to
+GROUP BY 2
+"""
+
+#: Leads submitted in the window, by the stage they are in now.
+WINDOW_STOCK_SQL = """
+SELECT {status} AS status_key, COUNT(*) AS n
+FROM audience_response ar
+{joins}
+WHERE {where}
+GROUP BY 1
 """
 
 STATUS_CATALOG_SQL = """
@@ -894,7 +922,7 @@ async def _overview(rq: _Req) -> Result:
         totals = {k: t.get(k) for k in ("total_leads", "converted_leads", "lost_leads", "active_leads",
                                         "conversion_rate", "responded_leads", "avg_response_minutes",
                                         "tat_met_count", "tat_met_rate", "overdue_leads")}
-        return {"basis": "admin-core leads summary", "window_tz": "UTC", "data": {
+        return {"basis": "admin-core leads summary", "data": {
             "totals": totals,
             "by_status": [{"status": s.get("status_key"), "label": cd.clean(s.get("label")), "count": s.get("count")}
                           for s in data.get("by_status") or []],
@@ -904,7 +932,7 @@ async def _overview(rq: _Req) -> Result:
             "trend": _by_month([{"date": d.get("date"), "leads": d.get("submitted"), "converted": d.get("converted")}
                                 for d in data.get("trend_by_day") or []], ("leads", "converted"))},
             "definition": _defs("leads", "converted", "lost", "status", "tier", "first_response", "tat_breach",
-                                utc_days=cd.definition("utc_days"),
+                                window=cd.definition("window"),
                                 active_leads="Leads in the window whose status is neither CONVERTED nor LOST.",
                                 overdue_leads="Leads currently flagged overdue for first response or follow-up.")}
     where, params = _lead_where(rq)
@@ -1004,23 +1032,39 @@ async def _campaigns(rq: _Req) -> Result:
                             note="Lists are ordered by leads in the window; `limit` sets how many are shown.")}
 
 
+_FUNNEL_DEFS = {
+    "current_from_window": "Leads submitted in the window that are in the stage now.",
+    "current_all_time": ("Every live lead in the stage now, whenever it was submitted (not limited to the window, "
+                         "so it is not comparable with entered)."),
+}
+
+
 async def _funnel(rq: _Req) -> Result:
     if _endpoint_ok(rq):
         data = await _get(rq, FUNNEL_PATH)
         if cd.is_error(data):
             return data
+        where, params = _lead_where(rq)
+        held = _sql(rq, WINDOW_STOCK_SQL.format(status=_status(), joins=cd.LEAD_OWNER_JOINS,
+                                                where="\n  AND ".join(where)), params)
+        if held is None:
+            return cd.err("query_failed")
+        in_window = {r["status_key"]: _num(r.get("n")) for r in held}
         stages = [{"status": s.get("status_key"), "label": cd.clean(s.get("label")), "entered": s.get("entered"),
-                   "current": s.get("current_stock"), "median_days_in_stage": s.get("median_days_in_stage"),
+                   "current_from_window": in_window.get(s.get("status_key"), 0),
+                   "current_all_time": s.get("current_stock"), "median_days_in_stage": s.get("median_days_in_stage"),
                    "advanced": s.get("advanced"), "advanced_rate": s.get("advanced_rate"),
                    "regressed": s.get("regressed")} for s in data.get("stages") or []]
         overall = data.get("overall") or {}
         return {"basis": "admin-core funnel velocity", "data": {
             "totals": {"entered": sum(_num(s["entered"]) for s in stages),
+                       "current_from_window": sum(in_window.values()),
                        "conversion_rate": overall.get("conversion_rate"),
                        "median_days_to_convert": overall.get("median_days_to_convert")},
             "stages": stages},
             "definition": _defs(entered="Status changes into the stage in the window (lead status history).",
-                                current="Leads in the stage now.",
+                                current_from_window=_FUNNEL_DEFS["current_from_window"],
+                                current_all_time=_FUNNEL_DEFS["current_all_time"],
                                 advanced="Leads that moved on to a later stage (by display order).",
                                 conversion_rate="Leads converted in the window ÷ leads submitted in the window, %.")}
     where, params = _lead_where(rq, window=False)
@@ -1031,17 +1075,19 @@ async def _funnel(rq: _Req) -> Result:
         return cd.err("query_failed")
     entered = {r["status_key"]: _num(r.get("n")) for r in found if r.get("kind") == "entered"}
     stock = {r["status_key"]: _num(r.get("n")) for r in found if r.get("kind") == "stock"}
+    held = {r["status_key"]: _num(r.get("n")) for r in found if r.get("kind") == "window_stock"}
     order = [c["status_key"] for c in catalog]
     labels = {c["status_key"]: cd.clean(c.get("label")) for c in catalog}
     keys = order + sorted(k for k in set(entered) | set(stock) if k and k not in order)
-    stages = [{"status": k, "label": labels.get(k), "entered": entered.get(k, 0), "current": stock.get(k, 0)}
+    stages = [{"status": k, "label": labels.get(k), "entered": entered.get(k, 0),
+               "current_from_window": held.get(k, 0), "current_all_time": stock.get(k, 0)}
               for k in keys if entered.get(k) or stock.get(k) or k in labels]
     return {"basis": "scoped query", "data": {
-        "totals": {"entered": sum(entered.values()), "current": sum(stock.values())}, "stages": stages},
+        "totals": {"entered": sum(entered.values()), "current_from_window": sum(held.values()),
+                   "current_all_time": sum(stock.values())}, "stages": stages},
         "definition": _defs("status", "scope",
                             entered="Status changes into the stage in the window (lead status history), deleted "
-                                    "and opted-out leads excluded.",
-                            current="Live leads in the stage now.")}
+                                    "and opted-out leads excluded.", **_FUNNEL_DEFS)}
 
 
 async def _status_changes(rq: _Req) -> Result:
@@ -1124,15 +1170,14 @@ def _per_counsellor_calls(found: List[Dict[str, Any]]) -> Dict[Any, Dict[str, in
 async def _counsellors(rq: _Req) -> Result:
     rows_out: Dict[Any, Dict[str, Any]] = {}
     basis = "scoped query"
-    window_tz = None
     defs = _defs("leads", "converted", "open", "owner", "ai_call", "connected_calls", "rating", "scope")
     if _endpoint_ok(rq, source_ok=rq.source_keys is not None and len(rq.source_keys) == 1):
         data = await _get(rq, COUNSELLOR_PERFORMANCE_PATH,
                           extra={"sourceType": rq.source_keys[0]} if rq.source_keys else None)
         if cd.is_error(data):
             return data
-        basis, window_tz = "admin-core counsellor performance + scoped queries", "UTC"
-        defs.update(utc_days=cd.definition("utc_days"),
+        basis = "admin-core counsellor performance + scoped queries"
+        defs.update(window=cd.definition("window"),
                     leads_responded="Leads with a first staff response.",
                     tat_met_rate="Responded leads answered within the TAT, %.")
         for r in data.get("rows") or []:
@@ -1178,7 +1223,7 @@ async def _counsellors(rq: _Req) -> Result:
     out.sort(key=lambda x: (-_num(x.get("leads")), str(x["counsellor"].get("name") or "")))
     totals = {"leads": sum(_num(r.get("leads")) for r in out), "converted": sum(_num(r.get("converted")) for r in out)}
     out, more = _cap(out, rq.limit)
-    return {"basis": basis, **({"window_tz": window_tz} if window_tz else {}), "data": {
+    return {"basis": basis, "data": {
         "totals": totals, "by_counsellor": out, **({"more_counsellors": more} if more else {})},
         "definition": defs}
 
@@ -1572,38 +1617,58 @@ async def _activity(rq: _Req) -> Result:
             "definition": _defs("activity", "scope")}
 
 
-#: PAID payments made to THIS institute (a plan bought through one of its invites, or one of its invoices) by
-#: people whose lead profile here is CONVERTED, grouped by owner / first source / local day.
+#: PAID payments made to THIS institute (a plan bought through one of its invites, or one of its invoices) on the
+#: date basis {at}: by people whose lead profile here is CONVERTED, grouped by owner / first source / local day
+#: (part NULL), and every payment split by who made it (part 'split') to reconcile with the collections figure.
 REVENUE_SQL = """
 WITH paid AS (
     SELECT pl.id, pl.user_id, pl.payment_amount AS amount, pl.currency,
-           (pl.created_at AT TIME ZONE 'UTC' AT TIME ZONE :tz)::date AS day
+           CAST(({at} AT TIME ZONE 'UTC') AT TIME ZONE :tz AS date) AS day
     FROM payment_log pl
     WHERE pl.payment_status = 'PAID' AND pl.payment_amount IS NOT NULL
-      AND pl.created_at >= :w_from AND pl.created_at < :w_to
+      AND {at} >= :w_from AND {at} < :w_to
       AND (EXISTS (SELECT 1 FROM user_plan up JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
                    WHERE up.id = pl.user_plan_id AND ei.institute_id = :inst)
            OR EXISTS (SELECT 1 FROM invoice_payment_log_mapping m JOIN invoice i ON i.id = m.invoice_id
                       WHERE m.payment_log_id = pl.id AND i.institute_id = :inst))
-), conv AS (
-    SELECT ulp.user_id, ulp.assigned_counselor_id AS owner_id,
+), tagged AS (
+    SELECT p.*, ulp.user_id IS NOT NULL AS has_profile, ulp.conversion_status = 'CONVERTED' AS is_conv,
+           ulp.assigned_counselor_id AS owner_id,
            (SELECT COALESCE(ar.source_type, 'UNKNOWN') FROM audience_response ar
               JOIN audience a ON a.id = ar.audience_id AND a.institute_id = :inst
-             WHERE ar.user_id = ulp.user_id ORDER BY ar.submitted_at ASC NULLS LAST LIMIT 1) AS source_type
-    FROM user_lead_profile ulp
-    WHERE ulp.institute_id = :inst AND ulp.conversion_status = 'CONVERTED'
+             WHERE ar.user_id = p.user_id ORDER BY ar.submitted_at ASC NULLS LAST LIMIT 1) AS source_type
+    FROM paid p
+    LEFT JOIN user_lead_profile ulp ON ulp.user_id = p.user_id AND ulp.institute_id = :inst
 )
-SELECT GROUPING(c.owner_id) AS g_owner, GROUPING(c.source_type) AS g_source, GROUPING(p.day) AS g_day,
-       c.owner_id, c.source_type, p.day, SUM(p.amount) AS revenue, COUNT(*) AS payments,
-       COUNT(DISTINCT p.user_id) AS paying_leads, string_agg(DISTINCT p.currency, ',') AS currencies
-FROM paid p JOIN conv c ON c.user_id = p.user_id
-GROUP BY GROUPING SETS ((c.owner_id), (c.source_type), (p.day), ())
+SELECT CAST(NULL AS text) AS part, GROUPING(owner_id) AS g_owner, GROUPING(source_type) AS g_source,
+       GROUPING(day) AS g_day, owner_id, source_type, day, SUM(amount) AS revenue, COUNT(*) AS payments,
+       COUNT(DISTINCT user_id) AS paying_leads, string_agg(DISTINCT currency, ',') AS currencies
+FROM tagged WHERE is_conv
+GROUP BY GROUPING SETS ((owner_id), (source_type), (day), ())
+UNION ALL
+SELECT 'split', 1, 1, 1, NULL,
+       CASE WHEN is_conv THEN 'converted' WHEN has_profile THEN 'lead_not_converted' ELSE 'no_lead_profile' END,
+       NULL, SUM(amount), COUNT(*), COUNT(DISTINCT user_id), string_agg(DISTINCT currency, ',')
+FROM tagged
+GROUP BY 6
 """
+
+_RECONCILE_PARTS = {
+    "converted": "Payers whose lead profile here is CONVERTED: this report's revenue.",
+    "lead_not_converted": ("Payers who have a lead profile here in another status (the lead was never marked "
+                           "Converted, or was moved on): counted by collections, not by revenue."),
+    "no_lead_profile": ("Payers with no lead profile here (enrolled directly, imported, or paying an invoice): "
+                        "counted by collections, not by revenue."),
+}
 
 
 async def _revenue(rq: _Req) -> Result:
+    basis = cd.date_basis(rq.args)
+    if cd.is_error(basis):
+        return basis
     b = _utc_bounds(rq)
-    found = _sql(rq, REVENUE_SQL, {k: b[k] for k in ("inst", "tz", "w_from", "w_to")})
+    found = _sql(rq, REVENUE_SQL.format(at=cd.payment_at_sql(basis)),
+                 {k: b[k] for k in ("inst", "tz", "w_from", "w_to")})
     if found is None:
         return cd.err("query_failed")
 
@@ -1613,6 +1678,8 @@ async def _revenue(rq: _Req) -> Result:
         return {"revenue": revenue, "payments": _num(r.get("payments")), "paying_leads": paying,
                 "avg_deal_value": round(revenue / paying, 2) if paying else None}
 
+    split = [r for r in found if r.get("part") == "split"]
+    found = [r for r in found if r.get("part") is None]
     total = next((r for r in found if r.get("g_owner") and r.get("g_source") and r.get("g_day")), {})
     owners = [r for r in found if r.get("g_owner") == 0]
     display = await _named(rq, [r.get("owner_id") for r in owners])
@@ -1623,12 +1690,25 @@ async def _revenue(rq: _Req) -> Result:
     trend = sorted(({"date": str(r.get("day")), **money(r)} for r in found if r.get("g_day") == 0),
                    key=lambda x: x["date"])
     currencies = sorted({c for c in str(total.get("currencies") or "").split(",") if c})
-    return {"basis": "scoped query", "data": {
+    parts = {r.get("source_type"): r for r in split}
+    collected = round(sum(float(r.get("revenue") or 0) for r in split), 2)
+    reconciliation = {
+        "collected_all_payments": collected,
+        "revenue_converted_payers": round(float((parts.get("converted") or {}).get("revenue") or 0), 2),
+        "by_payer": [{"payers": k, "amount": round(float((parts.get(k) or {}).get("revenue") or 0), 2),
+                      "payments": _num((parts.get(k) or {}).get("payments")),
+                      "people": _num((parts.get(k) or {}).get("paying_leads"))} for k in _RECONCILE_PARTS],
+        "note": ("collected_all_payments is every PAID payment to this institute in the window on the same date "
+                 "basis — what crm_collections(action='collections') reports as collected. revenue counts only "
+                 "payers marked Converted; by_payer splits the difference."),
+    }
+    return {"basis": "scoped query", "date_basis": basis, "data": {
         "currency": currencies[0] if len(currencies) == 1 else currencies or None,
         "totals": money(total) if total else money({}),
         "by_source": by_source[:_MAX_ROWS], "by_counsellor": by_counsellor[:_MAX_ROWS],
-        "trend": _by_month(trend, ("revenue", "payments"))},
-        "definition": _defs("revenue")}
+        "trend": _by_month(trend, ("revenue", "payments")),
+        "reconciliation": reconciliation},
+        "definition": {**_defs("revenue"), "date_basis": cd.definition("date_basis"), **_RECONCILE_PARTS}}
 
 
 async def _utm(rq: _Req) -> Result:
@@ -2425,12 +2505,9 @@ async def _run(action: str, args: Dict[str, Any], ctx: ToolContext) -> Result:
     if cd.is_error(body) or action in _SELF_SHAPED:
         return body
     point_in_time = body.pop("point_in_time", False) or action in _POINT_IN_TIME
-    window_tz = body.pop("window_tz", None)
     win = w.as_dict()
     if point_in_time:
         win = {"as_of": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "tz": w.tz, "label": "now"}
-    elif window_tz:
-        win["tz"] = window_tz
     out: Result = {"report": action, "window": win, "definition": body.pop("definition", {}),
                    "data": body.pop("data", {}), "basis": body.pop("basis", None), "scope": s.summary()}
     out.update(body)
@@ -2447,10 +2524,7 @@ async def _run(action: str, args: Dict[str, Any], ctx: ToolContext) -> Result:
             if cd.is_error(prev):
                 out["comparison"] = {"available": False, "reason": prev.get("message") or prev.get("error")}
             else:
-                pw = prev_w.as_dict()
-                if window_tz:
-                    pw["tz"] = window_tz
-                out["comparison"] = {"previous_window": pw,
+                out["comparison"] = {"previous_window": prev_w.as_dict(),
                                      "previous_totals": (prev.get("data") or {}).get("totals"),
                                      "changes": _deltas(out["data"].get("totals") or {},
                                                         (prev.get("data") or {}).get("totals") or {})}

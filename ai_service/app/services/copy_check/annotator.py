@@ -3547,13 +3547,18 @@ def _place_question_scores(doc: Any, placements: dict[int, tuple],
                            paper: Optional[dict[str, Any]] = None,
                            order: Optional[dict[str, int]] = None,
                            occupied: Optional[dict[str, list]] = None,
-                           drawn: Optional[dict[str, list]] = None) -> None:
+                           drawn: Optional[dict[str, list]] = None,
+                           written: Optional[set] = None) -> None:
     """Circle each question's mark in the right margin beside its answer.
 
     placements maps question_number -> (page_no, y). Built from where that
     question's annotations actually landed, so the mark sits next to the work
     it refers to. A question we could not locate on the page is left to the
     summary rather than being circled in an arbitrary spot.
+
+    written: the questions whose own score was actually drawn on the page.
+    None (a caller that does not track it) treats every score annotation as
+    drawn, as before.
     """
     import fitz
 
@@ -3563,8 +3568,11 @@ def _place_question_scores(doc: Any, placements: dict[int, tuple],
     # annotation, and drawing the badge as well put the grade on the sheet
     # twice - once properly in the margin, once dropped inside the student's
     # sentence ("...the goods are handed 8 5/10 over").
-    already = set()
-    for v in verdicts:
+    # Carrying one is not the same as drawing it: a score with no room on the
+    # paper was refused, and skipping the badge too left the question with no
+    # mark on the copy at all.
+    already = set(written) if written is not None else set()
+    for v in (verdicts if written is None else []):
         for ann in (v.get("annotations") or []):
             if ann.get("style") == "score" or (
                     ann.get("marks") is not None and ann.get("style") == "summary"):
@@ -4199,6 +4207,8 @@ def build_annotated_pdf(
     # question_number -> (page_no, y) of its lowest annotation, so the circled
     # mark lands beside the end of that answer.
     placements: dict[int, tuple[int, float, float]] = {}
+    # question_number of every question whose own score reached the page.
+    scores_written: set[int] = set()
     # Deduction reasons no spot near their answer could hold - written after
     # every mark is down, see _write_unwritten_reasons.
     unwritten: list = []
@@ -4548,14 +4558,21 @@ def build_annotated_pdf(
                     page_boxes.append(placed)
             drawn += 1
 
-            if q_no is not None:
+            written_mark = style == "score" or (style == "summary" and ann_marks is not None)
+            if q_no is not None and written_mark and placed is not None:
+                scores_written.add(q_no)
+            # A score or remark that found no room put no ink on the page, so
+            # it says nothing about where the answer ends: its row may be the
+            # very spot that refused it.
+            if q_no is not None and not (style in ("score", "margin_note") and placed is None):
                 prev = placements.get(q_no)
                 if prev is None or (page_no, rect.y1) > (prev[0], prev[1]):
                     # keep the END of the line too: the mark belongs beside where
                     # the answer finishes, not in a column at the page edge.
                     placements[q_no] = (page_no, rect.y1, rect.x1)
 
-    _place_question_scores(doc, placements, verdicts, paper, order, occupied, drawn_rules)
+    _place_question_scores(doc, placements, verdicts, paper, order, occupied, drawn_rules,
+                           written=scores_written)
 
     if unwritten:
         def use_page(pid: str, pno: int) -> None:

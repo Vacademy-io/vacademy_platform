@@ -228,6 +228,28 @@ def test_photo_bounds_reach_the_last_written_row() -> None:
           got.y1 == photo.y1, f"bound moved to y={got.y1:.1f}")
 
 
+def test_refused_score_still_gets_its_mark() -> None:
+    print("\n_place_question_scores — a score that found no room is still marked")
+    from ai_service.app.services.copy_check.annotator import _place_question_scores
+
+    verdicts = [{"question_number": 6, "question_id": "q6", "marks_awarded": 1.0,
+                 "max_marks": 2.0, "annotations": [
+                     {"style": "score", "target": "L1_09", "text": "1/2"}]}]
+
+    def red_ink(written) -> int:
+        doc = fitz.open()
+        page = doc.new_page(width=400, height=500)
+        _place_question_scores(doc, {6: (0, 300.0, 250.0)}, verdicts, written=written)
+        pix = page.get_pixmap(dpi=72)
+        arr = np.frombuffer(pix.samples, np.uint8).reshape(pix.height, pix.width, pix.n)
+        return int(((arr[:, :, 0].astype(int) - arr[:, :, 1].astype(int)) > 40).sum())
+
+    check("a score refused on the page falls back to the badge", red_ink(set()) > 0,
+          "the question was left with no mark on the copy")
+    check("a score that was drawn gets no second one", red_ink({6}) == 0,
+          "the mark was drawn twice")
+
+
 def test_brace_and_summary_survive_validation() -> None:
     print("\nvalidator — the new teacher-pen styles reach the page")
     from ai_service.app.services.copy_check.validator import validate_and_cap
@@ -814,6 +836,7 @@ if __name__ == "__main__":
     test_no_ink_leaves_the_paper()
     test_photo_bounds_ignores_the_watermark()
     test_photo_bounds_reach_the_last_written_row()
+    test_refused_score_still_gets_its_mark()
     test_brace_and_summary_survive_validation()
     test_margin_marks_reconcile_with_the_total()
     test_comment_ink_stays_legible()

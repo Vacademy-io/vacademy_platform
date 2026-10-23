@@ -1072,6 +1072,22 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
          * cross-audience "Recent Leads" view. Mirrors the joins / predicates of
          * {@link #findLeadsWithFilters} so tier and counselor scoping behave
          * identically across the per-campaign and cross-campaign paths.
+         *
+         * <p>Performance notes (keep the value query and countQuery in step).
+         * The guards {@code lu.user_id IS NULL AND a.institute_id IS NULL AND (... OR ulp.user_id IS NULL)}
+         * in the act LATERAL CASEs and the call-history block are never true and exist only
+         * so the planner evaluates the per-lead timeline and call lookups after the ulp and lu
+         * joins and the status and RBAC filters, instead of for every lead of the institute.
+         * They rely on a.institute_id being NOT NULL and filtered to the institute id. If the
+         * audience join or that filter is ever removed, remove these terms too.
+         * The ulp term is reached only when a ulp-dependent filter is set (lead status include
+         * or exclude, counsellor ids, conversion filter other than ALL, tier, SLA, isUnassigned).
+         * With none set, the parameter block folds to TRUE, ulp is unreferenced and the planner
+         * removes the user_lead_profile LEFT JOIN as before. Keep that parameter list in step with
+         * every WHERE term that reads ulp.
+         * The second assignedCounselorIdsCsv conjunct is a redundant necessary condition of
+         * the exact RBAC filter, applied on ar alone. Any change to the lu LATERAL, the ulp
+         * join keys or the owner columns must also update that prefilter.
          */
         @Query(value = """
                             SELECT ar.*
@@ -1108,6 +1124,11 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                              AND CAST(:calledTo AS timestamp) IS NULL
                                              AND COALESCE(:sortBy, '') <> 'LAST_CALLED'
                                             THEN NULL
+                                            -- Never true (a.institute_id equals the institute id param). It names ulp
+                                            -- and lu so the planner computes this only after those joins and the
+                                            -- status and RBAC filters on them, not for every lead of the institute.
+                                            WHEN (lu.user_id IS NULL AND a.institute_id IS NULL AND ((COALESCE(:leadStatusId, '') = '' AND COALESCE(:leadStatusExcludeId, '') = '' AND COALESCE(:assignedCounselorIdsCsv, '') = '' AND COALESCE(:assignedCounselorId, '') = '' AND COALESCE(:conversionStatusFilter, 'EXCLUDE_CONVERTED') = 'ALL' AND COALESCE(:leadTier, '') = '' AND COALESCE(:slaFilter, '') = '' AND COALESCE(:isUnassigned, FALSE) = FALSE) OR ulp.user_id IS NULL))
+                                            THEN NULL
                                             ELSE GREATEST(
                                                 (SELECT MAX(tcl.created_at) FROM telephony_call_log tcl
                                                   WHERE tcl.response_id = ar.id),
@@ -1120,6 +1141,9 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                        CASE WHEN CAST(:activityFrom AS timestamp) IS NULL
                                              AND CAST(:activityTo AS timestamp) IS NULL
                                              AND COALESCE(:sortBy, '') <> 'LAST_ACTIVITY'
+                                            THEN NULL
+                                            -- Never true, see last_called_at above.
+                                            WHEN (lu.user_id IS NULL AND a.institute_id IS NULL AND ((COALESCE(:leadStatusId, '') = '' AND COALESCE(:leadStatusExcludeId, '') = '' AND COALESCE(:assignedCounselorIdsCsv, '') = '' AND COALESCE(:assignedCounselorId, '') = '' AND COALESCE(:conversionStatusFilter, 'EXCLUDE_CONVERTED') = 'ALL' AND COALESCE(:leadTier, '') = '' AND COALESCE(:slaFilter, '') = '' AND COALESCE(:isUnassigned, FALSE) = FALSE) OR ulp.user_id IS NULL))
                                             THEN NULL
                                             ELSE GREATEST(
                                                 (SELECT MAX(te.created_at) FROM timeline_event te
@@ -1177,6 +1201,27 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                    OR lu.user_id = ANY(STRING_TO_ARRAY(:assignedCounselorIdsCsv, ','))
                                    OR ulp.assigned_counselor_id = ANY(STRING_TO_ARRAY(:assignedCounselorIdsCsv, ','))
                                    OR ((:includeUnassigned IS NULL OR :includeUnassigned = TRUE) AND lu.user_id IS NULL AND ulp.assigned_counselor_id IS NULL))
+                              -- RBAC scope again, as a necessary condition on ar alone, only when
+                              -- unassigned leads are excluded (redundant with the exact filter above,
+                              -- which stays). A lead whose lu or ulp owner is in the list has a
+                              -- linked_users ENQUIRY row for its enquiry_id, or a user_lead_profile
+                              -- row in this institute for its user_id, owned by someone in the list.
+                              -- Both lookups are hashed once and applied while scanning ar, so the
+                              -- joins and per-lead lookups below only see the leads of that counsellor.
+                              AND (COALESCE(:assignedCounselorIdsCsv, '') = ''
+                                   OR :includeUnassigned IS NULL OR :includeUnassigned = TRUE
+                                   -- Follow-up lists already start from the few open follow-ups in the
+                                   -- window, and this extra lookup only adds planning and JIT cost there.
+                                   OR COALESCE(:followUpPending, FALSE) = TRUE
+                                   -- A large team scope (a manager) removes few leads and the hashed
+                                   -- lookups below then cost more than they save, so skip it there.
+                                   OR CARDINALITY(STRING_TO_ARRAY(:assignedCounselorIdsCsv, ',')) > 15
+                                   OR ar.user_id IN (SELECT pu.user_id FROM user_lead_profile pu
+                                                     WHERE pu.institute_id = :instituteId
+                                                       AND pu.assigned_counselor_id = ANY(STRING_TO_ARRAY(:assignedCounselorIdsCsv, ',')))
+                                   OR ar.enquiry_id IN (SELECT pl.source_id FROM linked_users pl
+                                                         WHERE pl.source = 'ENQUIRY'
+                                                           AND pl.user_id = ANY(STRING_TO_ARRAY(:assignedCounselorIdsCsv, ','))))
                               -- isUnassigned = TRUE narrows to leads with no owner at all
                               -- (both the ENQUIRY-linked counsellor and the profile owner are null).
                               AND (:isUnassigned IS NULL OR :isUnassigned = FALSE
@@ -1304,6 +1349,13 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                               -- across columns defeats every index and seq-scans the whole call
                               -- log per candidate lead (statement timeout).
                               AND (COALESCE(:callHistoryFilter, '') = ''
+                                   -- Never true (a.institute_id equals the institute id param). It names
+                                   -- ulp and lu so the planner runs the call lookups below only after
+                                   -- the ulp and lu joins and their status and RBAC filters. With no
+                                   -- ulp filter set, under a custom plan the parameter block is TRUE, ulp drops out and the
+                                   -- LEFT JOIN user_lead_profile is removed. The page query keeps lu in
+                                   -- that case so a SUBMITTED_AT page can stop after LIMIT rows.
+                                   OR (lu.user_id IS NULL AND a.institute_id IS NULL AND ((COALESCE(:leadStatusId, '') = '' AND COALESCE(:leadStatusExcludeId, '') = '' AND COALESCE(:assignedCounselorIdsCsv, '') = '' AND COALESCE(:assignedCounselorId, '') = '' AND COALESCE(:conversionStatusFilter, 'EXCLUDE_CONVERTED') = 'ALL' AND COALESCE(:leadTier, '') = '' AND COALESCE(:slaFilter, '') = '' AND COALESCE(:isUnassigned, FALSE) = FALSE) OR ulp.user_id IS NULL))
                                    OR (:callHistoryFilter = 'NOT_CALLED'
                                        AND NOT EXISTS (
                                              SELECT 1 FROM telephony_call_log tcl
@@ -1493,6 +1545,11 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                              AND CAST(:calledTo AS timestamp) IS NULL
                                              AND COALESCE(:sortBy, '') <> 'LAST_CALLED'
                                             THEN NULL
+                                            -- Never true (a.institute_id equals the institute id param). It names ulp
+                                            -- and lu so the planner computes this only after those joins and the
+                                            -- status and RBAC filters on them, not for every lead of the institute.
+                                            WHEN (lu.user_id IS NULL AND a.institute_id IS NULL AND ((COALESCE(:leadStatusId, '') = '' AND COALESCE(:leadStatusExcludeId, '') = '' AND COALESCE(:assignedCounselorIdsCsv, '') = '' AND COALESCE(:assignedCounselorId, '') = '' AND COALESCE(:conversionStatusFilter, 'EXCLUDE_CONVERTED') = 'ALL' AND COALESCE(:leadTier, '') = '' AND COALESCE(:slaFilter, '') = '' AND COALESCE(:isUnassigned, FALSE) = FALSE) OR ulp.user_id IS NULL))
+                                            THEN NULL
                                             ELSE GREATEST(
                                                 (SELECT MAX(tcl.created_at) FROM telephony_call_log tcl
                                                   WHERE tcl.response_id = ar.id),
@@ -1505,6 +1562,9 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                        CASE WHEN CAST(:activityFrom AS timestamp) IS NULL
                                              AND CAST(:activityTo AS timestamp) IS NULL
                                              AND COALESCE(:sortBy, '') <> 'LAST_ACTIVITY'
+                                            THEN NULL
+                                            -- Never true, see last_called_at above.
+                                            WHEN (lu.user_id IS NULL AND a.institute_id IS NULL AND ((COALESCE(:leadStatusId, '') = '' AND COALESCE(:leadStatusExcludeId, '') = '' AND COALESCE(:assignedCounselorIdsCsv, '') = '' AND COALESCE(:assignedCounselorId, '') = '' AND COALESCE(:conversionStatusFilter, 'EXCLUDE_CONVERTED') = 'ALL' AND COALESCE(:leadTier, '') = '' AND COALESCE(:slaFilter, '') = '' AND COALESCE(:isUnassigned, FALSE) = FALSE) OR ulp.user_id IS NULL))
                                             THEN NULL
                                             ELSE GREATEST(
                                                 (SELECT MAX(te.created_at) FROM timeline_event te
@@ -1562,6 +1622,27 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                    OR lu.user_id = ANY(STRING_TO_ARRAY(:assignedCounselorIdsCsv, ','))
                                    OR ulp.assigned_counselor_id = ANY(STRING_TO_ARRAY(:assignedCounselorIdsCsv, ','))
                                    OR ((:includeUnassigned IS NULL OR :includeUnassigned = TRUE) AND lu.user_id IS NULL AND ulp.assigned_counselor_id IS NULL))
+                              -- RBAC scope again, as a necessary condition on ar alone, only when
+                              -- unassigned leads are excluded (redundant with the exact filter above,
+                              -- which stays). A lead whose lu or ulp owner is in the list has a
+                              -- linked_users ENQUIRY row for its enquiry_id, or a user_lead_profile
+                              -- row in this institute for its user_id, owned by someone in the list.
+                              -- Both lookups are hashed once and applied while scanning ar, so the
+                              -- joins and per-lead lookups below only see the leads of that counsellor.
+                              AND (COALESCE(:assignedCounselorIdsCsv, '') = ''
+                                   OR :includeUnassigned IS NULL OR :includeUnassigned = TRUE
+                                   -- Follow-up lists already start from the few open follow-ups in the
+                                   -- window, and this extra lookup only adds planning and JIT cost there.
+                                   OR COALESCE(:followUpPending, FALSE) = TRUE
+                                   -- A large team scope (a manager) removes few leads and the hashed
+                                   -- lookups below then cost more than they save, so skip it there.
+                                   OR CARDINALITY(STRING_TO_ARRAY(:assignedCounselorIdsCsv, ',')) > 15
+                                   OR ar.user_id IN (SELECT pu.user_id FROM user_lead_profile pu
+                                                     WHERE pu.institute_id = :instituteId
+                                                       AND pu.assigned_counselor_id = ANY(STRING_TO_ARRAY(:assignedCounselorIdsCsv, ',')))
+                                   OR ar.enquiry_id IN (SELECT pl.source_id FROM linked_users pl
+                                                         WHERE pl.source = 'ENQUIRY'
+                                                           AND pl.user_id = ANY(STRING_TO_ARRAY(:assignedCounselorIdsCsv, ','))))
                               -- isUnassigned = TRUE narrows to leads with no owner at all
                               -- (both the ENQUIRY-linked counsellor and the profile owner are null).
                               AND (:isUnassigned IS NULL OR :isUnassigned = FALSE
@@ -1689,6 +1770,13 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                               -- across columns defeats every index and seq-scans the whole call
                               -- log per candidate lead (statement timeout).
                               AND (COALESCE(:callHistoryFilter, '') = ''
+                                   -- Never true (a.institute_id equals the institute id param). It names
+                                   -- ulp and lu so the planner runs the call lookups below only after
+                                   -- the ulp and lu joins and their status and RBAC filters. With no
+                                   -- ulp or lu filter set, under a custom plan the parameter block is TRUE
+                                   -- and only a is left, so the count does not reference lu or ulp and
+                                   -- plans as before.
+                                   OR (a.institute_id IS NULL AND ((COALESCE(:leadStatusId, '') = '' AND COALESCE(:leadStatusExcludeId, '') = '' AND COALESCE(:assignedCounselorIdsCsv, '') = '' AND COALESCE(:assignedCounselorId, '') = '' AND COALESCE(:conversionStatusFilter, 'EXCLUDE_CONVERTED') = 'ALL' AND COALESCE(:leadTier, '') = '' AND COALESCE(:slaFilter, '') = '' AND COALESCE(:isUnassigned, FALSE) = FALSE) OR (ulp.user_id IS NULL AND lu.user_id IS NULL)))
                                    OR (:callHistoryFilter = 'NOT_CALLED'
                                        AND NOT EXISTS (
                                              SELECT 1 FROM telephony_call_log tcl

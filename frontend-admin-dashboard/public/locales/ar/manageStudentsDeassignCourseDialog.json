@@ -23,10 +23,16 @@
             "description": "— إلغاء فوري للوصول. الحالة ← منتهى",
             "cannotUndo": "⚠ لا يمكن التراجع عن هذا الإجراء"
         },
+        "reason": {
+            "label": "سبب الإنهاء",
+            "optional": "(اختياري)",
+            "placeholder": "لماذا يتم إنهاء هذا المتعلم؟"
+        },
         "notifyLearners": "إشعار المتعلم بالإزالة"
     },
     "preview": {
         "title": "معاينة — نتائج التشغيل التجريبي",
+        "reason": "السبب:",
         "willBeRemoved_zero": "لن يتم إزالة أي دورات ({{count}})",
         "willBeRemoved_one": "ستتم إزالة دورة واحدة ({{count}})",
         "willBeRemoved_two": "ستتم إزالة دورتان ({{count}})",

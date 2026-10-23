@@ -260,6 +260,12 @@ export interface DeassignOptions {
      * Ignored for HARD.
      */
     access_till_date?: string | null;
+    /**
+     * HARD-mode only. Why the learner was terminated — kept in the admin
+     * activity log. Required when the institute's LEARNER_TERMINATION_REASON
+     * setting says so.
+     */
+    reason?: string | null;
 }
 
 export interface BulkDeassignRequest {

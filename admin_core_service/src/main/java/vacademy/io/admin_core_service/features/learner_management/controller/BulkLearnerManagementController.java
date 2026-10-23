@@ -107,7 +107,8 @@ public class BulkLearnerManagementController {
             conditionExpr = "#result?.body != null and !#result.body.dryRun "
                     + "and (#result.body.summary?.successful ?: 0) > 0",
             descriptionExpr = "@auditNarrator.bulkDeassignmentOf(#request?.options?.mode, "
-                    + "#result?.body?.summary?.successful, #request?.userIds, #request?.packageSessionIds)")
+                    + "#result?.body?.summary?.successful, #request?.userIds, #request?.packageSessionIds, "
+                    + "#request?.options?.reason)")
     public ResponseEntity<BulkDeassignResponseDTO> bulkDeassign(
             @RequestBody BulkDeassignRequestDTO request,
             @AuthenticationPrincipal CustomUserDetails userDetails) {

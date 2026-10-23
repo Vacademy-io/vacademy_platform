@@ -7,6 +7,7 @@ import { saveCourseSettings } from '@/services/course-settings';
 import { CourseSettingsData } from '@/types/course-settings';
 import { useCourseSettings } from '@/hooks/useCourseSettings';
 import UserIdentifierSettings from '../UserIdentifierSettings';
+import TerminationReasonSettings from '../TerminationReasonSettings';
 import { TutorModeDefaultsCard } from './TutorModeDefaultsCard';
 import { TutorInsightsCard } from '@/components/common/tutor/TutorInsightsCard';
 
@@ -92,6 +93,7 @@ const CourseSettings = () => {
             {/* Live AI Tutor: what the teacher learned across every course (WP9). */}
             <TutorInsightsCard />
             <UserIdentifierSettings />
+            <TerminationReasonSettings />
         </div>
     );
 };

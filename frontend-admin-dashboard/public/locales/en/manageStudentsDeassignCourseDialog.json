@@ -23,10 +23,16 @@
             "description": "— Immediate access revocation. Status → TERMINATED",
             "cannotUndo": "⚠ Cannot be undone"
         },
+        "reason": {
+            "label": "Reason for termination",
+            "optional": "(optional)",
+            "placeholder": "Why is this learner being terminated?"
+        },
         "notifyLearners": "Notify learner about removal"
     },
     "preview": {
         "title": "Preview — Dry Run Results",
+        "reason": "Reason:",
         "willBeRemoved_one": "{{count}} will be removed",
         "willBeRemoved_other": "{{count}} will be removed",
         "skipped_one": "{{count}} skipped",

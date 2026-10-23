@@ -456,8 +456,9 @@ def _image_pipeline(monkeypatch, response: Dict[str, Any]):
     ns = _base_ns()
     ns["_ImageGenRateLimitError"] = type("_ImageGenRateLimitError", (Exception,), {})
     _lift(["_RUN_TRACKER", "_image_cost_usd", "_record_image_cost_event", "_IMAGE_RESOLVER_MODULE",
-           "_image_model_for"], ns,
-          {"VideoGenerationPipeline": ["_call_image_generation_llm"]})
+           "_image_model_for", "VIDEO_IMAGE_USE_CASE", "VIDEO_IMAGE_DEFAULT",
+           "_OPENROUTER_IMAGES_API_URL", "_IMAGES_API_MODEL_PREFIXES", "_uses_images_api"], ns,
+          {"VideoGenerationPipeline": ["_call_image_generation_llm", "_call_openrouter_images_api"]})
     ns["_IMAGE_RESOLVER_MODULE"] = None  # no registry here: the 'video_image' literal default
     pipe = object.__new__(ns["VideoGenerationPipeline"])
     pipe.video_width, pipe.video_height = 1920, 1080
@@ -513,6 +514,117 @@ def test_a_failed_generation_records_nothing(monkeypatch):
     pipe, _ = _image_pipeline(monkeypatch, {"choices": [{"message": {}}], "usage": {}})
     assert pipe._call_image_generation_llm("nothing") == (None, None)
     assert pipe._cost_events.event_count == 0
+
+
+# --------------------------------------------------------------------------
+# Super-admin image models + OpenRouter's /api/v1/images (Qwen)
+# --------------------------------------------------------------------------
+
+QWEN = "qwen/qwen-image-2.1-turbo"
+
+
+def _images_api_response(cost=0.0184):
+    return {"created": 1, "data": [{"b64_json": _PNG, "media_type": "image/png"}],
+            "usage": {"prompt_tokens": 17, "completion_tokens": 4175, "cost": cost}}
+
+
+def _routed_pipeline(monkeypatch, responses: Dict[str, Any], admin_model: Optional[str] = None):
+    """Pipeline whose fake urlopen answers by URL; `admin_model` is what the
+    super-admin 'video_image' row returns (None = no registry)."""
+    pipe, _ = _image_pipeline(monkeypatch, _image_response())
+    seen: List[Tuple[str, Dict[str, Any]]] = []
+
+    def fake_urlopen(req, timeout=None):
+        body = json.loads(req.data.decode())
+        seen.append((req.full_url, body))
+        resp = responses[req.full_url]
+        if isinstance(resp, Exception):
+            raise resp
+        return _Resp(json.dumps(resp).encode())
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    ns = pipe._call_image_generation_llm.__func__.__globals__
+    if admin_model is not None:
+        ns["_IMAGE_RESOLVER_MODULE"] = type("R", (), {"image_model_for": staticmethod(
+            lambda use_case, hard_default: admin_model if use_case == "video_image" else hard_default)})
+    return pipe, seen
+
+
+CHAT = "https://openrouter.ai/api/v1/chat/completions"
+IMAGES = "https://openrouter.ai/api/v1/images"
+
+
+def test_the_admin_video_image_model_is_used_and_qwen_goes_to_the_images_api(monkeypatch):
+    pipe, seen = _routed_pipeline(monkeypatch, {IMAGES: _images_api_response()}, admin_model=QWEN)
+    img, usage = pipe._call_image_generation_llm("a resume", purpose="keyframe")
+    assert img == base64.b64decode(_PNG)
+    ((url, body),) = seen
+    assert url == IMAGES and body["model"] == QWEN
+    assert body["aspect_ratio"] == "16:9" and body["usage"] == {"include": True}
+    (ev,) = pipe._cost_events.build_report(video_id="v", tier="t", pipeline_version="v3")["stages"]
+    assert ev["model"] == QWEN and ev["cost_usd"] == 0.0184, "billed at Qwen's real cost"
+
+
+def test_a_support_visual_override_to_qwen_also_uses_the_images_api(monkeypatch):
+    pipe, seen = _routed_pipeline(monkeypatch, {IMAGES: _images_api_response()})
+    pipe._call_image_generation_llm("a desk", model_override=QWEN, purpose="support_visual",
+                                    fallback_model="bytedance-seed/seedream-4.5")
+    assert [u for u, _ in seen] == [IMAGES]
+
+
+def test_a_reference_image_cannot_go_to_the_images_api_so_it_uses_the_fallback(monkeypatch):
+    pipe, seen = _routed_pipeline(monkeypatch, {CHAT: _image_response(cost=0.04)}, admin_model=QWEN)
+    pipe._call_image_generation_llm("same person, new pose", reference_image_url="https://x/ref.png")
+    ((url, body),) = seen
+    assert url == CHAT and body["model"] == "recraft/recraft-v4.1"
+
+
+def test_an_empty_or_failed_images_api_call_falls_back_on_chat(monkeypatch):
+    for bad in ({"data": [], "usage": {}},
+                urllib.error.HTTPError(IMAGES, 400, "bad request", {}, None)):
+        pipe, seen = _routed_pipeline(monkeypatch, {IMAGES: bad, CHAT: _image_response(cost=0.04)})
+        img, _ = pipe._call_image_generation_llm("a desk", model_override=QWEN,
+                                                 fallback_model="bytedance-seed/seedream-4.5")
+        assert img is not None
+        assert [(u, b["model"]) for u, b in seen] == [(IMAGES, QWEN), (CHAT, "bytedance-seed/seedream-4.5")]
+        (ev,) = pipe._cost_events.build_report(video_id="v", tier="t", pipeline_version="v3")["stages"]
+        assert ev["model"] == "bytedance-seed/seedream-4.5", "only the image that was made is billed"
+
+
+def test_a_rate_limited_images_api_call_signals_the_caller(monkeypatch):
+    pipe, _ = _routed_pipeline(
+        monkeypatch, {IMAGES: urllib.error.HTTPError(IMAGES, 429, "slow down", {"Retry-After": "3"}, None)})
+    err = pipe._call_image_generation_llm.__func__.__globals__["_ImageGenRateLimitError"]
+    with pytest.raises(err):
+        pipe._call_image_generation_llm("a desk", model_override=QWEN)
+
+
+def test_chat_image_models_stay_on_chat(monkeypatch):
+    pipe, seen = _routed_pipeline(monkeypatch, {CHAT: _image_response()},
+                                  admin_model="bytedance-seed/seedream-4.5")
+    pipe._call_image_generation_llm("a desk")
+    assert [(u, b["model"]) for u, b in seen] == [(CHAT, "bytedance-seed/seedream-4.5")]
+
+
+def test_a_broken_settings_read_keeps_the_literal_default():
+    ns = _lift(["_IMAGE_RESOLVER_MODULE", "_image_model_for"], _base_ns())
+
+    def boom(*a, **k):
+        raise RuntimeError("db down")
+
+    ns["_IMAGE_RESOLVER_MODULE"] = type("R", (), {"image_model_for": staticmethod(boom)})
+    assert ns["_image_model_for"]("video_image", "recraft/recraft-v4.1") == "recraft/recraft-v4.1"
+    ns["_IMAGE_RESOLVER_MODULE"] = None
+    assert ns["_image_model_for"]("video_support_visual", "x") == "x"
+
+
+def test_support_visuals_read_the_admin_row_not_a_literal():
+    src = PIPELINE.read_text()
+    body = src[src.index("def _resolve_support_visuals("):]
+    body = body[: body.index("\n    def ", 10)]
+    assert "_image_model_for(VIDEO_SUPPORT_VISUAL_USE_CASE, VIDEO_SUPPORT_VISUAL_DEFAULT)" in body
+    assert body.count("model_override=_sv_model") == 2
+    assert '"bytedance-seed/seedream' not in body, "no hard-coded support-visual model"
 
 
 def test_image_cost_parsing():

@@ -1754,6 +1754,48 @@ def _record_image_cost_event(
         print(f"   ⚠️ image cost event not recorded ({model}): {_rec_err}")
 
 
+# Image models chosen in the super-admin "Model defaults" page
+# (ai_model_defaults rows, read through app.services.image_model_resolver).
+# The literals below are what each row falls back to — and what the pipeline
+# used before the rows were read here.
+VIDEO_IMAGE_USE_CASE = "video_image"
+VIDEO_IMAGE_DEFAULT = "recraft/recraft-v4.1"
+VIDEO_SUPPORT_VISUAL_USE_CASE = "video_support_visual"
+VIDEO_SUPPORT_VISUAL_DEFAULT = "bytedance-seed/seedream-4.5"
+
+try:
+    from app.services import image_model_resolver as _IMAGE_RESOLVER_MODULE
+except ImportError:  # standalone / renderer image: no registry, literal defaults
+    _IMAGE_RESOLVER_MODULE = None
+
+
+def _image_model_for(use_case: str, hard_default: str) -> str:
+    """The super-admin image model for a video use case, else `hard_default`.
+    Never raises — a settings read must not cost a video its pictures."""
+    mod = _IMAGE_RESOLVER_MODULE
+    if mod is None:
+        return hard_default
+    try:
+        return mod.image_model_for(use_case, hard_default) or hard_default
+    except Exception:  # noqa: BLE001
+        return hard_default
+
+
+# OpenRouter serves images on two APIs that do not share models (see
+# app/services/image_service.py). Recraft and Seedream answer on
+# chat/completions with `modalities`; dedicated models such as Qwen answer
+# only on /api/v1/images and 404 on chat ("is an image generation model and
+# cannot be used with the chat/completions endpoint"). Verified 2026-10-23
+# for qwen/qwen-image-2.1-turbo: 19 s, 1024x576 PNG for 16:9 at "1K",
+# usage.cost $0.0184 reported.
+_OPENROUTER_IMAGES_API_URL = "https://openrouter.ai/api/v1/images"
+_IMAGES_API_MODEL_PREFIXES = ("qwen/",)
+
+
+def _uses_images_api(model: Optional[str]) -> bool:
+    return str(model or "").startswith(_IMAGES_API_MODEL_PREFIXES)
+
+
 class OpenRouterClient:
     def __init__(
         self,
@@ -10327,6 +10369,10 @@ class VideoGenerationPipeline:
                 # subjects, invented imagery presented as if observed. Follow the
                 # run's resolved visual direction instead.
                 _style_suffix = self._support_visual_style_suffix()
+                # The super-admin 'video_support_visual' row (Seedream when
+                # unset). Read once per video, not per picture.
+                _sv_model = _image_model_for(VIDEO_SUPPORT_VISUAL_USE_CASE, VIDEO_SUPPORT_VISUAL_DEFAULT)
+                print(f"   🖼️  Support visuals on {_sv_model}")
 
                 def _gen(kv):
                     key, concept = kv
@@ -10335,7 +10381,8 @@ class VideoGenerationPipeline:
                         try:
                             img, _ = self._call_image_generation_llm(
                                 _prompt, width=1024, height=576,
-                                model_override="bytedance-seed/seedream-4.5",
+                                model_override=_sv_model,
+                                fallback_model=VIDEO_SUPPORT_VISUAL_DEFAULT,
                                 purpose="support_visual",
                             )
                         except _ImageGenRateLimitError:
@@ -10346,7 +10393,8 @@ class VideoGenerationPipeline:
                             _t.sleep(15)
                             img, _ = self._call_image_generation_llm(
                                 _prompt, width=1024, height=576,
-                                model_override="bytedance-seed/seedream-4.5",
+                                model_override=_sv_model,
+                                fallback_model=VIDEO_SUPPORT_VISUAL_DEFAULT,
                                 purpose="support_visual",
                             )
                         if not img:
@@ -29344,8 +29392,16 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         model_override: Optional[str] = None,
         purpose: str = "other",
         cost_events: Any = _RUN_TRACKER,
+        fallback_model: Optional[str] = None,
     ) -> Tuple[Optional[bytes], Optional[Dict[str, Any]]]:
-        """Generate image via OpenRouter. Default model is recraft/recraft-v4.1.
+        """Generate image via OpenRouter. Default model is the super-admin
+        'video_image' row (literal default recraft/recraft-v4.1).
+
+        A model that only answers on /api/v1/images (Qwen) goes there; a call
+        with a reference image, or one that comes back empty, falls back to
+        `fallback_model` (default VIDEO_IMAGE_DEFAULT) on chat/completions —
+        that API has no reference-image input, and a video must not lose a
+        picture because a setting points at a model that failed.
 
         Every successful generation records ONE image cost event (real image
         model id, OpenRouter's `usage.cost` when the response carries it) with
@@ -29457,7 +29513,29 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         else:
             content = full_prompt
 
-        _image_model = model_override or "recraft/recraft-v4.1"
+        _tracker = (
+            getattr(self, "_cost_events", None) if cost_events is _RUN_TRACKER else cost_events
+        )
+        _image_model = model_override or _image_model_for(VIDEO_IMAGE_USE_CASE, VIDEO_IMAGE_DEFAULT)
+        if _uses_images_api(_image_model):
+            _fallback = fallback_model or VIDEO_IMAGE_DEFAULT
+            if reference_image_url:
+                print(f"    ↪️  {_image_model} takes no reference image — using {_fallback} for this one")
+            else:
+                img_bytes, usage_metadata = self._call_openrouter_images_api(
+                    _image_model, full_prompt, aspect_ratio, api_key, prompt,
+                )
+                if img_bytes:
+                    img_bytes = self._enforce_image_orientation(
+                        img_bytes, target_orient, width, height, prompt
+                    )
+                    _record_image_cost_event(
+                        _tracker, _image_model, usage_metadata, purpose,
+                        phase=_llm_phase.get(),
+                    )
+                    return img_bytes, usage_metadata
+                print(f"    ↪️  {_image_model} gave no image — falling back to {_fallback}")
+            _image_model = _fallback
         payload = {
             "model": _image_model,
             "messages": [{"role": "user", "content": content}],
@@ -29476,9 +29554,6 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             # what billing charges for this image.
             "usage": {"include": True},
         }
-        _tracker = (
-            getattr(self, "_cost_events", None) if cost_events is _RUN_TRACKER else cost_events
-        )
 
         max_retries = 3
         for attempt in range(max_retries):
@@ -29568,6 +29643,84 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                       f"{_tb.format_exc()[:400]}")
                 return None, None
 
+        return None, None
+
+    def _call_openrouter_images_api(
+        self,
+        model: str,
+        prompt: str,
+        aspect_ratio: str,
+        api_key: str,
+        label: str = "",
+    ) -> Tuple[Optional[bytes], Optional[Dict[str, Any]]]:
+        """One image from OpenRouter's /api/v1/images (dedicated image models
+        such as Qwen): {model, prompt, aspect_ratio} → data[0].b64_json, with
+        usage.cost for billing. 429 raises _ImageGenRateLimitError like the
+        chat path; 5xx/network errors retry; anything else returns (None, None)
+        so the caller can fall back."""
+        import random as _random
+
+        body = {
+            "model": model,
+            "prompt": prompt,
+            "n": 1,
+            "aspect_ratio": aspect_ratio,
+            "resolution": "1K",
+            "usage": {"include": True},
+        }
+        headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+        max_retries = 3
+        for attempt in range(max_retries):
+            req = urllib.request.Request(
+                _OPENROUTER_IMAGES_API_URL,
+                data=json.dumps(body).encode("utf-8"),
+                headers=headers,
+                method="POST",
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=180) as response:
+                    data = json.loads(response.read().decode("utf-8"))
+                usage_metadata = data.get("usage", {}) or {}
+                for item in data.get("data") or []:
+                    b64 = (item or {}).get("b64_json")
+                    if not b64:
+                        continue
+                    try:
+                        return base64.b64decode(b64), usage_metadata
+                    except (ValueError, base64.binascii.Error) as e:
+                        print(f"    ⚠️  Could not decode image from {model}: {e}")
+                        return None, None
+                print(f"    ⚠️  {model} response had no image payload for '{label[:50]}...'")
+                return None, None
+            except urllib.error.HTTPError as e:
+                if e.code == 429:
+                    retry_after = 15.0
+                    raw_hdr = e.headers.get("Retry-After") if e.headers else None
+                    if raw_hdr:
+                        try:
+                            retry_after = float(raw_hdr) + 1
+                        except ValueError:
+                            pass
+                    print(f"    ⚠️  {model} 429 for '{label[:40]}...' — signalling rate-limit "
+                          f"(retry-after {retry_after:.0f}s)")
+                    raise _ImageGenRateLimitError(retry_after)
+                if e.code >= 500 and attempt < max_retries - 1:
+                    wait = (2.0 ** attempt) * _random.uniform(0.8, 1.4)
+                    print(f"    ⚠️  {model} HTTP {e.code} (attempt {attempt+1}/{max_retries}). "
+                          f"Retrying in {wait:.1f}s...")
+                    time.sleep(wait)
+                    continue
+                print(f"    ❌ {model} image HTTP {e.code} for '{label[:50]}...': {e}")
+                return None, None
+            except Exception as e:  # noqa: BLE001
+                if attempt < max_retries - 1:
+                    wait = (1.5 ** attempt) * _random.uniform(0.5, 1.5)
+                    print(f"    ⚠️  {model} image attempt {attempt+1}/{max_retries} failed: {e}. "
+                          f"Retrying in {wait:.1f}s...")
+                    time.sleep(wait)
+                    continue
+                print(f"    ❌ {model} image failed after {max_retries} attempts: {e}")
+                return None, None
         return None, None
 
     def _generate_avatar_runpod(self, run_dir: Path) -> Optional[Path]:

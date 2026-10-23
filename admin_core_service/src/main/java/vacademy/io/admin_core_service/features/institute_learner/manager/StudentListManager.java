@@ -1,6 +1,9 @@
 package vacademy.io.admin_core_service.features.institute_learner.manager;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
+import org.hibernate.Session;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -11,6 +14,8 @@ import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
@@ -48,6 +53,7 @@ import org.springframework.web.context.request.ServletRequestAttributes;
 import jakarta.servlet.http.HttpServletRequest;
 import java.sql.Timestamp;
 import java.time.LocalDate;
+import java.sql.Statement;
 import java.util.*;
 import java.util.function.BinaryOperator;
 import java.util.stream.Collectors;
@@ -65,6 +71,12 @@ public class StudentListManager {
 
     @Autowired
     InstituteStudentRepository instituteStudentRepository;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
+
+    @PersistenceContext
+    private EntityManager entityManager;
 
     @Autowired
     vacademy.io.admin_core_service.features.common.service.CustomFieldListFilterResolver customFieldListFilterResolver;
@@ -463,8 +475,20 @@ public class StudentListManager {
                 && studentListFilter.getStartDate() == null
                 && studentListFilter.getEndDate() == null;
 
-        // Two-phase approach: 1) get IDs (combined UNION when audience-only included), 2) enrich page IDs
-        Page<String> idPage = instituteStudentRepository.findPagedCombinedUserIdsForLearnerList(
+        // Two-phase approach: 1) get IDs (combined UNION when audience-only included), 2) enrich page IDs.
+        // The id page and its count run in one read-write transaction (stays on the primary; a
+        // read-only one would route to the replica) with per-call planning. Through pgbouncer these
+        // are named prepared statements, and the generic plan Postgres switches to after five
+        // executions does not fold the optional-filter guards: 2-5x slower here. SET LOCAL ends with
+        // the transaction, so nothing leaks to other clients on the pooled connection.
+        Page<String> idPage = new TransactionTemplate(transactionManager).execute(status -> {
+            entityManager.unwrap(Session.class).doWork(connection -> {
+                try (Statement statement = connection.createStatement()) {
+                    statement.execute("SET LOCAL plan_cache_mode = force_custom_plan");
+                }
+            });
+            return hasNameSearch
+                    ? instituteStudentRepository.findPagedCombinedUserIdsForLearnerList(
                 studentListFilter.getStatuses(),
                 studentListFilter.getGender(),
                 studentListFilter.getInstituteIds(),
@@ -481,9 +505,30 @@ public class StudentListManager {
                 studentListFilter.getStartDate(),
                 studentListFilter.getEndDate(),
                 studentListFilter.getAudienceIds(),
-                hasNameSearch ? studentListFilter.getName() : null,
+                studentListFilter.getName(),
+                includeAudienceOnly,
+                PageRequest.of(pageNo, pageSize))
+                    : instituteStudentRepository.findPagedCombinedUserIdsForLearnerListNoName(
+                studentListFilter.getStatuses(),
+                studentListFilter.getGender(),
+                studentListFilter.getInstituteIds(),
+                studentListFilter.getGroupIds(),
+                studentListFilter.getPackageSessionIds(),
+                studentListFilter.getSources(),
+                studentListFilter.getTypes(),
+                studentListFilter.getTypeIds(),
+                studentListFilter.getDestinationPackageSessionIds(),
+                studentListFilter.getLevelIds(),
+                studentListFilter.getSubOrgIds(),
+                studentListFilter.getSubOrgUserTypes(),
+                studentListFilter.getMembershipTypes(),
+                studentListFilter.getStartDate(),
+                studentListFilter.getEndDate(),
+                studentListFilter.getAudienceIds(),
+                null,
                 includeAudienceOnly,
                 PageRequest.of(pageNo, pageSize));
+        });
 
         List<String> pagedUserIds = idPage.getContent();
         if (pagedUserIds.isEmpty()) {

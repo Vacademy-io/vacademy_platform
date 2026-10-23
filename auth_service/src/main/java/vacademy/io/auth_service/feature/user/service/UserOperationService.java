@@ -111,8 +111,12 @@ public class UserOperationService {
                         .map(UserRole::getInstituteId)
                         .toList());
 
+        InstituteInfoDTO institute = loadInstituteQuietly(instituteId);
+        Map<String, String> loginUrls = resolveLoginUrls(
+                users.stream().map(User::getId).filter(id -> id != null).toList(), instituteId, institute);
+
         NotificationDTO notificationDTO = new NotificationDTO();
-        notificationDTO.setBody(NotificationEmailBody.sendUserPasswords("auth-service"));
+        notificationDTO.setBody(NotificationEmailBody.sendUserPasswords(senderNameOf(institute)));
         notificationDTO.setSubject("Login credentials!!");
         notificationDTO.setSource(NotificationSource.USER_CREDENTIALS.name());
         notificationDTO.setSourceId(sourceId);
@@ -130,7 +134,8 @@ public class UserOperationService {
             notification.setChannelId(user.getEmail());
             notification.setPlaceholders(Map.of(
                     "username", user.getUsername(),
-                    "password", user.getPassword()
+                    "password", user.getPassword(),
+                    "login_url", loginUrls.get(user.getId())
             ));
             notifyUsers.add(notification);
         }
@@ -270,6 +275,41 @@ public class UserOperationService {
                 .build();
     }
 
+    /**
+     * userId -> the link a credential email should send each learner to: the LMS site their
+     * courses are connected to (that is where the new password was mirrored, and where they
+     * actually study), else the institute's learner portal, else the platform default.
+     * Every requested id gets an entry.
+     */
+    private Map<String, String> resolveLoginUrls(List<String> userIds, String instituteId, InstituteInfoDTO institute) {
+        Map<String, String> lms = institutePolicyService.fetchLmsLoginUrls(userIds, instituteId);
+        String portal = institute != null ? firstNonBlank(institute.getLearnerPortalUrl()) : null;
+        String fallback = portal != null ? normalizePortalUrl(portal) + "/login" : NotificationEmailBody.LEARNER_LOGIN_URL;
+        Map<String, String> urls = new java.util.HashMap<>();
+        for (String id : userIds) {
+            String site = lms.get(id);
+            urls.put(id, site != null && !site.isBlank() ? site : fallback);
+        }
+        return urls;
+    }
+
+    /** Best-effort: branding and the portal fallback are cosmetic, so a failed load must not block the email. */
+    private InstituteInfoDTO loadInstituteQuietly(String instituteId) {
+        if (instituteId == null || instituteId.isBlank()) return null;
+        try {
+            return instituteInternalService.getInstituteByInstituteId(instituteId);
+        } catch (Exception e) {
+            log.warn("Could not load institute {} for the credentials mail: {}", instituteId, e.getMessage());
+            return null;
+        }
+    }
+
+    /** The name the email is signed with; it used to read "auth-service". */
+    private static String senderNameOf(InstituteInfoDTO institute) {
+        String name = institute != null ? firstNonBlank(institute.getInstituteName()) : null;
+        return name != null ? name : "Vacademy";
+    }
+
     private static String firstNonBlank(String... values) {
         for (String v : values) {
             if (v != null && !v.isBlank()) return v.trim();
@@ -318,9 +358,11 @@ public class UserOperationService {
         // runs on the request thread and the host can disambiguate a multi-institute user;
         // if it ever does run async the choice degrades to the first role, as before.
         String instituteId = InstituteChoice.forUser(originInstituteResolver, user);
+        InstituteInfoDTO institute = loadInstituteQuietly(instituteId);
+        String loginUrl = resolveLoginUrls(List.of(user.getId()), instituteId, institute).get(user.getId());
 
         String emailBody = NotificationEmailBody.sendUpdatedUserPasswords(
-                "auth-service", user.getFullName(), user.getUsername(), user.getPassword());
+                senderNameOf(institute), user.getFullName(), user.getUsername(), user.getPassword(), loginUrl);
 
         GenericEmailRequest genericEmailRequest = new GenericEmailRequest();
         genericEmailRequest.setTo(user.getEmail());

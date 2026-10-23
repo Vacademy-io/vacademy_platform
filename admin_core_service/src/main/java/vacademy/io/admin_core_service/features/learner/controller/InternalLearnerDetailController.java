@@ -3,8 +3,10 @@ package vacademy.io.admin_core_service.features.learner.controller;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.admin_core_service.features.learner.dto.LmsLoginUrlsRequest;
 import vacademy.io.admin_core_service.features.learner.dto.UsernameChangedRequest;
 import vacademy.io.admin_core_service.features.learner.service.LearnerCredentialSyncService;
+import vacademy.io.admin_core_service.features.learner.service.LearnerLmsConnectionResolver;
 import vacademy.io.admin_core_service.features.learner.service.LearnerLmsUserSyncService;
 import vacademy.io.admin_core_service.features.learner.service.LearnerService;
 import vacademy.io.admin_core_service.features.institute_learner.dto.batch_enrollment.BatchEnrolledLearnerDto;
@@ -15,6 +17,8 @@ import vacademy.io.admin_core_service.features.institute_learner.dto.batch_enrol
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
 import vacademy.io.common.auth.dto.UserDTO;
 
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 
@@ -30,6 +34,9 @@ public class InternalLearnerDetailController {
 
     @Autowired
     private LearnerCredentialSyncService learnerCredentialSyncService;
+
+    @Autowired
+    private LearnerLmsConnectionResolver learnerLmsConnectionResolver;
 
     @Autowired
     private StudentSessionInstituteGroupMappingRepository studentSessionRepository;
@@ -163,5 +170,31 @@ public class InternalLearnerDetailController {
         learnerLmsUserSyncService.syncPasswordUpdate(
                 userDTO.getId(), userDTO.getEmail(), userDTO.getPassword());
         return ResponseEntity.ok("triggered");
+    }
+
+    /** One credential-share batch; the UI caps a bulk share well below this. */
+    private static final int MAX_LMS_LOGIN_URL_USERS = 1000;
+
+    /**
+     * userId -> the LMS site each learner signs in to, for the login link in the credential
+     * emails auth_service sends. Learners with no connected LMS are left out of the map, so
+     * the caller keeps its own learner-portal fallback for them.
+     */
+    @PostMapping("/lms-login-urls")
+    public ResponseEntity<Map<String, String>> getLmsLoginUrls(@RequestBody LmsLoginUrlsRequest request) {
+        if (request == null || request.getUserIds() == null || request.getUserIds().isEmpty()) {
+            return ResponseEntity.ok(Map.of());
+        }
+        if (request.getUserIds().size() > MAX_LMS_LOGIN_URL_USERS) {
+            return ResponseEntity.badRequest().build();
+        }
+        Map<String, String> urls = new LinkedHashMap<>();
+        for (String userId : new LinkedHashSet<>(request.getUserIds())) {
+            String url = learnerLmsConnectionResolver.resolveLoginSiteUrl(userId, request.getInstituteId());
+            if (url != null) {
+                urls.put(userId, url);
+            }
+        }
+        return ResponseEntity.ok(urls);
     }
 }

@@ -2,7 +2,8 @@ package vacademy.io.auth_service.feature.notification.service;
 
 public class NotificationEmailBody {
     private static String frontendLoginUrl = "https://dash.vacademy.io/login";
-    private static String LEARNER_LOGIN_URL = "https://learner.vacademy.io/login";
+    /** Last-resort login link, used only when neither a connected LMS nor an institute learner portal resolves. */
+    public static final String LEARNER_LOGIN_URL = "https://learner.vacademy.io/login";
 
     public static String forgetPasswordEmailBody(String service, String name, String username, String password) {
         return """
@@ -231,6 +232,10 @@ public class NotificationEmailBody {
         }
     }
 
+    /**
+     * One body for the whole batch: {{username}}, {{password}} and {{login_url}} are filled
+     * per recipient, because each learner may sign in to a different LMS site.
+     */
     public static String sendUserPasswords(String service) {
         return """
                 <!DOCTYPE html>
@@ -308,7 +313,7 @@ public class NotificationEmailBody {
                             </div>
                             <p>Please use these details to log in. </p>
                             <div style="text-align: center;">
-                                <a href="https://learner.vacademy.io/login" class="login-button">Login Now</a>
+                                <a href="{{login_url}}" class="login-button">Login Now</a>
                             </div>
                         </div>
                         <div class="footer">
@@ -320,7 +325,8 @@ public class NotificationEmailBody {
                 """.formatted(service);
     }
 
-    public static String sendUpdatedUserPasswords(String service, String name, String username, String password) {
+    public static String sendUpdatedUserPasswords(String service, String name, String username, String password,
+                                                  String loginUrl) {
         return """
                     <!DOCTYPE html>
                     <html>
@@ -408,7 +414,7 @@ public class NotificationEmailBody {
                     </body>
                     </html>
                 """
-                .formatted(service, service, name, username, password, LEARNER_LOGIN_URL, service, service);
+                .formatted(service, service, name, username, password, loginUrl, service);
     }
 
     public static String createCredentialsFoundEmailBody(

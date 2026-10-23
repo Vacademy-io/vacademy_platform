@@ -66,6 +66,7 @@ import { LinkPicker } from './LinkPicker';
 import { CampaignPicker, websiteFormFields } from './CampaignPicker';
 import { PromoPopupEditor } from './PromoPopupEditor';
 import { FolderBrowserEditor } from './folders/FolderBrowserEditor';
+import { JobOpeningsEditor } from './jobs/JobOpeningsEditor';
 import { AccessPassGridEditor } from './access-pass/AccessPassGridEditor';
 import { CatalogDiscoveryEditor } from './catalog/CatalogDiscoveryEditor';
 import { CatalogDesignGroups } from './catalog/CatalogDesignGroups';
@@ -2183,6 +2184,8 @@ const ComponentEditor = ({ component, pageId, updateComponent, siteConfig }: any
             return <AnnouncementFeedEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'blog':
             return <BlogEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
+        case 'jobOpenings':
+            return <JobOpeningsEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'imageGallery':
             return <ImageGalleryEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
 

@@ -1446,5 +1446,83 @@
         "loop": "Boucle continue",
         "loopOnHint": "La rangée tourne en continu : après la dernière carte revient la première.",
         "loopOffHint": "À la dernière carte, la rangée revient à la première."
+    },
+  "jobOpenings": {
+    "hint": "Une carte par poste ; chaque poste s’ouvre sur sa propre page sous cette page (par exemple /careers/enseignant) avec un bouton Postuler vers votre formulaire. Les postes sans titre ou désactivés sont masqués.",
+    "template": "Modèle",
+    "headerText": "Titre",
+    "subheading": "Sous-titre",
+    "columns": "Cartes par ligne",
+    "columnsHint": "Sur téléphone, chaque modèle affiche une carte par ligne.",
+    "viewButtonLabel": "Bouton de la carte",
+    "applyButtonLabel": "Bouton Postuler",
+    "backLabel": "Lien de retour",
+    "emptyMessage": "Quand il n’y a aucun poste",
+    "jobsCount": "Postes ({{count}})",
+    "addJob": "Ajouter un poste",
+    "jobN": "Poste {{n}}",
+    "visible": "Afficher ce poste",
+    "title": "Intitulé du poste",
+    "slug": "Slug d’URL",
+    "slugAuto": "créé à partir du titre",
+    "address": "Adresse : {{address}}",
+    "addressHidden": "Masqué : donnez-lui un titre et activez-le pour le publier.",
+    "image": "Image ou affiche (facultatif)",
+    "imageAlt": "Description de l’image (texte alt)",
+    "summary": "Courte phrase pour la carte",
+    "location": "Lieu",
+    "jobType": "Type de poste",
+    "jobTypePlaceholder": "Temps plein, temps partiel…",
+    "compensation": "Rémunération",
+    "details": "Autres détails (un « Libellé : Valeur » par ligne)",
+    "detailsPlaceholder": "Examen visé : NEET\nExpérience : 2 ans et plus",
+    "description": "Description complète du poste",
+    "applyUrl": "Lien de candidature (votre formulaire)",
+    "applyUrlHint": "Google Form ou tout lien https. S’ouvre dans un nouvel onglet.",
+    "applyUrlInvalid": "Utilisez un lien https:// complet, sinon le bouton Postuler ne s’affichera pas.",
+    "applyLabel": "Texte du bouton Postuler pour ce poste (facultatif)",
+    "secondary": "Second bouton (facultatif)",
+    "secondaryLabel": "Texte du bouton",
+    "defaults": {
+      "newJob": "Nouveau poste",
+      "view": "Voir la description du poste",
+      "apply": "Postuler",
+      "back": "Toutes les offres",
+      "empty": "Aucun poste ouvert pour le moment — revenez bientôt."
+    },
+    "templates": {
+      "classic": {
+        "name": "Classique",
+        "hint": "Cartes avec petite photo et puces"
+      },
+      "poster": {
+        "name": "Affiche",
+        "hint": "Votre affiche en haut, jamais recadrée"
+      },
+      "list": {
+        "name": "Liste",
+        "hint": "Une ligne par poste, bouton à droite"
+      },
+      "editorial": {
+        "name": "Éditorial",
+        "hint": "Lignes numérotées, titres à empattements"
+      },
+      "dark": {
+        "name": "Sombre",
+        "hint": "Bande sombre avec halo de marque"
+      },
+      "minimal": {
+        "name": "Minimal",
+        "hint": "Texte seul, lignes compactes"
+      },
+      "spotlight": {
+        "name": "Vedette",
+        "hint": "Premier poste en grand, le reste en grille"
+      },
+      "split": {
+        "name": "Détail en colonnes",
+        "hint": "Cartes ; page du poste avec panneau Postuler fixe"
+      }
     }
+  }
 }

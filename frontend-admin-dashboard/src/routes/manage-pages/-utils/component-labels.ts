@@ -44,6 +44,7 @@ export const COMPONENT_LABELS: Record<string, string> = {
     teamSection: 'Team',
     announcementFeed: 'Announcements',
     blog: 'Blog',
+    jobOpenings: 'Job Openings',
     imageGallery: 'Image Gallery',
     columnLayout: 'Column Layout',
     htmlBlock: 'Custom HTML',
@@ -116,6 +117,7 @@ export const COMPONENT_DESCRIPTIONS: Record<string, string> = {
     ctaBanner: 'A full-width band with one big call to action',
     announcementFeed: 'Your latest announcements, pulled in live',
     blog: 'Your blog posts, read live — the list here, each article on its own URL under this page',
+    jobOpenings: 'Careers: a card per job, each job on its own URL under this page with an Apply link',
 
     // ── Reference ────────────────────────────────────────────────────────────
     faqSection: 'Questions that open and close',

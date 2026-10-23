@@ -261,6 +261,27 @@
         "backLabel": "All posts",
         "emptyMessage": "No posts yet — check back soon."
     },
+    "jobOpenings": {
+        "headerText": "Current openings",
+        "subheading": "Join our team. Open a role to read the full description and apply.",
+        "viewButtonLabel": "View job description",
+        "applyButtonLabel": "Apply now",
+        "backLabel": "All openings",
+        "emptyMessage": "No open positions right now — check back soon.",
+        "job1Title": "Teacher",
+        "job1Summary": "Teach your subject to small batches, in class and online.",
+        "job1Location": "Your city",
+        "job1JobType": "Full-time",
+        "job1Compensation": "As per experience",
+        "job1DetailLabel": "Subject",
+        "job1DetailValue": "Your subject",
+        "job1Description": "<h2>About the role</h2><p>Describe what this person will do day to day and who they will work with.</p><h3>Responsibilities</h3><ul><li>Plan and teach lessons</li><li>Track and support student progress</li></ul><h3>Requirements</h3><ul><li>A degree in the subject</li><li>Teaching experience preferred</li></ul>",
+        "job2Title": "Academic Counsellor",
+        "job2Summary": "Guide students and parents to the right course.",
+        "job2Location": "Your city",
+        "job2JobType": "Full-time",
+        "job2Description": "<h2>About the role</h2><p>Describe the role, the team and what a good first month looks like.</p><h3>Requirements</h3><ul><li>Clear communication</li><li>Experience in education or counselling</li></ul>"
+    },
     "folderBrowser": {
         "title": "Browse our courses",
         "subtitle": "Pick your class and subject to see the courses."

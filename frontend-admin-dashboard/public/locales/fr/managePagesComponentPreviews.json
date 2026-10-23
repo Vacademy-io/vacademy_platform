@@ -148,6 +148,11 @@
         "readMore": "Lire la suite",
         "liveNote": "Les articles publiés apparaissent ici sur le site. Rédigez-les dans Manage Pages → Blog."
     },
+    "jobOpenings": {
+        "view": "Voir la description du poste",
+        "empty": "Aucun poste pour l’instant — ajoutez-en un dans les réglages de la section.",
+        "liveNote": "Sur le site, chaque poste s’ouvre sur sa propre page."
+    },
     "catalogFeatures": {
         "hero": "Bannière d'en-tête",
         "streamIcons": "Icônes de filières",

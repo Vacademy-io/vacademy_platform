@@ -12,10 +12,12 @@ import vacademy.io.admin_core_service.features.institute_learner.entity.StudentS
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionRepository;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -133,6 +135,57 @@ public class LearnerLmsConnectionResolver {
             }
         }
         return courses;
+    }
+
+    /**
+     * The LMS site a learner should sign in to, for links in their credential emails.
+     *
+     * <p>Same precedence as the password sync (package-level connection before the
+     * institute's), but a single answer: the most recently created active enrolment that
+     * has a connection wins, so a learner on two sites is sent to the one they joined
+     * last. {@code instituteId}, when given, limits the search to that institute's
+     * enrolments and is also tried as the institute-level fallback even when the learner
+     * has no active enrolment there. Null when nothing resolves - the caller falls back
+     * to the learner portal.
+     */
+    public String resolveLoginSiteUrl(String userId, String instituteId) {
+        List<StudentSessionInstituteGroupMapping> mappings = new ArrayList<>(activeMappings(userId));
+        if (StringUtils.hasText(instituteId)) {
+            mappings.removeIf(m -> !instituteId.equals(instituteIdOf(m)));
+        }
+        mappings.sort(Comparator.comparing(StudentSessionInstituteGroupMapping::getCreatedAt,
+                Comparator.nullsLast(Comparator.reverseOrder())));
+
+        Map<String, String> perPackage = new LinkedHashMap<>();
+        for (StudentSessionInstituteGroupMapping m : mappings) {
+            String packageId = packageIdOf(m);
+            if (!StringUtils.hasText(packageId)) {
+                continue;
+            }
+            String site = perPackage.computeIfAbsent(packageId,
+                    id -> Objects.toString(siteRootOf(firstWordpressConnection(readPackageLmsSetting(id))), ""));
+            if (!site.isEmpty()) {
+                return site;
+            }
+        }
+
+        Set<String> instituteIds = new LinkedHashSet<>();
+        for (StudentSessionInstituteGroupMapping m : mappings) {
+            String id = instituteIdOf(m);
+            if (StringUtils.hasText(id)) {
+                instituteIds.add(id);
+            }
+        }
+        if (StringUtils.hasText(instituteId)) {
+            instituteIds.add(instituteId);
+        }
+        for (String id : instituteIds) {
+            String site = siteRootOf(firstWordpressConnection(readInstituteLmsSetting(id)));
+            if (site != null) {
+                return site;
+            }
+        }
+        return null;
     }
 
     /**

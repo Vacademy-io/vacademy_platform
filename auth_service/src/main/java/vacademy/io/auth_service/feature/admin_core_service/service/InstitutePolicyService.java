@@ -190,6 +190,44 @@ public class InstitutePolicyService {
     }
 
     /**
+     * userId -> the LMS site each learner signs in to (admin_core owns LMS_SETTING and the
+     * enrolments), for the login link in credential emails. Learners with no connected LMS
+     * are absent from the map. Never throws: a failed lookup returns an empty map so the
+     * email still goes out with the learner-portal link.
+     */
+    public Map<String, String> fetchLmsLoginUrls(java.util.List<String> userIds, String instituteId) {
+        if (userIds == null || userIds.isEmpty()) {
+            return Map.of();
+        }
+        try {
+            Map<String, Object> body = new java.util.HashMap<>();
+            body.put("user_ids", userIds);
+            body.put("institute_id", instituteId);
+            ResponseEntity<String> resp = internalClientUtils.makeHmacRequest(
+                    applicationName,
+                    HttpMethod.POST.name(),
+                    adminCoreServiceBaseUrl,
+                    "/admin-core-service/internal/learner/v1/lms-login-urls",
+                    body);
+            if (resp == null || !StringUtils.hasText(resp.getBody())) {
+                return Map.of();
+            }
+            JsonNode node = new ObjectMapper().readTree(resp.getBody());
+            Map<String, String> urls = new java.util.HashMap<>();
+            node.fields().forEachRemaining(e -> {
+                if (StringUtils.hasText(e.getValue().asText(""))) {
+                    urls.put(e.getKey(), e.getValue().asText());
+                }
+            });
+            return urls;
+        } catch (Exception e) {
+            log.warn("LMS login-URL lookup failed for {} user(s), institute {}: {}",
+                    userIds.size(), instituteId, e.getMessage());
+            return Map.of();
+        }
+    }
+
+    /**
      * After a learner changes their portal password, mirror it to any WordPress LMS
      * their courses are connected to (admin_core owns the LMS_SETTING + enrolment data,
      * so it does the actual crm/v1/edit-user push). Async + best-effort: a failure or

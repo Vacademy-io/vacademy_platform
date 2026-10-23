@@ -310,7 +310,11 @@ public class LeadScoringService {
      * Percentile is an expensive operation (touches all rows) so it runs as batch.
      */
     @Scheduled(fixedRate = 15 * 60 * 1000) // 15 minutes
-    @SchedulerLock(name = "LeadScoringService_batchRecalculatePercentiles", lockAtMostFor = "PT14M", lockAtLeastFor = "PT30S")
+    // lockAtLeastFor sits just under the 15-minute rate. Each of the 4 replicas ticks on its
+    // own fixedRate timer, so a 30s floor only stopped CONCURRENT runs: the job ran about once
+    // per replica per interval (266 runs in 16 h instead of ~64). Same fix as
+    // AirtelCcrImportScheduler; cron-scheduled jobs fire together and do not need it.
+    @SchedulerLock(name = "LeadScoringService_batchRecalculatePercentiles", lockAtMostFor = "PT14M", lockAtLeastFor = "PT14M")
     @Transactional
     public void batchRecalculatePercentiles() {
         logger.info("Starting batch percentile recalculation...");

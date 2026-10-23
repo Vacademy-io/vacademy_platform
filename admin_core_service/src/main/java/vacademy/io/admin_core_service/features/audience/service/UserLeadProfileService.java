@@ -589,7 +589,10 @@ public class UserLeadProfileService {
      * Catches up with any changes missed by real-time updates (e.g. percentile recalcs).
      */
     @Scheduled(fixedRate = 30 * 60 * 1000)
-    @SchedulerLock(name = "UserLeadProfileService_batchRebuildProfiles", lockAtMostFor = "PT29M", lockAtLeastFor = "PT1M")
+    // lockAtLeastFor sits just under the 30-minute rate so the rebuild runs once per interval,
+    // not once per replica: with a 1-minute floor the 4 replicas took turns and the rebuild
+    // ran back to back (~60 profile writes/s around the clock). See LeadScoringService.
+    @SchedulerLock(name = "UserLeadProfileService_batchRebuildProfiles", lockAtMostFor = "PT29M", lockAtLeastFor = "PT29M")
     public void batchRebuildProfiles() {
         log.info("Starting batch user_lead_profile rebuild...");
 
@@ -609,13 +612,14 @@ public class UserLeadProfileService {
             String instituteId = entry.getKey();
             List<String> responseIds = entry.getValue();
 
-            // Fetch responses by ID to get userIds
+            // Fetch responses to get userIds, in chunks rather than one findById per score.
             Set<String> userIds = new HashSet<>();
-            for (String responseId : responseIds) {
-                audienceResponseRepository.findById(responseId).ifPresent(r -> {
+            for (int i = 0; i < responseIds.size(); i += 1000) {
+                List<String> chunk = responseIds.subList(i, Math.min(i + 1000, responseIds.size()));
+                for (AudienceResponse r : audienceResponseRepository.findAllById(chunk)) {
                     if (r.getUserId() != null) userIds.add(r.getUserId());
                     if (r.getStudentUserId() != null) userIds.add(r.getStudentUserId());
-                });
+                }
             }
 
             for (String userId : userIds) {

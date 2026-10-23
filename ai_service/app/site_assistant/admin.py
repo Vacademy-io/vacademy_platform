@@ -207,7 +207,7 @@ async def site_status(staff: Staff, site_tag: str) -> Dict[str, Any]:
     with db_session() as db:
         state = repo.index_state(db, staff.institute_id, tag)
         today = repo.site_answers_today(db, staff.institute_id, tag)
-    fp_now = K.fingerprint(published["catalogue"]) if published else None
+    fp_now = K.site_fingerprint(staff.institute_id, published["catalogue"]) if published else None
     credits = billing.balance_warning(staff.institute_id)
     low = credits.get("sufficient") is False
     platform_on = not S.kill_switch_on()

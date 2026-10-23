@@ -52,7 +52,7 @@ public class CatalogApiService {
     private static final int MAX_SERIES_PATHS = 12;
     /** Sort tokens, in the order the error message lists them (the v1.0 four first). */
     static final Set<String> SORTS = new LinkedHashSet<>(List.of("newest", "title", "price_asc", "price_desc",
-            "oldest", "rating", "title_desc", "popular"));
+            "oldest", "rating", "title_desc", "popular", "relevance"));
     static final Set<String> AVAILABILITIES = Set.of("available", "coming_soon", "not_started", "closed");
 
     private final CatalogDataLoader loader;
@@ -468,13 +468,15 @@ public class CatalogApiService {
         List<CatalogFilters.Group<Card, CatalogRow>> groups = CatalogFilters.remember(groups(s, c, extras, priceSort));
         List<Card> matched = CatalogFilters.apply(all, Card::rows, groups, null);
 
-        record Hit(Card card, Map<String, Object> view, double sortPrice, Integer rank) {
+        record Hit(Card card, Map<String, Object> view, double sortPrice, Integer rank, double relevance) {
         }
+        List<String> qWords = "relevance".equals(sort) && q != null ? CatalogSearch.queryWords(q) : List.of();
         List<Hit> hits = new ArrayList<>();
         for (Card card : matched) {
             List<CatalogRow> matching = CatalogFilters.rowsMatching(card, Card::rows, groups);
             Map<String, Object> view = summary(s, extras, card, card.primary(), matching, priceSort);
-            hits.add(new Hit(card, view, CatalogPricing.sortPrice(matching), card.rank(extras.ranks())));
+            hits.add(new Hit(card, view, CatalogPricing.sortPrice(matching), card.rank(extras.ranks()),
+                    "relevance".equals(sort) ? relevance(card, q, qWords) : 0));
         }
 
         Comparator<Hit> byOrder = Comparator.comparingInt(h -> h.card().order());
@@ -492,6 +494,10 @@ public class CatalogApiService {
             // catalog-sort.ts "Popular": ranked by rank, the rest after them in catalogue order.
             case "popular" -> ((Comparator<Hit>) (a, b) -> CourseBadges.comparePopularity(a.rank(), b.rank()))
                     .thenComparing(byOrder);
+            // Best title match to q first (CatalogSearch.titleScore), then newest; without q, newest.
+            case "relevance" -> Comparator.comparingDouble((Hit h) -> -h.relevance())
+                    .thenComparing((Hit h) -> h.card().createdAt(), Comparator.nullsLast(Comparator.reverseOrder()))
+                    .thenComparing(byOrder);
             default -> Comparator.comparing((Hit h) -> h.card().createdAt(),
                     Comparator.nullsLast(Comparator.reverseOrder())).thenComparing(byOrder);
         };
@@ -505,6 +511,14 @@ public class CatalogApiService {
         return out;
     }
 
+    /** A card's best version title score against q (0 without q). */
+    private static double relevance(Card card, String q, List<String> qWords) {
+        if (q == null) return 0;
+        double best = 0;
+        for (CatalogRow r : card.rows()) best = Math.max(best, CatalogSearch.titleScore(r.title(), q, qWords));
+        return best;
+    }
+
     private static Double ratingOf(CatalogRow r) {
         return r.rating() != null && r.rating() > 0 ? r.rating() : null;
     }
@@ -513,7 +527,8 @@ public class CatalogApiService {
     private List<CatalogFilters.Group<Card, CatalogRow>> groups(CatalogSnapshot s, Criteria c, Extras extras,
                                                                 boolean priceSort) {
         List<CatalogFilters.Group<Card, CatalogRow>> g = new ArrayList<>();
-        g.add(new CatalogFilters.Group<>(G_SEARCH, c.q() != null, card -> matchesText(card, c.q()), null));
+        List<String> qWords = c.q() == null ? List.of() : CatalogSearch.queryWords(c.q());
+        g.add(new CatalogFilters.Group<>(G_SEARCH, c.q() != null, card -> matchesText(card, c.q(), qWords), null));
         // An unknown stream / category slug matches nothing, never silently everything.
         g.add(new CatalogFilters.Group<>(G_STREAM, !c.streamSlugs().isEmpty(),
                 card -> c.streams().stream().anyMatch(st -> CatalogStreams.matchesAny(st.tags(), card.tagSet())), null));
@@ -625,11 +640,41 @@ public class CatalogApiService {
     private final Cache<CatalogRow, String> searchDescriptions = Caffeine.newBuilder().weakKeys()
             .maximumSize(100_000).build();
 
+    /** Search words per row object: title, tags, instructors and plain-text description ({@link CatalogSearch}). */
+    private final Cache<CatalogRow, Set<String>> searchWords = Caffeine.newBuilder().weakKeys()
+            .maximumSize(100_000).build();
+
     /**
-     * Search: any version's title or description (plain text) — the site's {@code rowMatchesSearch}
-     * — or any version's instructor name, or a course tag. Level keys are internal and never match.
+     * Search: the whole query as a substring of any version's title or description (plain text) — the
+     * site's {@code rowMatchesSearch} — or of any version's instructor name, or of a course tag; else
+     * every query word among the card's words ({@link CatalogSearch}). Level keys are internal and never match.
      */
-    private boolean matchesText(Card card, String q) {
+    private boolean matchesText(Card card, String q, List<String> qWords) {
+        if (matchesPhrase(card, q)) return true;
+        if (qWords.isEmpty()) return false;
+        Set<String> words = new HashSet<>();
+        for (CatalogRow r : card.rows()) words.addAll(searchWords.get(r, this::rowWords));
+        return CatalogSearch.matchesAll(qWords, words);
+    }
+
+    private Set<String> rowWords(CatalogRow row) {
+        Set<String> words = new HashSet<>(CatalogSearch.words(row.title()));
+        for (String t : CourseFormats.rowTags(row.tags(), null)) {
+            if (!LevelKeys.isLevelKey(t)) words.addAll(CatalogSearch.words(t));
+        }
+        for (CatalogRow.Person p : row.instructors()) words.addAll(CatalogSearch.words(p.name()));
+        words.addAll(CatalogSearch.words(plainDescription(row)));
+        return words;
+    }
+
+    private String plainDescription(CatalogRow row) {
+        return searchDescriptions.get(row, r -> {
+            String text = CatalogHtml.plainText(r.descriptionHtml());
+            return text == null ? "" : text.toLowerCase(Locale.ROOT);
+        });
+    }
+
+    private boolean matchesPhrase(Card card, String q) {
         for (CatalogRow r : card.rows()) {
             if (r.title() != null && r.title().toLowerCase(Locale.ROOT).contains(q)) return true;
         }
@@ -638,11 +683,7 @@ public class CatalogApiService {
             for (CatalogRow.Person p : r.instructors()) {
                 if (p.name() != null && p.name().toLowerCase(Locale.ROOT).contains(q)) return true;
             }
-            String d = searchDescriptions.get(r, row -> {
-                String text = CatalogHtml.plainText(row.descriptionHtml());
-                return text == null ? "" : text.toLowerCase(Locale.ROOT);
-            });
-            if (d.contains(q)) return true;
+            if (plainDescription(r).contains(q)) return true;
         }
         return false;
     }

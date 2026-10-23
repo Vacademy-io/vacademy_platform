@@ -177,7 +177,16 @@ async def _find_on_site(args: Dict[str, Any], ctx: SiteContext) -> ToolResult:
     return ToolResult("\n".join(blocks), cards, sources)
 
 
-_SORTS = ("popular", "newest", "price_asc", "price_desc", "title")
+_SORTS = ("relevance", "popular", "newest", "price_asc", "price_desc", "title")
+_NARROWING = ("stream", "category", "format", "language", "level", "badge")
+
+
+async def _courses(ctx: SiteContext, params: Dict[str, Any]) -> Tuple[Optional[Dict[str, Any]], List[Dict[str, Any]]]:
+    data = await ac.catalog_courses(ctx.institute_id, params)
+    if data is None and params.get("sort") == "relevance":
+        # An admin_core without sort=relevance answers 400: search again in its default order.
+        data = await ac.catalog_courses(ctx.institute_id, {k: v for k, v in params.items() if k != "sort"})
+    return data, [c for c in (data or {}).get("data") or [] if isinstance(c, dict)]
 
 
 async def _search_courses(args: Dict[str, Any], ctx: SiteContext) -> ToolResult:
@@ -197,17 +206,35 @@ async def _search_courses(args: Dict[str, Any], ctx: SiteContext) -> ToolResult:
     sort = _str_arg(args, "sort", 20)
     if sort in _SORTS:
         params["sort"] = sort
+    elif params.get("q"):
+        params["sort"] = "relevance"     # closest titles first; the API's own default is newest
     try:
         limit = int(args.get("limit") or 4)
     except (TypeError, ValueError):
         limit = 4
     params["page_size"] = max(1, min(limit, 4))
-    data = await ac.catalog_courses(ctx.institute_id, params)
-    courses = [c for c in (data or {}).get("data") or [] if isinstance(c, dict)]
+    asked = dict(params)
+    data, courses = await _courses(ctx, params)
+    # The model often adds a filter the site does not have (format=ebook on a site without formats, a made-up
+    # category) or a word no title has ("guide", "series"): widen once without the filters, then drop the last
+    # words, before telling the visitor nothing is there.
+    if not courses and any(k in params for k in _NARROWING):
+        params = {k: v for k, v in params.items() if k not in _NARROWING}
+        data, courses = await _courses(ctx, params)
+    words = (params.get("q") or "").split()
+    while not courses and len(words) > 1 and len(asked.get("q", "").split()) - len(words) < 2:
+        words = words[:-1]
+        params = {**params, "q": " ".join(words)}
+        data, courses = await _courses(ctx, params)
     if not courses:
-        return ToolResult(fence("courses", f"No courses match {json.dumps(params, ensure_ascii=False)}."), found=False)
+        return ToolResult(fence("courses", f"No courses match {json.dumps(asked, ensure_ascii=False)}, even with "
+                                           "fewer words and no filters. Tell the visitor you could not find it; never "
+                                           "say you found courses or tell them to tap a button."), found=False)
     total = (data or {}).get("total")
-    body = f"{len(courses)} of {total} matching courses:\n" + "\n".join(_course_line(c) for c in courses)
+    widened = "" if params == asked else (
+        f"Nothing matched {json.dumps(asked, ensure_ascii=False)} exactly; these are the closest matches for "
+        f"{json.dumps(params, ensure_ascii=False)}. Say so.\n")
+    body = widened + f"{len(courses)} of {total} matching courses:\n" + "\n".join(_course_line(c) for c in courses)
     card = C.course_list_card(courses)
     return ToolResult(fence("courses", body), [card] if card else [],
                       [{"type": "course", "id": c.get("id")} for c in courses])
@@ -581,8 +608,9 @@ def _obj(props: Dict[str, Any], required: Sequence[str] = ()) -> Dict[str, Any]:
 SITE_TOOLS: Dict[str, SiteToolSpec] = {s.name: s for s in (
     SiteToolSpec(
         "find_on_site",
-        "Search this website's own pages (about, contact, policies, blog-like pages, sections) for a topic. "
-        "Use for questions about the institute, policies, navigation ('where is…'), and topics the site explains.",
+        "Search this website's own pages and blog articles (about, contact, policies, exam guides, articles, "
+        "sections) for a topic. Use for questions about the institute, policies, navigation ('where is…'), and "
+        "topics the site explains (an exam's eligibility, syllabus or dates when the site has a guide on it).",
         _obj({"query": {"type": "string", "description": "What to look for, in the visitor's words."}}, ["query"]),
         _find_on_site, ("pages",), ("page_link",)),
     SiteToolSpec(
@@ -591,7 +619,9 @@ SITE_TOOLS: Dict[str, SiteToolSpec] = {s.name: s for s in (
         "'in Hindi', 'cheapest', 'most popular'). Returns up to 4 courses with ids, prices as the site shows them, "
         "formats, languages and links.",
         _obj({
-            "q": {"type": "string", "description": "Free-text search."},
+            "q": {"type": "string", "description": "Key words from the visitor's request (the topic, subject, "
+                                                   "exam, series, author or month and year), not a whole sentence. "
+                                                   "Every word must match a course, so leave out filler words."},
             "stream": {"type": "string", "description": "Stream slug."},
             "category": {"type": "string", "description": "Category slug."},
             "format": {"type": "string", "description": "Format key, e.g. live, recorded, ebook."},

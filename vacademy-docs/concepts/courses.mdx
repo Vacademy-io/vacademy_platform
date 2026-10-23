@@ -109,7 +109,7 @@ curl "https://api.vacademy.ai/catalog/v1/courses?stream=dharma&format=ebook&lang
 
 | Parameter | Matches | Comma list |
 |---|---|---|
-| `q` | A case-insensitive substring of any version's title, its plain-text description, an instructor's name, or a course tag. | |
+| `q` | Words, in any order, case-insensitive: a course matches when the whole text is a substring of any version's title, its plain-text description, an instructor's name or a course tag, or when every word is found among those (a word of 3+ letters also matches the start of one: `geo` finds Geography). Month names and their short forms match (`April` = `Apr`), so do `2024` and `'24`, and singular and plural. Filler such as `pdf`, `ebook`, `course`, `notes`, `for`, `the` is not required. | |
 | `stream`, `category` | Stream or category slugs from `GET /streams`. `category` is looked up in the given `stream`s, else in every stream. | Yes |
 | `format` | Format keys from `GET /site`. | Yes |
 | `badge` | `bestseller`, `popular`, `new`, `free` ([below](#badges-and-popularity)). Anything else is a `400`. | Yes |
@@ -139,6 +139,7 @@ curl "https://api.vacademy.ai/catalog/v1/courses?stream=dharma&format=ebook&lang
 | `rating` | Highest `rating` first; unrated courses last. |
 | `title`, `title_desc` | By title, A–Z / Z–A (case-insensitive). |
 | `popular` | By `popularity_rank` (most enrolled first); unranked courses follow in catalogue order. |
+| `relevance` | With `q`: titles holding the whole `q` first, then titles with the most of its words, then newest. Without `q`, the same as `newest`. |
 
 Ties keep the catalogue's order. Any other value is `400 invalid_request` with `details.param: "sort"`. `GET /courses` always defaults to `newest`; the site's own default is in [`GET /site` `catalog.default_sort`](#mirror-the-hosted-catalogue).
 

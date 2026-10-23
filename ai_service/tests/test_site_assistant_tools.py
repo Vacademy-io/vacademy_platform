@@ -56,6 +56,55 @@ def test_institute_comes_from_the_session_not_the_model(monkeypatch):
     assert "institute_id" not in calls[0][2] and "instituteId" not in calls[0][2]
 
 
+def test_a_text_search_asks_for_relevance_unless_the_model_picked_a_sort(monkeypatch):
+    f = install(monkeypatch)
+    run("search_courses", {"q": "parenting"}, ctx())
+    run("search_courses", {"q": "parenting", "sort": "price_asc"}, ctx())
+    run("search_courses", {"price": "free"}, ctx())
+    sorts = [c[2].get("sort") for c in f.admin_core.calls if c[0] == "catalog_courses"]
+    assert sorts == ["relevance", "price_asc", None]
+
+
+def test_no_hit_search_widens_without_filters_then_with_fewer_words(monkeypatch):
+    f = install(monkeypatch)
+    real = f.admin_core.courses[INST]
+
+    async def catalog_courses(iid, params):
+        f.admin_core.calls.append(("catalog_courses", iid, dict(params)))
+        ok = "format" not in params and params.get("q") in (None, "current affairs")
+        return {"data": real[:4] if ok else [], "total": len(real) if ok else 0}
+    from app.site_assistant import internal_client as ac
+    monkeypatch.setattr(ac, "catalog_courses", catalog_courses)
+    res = run("search_courses", {"q": "current affairs ebooks", "format": "ebook"}, ctx())
+    assert res.found and res.cards[0]["type"] == "course_list"
+    assert "closest matches" in res.text
+    qs = [(c[2].get("q"), c[2].get("format")) for c in f.admin_core.calls if c[0] == "catalog_courses"]
+    assert qs == [("current affairs ebooks", "ebook"), ("current affairs ebooks", None), ("current affairs", None)]
+
+
+def test_relevance_sort_falls_back_when_admin_core_refuses_it(monkeypatch):
+    f = install(monkeypatch)
+    real = f.admin_core.courses[INST]
+
+    async def catalog_courses(iid, params):              # an admin_core that predates sort=relevance (400)
+        f.admin_core.calls.append(("catalog_courses", iid, dict(params)))
+        return None if params.get("sort") == "relevance" else {"data": real[:4], "total": len(real)}
+    from app.site_assistant import internal_client as ac
+    monkeypatch.setattr(ac, "catalog_courses", catalog_courses)
+    res = run("search_courses", {"q": "parenting"}, ctx())
+    assert res.found and "closest" not in res.text
+    assert [c[2].get("sort") for c in f.admin_core.calls if c[0] == "catalog_courses"] == ["relevance", None]
+
+
+def test_no_hit_search_tells_the_model_not_to_claim_results(monkeypatch):
+    f = install(monkeypatch)
+    f.admin_core.courses[INST] = []
+    res = run("search_courses", {"q": "zzz unknown words here"}, ctx())
+    assert not res.found and not res.cards and "never say you found courses" in res.text
+    qs = [c[2].get("q") for c in f.admin_core.calls if c[0] == "catalog_courses"]
+    assert qs == ["zzz unknown words here", "zzz unknown words", "zzz unknown"]    # at most two words dropped
+
+
 def test_get_course_id_is_only_looked_up_inside_the_session_institute(monkeypatch):
     f = install(monkeypatch)
     f.admin_core.courses[OTHER_INST] = [course("secret", "Other institute course")]

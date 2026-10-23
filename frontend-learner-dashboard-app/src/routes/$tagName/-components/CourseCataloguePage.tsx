@@ -45,6 +45,7 @@ import { shouldShowMobileGetStarted } from "../-utils/catalogue-cta";
 import { headerOffsetClass } from "./header/header-chrome";
 import { PreviewPathProvider } from "../-utils/preview-path";
 import { blogPostSlugFor } from "../-utils/blog-route";
+import { jobSlugFor, pageHasJob } from "../-utils/job-openings";
 import { ImageFitProvider, siteImageFit } from "@/components/common/fit-image/FitImage";
 import {
   isEditorMessage,
@@ -752,6 +753,13 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
    *  under the article, in page order. */
   const withArticleOnly = (page: CourseCatalogueData["pages"][number]) => {
     const components = page.components || [];
+    // A job's own page (/<page>/<job-slug>) reads the same way: only the
+    // jobOpenings section, and only when the slug names one of its jobs (an
+    // unknown slug keeps the whole page, cards included).
+    const jobs = components.find((c) => c?.type === "jobOpenings" && c.enabled !== false);
+    if (jobs && pageHasJob(jobs.props, jobSlugFor(location.pathname, location.searchStr, tagName, page.route || ""))) {
+      return { ...page, components: [jobs] };
+    }
     const blog = components.find((c) => c?.type === "blog" && c.enabled !== false);
     if (!blog) return page;
     const slug = blogPostSlugFor(location.pathname, location.searchStr, tagName, page.route || "");

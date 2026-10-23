@@ -255,6 +255,8 @@
         "goToMyCourses": "اذهب إلى {{courses}} الخاصة بي",
         "redirecting": "جارٍ نقلك إلى الصفحة التالية…",
         "redirectNow": "المتابعة الآن",
-        "loggingIn": "جارٍ تسجيل دخولك…"
+        "loggingIn": "جارٍ تسجيل دخولك…",
+        "existingAccountHint": "لديك حساب بالفعل. سجّل الدخول لفتح {{courses}} الخاصة بك.",
+        "logInToContinue": "تسجيل الدخول"
     }
 }

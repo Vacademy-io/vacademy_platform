@@ -74,6 +74,7 @@ export function EmailLogin({
   allowPhoneAuth,
   allowSignup,
   onSwitchToPhone,
+  initialEmail,
 }: {
   onSwitchToUsername: () => void;
   onSwitchToPhone?: () => void;
@@ -85,6 +86,8 @@ export function EmailLogin({
   allowPhoneAuth?: boolean;
   /** Portal policy from domain routing; undefined = unknown, see isSignupLinkVisible. */
   allowSignup?: boolean;
+  /** Pre-fills the email field; the learner still has to receive and enter the OTP. */
+  initialEmail?: string;
 }) {
   const { t, i18n: i18nInstance } = useTranslation("auth");
   const emailSchema = useMemo(
@@ -111,7 +114,7 @@ export function EmailLogin({
   const emailForm = useForm<EmailFormValues>({
     resolver: zodResolver(emailSchema),
     defaultValues: {
-      email: "",
+      email: initialEmail ?? "",
     },
   });
   const startTimer = () => {

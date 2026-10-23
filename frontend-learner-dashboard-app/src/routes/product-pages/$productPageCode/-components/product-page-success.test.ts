@@ -15,13 +15,23 @@ vi.mock('@/components/common/layout-container/sidebar/utils', () => ({
     getTerminology: () => 'Course', getTerminologyPlural: () => 'Courses',
 }));
 vi.mock('@/utils/ios-iap-compliance', () => ({ shouldHidePaidPurchaseUI: () => false }));
+const store = vi.hoisted(() => ({
+    registrationData: {} as Record<string, { key?: string; name?: string; type?: string; value?: string }>,
+    accessToken: null as string | null,
+}));
 vi.mock('../-stores/product-page-store', () => ({
     useProductPageStore: () => ({
         selectedPsOptionIds: ['o0', 'o1', 'o2', 'o3'],
         utmParams: {},
         finalPrice: () => 899,
         totalPrice: () => 1396,
+        loginCode: null,
+        registrationData: store.registrationData,
     }),
+}));
+// The real module pulls in the API base URL, which reads window at import time.
+vi.mock('@/lib/auth/sessionUtility', () => ({
+    getTokenFromCookie: () => store.accessToken,
 }));
 
 const { ProductPageSuccess } = await import('./ProductPageSuccess');
@@ -112,5 +122,87 @@ describe('the after-payment redirect', () => {
             expect(html).toContain('success.goToMyCourses');
             expect(html).not.toContain('success.redirecting');
         }
+    });
+});
+
+/**
+ * "Log In Automatically After Purchase" when the server issued no login code:
+ * the buyer's account existed before this checkout (e.g. migrated from an
+ * old store and never sent a password), so the button
+ * takes them to the OTP login with their email and phone filled in. Which OTP
+ * form opens is the login page's call, from the portal's policy.
+ */
+describe('a buyer with an existing account on an auto-login page', () => {
+    const render = (settings: Record<string, unknown>) => {
+        const pageData = {
+            settings_json: JSON.stringify(settings),
+            currency: 'INR',
+            mappings: [
+                {
+                    ps_invite_payment_option_id: 'o0',
+                    package_name: 'Geography eBook',
+                    level_name: 'default',
+                    session_name: 'default',
+                    payment_plan: { name: 'eBook Rs 10', actual_price: 10, currency: 'INR' },
+                },
+            ],
+        };
+        return renderToStaticMarkup(
+            React.createElement(ProductPageSuccess, { pageData: pageData as never }),
+        );
+    };
+    const withBuyer = (email: string, phone = '', token: string | null = null) => {
+        store.registrationData = {
+            email: { key: 'email', name: 'Email', type: 'email', value: email },
+            phone: { key: 'phone', name: 'Phone', type: 'phone', value: phone },
+        };
+        store.accessToken = token;
+    };
+
+    it('sends them to the OTP login with their email and phone filled in', () => {
+        withBuyer('old.buyer+1@gmail.com', '+91 98765 43210');
+        const html = render({ autoLoginAfterPayment: true });
+        expect(html).toContain(
+            'href="/login?method=otp&amp;email=old.buyer%2B1%40gmail.com&amp;phone=919876543210"',
+        );
+        expect(html).toContain('success.logInToContinue');
+        expect(html).toContain('success.existingAccountHint');
+        expect(html).not.toContain('success.goToMyCourses');
+    });
+
+    it('leaves out a phone number without its country code', () => {
+        withBuyer('old.buyer@gmail.com', '9876543210');
+        const html = render({ autoLoginAfterPayment: true });
+        expect(html).toContain('href="/login?method=otp&amp;email=old.buyer%40gmail.com"');
+    });
+
+    it('changes nothing on a page without the setting', () => {
+        withBuyer('old.buyer@gmail.com', '+919876543210');
+        const html = render({});
+        expect(html).toContain('href="/dashboard"');
+        expect(html).toContain('success.goToMyCourses');
+        expect(html).not.toContain('/login?method=otp');
+        expect(html).not.toContain('success.existingAccountHint');
+    });
+
+    it('goes straight to the dashboard when this browser is already logged in', () => {
+        withBuyer('old.buyer@gmail.com', '+919876543210', 'token');
+        const html = render({ autoLoginAfterPayment: true });
+        expect(html).toContain('href="/dashboard"');
+        expect(html).not.toContain('/login?method=otp');
+    });
+
+    it('keeps the plain button when the form gave neither an email nor a phone', () => {
+        withBuyer('', '');
+        const html = render({ autoLoginAfterPayment: true });
+        expect(html).toContain('href="/dashboard"');
+        expect(html).not.toContain('success.existingAccountHint');
+    });
+
+    it('keeps the hidden login button hidden', () => {
+        withBuyer('old.buyer@gmail.com');
+        const html = render({ autoLoginAfterPayment: true, showLoginButton: false });
+        expect(html).not.toContain('/login?method=otp');
+        expect(html).not.toContain('success.existingAccountHint');
     });
 });

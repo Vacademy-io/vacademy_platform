@@ -244,7 +244,9 @@
         "goToMyCourses": "Go to My {{courses}}",
         "redirecting": "Taking you to the next page…",
         "redirectNow": "Continue now",
-        "loggingIn": "Logging you in…"
+        "loggingIn": "Logging you in…",
+        "existingAccountHint": "You already have an account. Log in to open your {{courses}}.",
+        "logInToContinue": "Log In"
     },
     "planTiles": {
         "coursesIncluded": "{{count}} {{courses}} included",

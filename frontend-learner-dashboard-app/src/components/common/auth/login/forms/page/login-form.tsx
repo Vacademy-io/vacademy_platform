@@ -25,6 +25,11 @@ import { useTheme } from "@/providers/theme/theme-provider";
 import { fetchAndStoreInstituteDetails } from "@/services/fetchAndStoreInstituteDetails";
 import { fetchAndStoreStudentDetails } from "@/services/studentDetails";
 import { hydrateParentSession } from "@/lib/auth/detect-user-role";
+import {
+  pickOtpLoginMethod,
+  readOtpLoginHandoff,
+  stripOtpLoginHandoff,
+} from "@/lib/auth/otp-login-handoff";
 import ClipLoader from "react-spinners/ClipLoader";
 import { motion, AnimatePresence } from "framer-motion";
 import { useInstituteFeatureStore } from "@/stores/insititute-feature-store";
@@ -101,6 +106,9 @@ export function LoginForm({
   // screen — which is why the link stays predictable enough for an outside system to generate.
   const prefilledUsername = urlParams.get("username") || undefined;
   const fromPaymentSuccess = urlParams.get("fromPaymentSuccess") === "1";
+  // /login?method=otp&email=…&phone=… (see otp-login-handoff): open the OTP form the portal
+  // allows, prefilled. Read once, because the params are stripped from the URL below.
+  const [otpHandoff] = useState(() => readOtpLoginHandoff(window.location.search));
   const [postPaymentCreds, setPostPaymentCreds] = useState<{
     username: string;
     password: string;
@@ -113,6 +121,12 @@ export function LoginForm({
   } | null>(null);
   const [authMethod, setAuthMethod] = useState<"EMAIL" | "USERNAME" | "PHONE">(() => {
     if (isPublic === "true" && !fromPaymentSuccess) return "EMAIL";
+    // Permissive defaults until the portal policy arrives; the effect below re-picks.
+    const otpMethod = pickOtpLoginMethod(otpHandoff, {
+      allowEmailOtpAuth: true,
+      allowPhoneAuth: true,
+    });
+    if (otpMethod) return otpMethod;
     return "USERNAME";
   });
   const [providerFlags, setProviderFlags] = useState<{
@@ -238,6 +252,28 @@ export function LoginForm({
     domainRouting.allowUsernamePasswordAuth,
     domainRouting.allowPhoneAuth,
   ]);
+
+  // OTP hand-off: re-pick the form once the portal's real policy is known, so
+  // the link follows whatever OTP the portal has switched on. No allowed match
+  // leaves the page on its usual form.
+  useEffect(() => {
+    if (!otpHandoff || !providersResolved) return;
+    const method = pickOtpLoginMethod(otpHandoff, {
+      allowEmailOtpAuth: providerFlags.allowEmailOtpAuth,
+      allowPhoneAuth: providerFlags.allowPhoneAuth,
+    });
+    if (method) setAuthMethod(method);
+  }, [otpHandoff, providersResolved, providerFlags.allowEmailOtpAuth, providerFlags.allowPhoneAuth]);
+
+  useEffect(() => {
+    if (!otpHandoff) return;
+    const url = new URL(window.location.href);
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${url.pathname}${stripOtpLoginHandoff(url.search)}${url.hash}`,
+    );
+  }, [otpHandoff]);
   // Providers from stored flags
   // Apple 4.8: the Mac App Store build offers no third-party login at all (the
   // Sign in with Apple plugin is iOS-only, so it cannot be paired with them
@@ -1202,6 +1238,7 @@ export function LoginForm({
                               courseId={courseId}
                               onSwitchToSignup={onSwitchToSignup}
                               allowSignup={signupOffered}
+                              initialPhone={otpHandoff?.phone}
                             />
                           </motion.div>
                         );
@@ -1225,6 +1262,7 @@ export function LoginForm({
                               allowUsernamePasswordAuth={allowUserPass}
                               allowPhoneAuth={allowPhone}
                               allowSignup={signupOffered}
+                              initialEmail={otpHandoff?.email}
                             />
                           </motion.div>
                         );

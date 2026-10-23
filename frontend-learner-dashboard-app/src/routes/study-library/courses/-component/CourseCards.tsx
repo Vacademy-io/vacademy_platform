@@ -21,6 +21,7 @@ import { Card, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatMinutesHuman } from "@/utils/courseTime";
+import { authorRole, sharedAuthorRole } from "@/lib/course-author-role";
 
 // Avatar gradient ramp passed to boring-avatars (illustration palette, not theme tokens).
 const INSTRUCTOR_AVATAR_RAMP = ["#FFE5CC", "#FFCDA8", "#FFA85C", "#E8751A", "#C45A00"]; // design-lint-ignore: illustration ramp
@@ -31,6 +32,8 @@ interface Instructor {
     image_url?: string;
     author_subtitle?: string;
     author_description?: string;
+    /** Display role in this course (Author / Instructor / Acharya …). */
+    role_label?: string | null;
 }
 
 interface CourseCardProps {
@@ -351,7 +354,10 @@ const CourseCard: React.FC<CourseCardProps> = ({
                         </div>
                         <div className="min-w-0 flex-1 space-y-0.5">
                             <p className="text-caption text-muted-foreground font-medium">
-                                {toTitleCase(getTerminology(RoleTerms.Teacher, SystemTerms.Teacher))}
+                                {sharedAuthorRole(
+                                    instructors.map(authorRole),
+                                    toTitleCase(getTerminology(RoleTerms.Teacher, SystemTerms.Teacher))
+                                )}
                             </p>
                             <div className="text-sm font-medium truncate">
                                 {instructors.map((instructor, index) => (

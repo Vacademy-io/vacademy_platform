@@ -52,6 +52,7 @@ import {
     type RenameRowType,
 } from './rename-rules';
 import { InlineNameEditor } from './inline-name-editor';
+import { AuthorRoleField, authorRoleOptions } from './author-role-field';
 import { RichTextEditor } from '@/components/editor/RichTextEditor';
 
 interface Subgroup {
@@ -87,6 +88,8 @@ interface Instructor {
     /** Optional author-profile metadata shown wherever this user is an instructor. */
     authorSubtitle?: string;
     authorDescription?: string;
+    /** Display role in this course (Author / Instructor / Acharya ...). '' = institute default. */
+    roleLabel?: string;
 }
 
 // Update the schema
@@ -129,6 +132,7 @@ export const step2Schema = z
                                         roles: z.array(z.string()).optional(),
                                         authorSubtitle: z.string().optional(),
                                         authorDescription: z.string().optional(),
+                                        roleLabel: z.string().optional(),
                                     })
                                 )
                                 .default([]),
@@ -160,6 +164,7 @@ export const step2Schema = z
                     roles: z.array(z.string()).optional(),
                     authorSubtitle: z.string().optional(),
                     authorDescription: z.string().optional(),
+                    roleLabel: z.string().optional(),
                 })
             )
             .default([]),
@@ -173,6 +178,7 @@ export const step2Schema = z
                     roles: z.array(z.string()).optional(),
                     authorSubtitle: z.string().optional(),
                     authorDescription: z.string().optional(),
+                    roleLabel: z.string().optional(),
                 })
             )
             .optional(),
@@ -1102,7 +1108,7 @@ export const AddCourseStep2 = ({
     // entry so the metadata is carried through to the create/update payload.
     const handleAuthorMetaChange = (
         instructorId: string,
-        field: 'authorSubtitle' | 'authorDescription' | 'profilePicId',
+        field: 'authorSubtitle' | 'authorDescription' | 'profilePicId' | 'roleLabel',
         value: string
     ) => {
         setSelectedInstructors((prev) => {
@@ -1128,6 +1134,17 @@ export const AddCourseStep2 = ({
             return updatedSessions;
         });
     };
+
+    // Per-course role choices: presets plus any custom word already used here.
+    const authorRoleChoices = useMemo(
+        () =>
+            authorRoleOptions(
+                (Array.isArray(selectedInstructors) ? selectedInstructors : []).map(
+                    (i) => i.roleLabel
+                )
+            ),
+        [selectedInstructors]
+    );
 
     // Author photo: uploaded like the Teams member photo, saved onto the user
     // (profile_pic_file_id) when the course is saved.
@@ -3493,8 +3510,12 @@ export const AddCourseStep2 = ({
                                                                     id: instructor.id,
                                                                     name: instructor.name,
                                                                     email: instructor.email,
+                                                                    // shown under the name and searchable
+                                                                    subtitle: instructor.email,
                                                                 })
                                                             )}
+                                                            searchPlaceholder="Search by name or email…"
+                                                            searchSubtitle
                                                             selected={selectedInstructors?.map(
                                                                 (instructor) => ({
                                                                     id: instructor.id,
@@ -4077,8 +4098,29 @@ export const AddCourseStep2 = ({
                                                                                             </div>
                                                                                         </div>
 
-                                                                                        {/* Per-author photo, subtitle & description */}
+                                                                                        {/* Per-author role, photo, subtitle & description */}
                                                                                         <div className="mt-2 space-y-2">
+                                                                                            <AuthorRoleField
+                                                                                                value={
+                                                                                                    instructor.roleLabel
+                                                                                                }
+                                                                                                options={
+                                                                                                    authorRoleChoices
+                                                                                                }
+                                                                                                defaultTerm={getTerminology(
+                                                                                                    RoleTerms.Teacher,
+                                                                                                    SystemTerms.Teacher
+                                                                                                )}
+                                                                                                onChange={(
+                                                                                                    role
+                                                                                                ) =>
+                                                                                                    handleAuthorMetaChange(
+                                                                                                        instructor.id,
+                                                                                                        'roleLabel',
+                                                                                                        role
+                                                                                                    )
+                                                                                                }
+                                                                                            />
                                                                                             <div>
                                                                                                 <Label className="mb-1 block text-xs font-medium text-gray-700">
                                                                                                     Author

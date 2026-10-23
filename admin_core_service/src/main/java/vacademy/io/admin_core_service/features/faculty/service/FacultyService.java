@@ -274,6 +274,7 @@ public class FacultyService {
                     addFacultyToCourseDTO.getUser().getFullName(),
                     !StringUtils.hasText(addFacultyToCourseDTO.getStatus()) ? FacultyStatusEnum.ACTIVE.name()
                             : addFacultyToCourseDTO.getStatus());
+            mapping.setRoleLabel(CourseRoleLabelService.normalize(addFacultyToCourseDTO.getRoleLabel()));
             mappings.add(mapping);
         }
         facultyRepository.saveAll(mappings);
@@ -285,12 +286,15 @@ public class FacultyService {
             return;
         }
 
-        List<FacultySubjectPackageSessionMapping> mappings = facultyDTOs.stream()
-                .map(dto -> {
-                    UserDTO teacher = resolveUser(dto, instituteId);
-                    return resolveMapping(dto, teacher, batchId);
-                })
-                .toList();
+        List<FacultySubjectPackageSessionMapping> mappings = new ArrayList<>();
+        for (AddFacultyToCourseDTO dto : facultyDTOs) {
+            UserDTO teacher = resolveUser(dto, instituteId);
+            FacultySubjectPackageSessionMapping mapping = resolveMapping(dto, teacher, batchId);
+            mappings.add(mapping);
+            if (dto.getRoleLabel() != null && mapping.getId() != null) {
+                mappings.addAll(relabelDuplicateRows(mapping, dto.getRoleLabel()));
+            }
+        }
 
         facultyRepository.saveAll(mappings);
     }
@@ -350,14 +354,42 @@ public class FacultyService {
                 List.of(FacultyStatusEnum.ACTIVE.name()))
                 .map(mapping -> {
                     mapping.setStatus(determineStatus(dto));
+                    if (dto.getRoleLabel() != null) {
+                        mapping.setRoleLabel(CourseRoleLabelService.normalize(dto.getRoleLabel()));
+                    }
                     return mapping;
                 })
-                .orElseGet(() -> new FacultySubjectPackageSessionMapping(
-                        teacher.getId(),
-                        batchId,
-                        null,
-                        teacher.getFullName(),
-                        determineStatus(dto)));
+                .orElseGet(() -> {
+                    FacultySubjectPackageSessionMapping mapping = new FacultySubjectPackageSessionMapping(
+                            teacher.getId(),
+                            batchId,
+                            null,
+                            teacher.getFullName(),
+                            determineStatus(dto));
+                    mapping.setRoleLabel(CourseRoleLabelService.normalize(dto.getRoleLabel()));
+                    return mapping;
+                });
+    }
+
+    /**
+     * addFacultyToBatch never de-duplicates, so a user can hold several ACTIVE course-level
+     * rows on one batch. The page reads one role per user per course, so every one of those
+     * rows gets the new role, not only the row resolveMapping picked.
+     */
+    private List<FacultySubjectPackageSessionMapping> relabelDuplicateRows(
+            FacultySubjectPackageSessionMapping updated, String roleLabel) {
+        String normalized = CourseRoleLabelService.normalize(roleLabel);
+        List<FacultySubjectPackageSessionMapping> siblings = new ArrayList<>();
+        for (FacultySubjectPackageSessionMapping row : facultyRepository
+                .findAllByUserIdAndPackageSessionIdAndSubjectIdIsNullAndStatusIn(
+                        updated.getUserId(), updated.getPackageSessionId(),
+                        List.of(FacultyStatusEnum.ACTIVE.name()))) {
+            if (!updated.getId().equals(row.getId()) && !Objects.equals(normalized, row.getRoleLabel())) {
+                row.setRoleLabel(normalized);
+                siblings.add(row);
+            }
+        }
+        return siblings;
     }
 
     private String determineStatus(AddFacultyToCourseDTO dto) {

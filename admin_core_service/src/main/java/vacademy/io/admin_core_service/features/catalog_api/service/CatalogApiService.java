@@ -979,6 +979,7 @@ public class CatalogApiService {
         out.put("instructors", primary.instructors().stream().filter(p -> p.name() != null).map(p -> {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("name", p.name());
+            if (p.role() != null) m.put("role", p.role());
             m.put("image_url", s.mediaUrl(p.imageFileId()));
             return m;
         }).toList());
@@ -1229,6 +1230,7 @@ public class CatalogApiService {
         out.put("authors", authors.stream().map(a -> {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("name", a.name());
+            if (a.role() != null) m.put("role", a.role());
             m.put("subtitle", a.subtitle());
             m.put("bio_html", CatalogHtml.sanitize(a.bioHtml()));
             m.put("image_url", a.imageFileId() == null ? null : authorPics.get(a.imageFileId()));
@@ -1317,7 +1319,7 @@ public class CatalogApiService {
             if (name == null || name.isEmpty()) continue;
             String key = u.getId() != null ? u.getId() : name;
             unique.putIfAbsent(key, new CatalogRow.Person(u.getId(), name, blankToNull(u.getProfilePicFileId()),
-                    blankToNull(u.getAuthorSubtitle()), u.getAuthorDescription()));
+                    blankToNull(u.getAuthorSubtitle()), u.getAuthorDescription(), blankToNull(u.getRoleLabel())));
         }
         return List.copyOf(unique.values());
     }

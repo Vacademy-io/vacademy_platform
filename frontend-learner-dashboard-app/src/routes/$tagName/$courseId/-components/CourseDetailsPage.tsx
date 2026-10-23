@@ -68,6 +68,7 @@ import {
   mapCourseAuthors,
   visibleCourseAuthors,
 } from "../../-utils/course-authors";
+import { authorRoleTag, sharedAuthorRole } from "@/lib/course-author-role";
 import {
   CatalogueLocaleProvider,
   useCatalogueLocale,
@@ -327,6 +328,12 @@ export const CourseHighlightsAccordion: React.FC<{
     description: inst.description ? siteT(inst.description) : inst.description,
   }));
   const hasInstructors = visibleInstructors.length > 0;
+  // "Acharya" when every listed author is one; otherwise the institute term,
+  // with each author's own role printed under their name.
+  const instructorsHeading = sharedAuthorRole(
+    visibleInstructors.map((inst) => inst.role),
+    getTerminologyPlural(RoleTerms.Teacher, SystemTerms.Teacher),
+  );
   if (!hasWhy && !hasAbout && !hasWho && !hasInstructors) return null;
 
   return (
@@ -440,10 +447,7 @@ export const CourseHighlightsAccordion: React.FC<{
           )}
           {hasInstructors && (
             <HighlightSectionCard
-              title={getTerminologyPlural(
-                RoleTerms.Teacher,
-                SystemTerms.Teacher
-              )}
+              title={instructorsHeading}
               icon={
                 <ChalkboardTeacher
                   size={18}
@@ -469,6 +473,11 @@ export const CourseHighlightsAccordion: React.FC<{
                         <span className="block truncate text-sm font-semibold text-catalogue-text-primary">
                           {inst.name || getTerminology(RoleTerms.Teacher, SystemTerms.Teacher)}
                         </span>
+                        {authorRoleTag(inst.role, instructorsHeading) && (
+                          <span className="block truncate text-xs font-medium text-catalogue-text-secondary">
+                            {authorRoleTag(inst.role, instructorsHeading)}
+                          </span>
+                        )}
                         {inst.subtitle && (
                           <span className="block truncate text-xs text-catalogue-text-secondary">
                             {inst.subtitle}
@@ -478,9 +487,7 @@ export const CourseHighlightsAccordion: React.FC<{
                     </li>
                   ))}
                 </ul>
-                <CourseHighlightDialog
-                  title={getTerminologyPlural(RoleTerms.Teacher, SystemTerms.Teacher)}
-                >
+                <CourseHighlightDialog title={instructorsHeading}>
                   <div className="space-y-2">
                     {visibleInstructors.map((inst, idx) => (
                       <div
@@ -492,6 +499,11 @@ export const CourseHighlightsAccordion: React.FC<{
                           <h4 className="text-sm font-semibold text-catalogue-text-primary">
                             {inst.name || getTerminology(RoleTerms.Teacher, SystemTerms.Teacher)}
                           </h4>
+                          {authorRoleTag(inst.role, instructorsHeading) && (
+                            <p className="text-xs font-medium text-catalogue-text-secondary">
+                              {authorRoleTag(inst.role, instructorsHeading)}
+                            </p>
+                          )}
                           {inst.subtitle && (
                             <p className="text-xs text-catalogue-text-secondary">
                               {inst.subtitle}
@@ -1917,6 +1929,8 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
           ? t("courseDetails.page.modeSelfPaced", "Self-paced")
           : "";
     const author = authors[0]?.name || "";
+    // The admin's role for this author (e.g. "Acharya") replaces the generic label.
+    const authorRoleLabel = authors[0]?.role;
     const category = coursePlace.category ? siteT(coursePlace.category.label) : "";
     const row = (label: string, value: string | null | undefined) => (value ? [{ label, value }] : []);
     const L = {
@@ -1924,8 +1938,8 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
       language: t("courseDetails.page.language", "Language"),
       format: t("courseDetails.page.format", "Format"),
       duration: t("courseDetails.duration"),
-      author: t("courseDetails.page.author", "Author"),
-      instructor: t("courseDetails.page.instructor", "Instructor"),
+      author: authorRoleLabel || t("courseDetails.page.author", "Author"),
+      instructor: authorRoleLabel || t("courseDetails.page.instructor", "Instructor"),
       category: t("courseDetails.page.category", "Category"),
     };
     const facts = isBook

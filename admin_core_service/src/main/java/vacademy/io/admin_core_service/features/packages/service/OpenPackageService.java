@@ -13,6 +13,7 @@ import vacademy.io.admin_core_service.features.chapter.enums.ChapterStatus;
 import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 import vacademy.io.admin_core_service.features.enroll_invite.util.EnrollInviteAvailabilityUtil;
 import vacademy.io.admin_core_service.features.faculty.enums.FacultyStatusEnum;
+import vacademy.io.admin_core_service.features.faculty.service.CourseRoleLabelService;
 import vacademy.io.admin_core_service.features.level.enums.LevelStatusEnum;
 import vacademy.io.admin_core_service.features.packages.dto.*;
 import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
@@ -36,6 +37,9 @@ public class OpenPackageService {
 
         @Autowired
         private AuthService authService;
+
+        @Autowired
+        private CourseRoleLabelService courseRoleLabelService;
 
         @Autowired
         private ObjectMapper objectMapper;
@@ -159,16 +163,19 @@ public class OpenPackageService {
                 Map<String, UserDTO> userMap = userDTOS.stream()
                                 .filter(u -> u != null && u.getId() != null)
                                 .collect(Collectors.toMap(UserDTO::getId, Function.identity(), (a, b) -> a));
+                Map<String, Map<String, String>> roleLabels = courseRoleLabelService.labelsByPackage(
+                                projections.stream().map(p -> p.getId()).toList());
 
                 return projections.stream().map(projection -> {
                         List<String> instructorIdList = Optional.ofNullable(projection.getFacultyUserIds()).orElse(List.of());
                         if (instructorIdList.isEmpty() && projection.getCreatedByUserId() != null) {
                                 instructorIdList = List.of(projection.getCreatedByUserId());
                         }
-                        List<UserDTO> instructors = instructorIdList.stream()
+                        List<UserDTO> instructors = courseRoleLabelService.withRoleLabels(instructorIdList.stream()
                                         .map(userMap::get)
                                         .filter(Objects::nonNull)
-                                        .collect(Collectors.toList());
+                                        .collect(Collectors.toList()),
+                                roleLabels.get(projection.getId()));
 
                         return new PackageDetailDTO(
                                         projection.getId(),
@@ -224,11 +231,14 @@ public class OpenPackageService {
                 Map<String, UserDTO> userMap = userDTOS.stream()
                                 .filter(u -> u != null && u.getId() != null)
                                 .collect(Collectors.toMap(UserDTO::getId, Function.identity(), (a, b) -> a));
+                Map<String, Map<String, String>> roleLabels = courseRoleLabelService.labelsByPackage(
+                                Collections.singletonList(projection.getId()));
 
-                List<UserDTO> instructors = instructorIds.stream()
+                List<UserDTO> instructors = courseRoleLabelService.withRoleLabels(instructorIds.stream()
                                 .map(userMap::get)
                                 .filter(Objects::nonNull)
-                                .collect(Collectors.toList());
+                                .collect(Collectors.toList()),
+                        roleLabels.get(projection.getId()));
 
                 PackageDetailDTO dto = new PackageDetailDTO(
                                 projection.getId(),
@@ -354,6 +364,8 @@ public class OpenPackageService {
                 Map<String, UserDTO> userMap = userDTOS.stream()
                                 .filter(u -> u != null && u.getId() != null)
                                 .collect(Collectors.toMap(UserDTO::getId, Function.identity(), (a, b) -> a));
+                Map<String, Map<String, String>> roleLabels = courseRoleLabelService.labelsByPackage(
+                                learnerPackageDetail.getContent().stream().map(p -> p.getId()).toList());
 
                 // Map projections to DTOs (instructors = faculty list, or single creator as fallback)
                 List<PackageDetailV2DTO> dtos = learnerPackageDetail.getContent().stream().map(projection -> {
@@ -361,10 +373,11 @@ public class OpenPackageService {
                         if (instructorIdList.isEmpty() && projection.getCreatedByUserId() != null) {
                                 instructorIdList = List.of(projection.getCreatedByUserId());
                         }
-                        List<UserDTO> instructors = instructorIdList.stream()
+                        List<UserDTO> instructors = courseRoleLabelService.withRoleLabels(instructorIdList.stream()
                                         .map(userMap::get)
                                         .filter(Objects::nonNull)
-                                        .collect(Collectors.toList());
+                                        .collect(Collectors.toList()),
+                                roleLabels.get(projection.getId()));
 
                         return new PackageDetailV2DTO(
                                         projection.getId(),

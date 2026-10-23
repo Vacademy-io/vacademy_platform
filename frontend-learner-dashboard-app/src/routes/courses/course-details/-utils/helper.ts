@@ -4,6 +4,7 @@ import { CourseDetailsFormValues } from "../-components/course-details-schema";
 import { BatchForSessionType } from "@/types/institute-details/institute-details-interface";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
+import { authorRole } from "@/lib/course-author-role";
 
 // Utility functions for YouTube URL handling
 export function isYouTubeUrl(url: string): boolean {
@@ -60,6 +61,7 @@ interface CourseWithSessionsType {
       profile_pic_file_id?: string | null;
       author_subtitle?: string;
       author_description?: string;
+      role_label?: string | null;
     }>;
   };
   sessions: Array<{
@@ -222,6 +224,7 @@ export const transformApiDataToCourseData = async (
           profilePicUrl: await tryGetPublicUrl(instructor.profile_pic_file_id),
           authorSubtitle: instructor.author_subtitle,
           authorDescription: instructor.author_description,
+          roleLabel: authorRole(instructor),
           name:
             instructor.full_name ||
             instructor.name ||

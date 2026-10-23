@@ -24,6 +24,8 @@ export interface Instructor {
     profile_pic_file_id: string | null;
     author_subtitle?: string;
     author_description?: string;
+    /** This person's display role in this course; absent when none is set. */
+    role_label?: string;
     roles: string[];
     root_user: boolean;
 }
@@ -233,6 +235,7 @@ export const transformApiDataToCourseData = async (apiData: CourseWithSessionsTy
                             roles: inst.roles,
                             authorSubtitle: inst.author_subtitle,
                             authorDescription: inst.author_description,
+                            roleLabel: inst.role_label || undefined,
                         })),
                         subjects: (Array.isArray(subjects) ? subjects : []).map((subject) => ({
                             id: subject.id,
@@ -344,6 +347,7 @@ export function getInstructorsBySessionAndLevel(
                         profilePicId: inst.profile_pic_file_id || '',
                         authorSubtitle: inst.author_subtitle,
                         authorDescription: inst.author_description,
+                        roleLabel: inst.role_label || undefined,
                     }));
                 }
             }

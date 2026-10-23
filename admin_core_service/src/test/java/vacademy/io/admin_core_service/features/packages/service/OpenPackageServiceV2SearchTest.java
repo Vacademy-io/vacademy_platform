@@ -15,6 +15,8 @@ import org.springframework.http.converter.json.Jackson2ObjectMapperBuilder;
 import org.springframework.test.util.ReflectionTestUtils;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.enroll_invite.util.EnrollInviteAvailabilityUtil;
+import vacademy.io.admin_core_service.features.faculty.repository.FacultySubjectPackageSessionMappingRepository;
+import vacademy.io.admin_core_service.features.faculty.service.CourseRoleLabelService;
 import vacademy.io.admin_core_service.features.packages.dto.LearnerPackageFilterDTO;
 import vacademy.io.admin_core_service.features.packages.dto.PackageDetailV2DTO;
 import vacademy.io.admin_core_service.features.packages.dto.PackageDetailV2Projection;
@@ -77,6 +79,8 @@ class OpenPackageServiceV2SearchTest {
         ReflectionTestUtils.setField(service, "packageRepository", repository);
         ReflectionTestUtils.setField(service, "authService", mock(AuthService.class));
         ReflectionTestUtils.setField(service, "objectMapper", new ObjectMapper());
+        ReflectionTestUtils.setField(service, "courseRoleLabelService",
+                new CourseRoleLabelService(mock(FacultySubjectPackageSessionMappingRepository.class)));
     }
 
     private static PackageDetailV2Projection projection(Timestamp createdAt) {

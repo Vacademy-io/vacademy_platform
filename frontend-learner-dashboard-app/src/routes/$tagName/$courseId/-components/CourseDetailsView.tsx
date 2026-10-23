@@ -8,6 +8,7 @@ import { RouteMatcher } from "../../-services/route-matcher";
 import { useSiteNavigate } from "../../-utils/catalogue-route-search";
 import { useSiteT } from "../../-utils/catalogue-locale";
 import type { CourseAuthor } from "../../-utils/course-authors";
+import { sharedAuthorRole } from "@/lib/course-author-role";
 import type { CoursePageContext } from "../-utils/course-page-context";
 import { coursePageTrail, plainText } from "../-utils/course-page-context";
 import { embedUrlOf, seriesWindow, type CourseFaq, type PreviewVideo } from "../-utils/course-page-content";
@@ -323,6 +324,9 @@ export const CourseDetailsView: React.FC<CourseDetailsViewProps> = (props) => {
   const hasAbout = !!plainText(aboutHtml) || !!plainText(whyLearnHtml);
   const hasAudience = !!plainText(whoShouldLearnHtml);
   const hasLanguage = !!languageLabel || !!languagePicker;
+  // Each author's role, joined so the tab memo below keys on a string.
+  const authorRoleKey = authors.map((a) => a.role ?? "").join("\u0000");
+  const authorRoles = useMemo(() => (authorRoleKey ? authorRoleKey.split("\u0000") : []), [authorRoleKey]);
   const tabs = useMemo(() => {
     const list: Array<{ id: CourseTabId; label: string }> = [];
     if (hasAbout) list.push({ id: "description", label: t("courseDetails.page.tabDescription", "Description") });
@@ -338,11 +342,15 @@ export const CourseDetailsView: React.FC<CourseDetailsViewProps> = (props) => {
     if (authors.length) {
       list.push({
         id: "instructor",
-        label: isBook ? t("courseDetails.page.tabAuthor", "About the Author") : t("courseDetails.page.tabInstructor", "About the Instructor"),
+        // The admin's role word (e.g. "Acharya") when every author shares one.
+        label: sharedAuthorRole(
+          authorRoles,
+          isBook ? t("courseDetails.page.tabAuthor", "About the Author") : t("courseDetails.page.tabInstructor", "About the Instructor"),
+        ),
       });
     }
     return list;
-  }, [hasAbout, hasAudience, hasLanguage, isBook, showContent, faqs.length, authors.length, t]);
+  }, [hasAbout, hasAudience, hasLanguage, isBook, showContent, faqs.length, authors.length, authorRoles, t]);
 
   // One panel at a time; #content, #faq… open (and are kept in) the address.
   const [active, setActive] = useState<CourseTabId | null>(hashTab);
@@ -486,6 +494,7 @@ export const CourseDetailsView: React.FC<CourseDetailsViewProps> = (props) => {
                 <AuthorAvatar author={a} sizeClass="size-14" />
                 <div className="min-w-0">
                   <h2 className="text-lg font-bold text-palette-text">{a.name}</h2>
+                  {a.role && <p className="text-sm font-medium text-palette-muted">{a.role}</p>}
                   {a.subtitle && <p className="text-sm text-palette-muted">{a.subtitle}</p>}
                   {a.description && plainText(a.description) && (
                     <div className={cn(BODY, "mt-2")} dangerouslySetInnerHTML={{ __html: sanitizeHtml(a.description) }} />

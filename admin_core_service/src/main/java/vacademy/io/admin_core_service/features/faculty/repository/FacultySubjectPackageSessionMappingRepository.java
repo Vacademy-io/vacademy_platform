@@ -418,6 +418,23 @@ public interface FacultySubjectPackageSessionMappingRepository
       @Param("statuses") List<String> statuses);
 
   /**
+   * Display role of each author per course. Every ACTIVE row of a user in the course
+   * carries the same label, so MAX only collapses the duplicates.
+   */
+  @Query(value = """
+      SELECT ps.package_id AS packageId, f.user_id AS userId, MAX(f.role_label) AS roleLabel
+      FROM faculty_subject_package_session_mapping f
+      JOIN package_session ps ON ps.id = f.package_session_id
+      WHERE ps.package_id IN (:packageIds)
+        AND f.status = 'ACTIVE'
+        AND f.role_label IS NOT NULL
+        AND f.role_label <> ''
+      GROUP BY ps.package_id, f.user_id
+      """, nativeQuery = true)
+  List<vacademy.io.admin_core_service.features.faculty.dto.FacultyRoleLabelRow> findRoleLabelsByPackageIds(
+      @Param("packageIds") java.util.Collection<String> packageIds);
+
+  /**
    * Deactivate SOFT-removed sub-org members whose "last access date" has passed.
    * Only touches ACTIVE rows carrying an access_till_date in the past; returns the
    * number of rows flipped. Driven by {@code SubOrgTeamAccessExpiryJob}.

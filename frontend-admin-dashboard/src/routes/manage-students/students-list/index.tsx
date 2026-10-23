@@ -24,7 +24,9 @@ export const Route = createFileRoute('/manage-students/students-list/')({
         gender: search.gender as string | string[] | undefined,
         status: search.status as string | string[] | undefined,
         sessionExpiry: search.sessionExpiry as number | number[] | undefined,
-        name: search.name as string | undefined,
+        // The router JSON-parses search values, so ?name=7348816962 (a phone
+        // search) arrives as a number and crashed the list on .trim().
+        name: search.name == null ? undefined : String(search.name),
         action: search.action as string | undefined,
     }),
 });

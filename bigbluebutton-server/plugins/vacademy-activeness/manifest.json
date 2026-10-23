@@ -1,0 +1,6 @@
+{
+  "requiredSdkVersion": "~0.0.96",
+  "name": "VacademyActiveness",
+  "version": "0.1.0",
+  "javascriptEntrypointUrl": "VacademyActiveness.js"
+}

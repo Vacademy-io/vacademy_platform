@@ -62,8 +62,31 @@ class LiveClassDashboardDetailServiceTest {
         assertEquals(2, eng.chats());
         assertEquals(1, eng.raiseHands());
         assertEquals(3, eng.pollVotes());
+        assertNull(eng.activeness());
         assertNull(LiveClassDashboardDetailService.parseEngagement(null));
         assertNull(LiveClassDashboardDetailService.parseEngagement("oops"));
+    }
+
+    @Test
+    @DisplayName("activeness keys are read when present; an activeness-only row has no BBB counters")
+    void parseEngagementActiveness() {
+        var both = LiveClassDashboardDetailService.parseEngagement(
+                "{\"chats\":2,\"talks\":7,\"activeness\":82,\"activenessOnScreen\":90,\"activenessAttention\":75,"
+                        + "\"activenessSeconds\":1800,\"activenessAwayCount\":3,\"activenessAwaySeconds\":40}");
+        assertEquals(7, both.talks());
+        assertEquals(82, both.activeness());
+        assertEquals(90, both.activenessOnScreen());
+        assertEquals(75, both.activenessAttention());
+        assertEquals(1800, both.activenessSeconds());
+        assertEquals(3, both.activenessAwayCount());
+
+        // Plugin report landed before the end-of-class analytics callback.
+        var onlyScore = LiveClassDashboardDetailService.parseEngagement(
+                "{\"activeness\":60,\"activenessSeconds\":300,\"activenessAwayCount\":0,\"activenessAwaySeconds\":0}");
+        assertNull(onlyScore.talks());
+        assertNull(onlyScore.chats());
+        assertNull(onlyScore.activenessOnScreen());
+        assertEquals(60, onlyScore.activeness());
     }
 
     @Test

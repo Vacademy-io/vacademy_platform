@@ -329,6 +329,8 @@ export default function ScheduleStep1() {
             bbbDisableSharedNotes: liveSessionSettings.defaultBbbDisableSharedNotes ?? false,
             bbbHideUserList: liveSessionSettings.defaultBbbHideUserList ?? false,
             bbbEndWhenNoModerator: liveSessionSettings.defaultBbbEndWhenNoModerator ?? false,
+            // Per-session opt-in only — no institute default yet.
+            bbbActivenessScore: false,
             // Zoom meeting defaults (only used when platform = Zoom with an account).
             // Seeding them here means the Zoom settings panel and the step-2 DTO
             // builder both read the institute defaults without extra wiring.
@@ -948,6 +950,7 @@ export default function ScheduleStep1() {
             bbbDisableSharedNotes: schedule.bbb_config?.disable_shared_notes ?? false,
             bbbHideUserList: schedule.bbb_config?.hide_user_list ?? false,
             bbbEndWhenNoModerator: schedule.bbb_config?.end_when_no_moderator ?? false,
+            bbbActivenessScore: schedule.bbb_config?.activeness_score ?? false,
             feedbackEnabled: schedule.feedback_config?.enabled ?? false,
             feedbackCompulsory: schedule.feedback_config?.allow_skip === false,
             feedbackQuestions: schedule.feedback_config?.questions ?? buildDefaultFeedbackQuestions(t),
@@ -2706,6 +2709,28 @@ export default function ScheduleStep1() {
                             )}
                         />
                     </div>
+                    <FormField
+                        control={control}
+                        name="bbbActivenessScore"
+                        render={({ field }) => (
+                            <FormItem className="mt-3 flex items-start justify-between gap-3 space-y-0 rounded-md border border-neutral-200 bg-white px-3 py-2">
+                                <div>
+                                    <FormLabel className="text-sm font-normal">
+                                        {t('bbb.activenessScore')}
+                                    </FormLabel>
+                                    <p className="mt-0.5 text-xs text-neutral-500">
+                                        {t('bbb.activenessScoreHint')}
+                                    </p>
+                                </div>
+                                <FormControl>
+                                    <Switch
+                                        checked={field.value ?? false}
+                                        onCheckedChange={field.onChange}
+                                    />
+                                </FormControl>
+                            </FormItem>
+                        )}
+                    />
                     <p className="mt-3 text-xs text-neutral-500">
                         {t('bbb.lectureHintIntro')}{' '}
                         <span className="font-medium">{t('bbb.listenOnlyModeShort')}</span>{' '}

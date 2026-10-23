@@ -227,6 +227,17 @@ export interface DashboardClassLearner {
     emojis: number | null;
     rating: number | null;
     answers: DashboardFeedbackAnswer[];
+    /**
+     * Opt-in on-device camera activeness (BBB only). All null when the class
+     * did not have the score turned on or the learner never enabled a camera.
+     * Percentages are 0-100 session averages.
+     */
+    activeness?: number | null;
+    activeness_on_screen?: number | null;
+    activeness_attention?: number | null;
+    /** Seconds the camera was tracked. */
+    activeness_seconds?: number | null;
+    activeness_away_count?: number | null;
 }
 
 export interface DashboardAtRiskLearner {

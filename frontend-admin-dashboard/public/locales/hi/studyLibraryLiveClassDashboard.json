@@ -215,7 +215,12 @@
             "PRESENT": "उपस्थित",
             "BELOW_RULE": "नियम से कम",
             "NOT_JOINED": "नहीं जुड़े"
-        }
+        },
+        "activeness": "एक्टिवनेस",
+        "activenessOnScreen": "स्क्रीन पर {{value}}%",
+        "activenessAttention": "ध्यान {{value}}%",
+        "activenessTracked": "ट्रैक किया {{duration}}",
+        "activenessAway": "{{count}}× दूर गए"
     },
     "csv": {
         "name": "नाम",
@@ -249,7 +254,12 @@
         "avgMinutes": "औसत रुके मिनट",
         "scheduledMinutes": "निर्धारित मिनट",
         "engagement": "सहभागिता %",
-        "feedbackCount": "फ़ीडबैक प्रतिक्रियाएँ"
+        "feedbackCount": "फ़ीडबैक प्रतिक्रियाएँ",
+        "activeness": "एक्टिवनेस %",
+        "activenessOnScreen": "स्क्रीन पर %",
+        "activenessAttention": "ध्यान %",
+        "activenessMinutesTracked": "कैमरा ट्रैक मिनट",
+        "activenessAwayCount": "दूर जाने की संख्या"
     },
     "atRisk": {
         "title": "जोखिम वाले छात्र",

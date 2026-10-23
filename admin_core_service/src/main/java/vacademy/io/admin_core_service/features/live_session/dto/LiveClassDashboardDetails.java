@@ -69,6 +69,17 @@ public final class LiveClassDashboardDetails {
         private Integer raiseHands;
         private Integer pollVotes;
         private Integer emojis;
+        /**
+         * Opt-in camera activeness score (vacademy-activeness BBB plugin), 0-100; null
+         * when the class did not enable it or no report arrived. on_screen / attention
+         * are its components; seconds = time measured; away_count = times the learner
+         * left the frame.
+         */
+        private Integer activeness;
+        private Integer activenessOnScreen;
+        private Integer activenessAttention;
+        private Integer activenessSeconds;
+        private Integer activenessAwayCount;
         private Double rating;
         private List<FeedbackAnswer> answers;
     }

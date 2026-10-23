@@ -105,6 +105,64 @@ public interface LiveSessionLogsRepository extends JpaRepository<LiveSessionLogs
             @Param("providerMeetingId") String providerMeetingId);
 
     /**
+     * Stores the BBB activeness plugin report (on-device camera attention score) on
+     * the learner's attendance row, in one atomic statement.
+     *
+     * engagement_data is TEXT holding a flat JSON object of integers (BBB analytics
+     * counters, summed by the analytics callback). The activeness keys are merged
+     * into it as flat integers too, so that merge keeps them. NULL, blank or invalid
+     * JSON is treated as an empty object. Nested CASE (not AND) guards each cast:
+     * Postgres does not promise left-to-right AND evaluation. CAST(... AS jsonb) and
+     * jsonb_build_object() instead of ::jsonb / a brace literal, which Hibernate's
+     * native-query parser can mangle.
+     *
+     * Monotonic: a report only lands when its seconds are >= the stored
+     * activenessSeconds, so a stale or out-of-order beacon cannot overwrite a newer
+     * report. onScreen / attention use -1 for "not measured": the key is then left
+     * out of the merge (Hibernate binds a null Integer badly in native SQL).
+     *
+     * @return rows updated — 0 when the learner has no attendance row or the report is stale
+     */
+    @Modifying
+    @Transactional
+    @Query(value = """
+            UPDATE live_session_logs
+               SET engagement_data = CAST(
+                       (CASE WHEN pg_input_is_valid(engagement_data, 'jsonb')
+                             THEN (CASE WHEN jsonb_typeof(CAST(engagement_data AS jsonb)) = 'object'
+                                        THEN CAST(engagement_data AS jsonb)
+                                        ELSE jsonb_build_object() END)
+                             ELSE jsonb_build_object() END)
+                       || jsonb_strip_nulls(jsonb_build_object(
+                              'activeness', CAST(:avg AS integer),
+                              'activenessOnScreen', CASE WHEN CAST(:onScreen AS integer) >= 0
+                                                         THEN CAST(:onScreen AS integer) END,
+                              'activenessAttention', CASE WHEN CAST(:attention AS integer) >= 0
+                                                          THEN CAST(:attention AS integer) END,
+                              'activenessSeconds', CAST(:seconds AS integer),
+                              'activenessAwayCount', CAST(:awayCount AS integer),
+                              'activenessAwaySeconds', CAST(:awaySeconds AS integer)))
+                   AS text)
+             WHERE schedule_id = :scheduleId
+               AND user_source_id = :userId
+               AND log_type = 'ATTENDANCE_RECORDED'
+               AND (CASE WHEN pg_input_is_valid(engagement_data, 'jsonb')
+                         THEN (CASE WHEN jsonb_typeof(CAST(engagement_data AS jsonb) -> 'activenessSeconds') = 'number'
+                                    THEN CAST(CAST(engagement_data AS jsonb) ->> 'activenessSeconds' AS numeric)
+                                    ELSE -1 END)
+                         ELSE -1 END) <= CAST(:seconds AS integer)
+            """, nativeQuery = true)
+    int mergeActivenessReport(
+            @Param("scheduleId") String scheduleId,
+            @Param("userId") String userId,
+            @Param("avg") int avg,
+            @Param("onScreen") int onScreen,
+            @Param("attention") int attention,
+            @Param("seconds") int seconds,
+            @Param("awayCount") int awayCount,
+            @Param("awaySeconds") int awaySeconds);
+
+    /**
      * Used by the provider sync scheduler to upsert provider-sourced attendance.
      * Looks up by schedule + attendee email (stored in userSourceId for
      * PROVIDER_EMAIL records).

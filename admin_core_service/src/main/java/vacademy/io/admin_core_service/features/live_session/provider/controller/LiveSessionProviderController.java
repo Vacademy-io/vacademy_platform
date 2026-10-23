@@ -2,6 +2,7 @@ package vacademy.io.admin_core_service.features.live_session.provider.controller
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.live_session.entity.LiveSessionLogs;
@@ -12,6 +13,7 @@ import vacademy.io.admin_core_service.features.live_session.provider.dto.Provide
 import vacademy.io.admin_core_service.features.live_session.provider.dto.RecordingSyncResultDTO;
 import vacademy.io.admin_core_service.features.live_session.provider.entity.LiveSessionProviderConfig;
 import vacademy.io.admin_core_service.features.live_session.provider.manager.BbbMeetingManager;
+import vacademy.io.admin_core_service.features.live_session.provider.service.BbbActivenessTokenService;
 import vacademy.io.admin_core_service.features.live_session.provider.service.BbbServerRouter;
 import vacademy.io.admin_core_service.features.live_session.provider.service.LiveSessionProviderService;
 import vacademy.io.admin_core_service.features.live_session.provider.service.ProviderMeetingBatchService;
@@ -65,6 +67,12 @@ public class LiveSessionProviderController {
     private final vacademy.io.admin_core_service.features.live_session.service.RecordingAutoLinkService recordingAutoLinkService;
     private final vacademy.io.admin_core_service.core.security.InstituteAccessValidator instituteAccessValidator;
     private final vacademy.io.admin_core_service.features.live_session.service.AttendanceCriteriaEvaluator attendanceCriteriaEvaluator;
+    private final BbbActivenessTokenService activenessTokenService;
+
+    /** Largest activeness report accepted — the real payload is ~200 bytes. */
+    private static final int ACTIVENESS_MAX_BODY_CHARS = 4096;
+    /** Longest class an activeness report may claim (12h). */
+    private static final int ACTIVENESS_MAX_SECONDS = 43_200;
 
     // -----------------------------------------------------------------------
     // OAuth connect / status
@@ -536,9 +544,18 @@ public class LiveSessionProviderController {
         if (fullName == null || fullName.isBlank()) {
             fullName = user.getUsername();
         }
+        // The session's admin-set BBB options, parsed once for both join-time decisions.
+        Map<String, Object> sessionBbbConfig = resolveSessionBbbConfig(schedule);
+        // Activeness plugin token: learners (VIEWER) only, and only when the session
+        // opted in. A moderator never gets one, so teachers are never scored. Null when
+        // no token secret is configured — the plugin then has nothing to report with.
+        String activenessToken = !"MODERATOR".equalsIgnoreCase(role)
+                && Boolean.TRUE.equals(sessionBbbConfig.get("activeness_score"))
+                ? activenessTokenService.mint(scheduleId, user.getUserId())
+                : null;
         String joinUrl = bbbMeetingManager.buildJoinUrlForUser(
                 providerMeetingId, fullName, user.getUserId(), role, instituteId, schedule.getBbbServerId(),
-                resolveBbbViewerMicLocked(schedule));
+                Boolean.TRUE.equals(sessionBbbConfig.get("disable_mic")), activenessToken);
 
         // Mark attendance with join timestamp.
         // Note: LIVE_SESSION_START is NOT emitted from here. It's dispatched
@@ -809,6 +826,111 @@ public class LiveSessionProviderController {
         } catch (Exception e) {
             return newJson; // fallback: use latest
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // BBB activeness plugin report — POSTed from the learner's browser
+    // -----------------------------------------------------------------------
+
+    /**
+     * POST /admin-core-service/live-sessions/provider/meeting/bbb-activeness
+     *
+     * Report from the vacademy-activeness BBB plugin (opt-in per session via
+     * bbb_config.activeness_score): an on-device camera attention summary for one
+     * learner in one class. No JWT — the plugin runs inside the BBB client — so the
+     * request is authenticated by the HMAC token minted into that learner's join URL
+     * (BbbActivenessTokenService), which fixes the schedule and learner; nothing in
+     * the body can redirect the write.
+     *
+     * Accepts any content type: the plugin sends text/plain (no CORS preflight) and
+     * navigator.sendBeacon for the final report on leave.
+     *
+     * Body: {"token","avg","on_screen","attention","seconds","away_count","away_seconds","final"}.
+     * 204 stored (or stale/no attendance row), 400 malformed, 401 bad/expired token,
+     * 413 oversized.
+     */
+    @PostMapping(value = "/meeting/bbb-activeness", consumes = MediaType.ALL_VALUE)
+    public ResponseEntity<Void> bbbActivenessReport(@RequestBody(required = false) String body) {
+        if (body == null || body.isBlank()) {
+            return ResponseEntity.badRequest().build();
+        }
+        if (body.length() > ACTIVENESS_MAX_BODY_CHARS) {
+            return ResponseEntity.status(413).build();
+        }
+        com.fasterxml.jackson.databind.JsonNode root;
+        try {
+            root = objectMapper.readTree(body);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().build();
+        }
+        if (root == null || !root.isObject()) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        // Token first: an unauthenticated caller learns nothing about the body rules.
+        com.fasterxml.jackson.databind.JsonNode tokenNode = root.get("token");
+        Optional<BbbActivenessTokenService.Claims> claims = tokenNode != null && tokenNode.isTextual()
+                ? activenessTokenService.verify(tokenNode.asText())
+                : Optional.empty();
+        if (claims.isEmpty()) {
+            return ResponseEntity.status(401).build();
+        }
+
+        Integer avg = activenessInt(root, "avg");
+        Integer seconds = activenessInt(root, "seconds");
+        if (avg == null || seconds == null) {
+            return ResponseEntity.badRequest().build();
+        }
+        Integer onScreen = activenessInt(root, "on_screen");
+        Integer attention = activenessInt(root, "attention");
+        Integer awayCount = activenessInt(root, "away_count");
+        Integer awaySeconds = activenessInt(root, "away_seconds");
+
+        int secs = clamp(seconds, 0, ACTIVENESS_MAX_SECONDS);
+        String scheduleId = claims.get().scheduleId();
+        String userId = claims.get().userId();
+        try {
+            int updated = liveSessionLogsRepository.mergeActivenessReport(
+                    scheduleId, userId,
+                    clamp(avg, 0, 100),
+                    // -1 = not measured: the repository leaves that key out
+                    onScreen != null ? clamp(onScreen, 0, 100) : -1,
+                    attention != null ? clamp(attention, 0, 100) : -1,
+                    secs,
+                    awayCount != null ? clamp(awayCount, 0, 10_000) : 0,
+                    awaySeconds != null ? clamp(awaySeconds, 0, secs) : 0);
+            if (updated == 0) {
+                // No attendance row yet, or an older/out-of-order report than the stored one.
+                log.debug("[BBB] Activeness report not stored (stale or no attendance row); scheduleId={}, userId={}",
+                        scheduleId, userId);
+            } else if (root.path("final").asBoolean(false)) {
+                log.info("[BBB] Activeness final report stored; scheduleId={}, userId={}, avg={}, seconds={}",
+                        scheduleId, userId, clamp(avg, 0, 100), secs);
+            }
+        } catch (Exception e) {
+            log.warn("[BBB] Failed to store activeness report; scheduleId={}, userId={}: {}",
+                    scheduleId, userId, e.getMessage());
+            return ResponseEntity.status(500).build();
+        }
+        return ResponseEntity.noContent().build();
+    }
+
+    /** A whole number from the report; null when absent, null or non-numeric. Fractions are rounded. */
+    private static Integer activenessInt(com.fasterxml.jackson.databind.JsonNode root, String field) {
+        com.fasterxml.jackson.databind.JsonNode n = root.get(field);
+        if (n == null || !n.isNumber()) {
+            return null;
+        }
+        double d = n.asDouble();
+        if (Double.isNaN(d) || Double.isInfinite(d)) {
+            return null;
+        }
+        // Clamp before the cast so a huge value can't wrap to a negative int.
+        return (int) Math.round(Math.max(Integer.MIN_VALUE, Math.min(Integer.MAX_VALUE, d)));
+    }
+
+    private static int clamp(int value, int min, int max) {
+        return Math.max(min, Math.min(max, value));
     }
 
     // -----------------------------------------------------------------------
@@ -1191,15 +1313,17 @@ public class LiveSessionProviderController {
      * to the generated join URL.
      */
     /**
-     * True when this schedule's meeting was created with the participant mic lock on
-     * ({@code bbb_config.disable_mic}). The join URL needs this so it doesn't also tell
-     * the client that a microphone is required — a viewer would then have no audio at
-     * all. Returns false (not null) when the config is missing or unparseable, which
-     * preserves the historical join behaviour.
+     * The session's bbb_config_json as a map (snake_case keys, see BbbConfigDTO);
+     * empty when missing or unparseable. Read at join time for:
+     * - disable_mic: the meeting was created with the participant mic lock on, so the
+     *   join URL must not also tell the client a microphone is required — a viewer
+     *   would then have no audio at all. Missing/unparseable = false, which preserves
+     *   the historical join behaviour.
+     * - activeness_score: whether viewers get a vacademy-activeness plugin token.
      */
-    private Boolean resolveBbbViewerMicLocked(SessionSchedule schedule) {
+    private Map<String, Object> resolveSessionBbbConfig(SessionSchedule schedule) {
         if (schedule == null || schedule.getSessionId() == null) {
-            return Boolean.FALSE;
+            return Map.of();
         }
         try {
             return liveSessionRepository.findById(schedule.getSessionId())
@@ -1209,16 +1333,16 @@ public class LiveSessionProviderController {
                         try {
                             java.util.Map<String, Object> cfg = objectMapper.readValue(json,
                                     new com.fasterxml.jackson.core.type.TypeReference<java.util.Map<String, Object>>() {});
-                            return Boolean.TRUE.equals(cfg.get("disable_mic"));
+                            return cfg != null ? cfg : Map.<String, Object>of();
                         } catch (Exception e) {
-                            log.warn("[BBB] Failed to parse bbbConfigJson for mic lock: {}", e.getMessage());
-                            return Boolean.FALSE;
+                            log.warn("[BBB] Failed to parse bbbConfigJson for join: {}", e.getMessage());
+                            return Map.<String, Object>of();
                         }
                     })
-                    .orElse(Boolean.FALSE);
+                    .orElse(Map.of());
         } catch (Exception e) {
-            log.warn("[BBB] Failed to resolve mic lock for schedule {}: {}", schedule.getId(), e.getMessage());
-            return Boolean.FALSE;
+            log.warn("[BBB] Failed to resolve bbb config for schedule {}: {}", schedule.getId(), e.getMessage());
+            return Map.of();
         }
     }
 

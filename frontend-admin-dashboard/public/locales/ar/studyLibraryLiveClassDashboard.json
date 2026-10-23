@@ -215,7 +215,12 @@
             "PRESENT": "حاضر",
             "BELOW_RULE": "دون الحد",
             "NOT_JOINED": "لم ينضم"
-        }
+        },
+        "activeness": "النشاط",
+        "activenessOnScreen": "أمام الشاشة {{value}}%",
+        "activenessAttention": "الانتباه {{value}}%",
+        "activenessTracked": "مدة التتبع {{duration}}",
+        "activenessAway": "ابتعد {{count}}×"
     },
     "csv": {
         "name": "الاسم",
@@ -249,7 +254,12 @@
         "avgMinutes": "متوسط دقائق البقاء",
         "scheduledMinutes": "الدقائق المجدولة",
         "engagement": "التفاعل %",
-        "feedbackCount": "عدد الردود"
+        "feedbackCount": "عدد الردود",
+        "activeness": "النشاط %",
+        "activenessOnScreen": "أمام الشاشة %",
+        "activenessAttention": "الانتباه %",
+        "activenessMinutesTracked": "دقائق تتبع الكاميرا",
+        "activenessAwayCount": "مرات الابتعاد"
     },
     "atRisk": {
         "title": "متعلمون معرّضون للخطر",

@@ -16,6 +16,7 @@ import vacademy.io.admin_core_service.features.live_session.provider.entity.BbbS
 import vacademy.io.admin_core_service.features.live_session.provider.entity.LiveSessionProviderConfig;
 import vacademy.io.admin_core_service.features.live_session.provider.dto.ProviderConnectRequestDTO;
 import vacademy.io.admin_core_service.features.live_session.provider.repository.LiveSessionProviderConfigRepository;
+import vacademy.io.admin_core_service.features.live_session.provider.service.BbbActivenessTokenService;
 import vacademy.io.admin_core_service.features.live_session.provider.service.BbbServerRouter;
 import vacademy.io.admin_core_service.features.media_service.service.MediaService;
 import vacademy.io.common.exceptions.VacademyException;
@@ -59,6 +60,7 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
     private final InstituteRepository instituteRepository;
     private final MediaService mediaService;
     private final BbbServerRouter serverRouter;
+    private final BbbActivenessTokenService activenessTokenService;
 
     @Value("${tool.executor.base-url:http://localhost}")
     private String backendBaseUrl;
@@ -76,6 +78,19 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
      */
     @Value("${bbb.plugins.pip.enabled:true}")
     private boolean pipPluginEnabled;
+
+    /**
+     * Kill-switch for the opt-in camera activeness plugin (per-session setting
+     * bbb_config.activeness_score). Hosted alongside PiP at
+     * https://<host>/plugins/vacademy-activeness/manifest.json. Set
+     * bbb.plugins.activeness.enabled=false to stop loading it platform-wide.
+     */
+    @Value("${bbb.plugins.activeness.enabled:true}")
+    private boolean activenessPluginEnabled;
+
+    /** Where the activeness plugin POSTs its per-learner report (no JWT; HMAC token in the body). */
+    private static final String ACTIVENESS_REPORT_PATH =
+            "/admin-core-service/live-sessions/provider/meeting/bbb-activeness";
 
     private static final List<String> ACTIVE = List.of("ACTIVE");
 
@@ -226,6 +241,12 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
         boolean disableSharedNotes = boolOrDefault(bbbCfg, "disable_shared_notes", false);
         boolean hideUserList = boolOrDefault(bbbCfg, "hide_user_list", false);
         boolean endWhenNoModerator = boolOrDefault(bbbCfg, "end_when_no_moderator", false);
+        // Opt-in camera attention score. Only loaded when the platform kill-switch is
+        // on and a token secret exists — without a secret no learner gets a token, so
+        // the plugin would have nowhere to report.
+        boolean activenessScore = activenessPluginEnabled
+                && boolOrDefault(bbbCfg, "activeness_score", false)
+                && activenessTokenService.isConfigured();
 
         Map<String, String> params = new LinkedHashMap<>();
         params.put("name", request.getTopic() != null ? request.getTopic() : instituteName + " Live Class");
@@ -323,15 +344,28 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
         // from that server's apiUrl (strip "/bigbluebutton/api"). Relative entrypoints in
         // the manifest keep it domain-agnostic across the pool. buildQueryString() URL-encodes
         // the JSON value. Toggle off via bbb.plugins.pip.enabled=false.
-        if (pipPluginEnabled) {
+        //
+        // The activeness plugin (on-device camera attention score) is served from the
+        // same /plugins/ tree and joins the same array when the session opted in.
+        if (pipPluginEnabled || activenessScore) {
             // The participant's BROWSER fetches this manifest, so it has to be on the
             // host they are actually on. Built from apiUrl it would always be the
             // canonical domain, which still loads (plugin assets send CORS headers)
             // but shows meet.vacademy.io in an institute's devtools.
             String bbbBaseUrl = applyInstituteLiveSessionDomain(apiUrl, instituteId, selectedServer)
                     .replaceAll("/bigbluebutton/api/?$", "");
-            String pipManifestUrl = bbbBaseUrl + "/plugins/picture-in-picture/manifest.json";
-            params.put("pluginManifests", "[{\"url\":\"" + pipManifestUrl + "\"}]");
+            List<String> manifestUrls = new ArrayList<>();
+            if (pipPluginEnabled) {
+                manifestUrls.add(bbbBaseUrl + "/plugins/picture-in-picture/manifest.json");
+            }
+            if (activenessScore) {
+                manifestUrls.add(bbbBaseUrl + "/plugins/vacademy-activeness/manifest.json");
+            }
+            StringJoiner manifests = new StringJoiner(",", "[", "]");
+            for (String manifestUrl : manifestUrls) {
+                manifests.add("{\"url\":\"" + manifestUrl + "\"}");
+            }
+            params.put("pluginManifests", manifests.toString());
         }
 
         String queryString = buildQueryString(params);
@@ -477,6 +511,21 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
     public String buildJoinUrlForUser(String meetingId, String fullName,
             String userId, String role, String instituteId, String bbbServerId,
             Boolean viewerMicLocked) {
+        return buildJoinUrlForUser(meetingId, fullName, userId, role, instituteId, bbbServerId,
+                viewerMicLocked, null);
+    }
+
+    /**
+     * Build a personalized join URL.
+     *
+     * @param activenessToken signed per-learner token for the vacademy-activeness
+     *        plugin (see BbbActivenessTokenService), or null when the session did not
+     *        opt in / the joiner is not a viewer. Passed as BBB user metadata so the
+     *        plugin can read it together with the report URL.
+     */
+    public String buildJoinUrlForUser(String meetingId, String fullName,
+            String userId, String role, String instituteId, String bbbServerId,
+            Boolean viewerMicLocked, String activenessToken) {
         String apiUrl;
         String secret;
         // Kept in scope so the custom-domain rewrite below can tell whether this
@@ -559,6 +608,14 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
             } catch (Exception e) {
                 log.warn("[BBB] Failed to fetch institute theme for join URL: {}", e.getMessage());
             }
+        }
+
+        // Activeness plugin metadata — deliberately outside the theme branch above, which
+        // only runs for institutes with a theme colour. BBB exposes userdata-* to plugins
+        // as user metadata; the plugin POSTs its report to the URL with this token.
+        if (activenessToken != null) {
+            params.put("userdata-vacademy_activeness", activenessToken);
+            params.put("userdata-vacademy_activeness_url", bbbCallbackBaseUrl + ACTIVENESS_REPORT_PATH);
         }
 
         String queryString = buildQueryString(params);

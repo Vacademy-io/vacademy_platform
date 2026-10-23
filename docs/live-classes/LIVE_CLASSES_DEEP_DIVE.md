@@ -147,7 +147,7 @@ Entity: `entity/LiveSessionLogs.java` · `log_type` from `enums/SessionLog.java`
 | `user_source_type` / `user_source_id` | `USER`(+userId) / `GUEST`(+guestId) |
 | `log_type`, `status` (`PRESENT`/`ABSENT`), `details` | |
 | `status_type` | `ONLINE` (joined via app/BBB) vs `OFFLINE` (admin manual mark) |
-| `engagement_data` (TEXT) | JSON `{chats,talks,talkTime,raisehand,emojis,pollVotes}` |
+| `engagement_data` (TEXT) | flat JSON of integers `{chats,talks,talkTime,raisehand,emojis,pollVotes}` + optional `activeness*` keys (§8b) |
 | `provider_meeting_id` | the specific meeting instance (changes on recreate) |
 | `provider_join_time` (ISO-8601), `provider_total_duration_minutes`, `provider_total_duration_seconds` | provider-reported presence (`V125`, `V471`) |
 | `attendance_evaluation_json` (TEXT) | audit of the min-attendance criteria verdict (verdict, reason, attendedMinutes, scheduledMinutes, requiredMinutes, thresholdPercent, previousStatus, evaluatedAt) |
@@ -349,6 +349,19 @@ Webhooks:
 
 ---
 
+## 8b. Activeness score (BBB, opt-in)
+
+An **on-device camera attention score** for BBB learners, computed in the browser by the `vacademy-activeness` BBB HTML5 plugin (MediaPipe) — no video leaves the device; only a per-session summary is POSTed back.
+
+- **Setting:** `bbb_config.activeness_score` (boolean, default `false`) → `BbbConfigDTO.activenessScore`. The DTO is typed, so the key must stay declared there or it never reaches `live_session.bbb_config_json`.
+- **Plugin load (meeting create):** `BbbMeetingManager.createMeeting` adds `<bbb host>/plugins/vacademy-activeness/manifest.json` to `pluginManifests` (alongside PiP, or alone) when the setting is on **and** a token secret exists **and** the kill-switch `bbb.plugins.activeness.enabled` (default `true`) is on. Host = the institute's live-class domain, like PiP.
+- **Token (join):** `/meeting/join` mints a token only for **VIEWER** joins on an opted-in session (never MODERATOR; guest joins and `participant-join-link` get none). `BbbActivenessTokenService`: `v1.<b64url(scheduleId:userId:exp)>.<b64url(HMAC-SHA256)>`, 24 h TTL. Secret `bbb.activeness.token-secret` → falls back to `internal.service.token` / `ai.service.internal.token`; blank = feature off. Sent as BBB user metadata `userdata-vacademy_activeness` + `userdata-vacademy_activeness_url` (= `bbb.callback.base-url` + the report path), added outside the theme branch so it applies to every institute.
+- **Report:** `POST /admin-core-service/live-sessions/provider/meeting/bbb-activeness` (permitAll, no JWT — authenticated by the token in the body, which fixes schedule + learner). Any content type (plugin uses `text/plain` + `sendBeacon` to avoid CORS preflight). Body `{token, avg, on_screen, attention, seconds, away_count, away_seconds, final}`; values clamped (scores 0–100, seconds ≤ 43 200, away_seconds ≤ seconds). `401` bad/expired token · `400` malformed / missing `avg`/`seconds` · `413` > 4 KB · `204` otherwise (also when nothing was updated).
+- **Storage:** one atomic native UPDATE (`LiveSessionLogsRepository.mergeActivenessReport`) jsonb-merges **flat integer** keys `activeness`, `activenessOnScreen`, `activenessAttention` (both omitted when not measured), `activenessSeconds`, `activenessAwayCount`, `activenessAwaySeconds` into the learner's `ATTENDANCE_RECORDED` row's `engagement_data` (row created at join by `upsertBbbJoinAttendance`). Invalid/blank JSON is treated as `{}`. **Monotonic:** a report only lands if its `seconds` ≥ the stored `activenessSeconds`, so a stale beacon can't overwrite a newer one. Flat integers are deliberate — the analytics callback's `mergeEngagementJson` parses `Map<String,Integer>` and keeps keys it doesn't receive.
+- **Admin read:** class-learners API (`LiveClassDashboardDetailService` → `ClassLearner`) returns `activeness`, `activeness_on_screen`, `activeness_attention`, `activeness_seconds`, `activeness_away_count` (null when absent). BBB counters (`talks`, `chats`, …) are null when a row carries only activeness keys (report landed before the analytics callback).
+
+---
+
 ## 9. Payments (paid public live classes)
 
 - Guest path: register + pay → `session_guest_registrations` gains `user_id`, `payment_status` (`NULL`/`PENDING`/`PAID`), `payment_amount`, `payment_currency`, `invoice_id`, `payment_log_id` (`V401`). Webhook confirmation resolves invoice → registration; join gating resolves `(session, user)`.
@@ -517,6 +530,7 @@ Resolution happens in the **grid**, not the backend: `-utils/teacherDirectory.ts
 | GET | `/live-sessions/provider/meeting/google-meet-join` | Meet join URL + attendance |
 | POST | `/live-sessions/provider/meeting/zoom-callback/{accountId}` | Zoom webhook (HMAC) |
 | POST | `/live-sessions/provider/meeting/google-meet-callback` | Google Events Pub/Sub push |
+| POST | `/live-sessions/provider/meeting/bbb-activeness` | BBB activeness plugin report (HMAC token in body, §8b) |
 | POST | `/live-sessions/provider/zoom/oauth/initiate` · GET `/callback` | Zoom OAuth |
 | POST | `/live-sessions/provider/google/oauth/initiate` · GET `/callback` | Google OAuth |
 

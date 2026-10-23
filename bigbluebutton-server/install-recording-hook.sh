@@ -275,6 +275,33 @@ else
     echo "  WARN: /etc/bigbluebutton/nginx not found — manual install required"
 fi
 
+# ── 8b. HTML5 plugins built in this repo ────────────────────
+# Each plugins/<name>/ (built from plugins-src/<name>/) is served at
+# https://<host>/plugins/<name>/manifest.json — nginx's root for that path is
+# .../assets. Only the directories shipped here are replaced; plugins installed
+# by hand (picture-in-picture) are left alone. Swapped in via a temp dir so a
+# meeting starting mid-copy never loads half a bundle.
+echo "[8b/10] Installing repo HTML5 plugins..."
+PLUGINS_SRC="$SCRIPT_DIR/plugins"
+PLUGINS_DEST="/var/www/bigbluebutton-default/assets/plugins"
+if [ -d "$PLUGINS_SRC" ]; then
+    mkdir -p "$PLUGINS_DEST"
+    for plugin_dir in "$PLUGINS_SRC"/*/; do
+        [ -f "$plugin_dir/manifest.json" ] || continue
+        name="$(basename "$plugin_dir")"
+        rm -rf "$PLUGINS_DEST/.$name.new"
+        cp -r "$plugin_dir" "$PLUGINS_DEST/.$name.new"
+        chmod -R a+rX "$PLUGINS_DEST/.$name.new"
+        rm -rf "$PLUGINS_DEST/.$name.old"
+        [ -d "$PLUGINS_DEST/$name" ] && mv "$PLUGINS_DEST/$name" "$PLUGINS_DEST/.$name.old"
+        mv "$PLUGINS_DEST/.$name.new" "$PLUGINS_DEST/$name"
+        rm -rf "$PLUGINS_DEST/.$name.old"
+        echo "  ✓ $name ($(grep -o '"version": *"[^"]*"' "$PLUGINS_DEST/$name/manifest.json" | cut -d'"' -f4))"
+    done
+else
+    echo "  (no plugins/ directory — skipped)"
+fi
+
 # ── 9. Resource isolation drop-ins + deferred-upload drainer ──
 # Three coordinated pieces to keep recording-pipeline ffmpeg out of the
 # live-meeting CPU window:

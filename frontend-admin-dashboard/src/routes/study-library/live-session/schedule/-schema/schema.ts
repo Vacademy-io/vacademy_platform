@@ -141,6 +141,8 @@ export const sessionFormSchema = z
         bbbDisableSharedNotes: z.boolean().optional(),
         bbbHideUserList: z.boolean().optional(),
         bbbEndWhenNoModerator: z.boolean().optional(),
+        // Opt-in on-device camera activeness score (per session; no institute default yet)
+        bbbActivenessScore: z.boolean().optional(),
         // Zoom meeting configuration (only used when sessionPlatform = 'zoom' and an
         // account is selected). When no account is chosen, Zoom falls back to the
         // manual defaultLink paste just like YouTube/Meet/Other.

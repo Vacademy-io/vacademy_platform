@@ -1,0 +1,277 @@
+/**
+ * The learner's floating panel: their own camera preview and live score.
+ * Inline styles only (the plugin ships as one JS file); the accent follows the
+ * institute colour that the join URL injects as --color-primary.
+ */
+import * as React from "react";
+import { useCallback, useSyncExternalStore } from "react";
+import type { ActivenessController, ViewState } from "./controller";
+import { problemHelp } from "./camera";
+
+const ACCENT = "var(--color-primary, #0F70D7)";
+const INK = "#1f2937";
+const MUTED = "#6b7280";
+const WIDTH = 248;
+
+const scoreColor = (n: number | null) => (n === null ? MUTED : n >= 70 ? "#15803d" : n >= 40 ? "#b45309" : "#b91c1c");
+
+const s = {
+  root: {
+    width: WIDTH,
+    fontFamily: "inherit",
+    fontSize: 13,
+    lineHeight: 1.4,
+    color: INK,
+    background: "#ffffff",
+    borderRadius: 12,
+    overflow: "hidden",
+    userSelect: "none",
+  } as React.CSSProperties,
+  header: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "8px 10px",
+    cursor: "move",
+  } as React.CSSProperties,
+  title: { fontWeight: 600, flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } as React.CSSProperties,
+  iconBtn: {
+    border: "none",
+    background: "transparent",
+    color: MUTED,
+    cursor: "pointer",
+    fontFamily: "inherit",
+    fontSize: 16,
+    lineHeight: 1,
+    padding: "2px 6px",
+    borderRadius: 6,
+  } as React.CSSProperties,
+  body: { padding: "0 10px 10px" } as React.CSSProperties,
+  preview: {
+    position: "relative",
+    width: "100%",
+    height: 140,
+    borderRadius: 8,
+    overflow: "hidden",
+    background: "#111827",
+  } as React.CSSProperties,
+  thumb: {
+    position: "relative",
+    width: 40,
+    height: 30,
+    borderRadius: 6,
+    overflow: "hidden",
+    background: "#111827",
+    flex: "none",
+  } as React.CSSProperties,
+  overlay: {
+    position: "absolute",
+    left: 6,
+    right: 6,
+    bottom: 6,
+    padding: "4px 8px",
+    borderRadius: 6,
+    background: "rgba(17,24,39,0.78)",
+    color: "#fff",
+    fontSize: 12,
+    textAlign: "center",
+  } as React.CSSProperties,
+  primary: {
+    border: "none",
+    borderRadius: 8,
+    padding: "7px 12px",
+    background: ACCENT,
+    color: "#fff",
+    fontWeight: 600,
+    cursor: "pointer",
+    fontFamily: "inherit",
+    fontSize: 13,
+  } as React.CSSProperties,
+  secondary: {
+    border: "1px solid #d1d5db",
+    borderRadius: 8,
+    padding: "6px 12px",
+    background: "#fff",
+    color: INK,
+    cursor: "pointer",
+    fontFamily: "inherit",
+    fontSize: 13,
+  } as React.CSSProperties,
+  link: {
+    border: "none",
+    background: "transparent",
+    color: MUTED,
+    cursor: "pointer",
+    fontFamily: "inherit",
+    fontSize: 12,
+    padding: 0,
+    textDecoration: "underline",
+  } as React.CSSProperties,
+  note: { color: MUTED, fontSize: 11.5, marginTop: 8 } as React.CSSProperties,
+  row: { display: "flex", gap: 8, marginTop: 10 } as React.CSSProperties,
+};
+
+const Dot = ({ on }: { on: boolean }) => (
+  <span
+    aria-hidden
+    style={{ width: 8, height: 8, borderRadius: 4, background: on ? "#16a34a" : "#9ca3af", flex: "none" }}
+  />
+);
+
+function Preview({ controller, small, state }: { controller: ActivenessController; small?: boolean; state: ViewState }) {
+  // The controller owns the <video>; mount it into this box while we are rendered.
+  const ref = useCallback((el: HTMLDivElement | null) => controller.attachPreview(el), [controller]);
+  const note = state.phase !== "on" ? null : state.dark ? "Camera covered or too dark" : state.away ? "Away" : null;
+  return (
+    <div style={small ? s.thumb : s.preview}>
+      <div ref={ref} style={{ width: "100%", height: "100%" }} />
+      {!small && note && <div style={s.overlay}>{note}</div>}
+    </div>
+  );
+}
+
+function OnBody({ controller, state }: { controller: ActivenessController; state: ViewState }) {
+  const live = state.live.score;
+  const session = state.session;
+  return (
+    <div style={s.body}>
+      <Preview controller={controller} state={state} />
+      <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 10 }}>
+        <span style={{ fontSize: 30, fontWeight: 700, color: scoreColor(live), lineHeight: 1 }}>
+          {live === null ? "…" : live}
+        </span>
+        <span style={{ color: MUTED }}>{live === null ? "warming up" : "now"}</span>
+        <span style={{ marginLeft: "auto", color: MUTED }}>
+          Class avg <b style={{ color: scoreColor(session.score) }}>{session.score ?? "–"}</b>
+        </span>
+      </div>
+      <div style={{ color: MUTED, fontSize: 12, marginTop: 4 }}>
+        On screen {state.live.onScreen ?? "–"}% · Attention {state.live.attention ?? "–"}%
+      </div>
+      {state.cameras.length > 1 && (
+        <select
+          aria-label="Camera"
+          value={state.cameraId ?? ""}
+          onChange={(e) => controller.switchCamera(e.target.value)}
+          onMouseDown={(e) => e.stopPropagation()}
+          style={{ width: "100%", marginTop: 8, fontSize: 12, padding: "4px 6px", borderRadius: 6, border: "1px solid #d1d5db" }}
+        >
+          {state.cameras.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.label}
+            </option>
+          ))}
+        </select>
+      )}
+      <div style={{ display: "flex", alignItems: "center", marginTop: 8 }}>
+        <span style={{ ...s.note, marginTop: 0, flex: 1 }}>Video never leaves this device.</span>
+        <button type="button" style={s.link} onClick={controller.stop}>
+          Turn off
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export function Panel({ controller }: { controller: ActivenessController }) {
+  const state = useSyncExternalStore(controller.subscribe, controller.getState);
+  const { phase, collapsed } = state;
+
+  if (collapsed) {
+    return (
+      <div style={s.root}>
+        <div style={s.header}>
+          {phase === "on" ? <Preview controller={controller} small state={state} /> : <Dot on={false} />}
+          <span style={s.title}>
+            {phase === "on" ? (
+              <>
+                Activeness <b style={{ color: scoreColor(state.live.score) }}>{state.live.score ?? "…"}</b>
+              </>
+            ) : phase === "problem" ? (
+              "Activeness · needs attention"
+            ) : (
+              "Activeness score"
+            )}
+          </span>
+          {phase === "off" ? (
+            <button type="button" style={{ ...s.primary, padding: "4px 10px", fontSize: 12 }} onClick={controller.start}>
+              Turn on
+            </button>
+          ) : (
+            <button type="button" style={s.iconBtn} aria-label="Expand" onClick={() => controller.setCollapsed(false)}>
+              ▢
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  const help = state.problem ? problemHelp(state.problem) : null;
+  return (
+    <div style={s.root}>
+      <div style={s.header}>
+        <Dot on={phase === "on"} />
+        <span style={s.title}>Activeness score</span>
+        <button type="button" style={s.iconBtn} aria-label="Minimise" onClick={() => controller.setCollapsed(true)}>
+          –
+        </button>
+      </div>
+
+      {phase === "ask" && (
+        <div style={s.body}>
+          <div>See how attentive you are during this class.</div>
+          <div style={s.note}>
+            Your camera is checked on this device only — the video is never recorded or sent. Only your score is shared
+            with your institute.
+          </div>
+          <div style={s.row}>
+            <button type="button" style={s.primary} onClick={controller.start}>
+              Turn on camera
+            </button>
+            <button type="button" style={s.secondary} onClick={controller.stop}>
+              Not now
+            </button>
+          </div>
+        </div>
+      )}
+
+      {phase === "starting" && (
+        <div style={s.body}>
+          <Preview controller={controller} state={state} />
+          <div style={{ ...s.note, marginTop: 8 }}>
+            {state.slowLoad ? "First-time setup — downloading the face model (about 10 MB)…" : "Starting camera…"}
+          </div>
+        </div>
+      )}
+
+      {phase === "on" && <OnBody controller={controller} state={state} />}
+
+      {phase === "off" && (
+        <div style={s.body}>
+          <div style={{ color: MUTED }}>The score is off. Your camera is not in use.</div>
+          <div style={s.row}>
+            <button type="button" style={s.primary} onClick={controller.start}>
+              Turn on
+            </button>
+          </div>
+        </div>
+      )}
+
+      {phase === "problem" && help && (
+        <div style={s.body}>
+          <div style={{ fontWeight: 600 }}>{help.title}</div>
+          <div style={{ color: MUTED, marginTop: 4 }}>{help.body}</div>
+          <div style={s.row}>
+            <button type="button" style={s.primary} onClick={controller.start}>
+              Try again
+            </button>
+            <button type="button" style={s.secondary} onClick={controller.stop}>
+              Turn off
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

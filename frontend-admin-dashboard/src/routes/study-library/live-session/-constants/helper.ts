@@ -66,6 +66,8 @@ export interface BbbMeetingConfig {
     disable_shared_notes?: boolean;
     hide_user_list?: boolean;
     end_when_no_moderator?: boolean;
+    // Opt-in: learners can turn on an on-device camera activeness score
+    activeness_score?: boolean;
 }
 
 export interface FeedbackQuestionConfig {
@@ -373,6 +375,7 @@ export function transformFormToDTOStep1(
         bbbDisableSharedNotes,
         bbbHideUserList,
         bbbEndWhenNoModerator,
+        bbbActivenessScore,
         feedbackEnabled,
         feedbackCompulsory,
         feedbackQuestions,
@@ -464,6 +467,7 @@ export function transformFormToDTOStep1(
             disable_shared_notes: bbbDisableSharedNotes ?? false,
             hide_user_list: bbbHideUserList ?? false,
             end_when_no_moderator: bbbEndWhenNoModerator ?? false,
+            activeness_score: bbbActivenessScore ?? false,
         } : null,
         feedback_config: feedbackEnabled ? {
             enabled: true,

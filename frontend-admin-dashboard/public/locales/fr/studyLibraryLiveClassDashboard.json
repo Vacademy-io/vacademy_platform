@@ -215,7 +215,12 @@
             "PRESENT": "Présent",
             "BELOW_RULE": "Sous le seuil",
             "NOT_JOINED": "Absent"
-        }
+        },
+        "activeness": "Activité",
+        "activenessOnScreen": "À l'écran {{value}} %",
+        "activenessAttention": "Attention {{value}} %",
+        "activenessTracked": "suivi {{duration}}",
+        "activenessAway": "absent {{count}}×"
     },
     "csv": {
         "name": "Nom",
@@ -249,7 +254,12 @@
         "avgMinutes": "Minutes moyennes",
         "scheduledMinutes": "Minutes prévues",
         "engagement": "Engagement %",
-        "feedbackCount": "Réponses"
+        "feedbackCount": "Réponses",
+        "activeness": "Activité %",
+        "activenessOnScreen": "À l'écran %",
+        "activenessAttention": "Attention %",
+        "activenessMinutesTracked": "Minutes de suivi caméra",
+        "activenessAwayCount": "Nombre d'absences"
     },
     "atRisk": {
         "title": "Apprenants à risque",

@@ -137,6 +137,7 @@ export interface Schedule {
         disable_shared_notes?: boolean;
         hide_user_list?: boolean;
         end_when_no_moderator?: boolean;
+        activeness_score?: boolean;
     } | null;
     feedback_config?: {
         enabled?: boolean;

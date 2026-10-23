@@ -318,6 +318,11 @@ public class LiveClassDashboardDetailService {
                     .raiseHands(eng != null ? eng.raiseHands() : null)
                     .pollVotes(eng != null ? eng.pollVotes() : null)
                     .emojis(eng != null ? eng.emojis() : null)
+                    .activeness(eng != null ? eng.activeness() : null)
+                    .activenessOnScreen(eng != null ? eng.activenessOnScreen() : null)
+                    .activenessAttention(eng != null ? eng.activenessAttention() : null)
+                    .activenessSeconds(eng != null ? eng.activenessSeconds() : null)
+                    .activenessAwayCount(eng != null ? eng.activenessAwayCount() : null)
                     .rating(fb.rating())
                     .answers(fb.answers())
                     .build();
@@ -560,8 +565,18 @@ public class LiveClassDashboardDetailService {
         static final ParsedFeedback EMPTY = new ParsedFeedback(null, List.of());
     }
 
-    record Engagement(int talks, int chats, int raiseHands, int pollVotes, int emojis) {
+    /**
+     * BBB counters are null when the row has none of BBB's keys — the activeness plugin
+     * can write its keys before the end-of-class analytics callback, and that must not
+     * read as "0 talks". Activeness fields are null when that key is absent.
+     */
+    record Engagement(Integer talks, Integer chats, Integer raiseHands, Integer pollVotes, Integer emojis,
+                      Integer activeness, Integer activenessOnScreen, Integer activenessAttention,
+                      Integer activenessSeconds, Integer activenessAwayCount) {
     }
+
+    private static final List<String> BBB_COUNTER_KEYS =
+            List.of("talks", "chats", "talkTime", "raisehand", "pollVotes", "emojis");
 
     /** The session's feedback questions, in form order; empty for missing or malformed config. */
     static List<FeedbackQuestion> parseQuestions(String configJson) {
@@ -627,14 +642,29 @@ public class LiveClassDashboardDetailService {
                 .build());
     }
 
-    /** BBB engagement counters; null when absent or malformed. */
+    /** BBB engagement counters + activeness score; null when absent or malformed. */
     static Engagement parseEngagement(String json) {
         JsonNode root = readJson(json);
         if (root == null || !root.isObject()) {
             return null;
         }
-        return new Engagement(root.path("talks").asInt(0), root.path("chats").asInt(0),
-                root.path("raisehand").asInt(0), root.path("pollVotes").asInt(0), root.path("emojis").asInt(0));
+        boolean hasCounters = BBB_COUNTER_KEYS.stream().anyMatch(root::has);
+        return new Engagement(
+                hasCounters ? root.path("talks").asInt(0) : null,
+                hasCounters ? root.path("chats").asInt(0) : null,
+                hasCounters ? root.path("raisehand").asInt(0) : null,
+                hasCounters ? root.path("pollVotes").asInt(0) : null,
+                hasCounters ? root.path("emojis").asInt(0) : null,
+                optInt(root, "activeness"),
+                optInt(root, "activenessOnScreen"),
+                optInt(root, "activenessAttention"),
+                optInt(root, "activenessSeconds"),
+                optInt(root, "activenessAwayCount"));
+    }
+
+    private static Integer optInt(JsonNode root, String key) {
+        JsonNode n = root.get(key);
+        return n != null && n.isNumber() ? n.asInt() : null;
     }
 
     private static JsonNode readJson(String json) {

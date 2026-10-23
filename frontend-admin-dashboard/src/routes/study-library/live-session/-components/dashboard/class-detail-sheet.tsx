@@ -6,6 +6,7 @@ import {
     Clock,
     DownloadSimple,
     Envelope,
+    Eye,
     HandPalm,
     MagnifyingGlass,
     Microphone,
@@ -55,6 +56,51 @@ const STATUS_PILL: Record<LearnerAttendanceStatus, string> = {
 
 const learnerName = (l: DashboardClassLearner, guestLabel: string) =>
     l.name || l.email || guestLabel;
+
+const isNum = (v: number | null | undefined): v is number =>
+    typeof v === 'number' && !Number.isNaN(v);
+
+/** >=70 good, 40-69 medium, <40 low. */
+const activenessTone = (score: number) =>
+    score >= 70
+        ? 'bg-success-50 text-success-700'
+        : score >= 40
+          ? 'bg-warning-50 text-warning-700'
+          : 'bg-danger-50 text-danger-700';
+
+function ActivenessChip({
+    learner,
+    label,
+    detail,
+}: {
+    learner: DashboardClassLearner;
+    label: string;
+    detail: string;
+}) {
+    const score = learner.activeness;
+    return (
+        <span
+            className="flex items-center gap-1"
+            title={[label, detail].filter(Boolean).join(' · ')}
+        >
+            <Eye size={13} className="text-neutral-400" aria-hidden />
+            <span className="sr-only">{label}</span>
+            {isNum(score) ? (
+                <span
+                    className={cn(
+                        'rounded-full px-2 py-0.5 font-semibold tabular-nums',
+                        activenessTone(score)
+                    )}
+                >
+                    {Math.round(score)}%
+                </span>
+            ) : (
+                EMPTY_VALUE
+            )}
+            {detail && <span className="sr-only">{detail}</span>}
+        </span>
+    );
+}
 
 function Stat({ label, value }: { label: string; value: string }) {
     return (
@@ -136,6 +182,37 @@ export function ClassDetailSheet({
         return c;
     }, [learners]);
 
+    // The activeness score is opt-in per class: show it only when someone has one.
+    const showActiveness = useMemo(
+        () => (learners ?? []).some((l) => isNum(l.activeness)),
+        [learners]
+    );
+
+    // "On screen 90% · Attention 76% · tracked 42m · stepped away 3×" — missing parts omitted.
+    const activenessDetail = (l: DashboardClassLearner) =>
+        [
+            isNum(l.activeness_on_screen)
+                ? t('drilldown.activenessOnScreen', {
+                      value: Math.round(l.activeness_on_screen),
+                  })
+                : null,
+            isNum(l.activeness_attention)
+                ? t('drilldown.activenessAttention', {
+                      value: Math.round(l.activeness_attention),
+                  })
+                : null,
+            isNum(l.activeness_seconds) && l.activeness_seconds > 0
+                ? t('drilldown.activenessTracked', {
+                      duration: formatDuration(l.activeness_seconds / 60, units),
+                  })
+                : null,
+            isNum(l.activeness_away_count) && l.activeness_away_count > 0
+                ? t('drilldown.activenessAway', { count: l.activeness_away_count })
+                : null,
+        ]
+            .filter(Boolean)
+            .join(' · ');
+
     const visible = useMemo(() => {
         const q = search.trim().toLowerCase();
         return (learners ?? []).filter((l) => {
@@ -190,6 +267,15 @@ export function ClassDetailSheet({
                 t('csv.pollVotes'),
                 t('csv.rating'),
                 t('csv.feedback'),
+                ...(showActiveness
+                    ? [
+                          t('csv.activeness'),
+                          t('csv.activenessOnScreen'),
+                          t('csv.activenessAttention'),
+                          t('csv.activenessMinutesTracked'),
+                          t('csv.activenessAwayCount'),
+                      ]
+                    : []),
             ],
             visible.map((l) => [
                 learnerName(l, guestLabel),
@@ -204,6 +290,15 @@ export function ClassDetailSheet({
                 l.poll_votes,
                 l.rating,
                 l.answers.map((a) => `${a.label}: ${a.text}`).join(' | '),
+                ...(showActiveness
+                    ? [
+                          l.activeness ?? '',
+                          l.activeness_on_screen ?? '',
+                          l.activeness_attention ?? '',
+                          isNum(l.activeness_seconds) ? Math.round(l.activeness_seconds / 60) : '',
+                          l.activeness_away_count ?? '',
+                      ]
+                    : []),
             ])
         );
         downloadCsv(
@@ -451,6 +546,13 @@ export function ClassDetailSheet({
                                                                 value={formatCount(l.raise_hands)}
                                                             />
                                                         </>
+                                                    )}
+                                                    {showActiveness && (
+                                                        <ActivenessChip
+                                                            learner={l}
+                                                            label={t('drilldown.activeness')}
+                                                            detail={activenessDetail(l)}
+                                                        />
                                                     )}
                                                 </div>
                                             )}

@@ -10,6 +10,11 @@ import {
   getTerminologyPlural,
 } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import { TokenKey } from "@/constants/auth/tokens";
+import { getTokenFromCookie } from "@/lib/auth/sessionUtility";
+import { resolveLearnerIdentity } from "@/lib/learner-identity";
+import { buildOtpLoginHref } from "@/lib/auth/otp-login-handoff";
+import { cn } from "@/lib/utils";
 import type {
   ProductPageData,
   ProductPageSettings,
@@ -32,11 +37,22 @@ const PAYMENT_SUCCESS_TARGET_ORIGINS = [
 /** A course with one class and one session names both "default"; that says nothing to a buyer. */
 const isDefaultName = (name?: string | null) => name?.trim().toLowerCase() === "default";
 
+/** Same lookup as main.tsx: localStorage first (WebViews), then the cookie. */
+const hasAccessToken = (): boolean => {
+  try {
+    if (localStorage.getItem(TokenKey.accessToken)) return true;
+  } catch {
+    // localStorage may be blocked; fall through to the cookie
+  }
+  return !!getTokenFromCookie(TokenKey.accessToken);
+};
+
 export const ProductPageSuccess = ({ pageData }: ProductPageSuccessProps) => {
   const { t } = useTranslation("productPages");
   const course = getTerminology(ContentTerms.Course, SystemTerms.Course);
   const coursePlural = getTerminologyPlural(ContentTerms.Course, SystemTerms.Course);
-  const { selectedPsOptionIds, utmParams, finalPrice, totalPrice, loginCode } = useProductPageStore();
+  const { selectedPsOptionIds, utmParams, finalPrice, totalPrice, loginCode, registrationData } =
+    useProductPageStore();
 
   const settings: ProductPageSettings = pageData.settings_json
     ? (() => {
@@ -61,6 +77,17 @@ export const ProductPageSuccess = ({ pageData }: ProductPageSuccessProps) => {
   const [autoLogin, setAutoLogin] = useState<"pending" | "failed" | "idle">(
     settings.autoLoginAfterPayment && loginCode ? "pending" : "idle",
   );
+
+  // Same setting, buyer without a code: their account was there before this
+  // checkout (e.g. migrated from the institute's old store), so they may not
+  // know its password. Send them to the login page with their email and phone
+  // in the link; it opens whichever OTP form the portal allows, prefilled, or
+  // its usual form when none is on. Skipped when this browser is already
+  // logged in.
+  const otpLoginHref =
+    settings.autoLoginAfterPayment && !hasAccessToken()
+      ? buildOtpLoginHref(resolveLearnerIdentity(Object.values(registrationData ?? {})))
+      : null;
 
   const enrolledCount = selectedPsOptionIds.length;
   const currency =
@@ -270,13 +297,24 @@ export const ProductPageSuccess = ({ pageData }: ProductPageSuccessProps) => {
         )}
       </div>
 
+      {showLoginButton && otpLoginHref && (
+        <p className="mt-8 max-w-sm text-center text-sm text-gray-500">
+          {t("success.existingAccountHint", { courses: coursePlural })}
+        </p>
+      )}
+
       {showLoginButton && (
         <a
-          href="/dashboard"
-          className="mt-8 flex items-center gap-2 rounded-xl bg-blue-600 px-8 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700"
+          href={otpLoginHref ?? "/dashboard"}
+          className={cn(
+            "flex items-center gap-2 rounded-xl bg-blue-600 px-8 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700",
+            otpLoginHref ? "mt-4" : "mt-8",
+          )}
         >
           <BookOpen className="size-4" />
-          {t("success.goToMyCourses", { courses: coursePlural })}
+          {otpLoginHref
+            ? t("success.logInToContinue")
+            : t("success.goToMyCourses", { courses: coursePlural })}
           <ArrowRight className="size-4" />
         </a>
       )}

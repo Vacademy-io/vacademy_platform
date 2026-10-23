@@ -246,6 +246,8 @@
         "goToMyCourses": "Accéder à mes {{courses}}",
         "redirecting": "Redirection vers la page suivante…",
         "redirectNow": "Continuer maintenant",
-        "loggingIn": "Connexion en cours…"
+        "loggingIn": "Connexion en cours…",
+        "existingAccountHint": "Vous avez déjà un compte. Connectez-vous pour ouvrir vos {{courses}}.",
+        "logInToContinue": "Se connecter"
     }
 }

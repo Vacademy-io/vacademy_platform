@@ -71,6 +71,7 @@ export function PhoneLoginForm({
     allowUsernamePasswordAuth,
     allowEmailOtpAuth,
     allowSignup,
+    initialPhone,
 }: {
     onSwitchToUsername?: () => void;
     onSwitchToEmail?: () => void;
@@ -81,6 +82,8 @@ export function PhoneLoginForm({
     allowEmailOtpAuth?: boolean;
     /** Portal policy from domain routing. This form never gated the link before, so only an explicit false hides it. */
     allowSignup?: boolean;
+    /** Pre-fills the number (digits with dial code); the learner still has to receive and enter the OTP. */
+    initialPhone?: string;
 }) {
     const { t, i18n: i18nInstance } = useTranslation("auth");
     const phoneSchema = useMemo(
@@ -107,7 +110,7 @@ export function PhoneLoginForm({
     const phoneForm = useForm<PhoneFormValues>({
         resolver: zodResolver(phoneSchema),
         defaultValues: {
-            phone: "",
+            phone: initialPhone ?? "",
         },
     });
 

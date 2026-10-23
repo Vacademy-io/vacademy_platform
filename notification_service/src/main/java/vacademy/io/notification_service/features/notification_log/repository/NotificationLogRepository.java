@@ -847,23 +847,68 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
     long countEmailSent(@Param("fromAddresses") List<String> fromAddresses,
                        @Param("since") String since);
 
+    // ==== Email events for the hub ====
+    //
+    // Each EMAIL_EVENT joins to its parent EMAIL log via source = parent.id; the parent is
+    // scoped by the institute's configured from-addresses. The body prefix matches strings
+    // produced in EmailEventService.createEventDetailsBody ("Email Event: DELIVERY\\n...").
+    //
+    // The two sides are MATERIALIZED and joined, not written as a plain join: with
+    // idx_nl_source_type (V37) available the planner merge-joined on source, which walks
+    // every EMAIL_EVENT ever recorded in source order and took 7-38 s per count (2026-10-23).
+    // The events in the window come from idx_nl_email_event_window (V38) instead, and
+    // left(body, 30) is the expression that index carries.
+
+    interface EmailEventCounts {
+        Long getDelivered();
+        Long getOpened();
+        Long getClicked();
+        Long getBounced();
+        Long getComplained();
+    }
+
+    /** All five overview tiles in one pass over the window. */
+    @Query(value = """
+            WITH ev AS MATERIALIZED (
+              SELECT source, left(body, 30) AS head
+                FROM notification_log
+               WHERE notification_type = 'EMAIL_EVENT'
+                 AND notification_date >= CAST(:since AS TIMESTAMP)
+            ), orig AS MATERIALIZED (
+              SELECT id
+                FROM notification_log
+               WHERE notification_type = 'EMAIL'
+                 AND sender_business_channel_id IN (:fromAddresses)
+            )
+            SELECT COUNT(*) FILTER (WHERE ev.head LIKE 'Email Event: DELIVERY%') AS delivered,
+                   COUNT(*) FILTER (WHERE ev.head LIKE 'Email Event: OPEN%') AS opened,
+                   COUNT(*) FILTER (WHERE ev.head LIKE 'Email Event: CLICK%') AS clicked,
+                   COUNT(*) FILTER (WHERE ev.head LIKE 'Email Event: BOUNCE%') AS bounced,
+                   COUNT(*) FILTER (WHERE ev.head LIKE 'Email Event: COMPLAINT%') AS complained
+              FROM ev
+              JOIN orig ON orig.id = ev.source
+            """, nativeQuery = true)
+    EmailEventCounts countEmailEventsByType(@Param("fromAddresses") List<String> fromAddresses,
+                                            @Param("since") String since);
+
     /**
-     * Count EMAIL_EVENTs by event name within window for an institute. Joins each event to
-     * its parent EMAIL log via `source = parent.id`, then scopes by the institute's
-     * configured from-addresses on the parent.
-     *
-     * The body prefix matches strings produced in EmailEventService.createEventDetailsBody:
-     * "Email Event: DELIVERY\\n...", "Email Event: OPEN\\n...", etc. Pass the uppercase
+     * Count EMAIL_EVENTs of one event name within window for an institute. Pass the uppercase
      * event name (DELIVERY / OPEN / CLICK / BOUNCE / COMPLAINT / SEND / REJECT).
      */
     @Query(value = """
-            SELECT COUNT(*) FROM notification_log ev
-            INNER JOIN notification_log orig ON orig.id = ev.source
-            WHERE ev.notification_type = 'EMAIL_EVENT'
-              AND ev.body LIKE CONCAT('Email Event: ', :eventName, '%')
-              AND orig.notification_type = 'EMAIL'
-              AND orig.sender_business_channel_id IN (:fromAddresses)
-              AND ev.notification_date >= CAST(:since AS TIMESTAMP)
+            WITH ev AS MATERIALIZED (
+              SELECT source
+                FROM notification_log
+               WHERE notification_type = 'EMAIL_EVENT'
+                 AND notification_date >= CAST(:since AS TIMESTAMP)
+                 AND left(body, 30) LIKE CONCAT('Email Event: ', :eventName, '%')
+            ), orig AS MATERIALIZED (
+              SELECT id
+                FROM notification_log
+               WHERE notification_type = 'EMAIL'
+                 AND sender_business_channel_id IN (:fromAddresses)
+            )
+            SELECT COUNT(*) FROM ev JOIN orig ON orig.id = ev.source
             """, nativeQuery = true)
     long countEmailEvent(@Param("fromAddresses") List<String> fromAddresses,
                         @Param("eventName") String eventName,
@@ -875,15 +920,28 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
      * filtered by the institute's configured from-addresses, event within window. Newest first.
      */
     @Query(value = """
-            SELECT ev.* FROM notification_log ev
-            INNER JOIN notification_log orig ON orig.id = ev.source
-            WHERE ev.notification_type = 'EMAIL_EVENT'
-              AND ev.body LIKE CONCAT('Email Event: ', :eventName, '%')
-              AND orig.notification_type = 'EMAIL'
-              AND orig.sender_business_channel_id IN (:fromAddresses)
-              AND ev.notification_date >= CAST(:since AS TIMESTAMP)
-            ORDER BY ev.notification_date DESC
-            LIMIT :limit OFFSET :offset
+            WITH ev AS MATERIALIZED (
+              SELECT id, source, notification_date
+                FROM notification_log
+               WHERE notification_type = 'EMAIL_EVENT'
+                 AND notification_date >= CAST(:since AS TIMESTAMP)
+                 AND left(body, 30) LIKE CONCAT('Email Event: ', :eventName, '%')
+            ), orig AS MATERIALIZED (
+              SELECT id
+                FROM notification_log
+               WHERE notification_type = 'EMAIL'
+                 AND sender_business_channel_id IN (:fromAddresses)
+            ), page AS (
+              SELECT ev.id, ev.notification_date
+                FROM ev
+                JOIN orig ON orig.id = ev.source
+               ORDER BY ev.notification_date DESC, ev.id
+               LIMIT :limit OFFSET :offset
+            )
+            SELECT nl.*
+              FROM page
+              JOIN notification_log nl ON nl.id = page.id
+             ORDER BY page.notification_date DESC, page.id
             """, nativeQuery = true)
     List<NotificationLog> findEmailEventsForInstitute(@Param("fromAddresses") List<String> fromAddresses,
                                                       @Param("eventName") String eventName,

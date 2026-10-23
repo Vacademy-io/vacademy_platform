@@ -374,7 +374,7 @@ export const CartStep = ({ pageData, settings, primaryColor = '#2563eb', onBack,
             {/* ── Step navigation ────────────────────────────────────── */}
             <div
                 className={cn(
-                    'flex items-center justify-between gap-3 border-t border-gray-100 bg-gray-50 px-5 py-4 sm:px-6',
+                    'flex items-center justify-between gap-3 rounded-b-2xl border-t border-gray-100 bg-gray-50 px-5 py-4 sm:px-6',
                     // Nothing left to show below lg once Back is off and Continue
                     // has moved to the sticky bar — an empty grey strip is worse
                     // than no strip.

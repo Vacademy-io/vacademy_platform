@@ -69,7 +69,10 @@ export const CheckoutLayout = ({
                             className="mb-5 lg:hidden"
                         />
                     )}
-                    <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+                    {/* No overflow-hidden: it clipped the phone field's country
+                        dropdown at the card's bottom edge. Steps whose content
+                        touches the edge round their own corners instead. */}
+                    <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
                         {children}
                     </div>
                     {summaryLast && (

@@ -25,6 +25,7 @@ import base64
 import io
 import json
 import logging
+import re
 import tempfile
 from pathlib import Path
 from typing import Any, Optional
@@ -67,6 +68,15 @@ MAX_CROPS = 3            # pages of one answer shown
 MAX_EDGE = 1600          # px, long edge of each crop
 PAD = 30                 # px around the answer rows
 MAX_CHECKS_PER_COPY = 60
+# A reading only the paper could have supplied. On a law copy the check "saw"
+# a student write "Anita fixed the hire herself after consulting her chartered
+# accountant and nobody pressed her" - a sentence of the question - and "a
+# written promise signed by the debtor or his authorised agent" - the marking
+# scheme - and raised both answers. Neither was on the page. A phrase of this
+# many words that the reading shares with the paper but not with the transcript
+# was borrowed; a reading with more than MAX_BORROWED of them raises nothing.
+PHRASE_WORDS = 5
+MAX_BORROWED = 2
 
 SYSTEM = (
     "You are a senior teacher re-checking marks another examiner gave from a machine "
@@ -125,6 +135,43 @@ def answer_regions(layout_map: dict[str, Any], answer_rows: list[str]) -> list[t
     return out
 
 
+def _phrases(text: Any) -> set[tuple[str, ...]]:
+    words = re.findall(r"[a-z]+", str(text or "").lower())
+    return {tuple(words[i:i + PHRASE_WORDS]) for i in range(len(words) - PHRASE_WORDS + 1)}
+
+
+def answer_text(layout_map: dict[str, Any], answer_rows: list[str]) -> str:
+    """The transcript of the answer's rows, first to last, across pages."""
+    rows = [(str(r.get("line_id")), str(r.get("text") or ""))
+            for page in layout_map.get("pages") or [] for r in page.get("lines") or []]
+    ids = [r[0] for r in rows]
+    if not answer_rows or str(answer_rows[0]) not in ids or str(answer_rows[-1]) not in ids:
+        return ""
+    i, j = sorted((ids.index(str(answer_rows[0])), ids.index(str(answer_rows[-1]))))
+    return " ".join(text for _, text in rows[i:j + 1])
+
+
+def borrowed_phrases(result: dict[str, Any], question: dict[str, Any], rubric: Any,
+                     verdict: dict[str, Any], layout_map: dict[str, Any]) -> int:
+    """How many phrases of the check's reading of the answer appear in the
+    question, its key or the marking scheme but nowhere in the transcript.
+
+    A student who restates the facts of the question has them in the
+    transcript too, so they do not count. Maths working has no phrases of
+    words, so a corrected 7/30 is never affected."""
+    claimed = _phrases(result.get("what_the_student_wrote"))
+    if not claimed:
+        return 0
+    criteria = rubric.get("rubric") if isinstance(rubric, dict) else rubric
+    paper = " ".join(str(v or "") for v in (
+        question.get("question_text"), question.get("correct_answer"), question.get("model_answer"),
+        rubric.get("evaluation_instructions") if isinstance(rubric, dict) else "",
+        json.dumps(criteria or [])))
+    written = " ".join((str(verdict.get("extracted_answer") or ""),
+                        answer_text(layout_map, verdict.get("answer_rows") or [])))
+    return len((claimed & _phrases(paper)) - _phrases(written))
+
+
 def _encode(img: Any) -> str:
     longest = max(img.width, img.height)
     if longest > MAX_EDGE:
@@ -155,6 +202,8 @@ Notes written on the copy: {json.dumps(notes)[:800]}
 Look at the image(s) of what the student actually wrote. For EACH cut, decide:
  - "misread": the image shows the student did NOT make this mistake (the examiner's reading was wrong), or
  - "real": the student really made this mistake or really left this out.
+In "what_the_student_wrote", quote only words you can see in the image. Never fill it in from the
+question, the key or the marking scheme: a point the student left out stays left out.
 Then give the marks the answer deserves under the same scheme. Only raise a mark for a "misread" cut;
 keep every "real" cut. Never go above {verdict.get('max_marks')}, never below {verdict.get('marks_awarded')}.
 
@@ -306,7 +355,13 @@ class DeductionChecker:
             start, end = content.find("{"), content.rfind("}")
             if start == -1 or end <= start:
                 return False
-            raised = apply_check(verdict, json.loads(content[start:end + 1]))
+            result = json.loads(content[start:end + 1])
+            borrowed = borrowed_phrases(result, question, rubric, verdict, self.layout_map)
+            if borrowed > MAX_BORROWED:
+                logger.info("Deduction check for Q%s quoted the paper, not the student (%d phrases); mark kept",
+                            question.get("question_id"), borrowed)
+                return False
+            raised = apply_check(verdict, result)
             if raised:
                 self.raised += 1
                 logger.info("Deduction check raised Q%s: %s", question.get("question_id"), verdict.get("deduction_check"))
@@ -316,4 +371,4 @@ class DeductionChecker:
             return False
 
 
-__all__ = ["DeductionChecker", "answer_regions", "apply_check", "build_prompt"]
+__all__ = ["DeductionChecker", "answer_regions", "apply_check", "borrowed_phrases", "build_prompt"]

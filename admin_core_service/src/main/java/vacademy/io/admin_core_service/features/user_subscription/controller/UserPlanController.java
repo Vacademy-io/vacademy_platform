@@ -329,6 +329,26 @@ public class UserPlanController {
         return ResponseEntity.ok(adminManualRenewalService.renew(userPlanId, instituteId, request, userDetails));
     }
 
+    /**
+     * Admin moves an active membership's end date (and its course access) without a payment,
+     * with a required remark. Who changed it and when is kept in the plan's remarks, the
+     * learner access log and the admin activity log.
+     */
+    @PostMapping("/{userPlanId}/end-date")
+    @Auditable(
+            entityType = "LEARNER",
+            action = "ACCESS_CHANGE",
+            entityIdExpr = "#userPlanId",
+            descriptionExpr = "'changed the membership end date of plan ' + #userPlanId + ' to ' + #request?.newEndDate")
+    public ResponseEntity<ManualRenewalResultDTO> changePlanEndDate(
+            @PathVariable String userPlanId,
+            @RequestParam String instituteId,
+            @RequestBody ChangePlanEndDateRequestDTO request,
+            @RequestAttribute("user") CustomUserDetails userDetails) {
+        instituteAccessValidator.validateUserAccess(userDetails, instituteId);
+        return ResponseEntity.ok(adminManualRenewalService.changeEndDate(userPlanId, instituteId, request, userDetails));
+    }
+
     /** Renewal records and admin remarks on this membership, newest first. */
     @GetMapping("/{userPlanId}/remarks")
     public ResponseEntity<Page<vacademy.io.admin_core_service.features.timeline.dto.TimelineEventDTO>> listPlanRemarks(

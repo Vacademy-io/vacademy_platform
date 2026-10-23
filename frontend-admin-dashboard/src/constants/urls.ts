@@ -1260,6 +1260,8 @@ export const RECORD_MANUAL_RENEWAL = (userPlanId: string) =>
     `${BASE_URL}/admin-core-service/v1/user-plan/${userPlanId}/manual-renewal`;
 export const USER_PLAN_REMARKS = (userPlanId: string) =>
     `${BASE_URL}/admin-core-service/v1/user-plan/${userPlanId}/remarks`;
+export const CHANGE_USER_PLAN_END_DATE = (userPlanId: string) =>
+    `${BASE_URL}/admin-core-service/v1/user-plan/${userPlanId}/end-date`;
 
 // System files
 export const ADD_SYSTEM_FILE = `${BASE_URL}/admin-core-service/system-files/v1/add`;

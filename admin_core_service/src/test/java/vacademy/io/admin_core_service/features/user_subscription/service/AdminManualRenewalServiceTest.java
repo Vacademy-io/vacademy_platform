@@ -23,6 +23,7 @@ import vacademy.io.admin_core_service.features.timeline.dto.TimelineEventDTO;
 import vacademy.io.admin_core_service.features.timeline.dto.TimelineEventRequestDTO;
 import vacademy.io.admin_core_service.features.timeline.service.TimelineEventService;
 import vacademy.io.admin_core_service.features.user_account.service.UserAccountLedgerService;
+import vacademy.io.admin_core_service.features.user_subscription.dto.ChangePlanEndDateRequestDTO;
 import vacademy.io.admin_core_service.features.user_subscription.dto.ManualRenewalRequestDTO;
 import vacademy.io.admin_core_service.features.user_subscription.dto.ManualRenewalResultDTO;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentLog;
@@ -405,5 +406,88 @@ class AdminManualRenewalServiceTest {
 
         when(auth.getUsersFromAuthServiceByUserIds(anyList())).thenThrow(new RuntimeException("auth down"));
         assertEquals("finance", service.listRemarks("up-1", INST, 0, 20).getContent().get(0).getActorName());
+    }
+
+    // ---------------------------------------------------------------- end-date change
+
+    private StudentSessionInstituteGroupMapping activeMembership() {
+        plan.setStatus("ACTIVE");
+        plan.setStartDate(new Date(System.currentTimeMillis() - 10 * DAY));
+        plan.setEndDate(new Date(System.currentTimeMillis() + 355 * DAY));
+        StudentSessionInstituteGroupMapping active = new StudentSessionInstituteGroupMapping();
+        active.setId("m-2");
+        active.setUserId("u-1");
+        active.setUserPlanId("up-1");
+        active.setStatus("ACTIVE");
+        active.setExpiryDate(plan.getEndDate());
+        when(mappingRepo.findByUserPlanIdAndStatus("up-1", "ACTIVE")).thenReturn(List.of(active));
+        when(mappingRepo.findByUserPlanIdAndStatus("up-1", "INACTIVE")).thenReturn(List.of());
+        return active;
+    }
+
+    private static ChangePlanEndDateRequestDTO endDateReq(Date newEnd) {
+        ChangePlanEndDateRequestDTO r = new ChangePlanEndDateRequestDTO();
+        r.setNewEndDate(newEnd);
+        r.setRemarks("Paid on 7 Oct, enrolled on 23 Oct");
+        return r;
+    }
+
+    @Test
+    @DisplayName("changing the end date moves the plan and its access together, audited with the admin and the reason")
+    void changeEndDateMovesPlanAndAccess() {
+        StudentSessionInstituteGroupMapping active = activeMembership();
+        Date previousEnd = plan.getEndDate();
+        Date newEnd = new Date(System.currentTimeMillis() + 340 * DAY);
+
+        ManualRenewalResultDTO result = service.changeEndDate("up-1", INST, endDateReq(newEnd), admin);
+
+        assertEquals(previousEnd, result.getPreviousEndDate());
+        assertEquals(newEnd, plan.getEndDate());
+        assertEquals("ACTIVE", plan.getStatus());
+        assertNull(plan.getNextChargeAt(), "autopay is off, so no charge may be scheduled");
+        assertEquals(newEnd, active.getExpiryDate());
+        assertEquals(1, result.getMappingsUpdated());
+        verify(planRepo).save(plan);
+        verify(paymentLogService, never()).createPaymentLog(any(), anyDouble(), any(), any(), any(), any(), any(), any());
+        verify(access).recordGrant(eq(LearnerAccessSourceEnum.ADMIN_EXTENSION), eq(INST), eq(active), eq(previousEnd),
+                isNull(), eq("up-1"), any(), any(), contains("Paid on 7 Oct"), eq("admin-1"), eq("finance"));
+
+        ArgumentCaptor<TimelineEventRequestDTO> event = ArgumentCaptor.forClass(TimelineEventRequestDTO.class);
+        verify(timeline).createManualEvent(event.capture(), eq(admin));
+        assertEquals("END_DATE_CHANGE", event.getValue().getActionType());
+        assertEquals("up-1", event.getValue().getTypeId());
+        assertEquals("Paid on 7 Oct, enrolled on 23 Oct", event.getValue().getDescription());
+    }
+
+    @Test
+    @DisplayName("with autopay on, the next charge follows the new end date")
+    void changeEndDateRepointsArmedCharge() {
+        activeMembership();
+        plan.setAutoRenewalEnabled(true);
+        plan.setNextChargeAt(plan.getEndDate());
+        Date newEnd = new Date(System.currentTimeMillis() + 400 * DAY);
+
+        service.changeEndDate("up-1", INST, endDateReq(newEnd), admin);
+
+        assertEquals(newEnd, plan.getNextChargeAt());
+    }
+
+    @Test
+    @DisplayName("a lapsed membership, a past date or a missing reason is refused and nothing is written")
+    void changeEndDateRefusals() {
+        Date future = new Date(System.currentTimeMillis() + 30 * DAY);
+        // plan is EXPIRED from setUp: lapsed memberships go through Renew manually.
+        assertThrows(VacademyException.class, () -> service.changeEndDate("up-1", INST, endDateReq(future), admin));
+
+        activeMembership();
+        assertThrows(VacademyException.class, () -> service.changeEndDate("up-1", INST,
+                endDateReq(new Date(System.currentTimeMillis() - DAY)), admin));
+        ChangePlanEndDateRequestDTO noReason = endDateReq(future);
+        noReason.setRemarks("  ");
+        assertThrows(VacademyException.class, () -> service.changeEndDate("up-1", INST, noReason, admin));
+        assertThrows(VacademyException.class, () -> service.changeEndDate("up-1", "other-inst", endDateReq(future), admin));
+
+        verify(planRepo, never()).save(any());
+        verifyNoInteractions(timeline);
     }
 }

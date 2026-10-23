@@ -716,7 +716,8 @@ public class BulkAssignmentService {
                 // row for the same (user, package session) would trip
                 // uq_dest_pkg_inst_user_status where that index exists.
                 return handleReEnroll(mapping, userId, userEmail, config,
-                        instituteId, dryRun, userDTO, extraDetails, adminUserId, assignment, options);
+                        instituteId, dryRun, userDTO, extraDetails, adminUserId, assignment, options,
+                        newUserDataMap.get(userId), generateInvoiceOnManualEnroll);
             }
 
             // Case C: No existing mapping → create new
@@ -825,6 +826,13 @@ public class BulkAssignmentService {
         AppliedCouponDiscount adminDiscount = resolveAdminDiscount(assignment, config, instituteId,
                 userEmail, adminUserId, isCpo);
 
+        // Payment date: per-user (from CSV) > global (from options). It is also the day the
+        // membership starts, so a payment taken before the admin got round to enrolling the
+        // learner is not handed extra days on top.
+        Date perUserPaymentDate = parsePerUserPaymentDate(newUserData);
+        Date globalPaymentDate = options != null ? options.getPaymentDate() : null;
+        Date membershipStart = resolveMembershipStart(perUserPaymentDate, options);
+
         // Create UserPlan
         UserPlan userPlan = userPlanService.createUserPlan(
                 userId,
@@ -836,7 +844,7 @@ public class BulkAssignmentService {
                 UserPlanStatusEnum.ACTIVE.name(),
                 userPlanSource,
                 createdSubOrgId,
-                null);
+                membershipStart);
         userPlan = stampAdminDiscount(userPlan, adminDiscount, adminUserId);
 
         String mappingId;
@@ -852,7 +860,7 @@ public class BulkAssignmentService {
                     .instituteId(instituteId)
                     .packageSessionId(config.getPackageSession().getId())
                     .enrollmentStatus(LearnerSessionStatusEnum.ACTIVE.name())
-                    .enrollmentDate(new Date())
+                    .enrollmentDate(membershipStart != null ? membershipStart : new Date())
                     .accessDays(config.getAccessDays() != null
                             ? config.getAccessDays().toString()
                             : null)
@@ -880,7 +888,7 @@ public class BulkAssignmentService {
             // InstituteStudentDetails, but this branch bypasses it, so we set them directly
             // on the entity to keep parity with the userDTO path.
             StudentSessionInstituteGroupMapping mapping = createActiveMapping(
-                    userId, config, instituteId, userPlan.getId());
+                    userId, config, instituteId, userPlan.getId(), membershipStart);
             if (createdSubOrg != null) {
                 mapping.setSubOrg(createdSubOrg);
                 mapping.setCommaSeparatedOrgRoles(subOrgRoles);
@@ -903,9 +911,6 @@ public class BulkAssignmentService {
         // Auto-link learner to sub-org if the enrolling admin belongs to one
         subOrgAutoLinkService.linkIfSubOrgAdmin(userId, config.getPackageSession().getId(), mappingId, adminUserId);
 
-        // Resolve per-user payment date: per-user (from CSV) > global (from options) > now
-        Date perUserPaymentDate = parsePerUserPaymentDate(newUserData);
-        Date globalPaymentDate = options != null ? options.getPaymentDate() : null;
         String transactionId = options != null ? options.getTransactionId() : null;
 
         // CPO post-enrollment side effects: always generate the installment schedule;
@@ -916,16 +921,74 @@ public class BulkAssignmentService {
                     userId, instituteId, userPlan, config, cpoMode, cpoAmount, cpoConfig, adminUserId,
                     perUserPaymentDate, globalPaymentDate, transactionId,
                     generateInvoiceOnManualEnroll, offlinePaymentDetailsFor(assignment, options));
+        } else {
+            recordAssignmentPayment(userId, instituteId, userPlan, config, adminDiscount, adminUserId,
+                    perUserPaymentDate, options, generateInvoiceOnManualEnroll);
         }
 
-        // Create payment log if any payment date or transaction ID is provided.
-        // Skipped for CPO since applyCpoEnrollmentSideEffects already owns the PaymentLog
-        // (and uses the partial amount the admin specified instead of the full plan price).
+        BulkAssignResultItemDTO.BulkAssignResultItemDTOBuilder resultBuilder = BulkAssignResultItemDTO.builder()
+                .userId(userId).userEmail(userEmail)
+                .packageSessionId(config.getPackageSession().getId())
+                .status("SUCCESS").actionTaken("CREATED")
+                .mappingId(mappingId)
+                .userPlanId(userPlan.getId())
+                .enrollInviteIdUsed(config.getEnrollInvite().getId())
+                .paymentOptionType(config.getPaymentOption() != null ? config.getPaymentOption().getType() : null);
+        applyDiscountAmounts(resultBuilder, config, adminDiscount);
+        if (isCpo && cpoSummary != null) {
+            resultBuilder
+                    .cpoTotalAmount(cpoSummary.total.doubleValue())
+                    .cpoInstallmentCount(cpoSummary.count)
+                    .cpoInitialPaymentMode(cpoMode)
+                    .cpoInitialPaymentAmount(cpoAmount)
+                    .cpoSchedule(cpoSummary.preview());
+        }
+        return resultBuilder.build();
+    }
+
+    /**
+     * The day the membership starts when the admin recorded when it was paid: the per-user
+     * CSV date, else the run-wide date, else the date in the payment details. Null when none
+     * was given, or when it is in the future (the plan cannot start later than it is created,
+     * and access granted "from next week" is not what a payment date means). Callers fall
+     * back to now.
+     */
+    private Date resolveMembershipStart(Date perUserPaymentDate, BulkAssignOptionsDTO options) {
+        Date start = perUserPaymentDate;
+        if (start == null && options != null) {
+            start = options.getPaymentDate();
+            if (start == null && options.getPaymentDetails() != null
+                    && options.getPaymentDetails().getPaymentDate() != null) {
+                start = java.sql.Date.valueOf(options.getPaymentDetails().getPaymentDate());
+            }
+        }
+        if (start == null || start.after(new Date())) {
+            return null;
+        }
+        return start;
+    }
+
+    /**
+     * Records the offline payment an admin took for a non-CPO assignment: a PAID payment log,
+     * the discount line, the settled ledger charge and (when the institute opted in) the
+     * invoice. Only runs when a payment date, a transaction id or a reference says money
+     * changed hands. Shared by fresh enrolments and re-enrolments, which previously recorded
+     * nothing, so a lapsed member re-added with a payment had no payment on file at all.
+     * CPO plans are excluded: applyCpoEnrollmentSideEffects owns their PaymentLog (and uses
+     * the partial amount the admin specified instead of the full plan price).
+     */
+    private void recordAssignmentPayment(String userId, String instituteId, UserPlan userPlan,
+                                         DefaultInviteResolver.ResolvedConfig config,
+                                         AppliedCouponDiscount adminDiscount, String adminUserId,
+                                         Date perUserPaymentDate, BulkAssignOptionsDTO options,
+                                         boolean generateInvoiceOnManualEnroll) {
+        Date globalPaymentDate = options != null ? options.getPaymentDate() : null;
+        String transactionId = options != null ? options.getTransactionId() : null;
         vacademy.io.admin_core_service.features.offline_payment.dto.OfflinePaymentDetailsDTO offlineDetails = options != null ? options.getPaymentDetails() : null;
         // Details alone (the dialog preselects a mode) do not mean a payment was taken; a
         // payment date, a transaction id, or a reference in the details does.
-        if (!isCpo && (perUserPaymentDate != null || globalPaymentDate != null || StringUtils.hasText(transactionId)
-                || (offlineDetails != null && StringUtils.hasText(offlineDetails.getReference())))) {
+        if (perUserPaymentDate != null || globalPaymentDate != null || StringUtils.hasText(transactionId)
+                || (offlineDetails != null && StringUtils.hasText(offlineDetails.getReference()))) {
             try {
                 Double grossAmount = config.getPaymentPlan() != null ? config.getPaymentPlan().getActualPrice() : 0.0;
                 Double amount = adminDiscount != null
@@ -1008,25 +1071,6 @@ public class BulkAssignmentService {
                 log.warn("Failed to create payment log for userId={}: {}", userId, e.getMessage());
             }
         }
-
-        BulkAssignResultItemDTO.BulkAssignResultItemDTOBuilder resultBuilder = BulkAssignResultItemDTO.builder()
-                .userId(userId).userEmail(userEmail)
-                .packageSessionId(config.getPackageSession().getId())
-                .status("SUCCESS").actionTaken("CREATED")
-                .mappingId(mappingId)
-                .userPlanId(userPlan.getId())
-                .enrollInviteIdUsed(config.getEnrollInvite().getId())
-                .paymentOptionType(config.getPaymentOption() != null ? config.getPaymentOption().getType() : null);
-        applyDiscountAmounts(resultBuilder, config, adminDiscount);
-        if (isCpo && cpoSummary != null) {
-            resultBuilder
-                    .cpoTotalAmount(cpoSummary.total.doubleValue())
-                    .cpoInstallmentCount(cpoSummary.count)
-                    .cpoInitialPaymentMode(cpoMode)
-                    .cpoInitialPaymentAmount(cpoAmount)
-                    .cpoSchedule(cpoSummary.preview());
-        }
-        return resultBuilder.build();
     }
 
     /**
@@ -1042,7 +1086,9 @@ public class BulkAssignmentService {
             UserDTO userDTO, StudentExtraDetails extraDetails,
             String adminUserId,
             AssignmentItemDTO assignment,
-            BulkAssignOptionsDTO options) {
+            BulkAssignOptionsDTO options,
+            NewUserDTO newUserData,
+            boolean generateInvoiceOnManualEnroll) {
 
         boolean isCpo = isCpoOption(config.getPaymentOption());
         CpoTemplateSummary cpoSummary = isCpo ? summarizeCpo(config, assignment) : null;
@@ -1100,6 +1146,12 @@ public class BulkAssignmentService {
         AppliedCouponDiscount adminDiscount = resolveAdminDiscount(assignment, config, instituteId,
                 userEmail, adminUserId, isCpo);
 
+        // Same payment-date rules as a fresh enrolment: the membership starts the day it was
+        // paid for, not the day the admin re-added the learner.
+        Date perUserPaymentDate = parsePerUserPaymentDate(newUserData);
+        Date membershipStart = resolveMembershipStart(perUserPaymentDate, options);
+        Date accessStart = membershipStart != null ? membershipStart : new Date();
+
         // Create new UserPlan (stacking is handled automatically by UserPlanService)
         UserPlan userPlan = userPlanService.createUserPlan(
                 userId,
@@ -1111,7 +1163,7 @@ public class BulkAssignmentService {
                 UserPlanStatusEnum.ACTIVE.name(),
                 userPlanSource,
                 createdSubOrgId,
-                null);
+                membershipStart);
         userPlan = stampAdminDiscount(userPlan, adminDiscount, adminUserId);
 
         // Ensure Student record exists with extra details (same as manual flow)
@@ -1121,7 +1173,7 @@ public class BulkAssignmentService {
 
         // Restore mapping status
         existingMapping.setStatus(LearnerSessionStatusEnum.ACTIVE.name());
-        existingMapping.setEnrolledDate(new Date());
+        existingMapping.setEnrolledDate(accessStart);
         existingMapping.setUserPlanId(userPlan.getId());
 
         // Re-enrollment into an org-associated PS: overwrite the SSIGM's sub_org + roles
@@ -1136,7 +1188,7 @@ public class BulkAssignmentService {
         }
 
         if (config.getAccessDays() != null) {
-            long expiryMillis = System.currentTimeMillis()
+            long expiryMillis = accessStart.getTime()
                     + (long) config.getAccessDays() * 24L * 60L * 60L * 1000L;
             existingMapping.setExpiryDate(new Date(expiryMillis));
         }
@@ -1161,8 +1213,12 @@ public class BulkAssignmentService {
         if (isCpo) {
             applyCpoEnrollmentSideEffects(
                     userId, instituteId, userPlan, config, cpoMode, cpoAmount, cpoConfig, adminUserId,
-                    null, null, options != null ? options.getTransactionId() : null,
-                    false, offlinePaymentDetailsFor(assignment, options));
+                    perUserPaymentDate, options != null ? options.getPaymentDate() : null,
+                    options != null ? options.getTransactionId() : null,
+                    generateInvoiceOnManualEnroll, offlinePaymentDetailsFor(assignment, options));
+        } else {
+            recordAssignmentPayment(userId, instituteId, userPlan, config, adminDiscount, adminUserId,
+                    perUserPaymentDate, options, generateInvoiceOnManualEnroll);
         }
 
         BulkAssignResultItemDTO.BulkAssignResultItemDTOBuilder resultBuilder = BulkAssignResultItemDTO.builder()
@@ -1619,7 +1675,10 @@ public class BulkAssignmentService {
             String userId,
             DefaultInviteResolver.ResolvedConfig config,
             String instituteId,
-            String userPlanId) {
+            String userPlanId,
+            Date membershipStart) {
+
+        Date accessStart = membershipStart != null ? membershipStart : new Date();
 
         // Find an existing mapping in this institute to copy group/enrollment number
         Optional<StudentSessionInstituteGroupMapping> existingInInstitute = studentSessionRepository
@@ -1630,7 +1689,7 @@ public class BulkAssignmentService {
         mapping.setPackageSession(config.getPackageSession());
         mapping.setDestinationPackageSession(config.getPackageSession());
         mapping.setStatus(LearnerSessionStatusEnum.ACTIVE.name());
-        mapping.setEnrolledDate(new Date());
+        mapping.setEnrolledDate(accessStart);
         mapping.setUserPlanId(userPlanId);
         mapping.setType(LearnerSessionTypeEnum.PACKAGE_SESSION.name());
         mapping.setSource("BULK_ASSIGN");
@@ -1650,7 +1709,7 @@ public class BulkAssignmentService {
 
         // Set expiry date
         if (config.getAccessDays() != null) {
-            long expiryMillis = System.currentTimeMillis()
+            long expiryMillis = accessStart.getTime()
                     + (long) config.getAccessDays() * 24L * 60L * 60L * 1000L;
             mapping.setExpiryDate(new Date(expiryMillis));
         }

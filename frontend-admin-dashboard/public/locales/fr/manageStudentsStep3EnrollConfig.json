@@ -31,7 +31,7 @@
         "paymentDate": {
             "label": "Date de paiement (facultatif)",
             "placeholder": "Sélectionner la date de paiement",
-            "description": "Date à laquelle le paiement a été effectué"
+            "description": "Date à laquelle le paiement a été effectué. L'adhésion et l'accès au cours commencent à cette date."
         },
         "transactionId": {
             "label": "ID de transaction (facultatif)",

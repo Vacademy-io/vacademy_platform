@@ -23,10 +23,16 @@
             "description": "— Révocation immédiate de l'accès. Statut → RÉSILIÉ",
             "cannotUndo": "⚠ Action irréversible"
         },
+        "reason": {
+            "label": "Motif de la résiliation",
+            "optional": "(facultatif)",
+            "placeholder": "Pourquoi cet apprenant est-il résilié ?"
+        },
         "notifyLearners": "Notifier l'apprenant du retrait"
     },
     "preview": {
         "title": "Aperçu — Résultats de l'essai à blanc",
+        "reason": "Motif :",
         "willBeRemoved_one": "{{count}} sera retiré",
         "willBeRemoved_many": "{{count}} seront retirés",
         "willBeRemoved_other": "{{count}} seront retirés",

@@ -4,6 +4,7 @@ import { MyDialog } from '@/components/design-system/dialog';
 import { MyButton } from '@/components/design-system/button';
 import { Calendar } from '@/components/ui/calendar';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { CalendarBlank } from '@phosphor-icons/react';
 import { format } from 'date-fns';
@@ -17,6 +18,10 @@ import type {
 import type { PackageDetailDTO } from '@/routes/manage-students/students-list/-services/getLearnerPackages';
 import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+import {
+    DEFAULT_TERMINATION_REASON_SETTING,
+    useTerminationReasonSetting,
+} from '@/services/termination-reason-setting';
 
 type DeassignStep = 'CONFIG' | 'PREVIEW' | 'RESULTS';
 
@@ -46,10 +51,16 @@ export const DeassignCourseDialog = ({
     // SOFT-only "last access date" override. null → respect the plan's own expiry.
     // A yyyy-MM-dd string once the admin picks a date from the calendar.
     const [accessTillDate, setAccessTillDate] = useState<string | null>(null);
+    // HARD-only. Shown/required per the institute's Termination Reason setting.
+    const [reason, setReason] = useState('');
     const [previewData, setPreviewData] = useState<BulkDeassignResponse | null>(null);
     const [finalResults, setFinalResults] = useState<BulkDeassignResponse | null>(null);
 
     const { mutateAsync: bulkDeassign, isPending } = useBulkDeassign();
+    const { data: reasonSetting = DEFAULT_TERMINATION_REASON_SETTING } =
+        useTerminationReasonSetting();
+    const askReason = mode === 'HARD' && reasonSetting.enabled;
+    const reasonMissing = askReason && reasonSetting.required && !reason.trim();
 
     // Reset when dialog opens
     const handleOpenChange = (isOpen: boolean) => {
@@ -59,6 +70,7 @@ export const DeassignCourseDialog = ({
             setMode('SOFT');
             setNotifyLearners(false);
             setAccessTillDate(null);
+            setReason('');
             setPreviewData(null);
             setFinalResults(null);
         }
@@ -97,6 +109,7 @@ export const DeassignCourseDialog = ({
             // Only meaningful for SOFT; sent only when the admin overrode the
             // default plan-expiry with an explicit last-access date.
             access_till_date: mode === 'SOFT' ? accessTillDate : null,
+            reason: askReason && reason.trim() ? reason.trim() : null,
         },
     });
 
@@ -301,6 +314,33 @@ export const DeassignCourseDialog = ({
                     </span>
                 </label>
 
+                {askReason && (
+                    <div className="ml-6 mt-1 flex flex-col gap-1.5">
+                        <label
+                            htmlFor="termination-reason"
+                            className="text-2xs font-medium text-neutral-600"
+                        >
+                            {t('config.reason.label')}
+                            {reasonSetting.required ? (
+                                <span className="ms-0.5 text-red-500">*</span>
+                            ) : (
+                                <span className="ms-1 font-normal text-neutral-400">
+                                    {t('config.reason.optional')}
+                                </span>
+                            )}
+                        </label>
+                        <Textarea
+                            id="termination-reason"
+                            value={reason}
+                            onChange={(e) => setReason(e.target.value)}
+                            placeholder={t('config.reason.placeholder')}
+                            maxLength={1000}
+                            rows={3}
+                            className="text-xs"
+                        />
+                    </div>
+                )}
+
                 <label className="mt-1 flex items-center gap-2 text-xs text-neutral-600">
                     <input
                         type="checkbox"
@@ -320,6 +360,12 @@ export const DeassignCourseDialog = ({
         return (
             <div className="flex flex-col gap-4">
                 <p className="text-sm font-medium text-neutral-700">{t('preview.title')}</p>
+
+                {askReason && reason.trim() && (
+                    <p className="whitespace-pre-wrap rounded-lg bg-neutral-50 p-3 text-xs text-neutral-700">
+                        <strong>{t('preview.reason')}</strong> {reason.trim()}
+                    </p>
+                )}
 
                 <div className="flex flex-wrap gap-2">
                     <span className="rounded-full bg-green-50 px-3 py-1 text-xs font-medium text-green-700">
@@ -494,7 +540,7 @@ export const DeassignCourseDialog = ({
                     <MyButton
                         buttonType="primary"
                         scale="small"
-                        disable={selectedPSIds.size === 0 || isPending}
+                        disable={selectedPSIds.size === 0 || reasonMissing || isPending}
                         onClick={handlePreview}
                         className="!bg-red-500 hover:!bg-red-600"
                     >

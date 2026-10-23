@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
+import vacademy.io.admin_core_service.features.institute.service.setting.InstituteSettingService;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionStatusEnum;
 import vacademy.io.admin_core_service.features.institute_learner.manager.LearnerTerminationWorkflowHelper;
@@ -43,9 +44,14 @@ public class BulkDeassignmentService {
     private final AuthService authService;
     private final PackageSessionService packageSessionService;
     private final LearnerTerminationWorkflowHelper learnerTerminationWorkflowHelper;
+    private final InstituteSettingService instituteSettingService;
 
     private static final String MODE_SOFT = "SOFT";
     private static final String MODE_HARD = "HARD";
+
+    /** Institute setting {@code {enabled, required}} for the HARD-terminate reason box. */
+    private static final String TERMINATION_REASON_SETTING = "LEARNER_TERMINATION_REASON";
+    private static final int MAX_REASON_LENGTH = 1000;
 
     /**
      * Main entry point for bulk de-assignment.
@@ -61,6 +67,10 @@ public class BulkDeassignmentService {
         String mode = StringUtils.hasText(options.getMode())
                 ? options.getMode()
                 : MODE_SOFT;
+
+        if (MODE_HARD.equals(mode)) {
+            validateTerminationReason(request.getInstituteId(), options.getReason());
+        }
 
         // SOFT-only "last access date" override. HARD ignores it (access is revoked now).
         Date accessTillDate = MODE_HARD.equals(mode)
@@ -185,6 +195,36 @@ public class BulkDeassignmentService {
         mapping.setStatus(LearnerSessionStatusEnum.INACTIVE.name());
         log.info("Soft-cancel with a past access date — marking mapping {} INACTIVE (accessTill={})",
                 mapping.getId(), accessTillDate);
+    }
+
+    /**
+     * Enforces the institute's LEARNER_TERMINATION_REASON setting server-side, so a
+     * "required" reason cannot be skipped by calling the API directly. Checked on the
+     * dry run too, so the preview step already fails instead of the final confirm.
+     */
+    private void validateTerminationReason(String instituteId, String reason) {
+        if (StringUtils.hasText(reason) && reason.trim().length() > MAX_REASON_LENGTH) {
+            throw new VacademyException("Reason cannot be longer than " + MAX_REASON_LENGTH + " characters");
+        }
+        if (!StringUtils.hasText(reason) && isTerminationReasonRequired(instituteId)) {
+            throw new VacademyException("A reason is required to terminate a learner from a course");
+        }
+    }
+
+    /** Required only when the setting is enabled and marked required; absent setting = optional. */
+    private boolean isTerminationReasonRequired(String instituteId) {
+        try {
+            Object setting = instituteSettingService.getSettingByInstituteIdAndKey(
+                    instituteId, TERMINATION_REASON_SETTING);
+            if (setting instanceof Map<?, ?> map) {
+                return !Boolean.FALSE.equals(map.get("enabled"))
+                        && Boolean.TRUE.equals(map.get("required"));
+            }
+        } catch (Exception e) {
+            log.warn("Could not read {} for institute {}: {}", TERMINATION_REASON_SETTING, instituteId,
+                    e.getMessage());
+        }
+        return false;
     }
 
     private void validateRequest(BulkDeassignRequestDTO request) {

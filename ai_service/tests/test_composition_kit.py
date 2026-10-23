@@ -373,6 +373,18 @@ def test_text_rows_cannot_collapse_below_min_content():
     assert "min-width: min-content" in ck.COMPOSITION_CSS
 
 
+def test_items_inside_a_text_column_keep_their_height():
+    """min-height:0 belongs to grid CELLS. On the heading and sub-line inside a
+    cell's flex column it let the heading collapse to a sliver while its lines
+    still painted, so the sub-line printed across them ("Recruiters prefer
+    short resumes" over "PAGE, TWO MAX.", ITRC lesson 2026-10-22)."""
+    css = ck.COMPOSITION_CSS
+    rule = '.comp > [class*="comp-"] > *,\n[class*="comp-"] > [class*="comp-"] > * { min-height: auto; }'
+    assert rule in css
+    # it must come after (and out-rank) the cell rule it narrows
+    assert css.index(rule) > css.index('[class*="comp-"] > * { min-width: min-content; min-height: 0; }')
+
+
 def test_image_clip_takes_the_whole_frame():
     """IMAGE_CLIP embeds the user's screenshot full-frame in its own HTML.
 

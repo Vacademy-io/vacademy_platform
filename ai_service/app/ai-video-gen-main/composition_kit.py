@@ -488,6 +488,15 @@ COMPOSITION_CSS = """
    long labels to wrap. Keep it off text-bearing flex rows: those must overflow
    or shrink their type, never collapse to a one-character column. */
 .comp > *, [class*="comp-"] > * { min-width: min-content; min-height: 0; }
+/* min-height:0 is for the frame's grid CELLS (.comp-stack, .comp-col ...),
+   which may be shorter than their content and let it overflow. The items
+   INSIDE a cell's flex column — heading, rule, sub-line — must keep their
+   content height. With 0 a heading in a column too short for it collapsed to
+   a sliver while its lines still painted, and the sub-line laid out on top
+   of them: "Recruiters prefer short resumes" printed across "PAGE, TWO MAX."
+   (ITRC lesson, 2026-10-22). Now they overflow the cell instead of stacking. */
+.comp > [class*="comp-"] > *,
+[class*="comp-"] > [class*="comp-"] > * { min-height: auto; }
 /* min-width:0 belongs to things that CAN shrink without becoming unreadable —
    media. Applied to a text-bearing grid child it permits the item to shrink
    below its content width, all the way to one character per line, which is

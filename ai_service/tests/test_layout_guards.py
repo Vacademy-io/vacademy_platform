@@ -137,3 +137,18 @@ def test_headings_never_split_mid_word():
     assert "hyphens: none;" in block
     # The global valve must still exist — this is a carve-out, not its removal.
     assert "word-break: break-word;" in src
+    # Word spans INSIDE a heading get `*`'s break-word directly ("PAR / T").
+    assert "h1 *, h2 *, h3 *, h4 *, h5 *, h6 * {{" in src
+
+
+def test_heading_padding_is_not_a_percentage():
+    """% padding counts as 0 when a shrink-to-fit box measures its heading, then
+    takes 8% of the width back — every long word one letter too wide
+    ("RESUME / S", ITRC lesson 2026-10-22). A length is measured with the text."""
+    import os
+    src = open(
+        os.path.join(os.path.dirname(__file__), "..", "app", "ai-video-gen-main", "automation_pipeline.py")
+    ).read()
+    i = src.index("h1, h2, h3, .text-display {{")
+    block = src[i:i + 120]
+    assert "padding: 0 2vw;" in block and "padding: 0 4%" not in src

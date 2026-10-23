@@ -24652,6 +24652,14 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
               overflow-wrap: normal;
               hyphens: none;
             }}
+            /* ...and the words INSIDE them. Animated headlines wrap each word
+               in its own span, and `*` above sets break-word on that span
+               directly — inheritance never reaches it. "PAR / T" and
+               "RESUME / S" shipped this way (ITRC lesson, 2026-10-22). */
+            h1 *, h2 *, h3 *, h4 *, h5 *, h6 * {{
+              word-break: keep-all;
+              overflow-wrap: normal;
+            }}
             /* Word-level wrappers: prevent internal breaks, allow breaks between words */
             [class*="-word"],
             [class*="word-"] {{
@@ -24680,10 +24688,14 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             [class*="word-row"] {{
               gap: 0.25em;
             }}
-            /* Ensure large display text doesn't overflow */
+            /* Ensure large display text doesn't overflow. The side padding is a
+               length, not a percentage: a heading in a shrink-to-fit box (an
+               absolutely positioned stack with no width) is measured with %
+               padding counted as 0, then loses 8% of that width to it — every
+               long word came out one letter too wide for its own box. */
             h1, h2, h3, .text-display {{
               max-width: 100%;
-              padding: 0 4%;
+              padding: 0 2vw;
             }}
 
             /* --- FULL SCREEN CENTER CONTAINER (CRITICAL) --- */

@@ -2131,6 +2131,54 @@ def _photo_bounds(page: Any) -> Optional[Any]:
         return None
 
 
+# The scanner app's own caption below the photograph ("Scanned with OKEN
+# Scanner", "Scanned by CamScanner"). The vision read transcribes it like any
+# other line, but it sits on the white canvas, not on the paper.
+_SCANNER_CAPTION = re.compile(r"\bscanned\s+(?:with|by|using)\b|\bcam\s*scanner\b", re.I)
+
+
+def _reach_written_rows(photo: Any, lpage: dict[str, Any], psx: float, psy: float,
+                        limit: Any) -> Any:
+    """The photograph's bound, stretched down to the lowest written row.
+
+    A scanner app whitens the paper. On a last page that is only half
+    written, the blank lower half is as white as the canvas, so
+    _photo_bounds ends the photograph where the coverage drops - above the
+    last lines of the answer. Every mark below that line was then off paper:
+    the last question's score and remark were refused, and the copy went out
+    with no mark for it. Writing is on paper by definition, so the bound never
+    stops above a row the vision read confirmed, plus two rows' room for the
+    score and remark a teacher writes under the last line. The scanner's
+    caption does not count, nor does a row outside the photograph's width.
+    """
+    import fitz
+
+    if not lpage.get("vision_ocr"):
+        return photo
+    bottoms, heights = [], []
+    for ln in lpage.get("lines") or []:
+        b, text = ln.get("box"), (ln.get("text") or "").strip()
+        if not b or len(b) != 4 or not text or _SCANNER_CAPTION.search(text):
+            continue
+        bx, by, bw, bh = (float(v) for v in b)
+        cx = (bx + bw / 2.0) * psx
+        if not photo.x0 <= cx <= photo.x1 or by * psy < photo.y0:
+            continue
+        bottoms.append((by + bh) * psy)
+        heights.append(bh * psy)
+    if not bottoms:
+        return photo
+    pitch = sorted(heights)[len(heights) // 2]
+    # A last line whose box dips a few points past a correct bound is normal;
+    # stretching for it pushed the bound onto the canvas. Only a bound that
+    # cuts off at least a full row of writing is wrong.
+    if max(bottoms) <= photo.y1 + pitch:
+        return photo
+    y1 = min(limit.y1 - 2.0, max(bottoms) + 2.0 * pitch)
+    logger.debug("photo bound %.0f stretched to %.0f to cover the written rows", photo.y1, y1)
+    return fitz.Rect(photo.x0, photo.y0, photo.x1, max(photo.y1, y1))
+
+
 def _band_rect(ink, sheet: Any, imap: dict, y0: int, y1: int):
     """One ink band, with its TRUE horizontal extent.
 
@@ -4087,6 +4135,8 @@ def build_annotated_pdf(
         # while the sheet excludes the desk and the scanner's white padding,
         # where nobody writes. Fall back to the ink box when no sheet is known.
         photo = _photo_bounds(doc[page_no])
+        if photo is not None:
+            photo = _reach_written_rows(photo, lpage, psx, psy, prect)
         pbox = lpage.get("paper_box")
         if pbox and len(pbox) == 4:
             bx, by, bw, bh = (float(v) for v in pbox)

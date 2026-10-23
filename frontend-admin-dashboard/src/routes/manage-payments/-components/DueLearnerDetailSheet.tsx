@@ -40,6 +40,7 @@ import {
 } from '@/services/payment-logs';
 import { entryPaymentStatus, paymentStatusMeta } from '../-utils/paymentStatus';
 import { GatewayBadge } from './GatewayBadge';
+import { paymentReceivedAt } from '../-utils/paymentReceivedAt';
 
 interface DueLearnerDetailSheetProps {
     learner: OutstandingLearner | null;
@@ -99,16 +100,15 @@ const formatDay = (key: string): string =>
 
 /** When a payment landed. `date` is a DATE column (UTC midnight), so it is shown without a time. */
 const formatPaidAt = (entry: PaymentLogEntry): string => {
-    const log = entry.payment_log;
-    const raw = log?.created_at || log?.date;
-    if (!raw) return '—';
-    const d = new Date(raw);
+    const { value, hasTime } = paymentReceivedAt(entry.payment_log);
+    if (!value) return '—';
+    const d = new Date(value);
     if (Number.isNaN(d.getTime())) return '—';
     return d.toLocaleString(undefined, {
         day: 'numeric',
         month: 'short',
         year: 'numeric',
-        ...(log?.created_at ? { hour: 'numeric', minute: '2-digit' } : { timeZone: 'UTC' }),
+        ...(hasTime ? { hour: 'numeric', minute: '2-digit' } : { timeZone: 'UTC' }),
     });
 };
 

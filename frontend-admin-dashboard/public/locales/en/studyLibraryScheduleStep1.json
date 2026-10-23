@@ -74,7 +74,7 @@
         "hideUserList": "Participants can't see who else is in the class",
         "endWhenNoModerator": "End class automatically after the host leaves",
         "activenessScore": "Activeness score (beta)",
-        "activenessScoreHint": "Learners can turn on their camera to get a live activeness score. The camera is processed on their device; only the score is saved. Applies when the class is started after saving.",
+        "activenessScoreHint": "Learners' cameras turn on automatically for a live activeness score (they can turn it off). The camera is processed on their device; only the score is saved. Applies when the class is started after saving.",
         "lectureHintIntro": "Running a large lecture or webinar? Turn on",
         "lectureHintAnd": "and",
         "lectureHintOutro": ", and have the host share slides rather than their screen. A class set up this way puts far less load on the server than one where everyone can unmute and switch a camera on.",

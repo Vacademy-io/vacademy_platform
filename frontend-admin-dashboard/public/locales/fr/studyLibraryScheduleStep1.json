@@ -74,7 +74,7 @@
         "hideUserList": "Les participants ne peuvent pas voir qui d'autre est présent",
         "endWhenNoModerator": "Terminer automatiquement le cours après le départ de l'hôte",
         "activenessScore": "Score d'activité (bêta)",
-        "activenessScoreHint": "Les apprenants peuvent activer leur caméra pour obtenir un score d'activité en direct. La caméra est traitée sur leur appareil ; seul le score est enregistré. S'applique lorsque le cours est démarré après l'enregistrement.",
+        "activenessScoreHint": "La caméra des apprenants s'active automatiquement pour un score d'activité en direct (ils peuvent la désactiver). La caméra est traitée sur leur appareil ; seul le score est enregistré. S'applique lorsque le cours est démarré après l'enregistrement.",
         "lectureHintIntro": "Vous animez un grand cours magistral ou un webinaire ? Activez",
         "lectureHintAnd": "et",
         "lectureHintOutro": ", et demandez à l'hôte de partager des diapositives plutôt que son écran. Un cours configuré ainsi sollicite bien moins le serveur qu'un cours où tout le monde peut réactiver son micro et sa caméra.",

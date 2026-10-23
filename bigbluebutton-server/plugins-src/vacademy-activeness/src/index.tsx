@@ -60,7 +60,7 @@ const TOKEN_PARAM = "vacademy_activeness";
 const URL_PARAM = "vacademy_activeness_url";
 /** Panel position: bottom-left, clear of BBB's action bar. */
 const PANEL_LEFT = 16;
-const PANEL_BOTTOM_GAP = 340;
+const PANEL_BOTTOM_GAP = 460;
 
 function ActivenessPlugin({ uuid, pluginName }: { uuid: string; pluginName: string }) {
   BbbPluginSdk.initialize(uuid);

@@ -1,7 +1,7 @@
 /**
  * The live-class activeness score: pure bookkeeping, no camera or DOM here, so
- * it can be unit-tested and the same numbers feed the learner's live badge and
- * the session summary sent to the backend.
+ * it can be unit-tested and the same numbers feed the learner's panel and the
+ * session summary sent to the backend.
  *
  * Two parts, each 0–100:
  *  - onScreen:  share of tracked time with the learner in front of the camera
@@ -12,16 +12,28 @@
  * neither raises nor lowers the score — the admin sees tracked seconds next to
  * the class length.
  *
- * Live score = the last LIVE_WINDOW_MS; session score = everything tracked.
+ * "Right now" = the last LIVE_WINDOW_MS, short enough that it recovers within
+ * seconds of the learner looking back. "This class" = everything tracked.
+ * Every second that was not attentive carries a Reason, so the panel can tell
+ * the learner exactly why the score dropped.
  */
 
-export const LIVE_WINDOW_MS = 120_000;
+export const LIVE_WINDOW_MS = 15_000;
 export const WEIGHTS = { onScreen: 0.5, attention: 0.5 } as const;
+
+/** Which way the head was turned when it did not face the screen. */
+export type Turn = "side" | "down" | "up";
+
+/** Why a stretch of time did not count as attentive. */
+export type Reason = "away" | "dark" | "side" | "down" | "up" | "eyes" | "hidden";
 
 export interface Sample {
   face: boolean;
   facing: boolean;
   eyesOpen: boolean;
+  turn?: Turn | null;
+  /** No face AND a near-black frame: the lens is covered or the room is dark. */
+  dark?: boolean;
 }
 
 /** Session totals, all in milliseconds of tracked time. Persisted so a rejoin resumes. */
@@ -39,11 +51,19 @@ export interface Score {
   attention: number | null;
 }
 
+export interface LiveScore extends Score {
+  /** What is holding the score down right now (latest reading first, else the biggest loss in the window). */
+  reason: Reason | null;
+  /** The latest reading itself was not attentive. */
+  reasonIsCurrent: boolean;
+}
+
 interface Tick {
   at: number;
   ms: number;
   face: boolean;
   attentive: boolean;
+  reason: Reason | null;
 }
 
 export const emptyTotals = (): Totals => ({ trackedMs: 0, faceMs: 0, attentiveMs: 0, awayCount: 0, awayMs: 0 });
@@ -53,6 +73,13 @@ const pct = (n: number, d: number): number | null => (d > 0 ? Math.round((100 * 
 export const combine = (onScreen: number | null, attention: number | null): number | null => {
   if (onScreen === null || attention === null) return null;
   return Math.round(onScreen * WEIGHTS.onScreen + attention * WEIGHTS.attention);
+};
+
+export const reasonOf = (s: Sample): Reason | null => {
+  if (!s.face) return s.dark ? "dark" : "away";
+  if (!s.facing) return s.turn ?? "side";
+  if (!s.eyesOpen) return "eyes";
+  return null;
 };
 
 const isTotals = (v: unknown): v is Totals => {
@@ -73,23 +100,28 @@ export class ActivenessMeter {
 
   /** One camera reading covering `ms` of class time. */
   addSample(at: number, s: Sample, ms: number) {
-    const attentive = s.face && s.facing && s.eyesOpen;
-    this.push({ at, ms, face: s.face, attentive });
+    const reason = reasonOf(s);
+    this.push({ at, ms, face: s.face, attentive: reason === null, reason });
     if (s.face) this.totals.faceMs += ms;
     else this.totals.awayMs += ms;
-    if (attentive) this.totals.attentiveMs += ms;
+    if (reason === null) this.totals.attentiveMs += ms;
   }
 
   /** Background-tab time: tracked, but neither on screen nor attentive. */
   addHidden(at: number, ms: number) {
     if (ms <= 0) return;
-    this.push({ at, ms, face: false, attentive: false });
+    this.push({ at, ms, face: false, attentive: false, reason: "hidden" });
     this.totals.awayMs += ms;
   }
 
   /** The learner just stepped away (no face for a while, or left the tab). */
   markAway() {
     this.totals.awayCount += 1;
+  }
+
+  /** Start the "right now" window afresh (after a recalibration, so old readings stop counting). */
+  resetLive() {
+    this.ticks = [];
   }
 
   private push(t: Tick) {
@@ -103,19 +135,32 @@ export class ActivenessMeter {
     while (this.ticks.length && this.ticks[0]!.at < cut) this.ticks.shift();
   }
 
-  live(at: number): Score {
+  live(at: number): LiveScore {
     this.trim(at);
     let ms = 0;
     let face = 0;
     let attentive = 0;
+    const lost = new Map<Reason, number>();
     for (const t of this.ticks) {
       ms += t.ms;
       if (t.face) face += t.ms;
       if (t.attentive) attentive += t.ms;
+      if (t.reason) lost.set(t.reason, (lost.get(t.reason) ?? 0) + t.ms);
     }
     const onScreen = pct(face, ms);
     const attention = pct(attentive, ms);
-    return { score: combine(onScreen, attention), onScreen, attention };
+    const latest = this.ticks[this.ticks.length - 1]?.reason ?? null;
+    let biggest: Reason | null = null;
+    lost.forEach((v, k) => {
+      if (biggest === null || v > (lost.get(biggest) ?? 0)) biggest = k;
+    });
+    return {
+      score: combine(onScreen, attention),
+      onScreen,
+      attention,
+      reason: latest ?? biggest,
+      reasonIsCurrent: latest !== null,
+    };
   }
 
   session(): Score {

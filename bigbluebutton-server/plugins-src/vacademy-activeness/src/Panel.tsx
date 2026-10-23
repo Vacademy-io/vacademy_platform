@@ -6,6 +6,7 @@
 import * as React from "react";
 import { useCallback, useSyncExternalStore } from "react";
 import type { ActivenessController, ViewState } from "./controller";
+import { LIVE_WINDOW_MS, type Reason } from "./meter";
 import { problemHelp } from "./camera";
 
 const ACCENT = "var(--color-primary, #0F70D7)";
@@ -50,7 +51,7 @@ const s = {
   preview: {
     position: "relative",
     width: "100%",
-    height: 140,
+    height: 118,
     borderRadius: 8,
     overflow: "hidden",
     background: "#111827",
@@ -130,24 +131,97 @@ function Preview({ controller, small, state }: { controller: ActivenessControlle
   );
 }
 
+/** What the learner is told when the score is held down, with a fix they can act on. */
+const REASONS: Record<Reason, { now: string; earlier: string; tip: string }> = {
+  away: {
+    now: "You're not in front of the camera",
+    earlier: "You were away from the camera",
+    tip: "Sit where the camera can see your face.",
+  },
+  dark: {
+    now: "The camera can't see you",
+    earlier: "The camera couldn't see you",
+    tip: "It looks covered or the room is too dark — uncover it or turn on a light.",
+  },
+  side: {
+    now: "Your head is turned away from the screen",
+    earlier: "You were turned away from the screen",
+    tip: "Face the class screen. If you already are, press the button below.",
+  },
+  down: {
+    now: "You're looking down",
+    earlier: "You were looking down",
+    tip: "Writing notes is fine — it goes back up when you look at the screen.",
+  },
+  up: {
+    now: "You're looking away from the screen",
+    earlier: "You were looking away from the screen",
+    tip: "Face the class screen. If you already are, press the button below.",
+  },
+  eyes: {
+    now: "Your eyes have been closed for a few seconds",
+    earlier: "Your eyes were closed for a few seconds",
+    tip: "Stay with the class — it recovers as soon as you're back.",
+  },
+  hidden: {
+    now: "The class tab is in the background",
+    earlier: "The class tab was in the background",
+    tip: "Keep this class tab open in front of you.",
+  },
+};
+
+/** A camera at an odd angle can read as "turned away" while the learner is facing the class. */
+const CAN_RECALIBRATE: Reason[] = ["side", "up", "down"];
+
+function Stat({ label, value }: { label: string; value: number | null }) {
+  return (
+    <div style={{ flex: 1, padding: "8px 10px", borderRadius: 8, background: "#f3f4f6" }}>
+      <div style={{ color: MUTED, fontSize: 11.5 }}>{label}</div>
+      <div style={{ fontSize: 26, fontWeight: 700, lineHeight: 1.15, color: scoreColor(value) }}>
+        {value === null ? "…" : `${value}%`}
+      </div>
+    </div>
+  );
+}
+
 function OnBody({ controller, state }: { controller: ActivenessController; state: ViewState }) {
-  const live = state.live.score;
-  const session = state.session;
+  const live = state.live;
+  // Explain whenever the score is held down: right now, or by something still inside the window.
+  const reason = live.reason && (live.reasonIsCurrent || (live.score !== null && live.score < 90)) ? live.reason : null;
+  const text = reason ? REASONS[reason] : null;
   return (
     <div style={s.body}>
       <Preview controller={controller} state={state} />
-      <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 10 }}>
-        <span style={{ fontSize: 30, fontWeight: 700, color: scoreColor(live), lineHeight: 1 }}>
-          {live === null ? "…" : live}
-        </span>
-        <span style={{ color: MUTED }}>{live === null ? "warming up" : "now"}</span>
-        <span style={{ marginLeft: "auto", color: MUTED }}>
-          Class avg <b style={{ color: scoreColor(session.score) }}>{session.score ?? "–"}</b>
-        </span>
+      <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+        <Stat label="Right now" value={live.score} />
+        <Stat label="This class" value={state.session.score} />
       </div>
-      <div style={{ color: MUTED, fontSize: 12, marginTop: 4 }}>
-        On screen {state.live.onScreen ?? "–"}% · Attention {state.live.attention ?? "–"}%
-      </div>
+      {live.score === null ? (
+        <div style={{ ...s.note, marginTop: 8 }}>Getting to know your normal position…</div>
+      ) : text ? (
+        <div
+          role="status"
+          style={{ marginTop: 8, padding: "8px 10px", borderRadius: 8, background: "#fffbeb", border: "1px solid #fde68a" }}
+        >
+          <div style={{ fontWeight: 600, color: "#92400e" }}>
+            {live.reasonIsCurrent ? text.now : `Lower because: ${text.earlier.charAt(0).toLowerCase()}${text.earlier.slice(1)}`}
+          </div>
+          <div style={{ color: "#78350f", fontSize: 12, marginTop: 2 }}>
+            {live.reasonIsCurrent ? text.tip : `It recovers within ${LIVE_WINDOW_MS / 1000} seconds.`}
+          </div>
+          {reason && CAN_RECALIBRATE.includes(reason) && live.reasonIsCurrent && (
+            <button
+              type="button"
+              style={{ ...s.secondary, marginTop: 8, padding: "4px 10px", fontSize: 12 }}
+              onClick={controller.recalibrate}
+            >
+              I'm facing the screen — reset
+            </button>
+          )}
+        </div>
+      ) : (
+        <div style={{ marginTop: 8, color: "#15803d", fontWeight: 600 }}>✓ You're attentive</div>
+      )}
       {state.cameras.length > 1 && (
         <select
           aria-label="Camera"
@@ -163,10 +237,10 @@ function OnBody({ controller, state }: { controller: ActivenessController; state
           ))}
         </select>
       )}
-      <div style={{ display: "flex", alignItems: "center", marginTop: 8 }}>
-        <span style={{ ...s.note, marginTop: 0, flex: 1 }}>Video never leaves this device.</span>
+      <div style={s.note}>Turned on by your institute. Video never leaves this device.</div>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 4 }}>
         <button type="button" style={s.link} onClick={controller.stop}>
-          Turn off
+          Turn off for this class
         </button>
       </div>
     </div>
@@ -185,7 +259,8 @@ export function Panel({ controller }: { controller: ActivenessController }) {
           <span style={s.title}>
             {phase === "on" ? (
               <>
-                Activeness <b style={{ color: scoreColor(state.live.score) }}>{state.live.score ?? "…"}</b>
+                Now <b style={{ color: scoreColor(state.live.score) }}>{state.live.score ?? "…"}</b>
+                {" · "}Class <b style={{ color: scoreColor(state.session.score) }}>{state.session.score ?? "…"}</b>
               </>
             ) : phase === "problem" ? (
               "Activeness · needs attention"
@@ -218,24 +293,6 @@ export function Panel({ controller }: { controller: ActivenessController }) {
         </button>
       </div>
 
-      {phase === "ask" && (
-        <div style={s.body}>
-          <div>See how attentive you are during this class.</div>
-          <div style={s.note}>
-            Your camera is checked on this device only — the video is never recorded or sent. Only your score is shared
-            with your institute.
-          </div>
-          <div style={s.row}>
-            <button type="button" style={s.primary} onClick={controller.start}>
-              Turn on camera
-            </button>
-            <button type="button" style={s.secondary} onClick={controller.stop}>
-              Not now
-            </button>
-          </div>
-        </div>
-      )}
-
       {phase === "starting" && (
         <div style={s.body}>
           <Preview controller={controller} state={state} />
@@ -249,7 +306,7 @@ export function Panel({ controller }: { controller: ActivenessController }) {
 
       {phase === "off" && (
         <div style={s.body}>
-          <div style={{ color: MUTED }}>The score is off. Your camera is not in use.</div>
+          <div style={{ color: MUTED }}>The score is off for this class. Your camera is not in use.</div>
           <div style={s.row}>
             <button type="button" style={s.primary} onClick={controller.start}>
               Turn on

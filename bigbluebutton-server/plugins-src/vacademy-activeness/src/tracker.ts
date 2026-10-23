@@ -13,7 +13,7 @@
  * The resting pose is re-learnt after the learner comes back from being away
  * (they may have moved the laptop or their chair).
  */
-import type { Sample } from "./meter";
+import type { Sample, Turn } from "./meter";
 
 const MEDIAPIPE_VERSION = "0.10.14";
 const BUNDLE = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/vision_bundle.mjs`;
@@ -176,23 +176,30 @@ export const createAttentionTracker = async (): Promise<AttentionTracker> => {
         return { sample: { face: false, facing: false, eyesOpen: false }, brightness };
       }
       const pose = headPose(lm);
-      let facing = pose !== null;
+      let turn: Turn | null = pose === null ? "side" : null;
       if (pose) {
         if (!base) {
           yaws.push(pose.yaw);
           pitches.push(pose.pitch);
           if (yaws.length >= CALIBRATION_SAMPLES) base = { yaw: median(yaws), pitch: median(pitches) };
           // Until calibrated, only an extreme turn counts as looking away.
-          facing = Math.abs(pose.yaw) < 0.5;
+          if (Math.abs(pose.yaw) >= 0.5) turn = "side";
         } else {
-          facing = Math.abs(pose.yaw - base.yaw) < YAW_TOLERANCE && Math.abs(pose.pitch - base.pitch) < PITCH_TOLERANCE;
+          const dPitch = pose.pitch - base.pitch;
+          // Sideways first: a head turned to the side also shifts the pitch proxy.
+          if (Math.abs(pose.yaw - base.yaw) >= YAW_TOLERANCE) turn = "side";
+          else if (dPitch >= PITCH_TOLERANCE) turn = "down";
+          else if (dPitch <= -PITCH_TOLERANCE) turn = "up";
         }
       }
       const shapes = result.faceBlendshapes?.[0]?.categories ?? [];
       const blink = (name: string) => shapes.find((c) => c.categoryName === name)?.score ?? 0;
       const closed = blink("eyeBlinkLeft") > BLINK_CLOSED && blink("eyeBlinkRight") > BLINK_CLOSED;
       closedRun = closed ? closedRun + 1 : 0;
-      return { sample: { face: true, facing, eyesOpen: closedRun < CLOSED_SAMPLES }, brightness };
+      return {
+        sample: { face: true, facing: turn === null, eyesOpen: closedRun < CLOSED_SAMPLES, turn },
+        brightness,
+      };
     },
     recalibrate() {
       base = null;

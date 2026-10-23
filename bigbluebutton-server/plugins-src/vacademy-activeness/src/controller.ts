@@ -6,17 +6,17 @@
  * off when the computer is slow, and switches itself off rather than starve
  * BBB's own audio/video on a budget laptop.
  */
-import { ActivenessMeter, type Score } from "./meter";
+import { ActivenessMeter, type LiveScore, type Score } from "./meter";
 import { CameraError, type CameraProblem, listCameras, openCamera, stopStream } from "./camera";
 import { createAttentionTracker, type AttentionTracker } from "./tracker";
 import { persistKey, sendReport, type ReportPayload } from "./report";
 
-export type Phase = "ask" | "starting" | "on" | "off" | "problem";
+export type Phase = "starting" | "on" | "off" | "problem";
 
 export interface ViewState {
   phase: Phase;
   problem: CameraProblem | null;
-  live: Score;
+  live: LiveScore;
   session: Score;
   /** No face for a while, or the class tab was in the background. */
   away: boolean;
@@ -47,11 +47,10 @@ const FRAMELESS_LIMIT = 15;
 const REPORT_EVERY_MS = 60_000;
 /** Nothing is reported before this much tracked time. */
 const MIN_REPORT_MS = 10_000;
-const CHOICE_KEY = "vacademy.activeness.choice";
 const CAMERA_KEY = "vacademy.activeness.camera";
 const RESUME_MAX_AGE_MS = 12 * 3600_000;
 
-const EMPTY_SCORE: Score = { score: null, onScreen: null, attention: null };
+const EMPTY_LIVE: LiveScore = { score: null, onScreen: null, attention: null, reason: null, reasonIsCurrent: false };
 
 /**
  * Timer, event and async entry points run through this. An exception that escapes
@@ -145,15 +144,18 @@ export class ActivenessController {
     this.parking.appendChild(this.video);
     document.body.appendChild(this.parking);
 
-    const choice = storage.get(CHOICE_KEY);
+    // On by default: the institute turned the score on for this class, so the
+    // camera starts without asking. "Turn off" holds for this class only (the
+    // key is per schedule + learner), so the next class starts on again.
+    const turnedOff = storage.get(this.offKey) === "1";
     this.state = {
-      phase: choice === "off" ? "off" : "ask",
+      phase: turnedOff ? "off" : "starting",
       problem: null,
-      live: EMPTY_SCORE,
+      live: EMPTY_LIVE,
       session: this.meter.session(),
       away: false,
       dark: false,
-      collapsed: choice === "off",
+      collapsed: turnedOff,
       slowLoad: false,
       cameras: [],
       cameraId: storage.get(CAMERA_KEY),
@@ -163,8 +165,11 @@ export class ActivenessController {
     window.addEventListener("pagehide", this.onPageHide);
     navigator.mediaDevices?.addEventListener?.("devicechange", this.onDeviceChange);
 
-    // A learner who said yes before (this browser, this class host) starts straight away.
-    if (choice === "on") void this.start();
+    if (!turnedOff) this.start();
+  }
+
+  private get offKey() {
+    return `${persistKey(this.token) ?? "vacademy.activeness"}.off`;
   }
 
   // ── store ────────────────────────────────────────────────────────────────
@@ -196,7 +201,7 @@ export class ActivenessController {
   private startInner = async () => {
     if (this.disposed) return;
     const gen = ++this.generation;
-    storage.set(CHOICE_KEY, "on");
+    storage.set(this.offKey, "0");
     this.releaseCamera();
     this.set({ phase: "starting", problem: null, slowLoad: false, collapsed: false });
     try {
@@ -241,14 +246,26 @@ export class ActivenessController {
 
   /** The learner turned it off: report what we have, free the camera. */
   stop = () => {
-    storage.set(CHOICE_KEY, "off");
+    storage.set(this.offKey, "1");
     this.generation += 1;
     this.report(false);
     this.releaseCamera();
-    this.set({ phase: "off", problem: null, away: false, dark: false, collapsed: true, live: EMPTY_SCORE });
+    this.set({ phase: "off", problem: null, away: false, dark: false, collapsed: true, live: EMPTY_LIVE });
   };
 
   setCollapsed = (collapsed: boolean) => this.set({ collapsed });
+
+  /**
+   * "I'm facing the screen": re-learn this learner's normal head position now.
+   * For a camera at an odd angle (side monitor, laptop off to one side) where
+   * looking at the class read as looking away.
+   */
+  recalibrate = guard("recalibrate", () => {
+    if (this.state.phase !== "on" || !this.tracker) return;
+    this.tracker.recalibrate();
+    this.meter.resetLive();
+    this.set({ live: this.meter.live(Date.now()) });
+  });
 
   switchCamera = (id: string) => {
     storage.set(CAMERA_KEY, id);
@@ -313,7 +330,11 @@ export class ActivenessController {
     if (this.readings >= 10 && this.costEma > TOO_SLOW_MS) return this.fail("slow");
     this.interval = Math.min(MAX_INTERVAL_MS, Math.max(BASE_INTERVAL_MS, Math.round(this.costEma * 8)));
 
-    const { sample, brightness } = reading;
+    const { brightness } = reading;
+    if (brightness < DARK_BELOW) this.darkSince ??= now;
+    else this.darkSince = null;
+    const dark = this.darkSince !== null && now - this.darkSince >= DARK_AFTER_MS;
+    const sample = { ...reading.sample, dark: !reading.sample.face && dark };
     this.meter.addSample(now, sample, dt);
 
     let away = this.state.away;
@@ -333,10 +354,6 @@ export class ActivenessController {
         this.meter.markAway();
       }
     }
-
-    if (brightness < DARK_BELOW) this.darkSince ??= now;
-    else this.darkSince = null;
-    const dark = this.darkSince !== null && now - this.darkSince >= DARK_AFTER_MS;
 
     this.set({ live: this.meter.live(now), session: this.meter.session(), away, dark });
     if (now - this.lastReportAt >= REPORT_EVERY_MS) this.report(false);

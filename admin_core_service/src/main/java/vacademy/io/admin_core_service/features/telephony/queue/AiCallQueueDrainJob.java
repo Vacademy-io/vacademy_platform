@@ -219,11 +219,7 @@ public class AiCallQueueDrainJob {
 
             // Send-once. Losing this race is normal under an overlapping tick.
             if (repository.claimForDispatch(item.getId()) == 0) continue;
-            // The claim incremented attempts in the DATABASE; mirror it onto the detached
-            // copy we are holding. Without this every later save() writes the pre-claim
-            // value back and the counter never advances — an item that keeps failing
-            // would retry for ever instead of giving up after MAX_ATTEMPTS.
-            item.setAttempts(item.getAttempts() + 1);
+            markClaimed(item);
 
             DispatchOutcome outcome = dispatch(item, trigger, false);
             if (outcome == DispatchOutcome.DIALLED) {
@@ -297,7 +293,7 @@ public class AiCallQueueDrainJob {
         }
 
         if (repository.claimForDispatch(item.getId()) == 0) return Optional.empty();
-        item.setAttempts(item.getAttempts() + 1);
+        markClaimed(item);
 
         DispatchOutcome outcome = dispatch(item, parseTrigger(item.getCallTrigger()), true);
         if (outcome != DispatchOutcome.DIALLED) return Optional.empty();
@@ -312,6 +308,27 @@ public class AiCallQueueDrainJob {
                 .queuePosition(0L)
                 .queueEtaMinutes(0L)
                 .build());
+    }
+
+    /**
+     * Mirror what {@code claimForDispatch} just wrote to the DATABASE onto the copy we
+     * are holding — the status AND the attempt.
+     *
+     * <p>Attempts: without it every later save() writes the pre-claim value back and an
+     * item that keeps failing retries for ever instead of giving up after MAX_ATTEMPTS.
+     *
+     * <p>Status: on the manual click this copy is not detached. Open-session-in-view
+     * keeps the request's persistence context alive, so the item {@code insertOne} just
+     * saved is still MANAGED and {@code findById} hands back that same instance. The
+     * native claim leaves it saying QUEUED, the attempt above makes it dirty, and the
+     * first transaction {@code placeCall} commits (the call-log insert) flushes it —
+     * writing QUEUED back while the dial is still in flight. The next drain tick then
+     * wins its own claim and rings the same person again a fraction of a second later:
+     * 81 manual calls were placed twice that way (2026-10-23, attempts = 2).
+     */
+    private static void markClaimed(AiCallQueueItem item) {
+        item.setStatus(AiCallQueueStatus.DISPATCHING.name());
+        item.setAttempts(item.getAttempts() + 1);
     }
 
     private enum DispatchOutcome {

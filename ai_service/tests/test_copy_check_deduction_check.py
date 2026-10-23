@@ -138,10 +138,54 @@ def test_checker() -> None:
           not asyncio.run(dc.DeductionChecker("http://x", LAYOUT, Boom({})).check(v, q, {})) and v["marks_awarded"] == 1.0)
 
 
+def test_reading_borrowed_from_the_paper() -> None:
+    print("\nborrowed_phrases — a reading copied from the question or scheme raises nothing")
+    layout = {"pages": [{"page_id": "p4", "lines": [
+        {"line_id": "p4_r1", "box": [0, 0, 500, 40],
+         "text": "Consideration can be inadequate. A contract cannot be void just because of its consideration."},
+        {"line_id": "p4_r2", "box": [0, 50, 500, 40],
+         "text": "Anita let her neighbour Sohan use her van for Rs 3000 a month and Sohan paid in advance."},
+        {"line_id": "p4_r3", "box": [0, 100, 500, 40], "text": "It is not a void contract and is enforceable."},
+    ]}]}
+    q = {"question_id": "q4", "max_marks": 3.0, "question_text": (
+        "Anita agreed to let her neighbour Sohan use her van for six months for Rs 3,000 a month. "
+        "Anita fixed the hire herself after consulting her chartered accountant, and nobody pressed "
+        "her to agree. Decide whether Anita is right.")}
+    rubric = {"rubric": [{"criteria_name": "Free consent", "max_marks": 1.0, "evaluation_guidelines":
+                          "Anita fixed the hire herself after advice and nobody pressed her, so her consent was free"}]}
+    v = {"extracted_answer": "Consideration can be inadequate ... It is not a void contract and is enforceable.",
+         "answer_rows": ["p4_r1", "p4_r3"]}
+    # What the check claimed on a real copy: a sentence of the question.
+    copied = {"what_the_student_wrote": (
+        "Consideration can be inadequate; contract cannot be void just because of its consideration. "
+        "Anita fixed the hire herself after consulting her chartered accountant and nobody pressed her to agree.")}
+    n = dc.borrowed_phrases(copied, q, rubric, v, layout)
+    check("a sentence of the question is caught", n > dc.MAX_BORROWED, f"{n} borrowed phrases")
+    faithful = {"what_the_student_wrote": "Anita let her neighbour Sohan use her van for Rs 3000 a month. "
+                                          "It is not a void contract and is enforceable."}
+    n = dc.borrowed_phrases(faithful, q, rubric, v, layout)
+    check("facts of the question the student restated are not borrowed", n == 0, f"{n} borrowed phrases")
+    maths = {"what_the_student_wrote": "7/5 (-3/12 + 5/12) = 7/5 x 1/6 = 7/30"}
+    check("maths working is never affected", dc.borrowed_phrases(maths, q, rubric, v, layout) == 0)
+
+    async def fake_download(url, dest):
+        dest.write_bytes(b"%PDF")
+    dc._download = fake_download
+    dc.DeductionChecker._render = lambda self, pdf, pid: Image.new("RGB", (1400, 2200), "white")
+    llm = FakeLLM({**copied, "cuts": [{"finding": "misread", "why": "free consent is stated"}], "marks_awarded": 3})
+    cut = dict(v, question_id="q4", marks_awarded=2.0, max_marks=3.0, status="COMPLETED",
+               criteria_breakdown=[{"criteria_name": "Free consent", "marks": 0.0, "max_marks": 1.0, "reason": "missing"}],
+               annotations=[])
+    raised = asyncio.run(dc.DeductionChecker("http://x/c.pdf", layout, llm).check(cut, q, rubric))
+    check("a borrowed reading does not raise the mark", not raised and cut["marks_awarded"] == 2.0,
+          f"raised to {cut['marks_awarded']}")
+
+
 if __name__ == "__main__":
     test_regions()
     test_apply()
     test_checker()
+    test_reading_borrowed_from_the_paper()
     print()
     if failures:
         print(f"{len(failures)} FAILED")

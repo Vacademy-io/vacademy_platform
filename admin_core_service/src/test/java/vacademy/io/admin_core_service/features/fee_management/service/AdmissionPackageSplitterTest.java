@@ -130,4 +130,23 @@ class AdmissionPackageSplitterTest {
         assertMoney("33", parts[1]);
         assertMoney("33", parts[2]);
     }
+
+    @Test
+    @DisplayName("part of a package installment is shared by what each bill still owes")
+    void shareOfInstallment() {
+        BigDecimal[] whole = AdmissionPackageSplitter.shareOfInstallment(
+                List.of(new BigDecimal("22344"), new BigDecimal("10156")), new BigDecimal("12500"));
+        assertEquals(0, whole[0].compareTo(new BigDecimal("8594")));
+        assertEquals(0, whole[1].compareTo(new BigDecimal("3906")));
+
+        BigDecimal[] paise = AdmissionPackageSplitter.shareOfInstallment(
+                List.of(new BigDecimal("100.50"), new BigDecimal("99.50")), new BigDecimal("50"));
+        assertEquals(0, paise[0].add(paise[1]).compareTo(new BigDecimal("50")));
+        assertEquals(0, paise[0].compareTo(new BigDecimal("25.13")));
+
+        assertThrows(VacademyException.class, () -> AdmissionPackageSplitter.shareOfInstallment(
+                List.of(new BigDecimal("100")), BigDecimal.ZERO));
+        assertThrows(VacademyException.class, () -> AdmissionPackageSplitter.shareOfInstallment(
+                List.of(new BigDecimal("100")), new BigDecimal("100.01")));
+    }
 }

@@ -14,6 +14,7 @@ import vacademy.io.admin_core_service.features.fee_management.dto.RecordOfflineP
 import vacademy.io.admin_core_service.features.fee_management.entity.StudentFeePayment;
 import vacademy.io.admin_core_service.features.fee_management.repository.StudentFeePaymentRepository;
 import vacademy.io.admin_core_service.features.fee_management.service.AdmissionPackageSplitter;
+import vacademy.io.admin_core_service.features.fee_management.service.CpoDiscountService;
 import vacademy.io.admin_core_service.features.fee_management.service.CpoSideViewService;
 import vacademy.io.admin_core_service.features.invoice.service.InvoiceService;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
@@ -46,6 +47,7 @@ public class AdmissionPackagePaymentService {
     private final PackageSessionRepository packageSessionRepository;
     private final CpoSideViewService cpoSideViewService;
     private final InvoiceService invoiceService;
+    private final CpoDiscountService cpoDiscountService;
 
     /** A package with its courses and each course's live fee bills, in package order. */
     private record Loaded(AdmissionPackage pkg, List<AdmissionPackageCourse> courses, List<UserPlan> plans,
@@ -59,7 +61,10 @@ public class AdmissionPackagePaymentService {
     public List<AdmissionPackageSummaryDTO> listForUser(String userId, String instituteId) {
         List<AdmissionPackageSummaryDTO> out = new ArrayList<>();
         for (AdmissionPackage pkg : admissionPackageRepository.findByUserIdAndInstituteIdOrderByCreatedAtDesc(userId, instituteId)) {
-            out.add(summarise(load(pkg)));
+            Loaded loaded = load(pkg);
+            // Its courses' enrolments are gone (removed outside the app): nothing left to show.
+            if (loaded.courses().isEmpty()) continue;
+            out.add(summarise(loaded));
         }
         return out;
     }
@@ -122,7 +127,88 @@ public class AdmissionPackagePaymentService {
         return summarise(load(loaded.pkg()));
     }
 
+    /**
+     * Moves one package installment to a new due date on every course, so the courses' bills
+     * stay together as one installment.
+     */
+    @Transactional
+    public AdmissionPackageSummaryDTO moveInstallment(String packageId, LocalDate dueDate, LocalDate newDueDate,
+                                                      String adminUserId) {
+        if (newDueDate == null) {
+            throw new VacademyException("Pick the new due date");
+        }
+        Loaded loaded = load(find(packageId));
+        List<StudentFeePayment> bills = billsOn(loaded, dueDate);
+        if (newDueDate.equals(dueDate)) {
+            return summarise(loaded);
+        }
+        log.info("movePackageInstallment: package={}, {} -> {}, bills={}, appliedBy={}",
+                packageId, dueDate, newDueDate, bills.size(), adminUserId);
+        for (StudentFeePayment bill : bills) {
+            LocalDate start = toLocalDate(bill.getStartDate());
+            // A window that would open after the new due date opens on it instead.
+            LocalDate newStart = start != null && start.isAfter(newDueDate) ? newDueDate : null;
+            cpoDiscountService.setInstallmentDates(bill.getId(), newStart, newDueDate, adminUserId);
+        }
+        return summarise(load(loaded.pkg()));
+    }
+
+    /**
+     * Moves {@code amount} of one package installment's unpaid balance onto a new installment
+     * due on {@code newDueDate}: shared between the courses by what each still owes on it, and
+     * split off each course's bill the same way the per-course Split does. Totals do not change.
+     */
+    @Transactional
+    public AdmissionPackageSummaryDTO splitInstallment(String packageId, LocalDate dueDate, BigDecimal amount,
+                                                       LocalDate newDueDate, String adminUserId) {
+        if (newDueDate == null) {
+            throw new VacademyException("Pick when the moved amount falls due");
+        }
+        if (newDueDate.equals(dueDate)) {
+            throw new VacademyException("Pick a different date from the installment's own");
+        }
+        Loaded loaded = load(find(packageId));
+        List<StudentFeePayment> open = new ArrayList<>();
+        for (StudentFeePayment bill : billsOn(loaded, dueDate)) {
+            String status = bill.getStatus() == null ? "" : bill.getStatus().toUpperCase();
+            if (!"PAID".equals(status) && !"WAIVED".equals(status) && owed(bill).signum() > 0) {
+                open.add(bill);
+            }
+        }
+        if (open.isEmpty()) {
+            throw new VacademyException("Nothing is unpaid on this installment");
+        }
+        BigDecimal[] shares = AdmissionPackageSplitter.shareOfInstallment(
+                open.stream().map(AdmissionPackagePaymentService::owed).toList(), amount);
+        log.info("splitPackageInstallment: package={}, due={}, amount={}, newDue={}, shares={}, appliedBy={}",
+                packageId, dueDate, amount, newDueDate, java.util.Arrays.toString(shares), adminUserId);
+        for (int i = 0; i < open.size(); i++) {
+            if (shares[i].signum() <= 0) continue;
+            LocalDate start = toLocalDate(open.get(i).getStartDate());
+            cpoDiscountService.splitInstallment(open.get(i).getId(), shares[i],
+                    start != null && !start.isAfter(newDueDate) ? start : null, newDueDate, adminUserId);
+        }
+        return summarise(load(loaded.pkg()));
+    }
+
     // ---------------------------------------------------------------- helpers
+
+    /** The courses' live bills due on {@code dueDate}: one package installment. */
+    private List<StudentFeePayment> billsOn(Loaded loaded, LocalDate dueDate) {
+        if (dueDate == null) {
+            throw new VacademyException("Say which installment: its due date");
+        }
+        List<StudentFeePayment> out = new ArrayList<>();
+        for (List<StudentFeePayment> bills : loaded.bills()) {
+            for (StudentFeePayment bill : bills) {
+                if (dueDate.equals(toLocalDate(bill.getDueDate()))) out.add(bill);
+            }
+        }
+        if (out.isEmpty()) {
+            throw new VacademyException("This package has no installment due on " + dueDate);
+        }
+        return out;
+    }
 
     private AdmissionPackage find(String packageId) {
         return admissionPackageRepository.findById(packageId)

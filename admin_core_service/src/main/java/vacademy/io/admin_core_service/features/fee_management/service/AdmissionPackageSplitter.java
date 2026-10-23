@@ -221,6 +221,28 @@ public final class AdmissionPackageSplitter {
     }
 
     /**
+     * Shares {@code amount} between the bills of one package installment in proportion to what
+     * each still owes: how part of a package installment moves to a new date. Whole rupees when
+     * the amount and every bill are whole.
+     *
+     * @throws VacademyException when the amount is not positive or more than the bills owe
+     */
+    public static BigDecimal[] shareOfInstallment(List<BigDecimal> owedPerBill, BigDecimal amount) {
+        if (amount == null || amount.signum() <= 0) {
+            throw new VacademyException("Amount must be greater than zero");
+        }
+        BigDecimal owed = sum(owedPerBill);
+        if (amount.compareTo(owed) > 0) {
+            throw new VacademyException("Only " + money(owed).toPlainString()
+                    + " is unpaid on this installment, so that is the most that can be moved");
+        }
+        boolean whole = isWhole(amount) && owedPerBill.stream().allMatch(AdmissionPackageSplitter::isWhole);
+        BigDecimal[] parts = apportion(amount, owedPerBill, whole ? 0 : 2);
+        for (int i = 0; i < parts.length; i++) parts[i] = money(parts[i]);
+        return parts;
+    }
+
+    /**
      * What of {@code available} goes to each course on one installment: all of it when the money
      * covers the installment, otherwise shared in proportion to what each course owes on it.
      */

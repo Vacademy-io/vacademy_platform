@@ -11,6 +11,7 @@ import vacademy.io.admin_core_service.features.admission_package.repository.Admi
 import vacademy.io.admin_core_service.features.fee_management.dto.RecordOfflinePaymentRequestDTO;
 import vacademy.io.admin_core_service.features.fee_management.entity.StudentFeePayment;
 import vacademy.io.admin_core_service.features.fee_management.repository.StudentFeePaymentRepository;
+import vacademy.io.admin_core_service.features.fee_management.service.CpoDiscountService;
 import vacademy.io.admin_core_service.features.fee_management.service.CpoSideViewService;
 import vacademy.io.admin_core_service.features.invoice.service.InvoiceService;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
@@ -18,6 +19,7 @@ import vacademy.io.admin_core_service.features.user_subscription.repository.User
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -27,6 +29,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -42,11 +46,13 @@ class AdmissionPackagePaymentServiceTest {
     private final PackageSessionRepository sessions = mock(PackageSessionRepository.class);
     private final CpoSideViewService sideView = mock(CpoSideViewService.class);
     private final InvoiceService invoices = mock(InvoiceService.class);
+    private final CpoDiscountService discounts = mock(CpoDiscountService.class);
     private final AdmissionPackagePaymentService service = new AdmissionPackagePaymentService(
-            packages, courses, bills, plans, sessions, sideView, invoices);
+            packages, courses, bills, plans, sessions, sideView, invoices, discounts);
 
     private static StudentFeePayment bill(String plan, String due, String expected, String paid, String status) {
         StudentFeePayment b = new StudentFeePayment();
+        b.setId(plan + "@" + due);
         b.setUserPlanId(plan);
         b.setDueDate(java.sql.Date.valueOf(due));
         b.setAmountExpected(new BigDecimal(expected));
@@ -130,5 +136,43 @@ class AdmissionPackagePaymentServiceTest {
         RecordOfflinePaymentRequestDTO req = RecordOfflinePaymentRequestDTO.builder().amount(65001d).build();
         assertThrows(VacademyException.class, () -> service.recordPayment("pkg", req, "admin"));
         verify(sideView, never()).recordOfflinePaymentLog(anyString(), any(), any());
+    }
+
+    @Test
+    @DisplayName("moving a package installment moves every course's bill on that date")
+    void movesInstallmentOnEveryCourse() {
+        givenPackage();
+        LocalDate to = LocalDate.parse("2026-11-20");
+        service.moveInstallment("pkg", LocalDate.parse("2026-11-10"), to, "admin");
+        verify(discounts).setInstallmentDates("diploma@2026-11-10", null, to, "admin");
+        verify(discounts).setInstallmentDates("bwssc@2026-11-10", null, to, "admin");
+        verify(discounts, never()).setInstallmentDates(eq("diploma@2026-12-10"), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("splitting a package installment moves each course's share of the amount")
+    void splitsInstallmentByWhatEachCourseOwes() {
+        givenPackage();
+        LocalDate to = LocalDate.parse("2026-11-25");
+        service.splitInstallment("pkg", LocalDate.parse("2026-11-10"), new BigDecimal("12500"), to, "admin");
+        // 22344 + 10156 = 32500 owed; 12500 shared 8594 / 3906.
+        verify(discounts).splitInstallment(eq("diploma@2026-11-10"),
+                argThat(a -> a.compareTo(new BigDecimal("8594")) == 0), isNull(), eq(to), eq("admin"));
+        verify(discounts).splitInstallment(eq("bwssc@2026-11-10"),
+                argThat(a -> a.compareTo(new BigDecimal("3906")) == 0), isNull(), eq(to), eq("admin"));
+    }
+
+    @Test
+    @DisplayName("a split refuses a date with no installment, a paid one, and more than is unpaid")
+    void splitGuards() {
+        givenPackage();
+        LocalDate to = LocalDate.parse("2026-11-25");
+        assertThrows(VacademyException.class, () ->
+                service.splitInstallment("pkg", LocalDate.parse("2026-11-11"), BigDecimal.TEN, to, "admin"));
+        assertThrows(VacademyException.class, () ->
+                service.splitInstallment("pkg", LocalDate.parse("2026-10-25"), BigDecimal.TEN, to, "admin"));
+        assertThrows(VacademyException.class, () ->
+                service.splitInstallment("pkg", LocalDate.parse("2026-11-10"), new BigDecimal("32501"), to, "admin"));
+        verify(discounts, never()).splitInstallment(anyString(), any(), any(), any(), any());
     }
 }

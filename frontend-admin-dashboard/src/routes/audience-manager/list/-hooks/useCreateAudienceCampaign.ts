@@ -17,6 +17,7 @@ export function useCreateAudienceCampaign(t: TFunction) {
             queryClient.invalidateQueries({ queryKey: ['audienceList'] });
             queryClient.invalidateQueries({ queryKey: ['audiences'] });
             queryClient.invalidateQueries({ queryKey: ['campaignsList'] });
+            queryClient.invalidateQueries({ queryKey: ['campaignTagSummary'] });
             toast.success(t('success.createCampaign'));
         },
         onError: (error: unknown) => {

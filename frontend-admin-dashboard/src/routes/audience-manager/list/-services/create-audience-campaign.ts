@@ -33,6 +33,11 @@ export interface AudienceCampaignPayload {
     institute_custom_fields: AudienceCampaignCustomFieldPayload[];
     default_initial_score?: number;
     sub_org_id?: string;
+    /**
+     * Key -> value tags on the list (e.g. `{ state: 'Goa' }`). On update, leaving it out keeps
+     * the saved tags and `{}` clears them.
+     */
+    tags?: Record<string, string>;
 }
 
 export const createAudienceCampaign = async (payload: AudienceCampaignPayload) => {

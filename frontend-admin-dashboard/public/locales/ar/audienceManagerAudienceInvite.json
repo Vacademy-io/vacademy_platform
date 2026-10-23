@@ -41,7 +41,8 @@
     },
     "card": {
         "openAriaLabel": "فتح {{campaignName}}",
-        "activateHint": "فعّل هذا {{term}} لإنشاء رابط قابل للمشاركة."
+        "activateHint": "فعّل هذا {{term}} لإنشاء رابط قابل للمشاركة.",
+        "tagsAriaLabel": "الوسوم"
     },
     "actions": {
         "addResponse": "إضافة رد",

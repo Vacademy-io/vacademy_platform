@@ -95,5 +95,28 @@
         "back": "Back",
         "next": "Next: {{step}}",
         "hasErrors": "This step has errors"
+    },
+    "tags": {
+        "title": "Tags",
+        "description": "Label this list so reports can group its leads by tag, e.g. by state, course or channel. One value per tag.",
+        "keys": {
+            "state": "State",
+            "course": "Course",
+            "channel": "Channel"
+        },
+        "keyPlaceholder": "Tag name",
+        "valuePlaceholder": "Value",
+        "valueAriaLabel": "Value for {{label}}",
+        "newTag": "new tag",
+        "remove": "Remove {{label}}",
+        "add": "Add tag",
+        "loadError": "Couldn't load this list's tags. Saving will keep its current tags.",
+        "errors": {
+            "invalidKey": "Tag name \"{{key}}\" is not valid. Use up to 40 letters, numbers, spaces or underscores.",
+            "duplicateKey": "Tag \"{{key}}\" is used twice. A list can have one value per tag.",
+            "valueTooLong": "The value of \"{{key}}\" is too long. Use at most 60 characters.",
+            "invalidValue": "The value of \"{{key}}\" contains a line break or other control character.",
+            "tooMany": "A list can have at most 10 tags."
+        }
     }
 }

@@ -41,7 +41,8 @@
     },
     "card": {
         "openAriaLabel": "{{campaignName}} खोलें",
-        "activateHint": "साझा करने योग्य लिंक बनाने के लिए इस {{term}} को सक्रिय करें।"
+        "activateHint": "साझा करने योग्य लिंक बनाने के लिए इस {{term}} को सक्रिय करें।",
+        "tagsAriaLabel": "टैग"
     },
     "actions": {
         "addResponse": "प्रतिक्रिया जोड़ें",

@@ -16,8 +16,8 @@ import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.common.auth.dto.UserDTO;
 
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
@@ -46,6 +46,7 @@ public class LeadReportService {
     private final AuthService authService;
     private final ReportScopeResolver reportScopeResolver;
     private final vacademy.io.admin_core_service.features.counsellor_workbench.service.CounsellorScopeService counsellorScopeService;
+    private final LeadReportSettingService settingService;
 
     private static final int DEFAULT_RANGE_DAYS = 30;
 
@@ -58,7 +59,7 @@ public class LeadReportService {
                                                String teamId, String counsellorUserId,
                                                String audienceId, String sourceType,
                                                String callerUserId) {
-        DateRange range = resolveRange(fromDate, toDate);
+        DateRange range = resolveRange(fromDate, toDate, instituteId);
         LeadSlaConfigDTO.TatReminder tat = resolveTat(instituteId); // null when TAT disabled
         Integer tatMinutes = tat != null ? tat.getTatMinutes() : null;
         Integer tatMinutesParam = tatMinutes != null ? tatMinutes : 0;
@@ -86,7 +87,7 @@ public class LeadReportService {
                         scopeCsv, audienceFilter, sourceFilter);
         List<LeadReportProjections.DailyTrendProjection> trendRows =
                 audienceResponseRepository.findReportDailyTrend(instituteId, range.from, range.to,
-                        scopeCsv, audienceFilter, sourceFilter);
+                        range.zone, scopeCsv, audienceFilter, sourceFilter);
 
         long total = nz(totals != null ? totals.getTotalLeads() : null);
         long converted = nz(totals != null ? totals.getConvertedLeads() : null);
@@ -151,8 +152,8 @@ public class LeadReportService {
                 .collect(Collectors.toList());
 
         return LeadReportSummaryDTO.builder()
-                .fromDate(range.from)
-                .toDate(range.to)
+                .fromDate(range.fromLocal)
+                .toDate(range.toLocal)
                 .totals(totalsDto)
                 .byStatus(statusBreakdown)
                 .bySource(sourceBreakdown)
@@ -170,7 +171,7 @@ public class LeadReportService {
                                                            String teamId, String counsellorUserId,
                                                            String audienceId, String sourceType,
                                                            String callerUserId) {
-        DateRange range = resolveRange(fromDate, toDate);
+        DateRange range = resolveRange(fromDate, toDate, instituteId);
         LeadSlaConfigDTO.TatReminder tat = resolveTat(instituteId);
         Integer tatMinutes = tat != null ? tat.getTatMinutes() : null;
         Integer tatMinutesParam = tatMinutes != null ? tatMinutes : 0;
@@ -273,8 +274,8 @@ public class LeadReportService {
                 .build();
 
         return CounselorPerformanceDTO.builder()
-                .fromDate(range.from)
-                .toDate(range.to)
+                .fromDate(range.fromLocal)
+                .toDate(range.toLocal)
                 .tatMinutes(tatMinutes)
                 .tatHours(tatMinutes == null ? null : (tatMinutes + 59) / 60)
                 .rows(rows)
@@ -321,16 +322,32 @@ public class LeadReportService {
         return null;
     }
 
-    /** Parse [from, to] as ISO yyyy-MM-dd; default to last 30 days. Returns the server-TZ timestamp strings. */
-    private DateRange resolveRange(String fromDate, String toDate) {
-        ZoneId zone = ZoneId.systemDefault();
+    /**
+     * Parse [from, to] as ISO yyyy-MM-dd days in the INSTITUTE timezone (report settings); default to
+     * the last 30 days. Columns store UTC wall clock, so the query bounds are each day's local midnight
+     * converted to UTC; fromLocal/toLocal keep the local midnights for the response.
+     */
+    private DateRange resolveRange(String fromDate, String toDate, String instituteId) {
+        ZoneId zone;
+        try {
+            zone = ZoneId.of(settingService.get(instituteId).timezone());
+        } catch (Exception e) {
+            zone = ZoneId.of("Asia/Kolkata");
+        }
         LocalDate today = LocalDate.now(zone);
         LocalDate to = parseOr(toDate, today);
         LocalDate from = parseOr(fromDate, to.minusDays(DEFAULT_RANGE_DAYS - 1L));
         // Inclusive-of-day on both ends; query uses '<' on the upper bound so add a day.
         return new DateRange(
+                utcWallClock(from, zone),
+                utcWallClock(to.plusDays(1), zone),
                 from.atStartOfDay().toString(),
-                to.plusDays(1).atStartOfDay().toString());
+                to.plusDays(1).atStartOfDay().toString(),
+                zone.getId());
+    }
+
+    private static String utcWallClock(LocalDate day, ZoneId zone) {
+        return day.atStartOfDay(zone).withZoneSameInstant(ZoneOffset.UTC).toLocalDateTime().toString();
     }
 
     private static LocalDate parseOr(String iso, LocalDate fallback) {
@@ -359,13 +376,7 @@ public class LeadReportService {
         return den == 0 ? Double.NaN : (num / den);
     }
 
-    private record DateRange(String from, String to) {
-        // ISO LocalDateTime strings the native query CASTs to timestamp.
-    }
-
-    /** Local DateTime helper kept for future use if we want UTC casts. */
-    @SuppressWarnings("unused")
-    private static LocalDateTime startOfDay(LocalDate d) {
-        return d.atStartOfDay();
+    private record DateRange(String from, String to, String fromLocal, String toLocal, String zone) {
+        // from/to: ISO LocalDateTime strings (UTC wall clock) the native query CASTs to timestamp.
     }
 }

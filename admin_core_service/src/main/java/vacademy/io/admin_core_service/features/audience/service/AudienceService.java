@@ -18,6 +18,7 @@ import vacademy.io.admin_core_service.features.audience.entity.Audience;
 import vacademy.io.admin_core_service.features.audience.entity.AudienceResponse;
 import vacademy.io.admin_core_service.features.audience.enums.CampaignStatusEnum;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceRepository;
+import vacademy.io.admin_core_service.features.audience.util.AudienceTagsUtil;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceResponseRepository;
 import vacademy.io.admin_core_service.features.audience.entity.LeadScore;
 import vacademy.io.admin_core_service.features.audience.entity.AudienceCommunication;
@@ -391,6 +392,11 @@ public class AudienceService {
         audience.setToNotify(audienceDTO.getToNotify());
         audience.setSendRespondentEmail(audienceDTO.getSendRespondentEmail());
         audience.setCampaignObjective(audienceDTO.getCampaignObjective());
+        // Tags: null = leave the saved tags alone (older clients do not send them); an empty
+        // map clears them; anything else replaces them after validation.
+        if (audienceDTO.getTags() != null) {
+            audience.setTagsJson(AudienceTagsUtil.toJson(AudienceTagsUtil.normalize(audienceDTO.getTags())));
+        }
 
         Audience updated = saveCampaign(audience);
 
@@ -550,7 +556,88 @@ public class AudienceService {
                         ? poolByAudienceId.get(audience.getId()).getId() : null)
                 .poolName(poolByAudienceId.containsKey(audience.getId())
                         ? poolByAudienceId.get(audience.getId()).getName() : null)
+                .tags(AudienceTagsUtil.fromJson(audience.getTagsJson()))
                 .build());
+    }
+
+    // ── Lead list tags ────────────────────────────────────────────────────
+
+    /**
+     * The saved tags of one list. The list must belong to {@code instituteId}; a caller whose
+     * campaign access is limited to a set of lists (AUDIENCE_LIST mode) may only read those.
+     */
+    @Transactional(readOnly = true)
+    public AudienceTagsResponseDTO getCampaignTags(String audienceId, String instituteId, CustomUserDetails user) {
+        Audience audience = findTaggableAudience(audienceId, instituteId, user);
+        return new AudienceTagsResponseDTO(audience.getId(), AudienceTagsUtil.fromJson(audience.getTagsJson()));
+    }
+
+    /**
+     * Replaces a list's tags with {@code tags} (validated and canonicalised by
+     * {@link AudienceTagsUtil}); a null or empty map clears them. Same list checks as
+     * {@link #getCampaignTags}. Only the tags column is written.
+     */
+    @Transactional
+    public AudienceTagsResponseDTO setCampaignTags(String audienceId, String instituteId,
+                                                   Map<String, String> tags, CustomUserDetails user) {
+        SortedMap<String, String> normalized = AudienceTagsUtil.normalize(tags);
+        Audience audience = findTaggableAudience(audienceId, instituteId, user);
+        audienceRepository.updateTagsJson(audience.getId(), instituteId, AudienceTagsUtil.toJson(normalized));
+        return new AudienceTagsResponseDTO(audience.getId(), normalized);
+    }
+
+    /**
+     * Tag keys in use across the institute's lists, each with its distinct values and the
+     * number of lists carrying that value — for tag autocomplete. Keys are sorted
+     * alphabetically, values by list count (most used first) then alphabetically. Scoped like
+     * {@link #getCampaigns}: an AUDIENCE_LIST caller only sees the tags of lists they can see.
+     */
+    @Transactional(readOnly = true)
+    public List<CampaignTagSummaryDTO> getCampaignTagSummary(String instituteId, CustomUserDetails user) {
+        EffectiveAccess access = audienceRoleAccessService.resolveForCaller(user, instituteId);
+        Set<String> allowedIds = null;
+        if (access.getMode() == Mode.AUDIENCE_LIST) {
+            List<String> allowed = access.getAllowedAudienceIds();
+            if (allowed == null || allowed.isEmpty()) {
+                return Collections.emptyList();
+            }
+            allowedIds = new HashSet<>(allowed);
+        }
+
+        Map<String, Map<String, Long>> countsByKey = new TreeMap<>();
+        for (Object[] row : audienceRepository.findIdAndTagsJsonByInstituteId(instituteId)) {
+            String id = (String) row[0];
+            if (allowedIds != null && !allowedIds.contains(id)) {
+                continue;
+            }
+            AudienceTagsUtil.fromJson((String) row[1]).forEach((key, value) ->
+                    countsByKey.computeIfAbsent(key, k -> new HashMap<>()).merge(value, 1L, Long::sum));
+        }
+
+        List<CampaignTagSummaryDTO> summary = new ArrayList<>();
+        countsByKey.forEach((key, counts) -> {
+            List<CampaignTagSummaryDTO.ValueCount> values = counts.entrySet().stream()
+                    .sorted(Map.Entry.<String, Long>comparingByValue().reversed()
+                            .thenComparing(Map.Entry.comparingByKey(String.CASE_INSENSITIVE_ORDER)))
+                    .map(e -> new CampaignTagSummaryDTO.ValueCount(e.getKey(), e.getValue()))
+                    .collect(Collectors.toList());
+            summary.add(new CampaignTagSummaryDTO(key, values));
+        });
+        return summary;
+    }
+
+    private Audience findTaggableAudience(String audienceId, String instituteId, CustomUserDetails user) {
+        Audience audience = audienceRepository.findByIdAndInstituteId(audienceId, instituteId)
+                .filter(a -> !CampaignStatusEnum.DELETED.name().equals(a.getStatus()))
+                .orElseThrow(() -> new ResourceNotFoundException("Lead list not found"));
+        EffectiveAccess access = audienceRoleAccessService.resolveForCaller(user, instituteId);
+        if (access.getMode() == Mode.AUDIENCE_LIST) {
+            List<String> allowed = access.getAllowedAudienceIds();
+            if (allowed == null || !allowed.contains(audience.getId())) {
+                throw new ForbiddenException("You do not have access to this lead list");
+            }
+        }
+        return audience;
     }
 
     /**

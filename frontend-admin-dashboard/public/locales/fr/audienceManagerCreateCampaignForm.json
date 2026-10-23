@@ -95,5 +95,28 @@
         "back": "Back",
         "next": "Next: {{step}}",
         "hasErrors": "This step has errors"
+    },
+    "tags": {
+        "title": "Étiquettes",
+        "description": "Étiquetez cette liste pour que les rapports puissent regrouper ses prospects, par ex. par état, formation ou canal. Une valeur par étiquette.",
+        "keys": {
+            "state": "État",
+            "course": "Formation",
+            "channel": "Canal"
+        },
+        "keyPlaceholder": "Nom de l'étiquette",
+        "valuePlaceholder": "Valeur",
+        "valueAriaLabel": "Valeur pour {{label}}",
+        "newTag": "nouvelle étiquette",
+        "remove": "Supprimer {{label}}",
+        "add": "Ajouter une étiquette",
+        "loadError": "Impossible de charger les étiquettes de cette liste. L'enregistrement conservera ses étiquettes actuelles.",
+        "errors": {
+            "invalidKey": "Le nom d'étiquette « {{key}} » n'est pas valide. Utilisez jusqu'à 40 lettres, chiffres, espaces ou tirets bas.",
+            "duplicateKey": "L'étiquette « {{key}} » est utilisée deux fois. Une liste peut avoir une seule valeur par étiquette.",
+            "valueTooLong": "La valeur de « {{key}} » est trop longue. Utilisez au maximum 60 caractères.",
+            "invalidValue": "La valeur de « {{key}} » contient un saut de ligne ou un autre caractère de contrôle.",
+            "tooMany": "Une liste peut avoir au maximum 10 étiquettes."
+        }
     }
 }

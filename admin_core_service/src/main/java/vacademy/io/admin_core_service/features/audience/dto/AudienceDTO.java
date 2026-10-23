@@ -10,6 +10,7 @@ import vacademy.io.admin_core_service.features.common.dto.InstituteCustomFieldDT
 
 import java.sql.Timestamp;
 import java.util.List;
+import java.util.Map;
 
 /**
  * DTO for Audience Campaign creation and management
@@ -53,6 +54,12 @@ public class AudienceDTO {
      */
     private String poolId;
     private String poolName;
+
+    /**
+     * Key -> value tags on this list, e.g. {"state": "Maharashtra", "course": "MBA"}. One value
+     * per key. On update, null leaves the saved tags unchanged and an empty map clears them.
+     */
+    private Map<String, String> tags;
 
     // Custom fields for the form
     private List<InstituteCustomFieldDTO> instituteCustomFields;

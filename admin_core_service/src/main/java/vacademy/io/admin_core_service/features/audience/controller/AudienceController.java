@@ -155,6 +155,54 @@ public class AudienceController {
         return ResponseEntity.ok(updatedId);
     }
 
+    /**
+     * A lead list's key -> value tags, {@code {audience_id, tags}}. The list must belong to
+     * {@code instituteId} and the caller must be staff of that institute.
+     */
+    @GetMapping("/campaign/{audienceId}/tags")
+    public ResponseEntity<AudienceTagsResponseDTO> getCampaignTags(
+            @PathVariable String audienceId,
+            @RequestParam("instituteId") String instituteId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.requireInstituteStaff(user, instituteId);
+        return ResponseEntity.ok(audienceService.getCampaignTags(audienceId, instituteId, user));
+    }
+
+    /**
+     * Replaces a lead list's tags without resending the whole list. Body {@code {"tags": {...}}};
+     * an empty map clears them. Returns the saved {@code {audience_id, tags}}. Same checks as
+     * the GET above, plus the list must still be in {@code instituteId} when written.
+     */
+    @PutMapping("/campaign/{audienceId}/tags")
+    @Auditable(
+            entityType = "AUDIENCE",
+            action = "UPDATE",
+            entityIdExpr = "#audienceId",
+            captureBefore = "@crmAuditNarrator.audienceSnapshot(#audienceId)",
+            descriptionExpr = "'updated tags of audience ' + @crmAuditNarrator.nameFromSnapshot(#before, #audienceId)")
+    public ResponseEntity<AudienceTagsResponseDTO> setCampaignTags(
+            @PathVariable String audienceId,
+            @RequestParam("instituteId") String instituteId,
+            @RequestBody AudienceTagsRequestDTO request,
+            @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.requireInstituteStaff(user, instituteId);
+        return ResponseEntity.ok(audienceService.setCampaignTags(
+                audienceId, instituteId, request != null ? request.getTags() : null, user));
+    }
+
+    /**
+     * Tag keys in use across the institute's lead lists with their distinct values and list
+     * counts, {@code [{key, values: [{value, lists}]}]}, for tag autocomplete. Scoped to the
+     * lists the caller can see, like {@code POST /campaigns}.
+     */
+    @GetMapping("/campaign-tags")
+    public ResponseEntity<List<CampaignTagSummaryDTO>> getCampaignTagSummary(
+            @RequestParam("instituteId") String instituteId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.requireInstituteStaff(user, instituteId);
+        return ResponseEntity.ok(audienceService.getCampaignTagSummary(instituteId, user));
+    }
+
     @PostMapping("/campaigns")
     public ResponseEntity<Page<AudienceDTO>> getCampaigns(
             @RequestBody AudienceFilterDTO filterDTO,

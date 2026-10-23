@@ -207,6 +207,8 @@ export const COURSE_CERTIFICATE_ISSUE = `${COURSE_CERTIFICATE_BASE}/issue`;
 export const COURSE_CERTIFICATE_RESEND = `${COURSE_CERTIFICATE_BASE}/resend`;
 export const AUDIENCE_CAMPAIGN = `${BASE_URL}/admin-core-service/v1/audience/campaign`;
 export const AUDIENCE_CAMPAIGNS_LIST = `${BASE_URL}/admin-core-service/v1/audience/campaigns`;
+// Tag keys in use on the institute's lead lists, with distinct values + list counts (autocomplete).
+export const AUDIENCE_CAMPAIGN_TAGS_SUMMARY = `${BASE_URL}/admin-core-service/v1/audience/campaign-tags`;
 export const GET_CAMPAIGN_USERS = `${BASE_URL}/admin-core-service/v1/audience/leads`;
 
 // Telephony — provider-agnostic click-to-call + recording surface.

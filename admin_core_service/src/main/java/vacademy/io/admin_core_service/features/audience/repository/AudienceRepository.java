@@ -72,6 +72,26 @@ public interface AudienceRepository extends JpaRepository<Audience, String> {
     List<Audience> findByInstituteId(String instituteId);
 
     /**
+     * (id, tags_json) of every non-deleted list in the institute that has tags, for the
+     * tag autocomplete summary. Two columns only: the summary needs nothing else.
+     */
+    @Query("SELECT a.id, a.tagsJson FROM Audience a "
+            + "WHERE a.instituteId = :instituteId AND a.tagsJson IS NOT NULL "
+            + "AND (a.status IS NULL OR a.status <> 'DELETED')")
+    List<Object[]> findIdAndTagsJsonByInstituteId(@Param("instituteId") String instituteId);
+
+    /**
+     * Writes only the tags column, so saving tags never overwrites a concurrent edit of the
+     * rest of the list. Scoped to the institute; returns the number of rows updated.
+     */
+    @Modifying
+    @Query("UPDATE Audience a SET a.tagsJson = :tagsJson "
+            + "WHERE a.id = :audienceId AND a.instituteId = :instituteId")
+    int updateTagsJson(@Param("audienceId") String audienceId,
+                       @Param("instituteId") String instituteId,
+                       @Param("tagsJson") String tagsJson);
+
+    /**
      * Find all campaigns for a specific institute with status filter
      */
     List<Audience> findByInstituteIdAndStatus(String instituteId, String status);

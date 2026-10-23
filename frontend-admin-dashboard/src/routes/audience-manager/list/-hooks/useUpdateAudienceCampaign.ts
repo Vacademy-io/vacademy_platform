@@ -20,6 +20,9 @@ export function useUpdateAudienceCampaign(t: TFunction) {
             updateAudienceCampaign(audienceId, payload),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['campaignsList'] });
+            // Saved tags of the list + the institute's tag autocomplete.
+            queryClient.invalidateQueries({ queryKey: ['campaignTags'] });
+            queryClient.invalidateQueries({ queryKey: ['campaignTagSummary'] });
             toast.success(t('success.updateCampaign'));
         },
         onError: (error: unknown) => {

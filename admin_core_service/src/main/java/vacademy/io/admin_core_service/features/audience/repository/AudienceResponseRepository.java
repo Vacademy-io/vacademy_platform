@@ -3041,9 +3041,9 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("audienceId") String audienceId,
                         @Param("sourceType") String sourceType);
 
-        /** Daily trend: GROUP BY DATE(submitted_at). */
+        /** Daily trend: GROUP BY the submission day in the institute timezone (:zone). */
         @Query(value = """
-                            SELECT DATE(ar.submitted_at)                                              AS day,
+                            SELECT DATE((ar.submitted_at AT TIME ZONE 'UTC') AT TIME ZONE :zone)    AS day,
                                    COUNT(*)                                                           AS submittedCount,
                                    SUM(CASE WHEN ulp.conversion_status='CONVERTED' THEN 1 ELSE 0 END) AS convertedCount
                             FROM audience_response ar
@@ -3062,13 +3062,14 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                               AND (:scopeUsersCsv IS NULL OR COALESCE(lu.user_id, ulp.assigned_counselor_id) = ANY(STRING_TO_ARRAY(:scopeUsersCsv, ',')))
                               AND (:audienceId IS NULL OR ar.audience_id = :audienceId)
                               AND (:sourceType IS NULL OR ar.source_type = :sourceType)
-                            GROUP BY DATE(ar.submitted_at)
-                            ORDER BY DATE(ar.submitted_at)
+                            GROUP BY 1
+                            ORDER BY 1
                         """, nativeQuery = true)
         List<LeadReportProjections.DailyTrendProjection> findReportDailyTrend(
                         @Param("instituteId") String instituteId,
                         @Param("fromTs") String fromTs,
                         @Param("toTs") String toTs,
+                        @Param("zone") String zone,
                         @Param("scopeUsersCsv") String scopeUsersCsv,
                         @Param("audienceId") String audienceId,
                         @Param("sourceType") String sourceType);

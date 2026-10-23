@@ -112,6 +112,7 @@ public class CrmAuditNarrator {
                         snapshot.put("to_notify", audience.getToNotify());
                         snapshot.put("start_date", String.valueOf(audience.getStartDate()));
                         snapshot.put("end_date", String.valueOf(audience.getEndDate()));
+                        snapshot.put("tags", audience.getTagsJson());
                         return snapshot;
                     })
                     .orElse(null);

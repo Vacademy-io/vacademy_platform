@@ -61,6 +61,19 @@ import {
     validateFormAppearance,
 } from '@/services/audience-form-appearance';
 import { useLeadTerminology } from '@/hooks/use-lead-terminology';
+import CampaignTagsEditor from './CampaignTagsEditor';
+import {
+    campaignTagSummaryKey,
+    campaignTagsKey,
+    fetchCampaignTagSummary,
+    fetchCampaignTags,
+} from '../../-services/campaign-tags';
+import {
+    rowsFromTags,
+    tagsFromRows,
+    type TagRow,
+    type TagRowsError,
+} from '../../-utils/campaign-tags';
 
 const parseEmailsFromCsv = (value?: string | null) => {
     if (!value) return [];
@@ -250,6 +263,42 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({
     }, [submitCount, errors, scrollToSection]);
     const createCampaign = useCreateAudienceCampaign(tCreateAudienceCampaign);
     const updateCampaign = useUpdateAudienceCampaign(tUpdateAudienceCampaign);
+
+    // ── Tags ──────────────────────────────────────────────────
+    // Edit mode reads the list's saved tags from their own endpoint (the campaign GET used
+    // above is the public form endpoint and does not carry them). Until they have loaded,
+    // the save leaves the saved tags untouched by not sending `tags` at all.
+    const {
+        data: savedTags,
+        isLoading: isLoadingTags,
+        isError: tagsLoadFailed,
+    } = useQuery({
+        queryKey: campaignTagsKey(instituteDetails?.id || '', editingCampaignId),
+        queryFn: () => fetchCampaignTags(instituteDetails?.id || '', editingCampaignId),
+        enabled: isEditMode && !!instituteDetails?.id && !!editingCampaignId,
+        staleTime: 5 * 60 * 1000,
+        refetchOnWindowFocus: false,
+    });
+    const { data: tagSummary } = useQuery({
+        queryKey: campaignTagSummaryKey(instituteDetails?.id || ''),
+        queryFn: () => fetchCampaignTagSummary(instituteDetails?.id || ''),
+        enabled: !!instituteDetails?.id,
+        staleTime: 5 * 60 * 1000,
+    });
+    const tagsReady = !isEditMode || savedTags !== undefined;
+    const [tagRows, setTagRows] = useState<TagRow[]>(() => rowsFromTags(campaign?.tags));
+    const [tagsError, setTagsError] = useState<string | undefined>(undefined);
+    useEffect(() => {
+        if (savedTags) setTagRows(rowsFromTags(savedTags));
+    }, [savedTags]);
+    const handleTagRowsChange = (rows: TagRow[]) => {
+        setTagRows(rows);
+        setTagsError(undefined);
+    };
+    const tagsErrorMessage = (error: TagRowsError) =>
+        error.code === 'tooMany'
+            ? t('tags.errors.tooMany')
+            : t(`tags.errors.${error.code}`, { key: error.key });
 
     // Sub-org options for the optional Sub-Org picker. Reuses the same accessible-sub-orgs
     // endpoint as the rest of the app ({id = child-institute id, name}).
@@ -542,6 +591,8 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({
     }, [isEditMode, initialFormValues, getValues, setValue]);
 
     const handleFormReset = () => {
+        setTagRows(rowsFromTags(isEditMode ? savedTags : undefined));
+        setTagsError(undefined);
         if (isEditMode && existingCustomFields && existingCustomFields.length > 0) {
             // In edit mode, reset to original campaign data
             handleReset();
@@ -872,6 +923,22 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({
             return;
         }
 
+        // Tags: validated here so the admin sees which one is wrong before the round-trip.
+        // Not sent while an edited list's saved tags are unknown (still loading / failed),
+        // which the backend reads as "leave them unchanged".
+        let tagsToSend: Record<string, string> | undefined;
+        if (tagsReady) {
+            const tagResult = tagsFromRows(tagRows);
+            if (tagResult.error) {
+                const message = tagsErrorMessage(tagResult.error);
+                setTagsError(message);
+                toast.error(message);
+                scrollToSection(SECTION_BASICS);
+                return;
+            }
+            tagsToSend = tagResult.tags;
+        }
+
         // Flush any half-typed email in the Team Notifications box into the
         // committed list before building the payload. Returns the final list
         // synchronously so we don't depend on React state having re-rendered
@@ -961,6 +1028,7 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({
             sub_org_id: data.sub_org_id ? data.sub_org_id : undefined,
             institute_custom_fields:
                 allCustomFieldsPayload.length > 0 ? allCustomFieldsPayload : customFieldsToSend,
+            tags: tagsToSend,
         };
 
         try {
@@ -1348,6 +1416,16 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({
                         />
                     </div>
                 </div>
+
+                {/* Tags — key/value labels reports can group this list's leads by */}
+                <CampaignTagsEditor
+                    rows={tagRows}
+                    onChange={handleTagRowsChange}
+                    suggestions={tagSummary}
+                    isLoading={isEditMode && isLoadingTags}
+                    loadFailed={isEditMode && tagsLoadFailed}
+                    error={tagsError}
+                />
             </div>
 
             <div

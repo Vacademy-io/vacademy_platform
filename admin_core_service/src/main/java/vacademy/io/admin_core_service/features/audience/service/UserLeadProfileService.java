@@ -199,6 +199,7 @@ public class UserLeadProfileService {
                         .build());
 
         String oldStatus = profile.getConversionStatus();
+        status = canonicalStatusKey(instituteId, status);
         Timestamp now = new Timestamp(System.currentTimeMillis());
         profile.setConversionStatus(status);
         profile.setUpdatedAt(now);
@@ -233,6 +234,36 @@ public class UserLeadProfileService {
 
         emitStatusChanged(saved, "CONVERSION_STATUS", oldStatus, status);
         return saved;
+    }
+
+    /**
+     * The institute's status key for a status given as a key or a label in any case or spacing
+     * ("Call Back", "call-back" → CALL_BACK; "Admission Taken" → CONVERTED). Callers that pass a
+     * label would otherwise store it verbatim, and reports would show it as a separate stage.
+     * Unknown values are kept as given.
+     */
+    String canonicalStatusKey(String instituteId, String status) {
+        if (status == null || status.isBlank()) return status;
+        String wanted = normalizeStatus(status);
+        try {
+            List<LeadStatus> catalog = leadStatusRepository.findByInstituteIdOrderByDisplayOrderAsc(instituteId);
+            for (LeadStatus s : catalog) {
+                if (status.equals(s.getStatusKey())) return status;
+            }
+            for (LeadStatus s : catalog) {
+                if (s.getStatusKey() != null && normalizeStatus(s.getStatusKey()).equals(wanted)) return s.getStatusKey();
+            }
+            for (LeadStatus s : catalog) {
+                if (s.getLabel() != null && normalizeStatus(s.getLabel()).equals(wanted)) return s.getStatusKey();
+            }
+        } catch (Exception e) {
+            log.warn("Status catalog lookup failed for institute {}: {}", instituteId, e.getMessage());
+        }
+        return Set.of("CONVERTED", "LOST", "LEAD").contains(wanted) ? wanted : status;
+    }
+
+    static String normalizeStatus(String value) {
+        return value.trim().toUpperCase(Locale.ROOT).replaceAll("[\\s_-]+", "_");
     }
 
     /**

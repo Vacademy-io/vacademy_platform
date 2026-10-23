@@ -56,6 +56,7 @@ import {
     buildDefaultCampaignTypeOptions,
 } from '../../-utils/campaign-types';
 import { useLeadTerminology } from '@/hooks/use-lead-terminology';
+import { orderedTagEntries } from '../../-utils/campaign-tags';
 
 type StatusFilter = 'ALL' | 'ACTIVE' | 'INACTIVE' | 'DRAFT';
 const VALID_STATUS: readonly string[] = ['ALL', 'ACTIVE', 'INACTIVE', 'DRAFT'];
@@ -549,6 +550,7 @@ export const AudienceInvite = () => {
                                 campaign.campaign_type?.toUpperCase() === 'WEBSITE'
                                     ? Globe
                                     : Megaphone;
+                            const tagEntries = orderedTagEntries(campaign.tags);
 
                             return (
                                 <Card
@@ -642,6 +644,27 @@ export const AudienceInvite = () => {
                                             <p className="line-clamp-2 break-words text-sm leading-relaxed text-neutral-600">
                                                 {campaign.description}
                                             </p>
+                                        )}
+                                        {tagEntries.length > 0 && (
+                                            <ul
+                                                className="flex flex-wrap gap-1.5"
+                                                aria-label={t('card.tagsAriaLabel')}
+                                            >
+                                                {tagEntries.map(([key, value]) => (
+                                                    <li
+                                                        key={key}
+                                                        className="inline-flex max-w-full items-center truncate rounded-full border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-xs text-neutral-700"
+                                                        title={`${key}: ${value}`}
+                                                    >
+                                                        <span className="text-neutral-500">
+                                                            {key}:
+                                                        </span>
+                                                        <span className="ms-1 truncate font-medium">
+                                                            {value}
+                                                        </span>
+                                                    </li>
+                                                ))}
+                                            </ul>
                                         )}
                                         <ListCardStats audienceId={campaignId} />
                                         <div

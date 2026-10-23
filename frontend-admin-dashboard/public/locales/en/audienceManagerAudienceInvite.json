@@ -41,7 +41,8 @@
     },
     "card": {
         "openAriaLabel": "Open {{campaignName}}",
-        "activateHint": "Activate this {{term}} to generate a shareable link."
+        "activateHint": "Activate this {{term}} to generate a shareable link.",
+        "tagsAriaLabel": "Tags"
     },
     "actions": {
         "addResponse": "Add Response",

@@ -41,7 +41,8 @@
     },
     "card": {
         "openAriaLabel": "Ouvrir {{campaignName}}",
-        "activateHint": "Activez ce {{term}} pour générer un lien partageable."
+        "activateHint": "Activez ce {{term}} pour générer un lien partageable.",
+        "tagsAriaLabel": "Étiquettes"
     },
     "actions": {
         "addResponse": "Ajouter une réponse",

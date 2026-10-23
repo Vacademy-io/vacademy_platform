@@ -2131,6 +2131,54 @@ def _photo_bounds(page: Any) -> Optional[Any]:
         return None
 
 
+# The scanner app's own caption below the photograph ("Scanned with OKEN
+# Scanner", "Scanned by CamScanner"). The vision read transcribes it like any
+# other line, but it sits on the white canvas, not on the paper.
+_SCANNER_CAPTION = re.compile(r"\bscanned\s+(?:with|by|using)\b|\bcam\s*scanner\b", re.I)
+
+
+def _reach_written_rows(photo: Any, lpage: dict[str, Any], psx: float, psy: float,
+                        limit: Any) -> Any:
+    """The photograph's bound, stretched down to the lowest written row.
+
+    A scanner app whitens the paper. On a last page that is only half
+    written, the blank lower half is as white as the canvas, so
+    _photo_bounds ends the photograph where the coverage drops - above the
+    last lines of the answer. Every mark below that line was then off paper:
+    the last question's score and remark were refused, and the copy went out
+    with no mark for it. Writing is on paper by definition, so the bound never
+    stops above a row the vision read confirmed, plus two rows' room for the
+    score and remark a teacher writes under the last line. The scanner's
+    caption does not count, nor does a row outside the photograph's width.
+    """
+    import fitz
+
+    if not lpage.get("vision_ocr"):
+        return photo
+    bottoms, heights = [], []
+    for ln in lpage.get("lines") or []:
+        b, text = ln.get("box"), (ln.get("text") or "").strip()
+        if not b or len(b) != 4 or not text or _SCANNER_CAPTION.search(text):
+            continue
+        bx, by, bw, bh = (float(v) for v in b)
+        cx = (bx + bw / 2.0) * psx
+        if not photo.x0 <= cx <= photo.x1 or by * psy < photo.y0:
+            continue
+        bottoms.append((by + bh) * psy)
+        heights.append(bh * psy)
+    if not bottoms:
+        return photo
+    pitch = sorted(heights)[len(heights) // 2]
+    # A last line whose box dips a few points past a correct bound is normal;
+    # stretching for it pushed the bound onto the canvas. Only a bound that
+    # cuts off at least a full row of writing is wrong.
+    if max(bottoms) <= photo.y1 + pitch:
+        return photo
+    y1 = min(limit.y1 - 2.0, max(bottoms) + 2.0 * pitch)
+    logger.debug("photo bound %.0f stretched to %.0f to cover the written rows", photo.y1, y1)
+    return fitz.Rect(photo.x0, photo.y0, photo.x1, max(photo.y1, y1))
+
+
 def _band_rect(ink, sheet: Any, imap: dict, y0: int, y1: int):
     """One ink band, with its TRUE horizontal extent.
 
@@ -3499,13 +3547,18 @@ def _place_question_scores(doc: Any, placements: dict[int, tuple],
                            paper: Optional[dict[str, Any]] = None,
                            order: Optional[dict[str, int]] = None,
                            occupied: Optional[dict[str, list]] = None,
-                           drawn: Optional[dict[str, list]] = None) -> None:
+                           drawn: Optional[dict[str, list]] = None,
+                           written: Optional[set] = None) -> None:
     """Circle each question's mark in the right margin beside its answer.
 
     placements maps question_number -> (page_no, y). Built from where that
     question's annotations actually landed, so the mark sits next to the work
     it refers to. A question we could not locate on the page is left to the
     summary rather than being circled in an arbitrary spot.
+
+    written: the questions whose own score was actually drawn on the page.
+    None (a caller that does not track it) treats every score annotation as
+    drawn, as before.
     """
     import fitz
 
@@ -3515,8 +3568,11 @@ def _place_question_scores(doc: Any, placements: dict[int, tuple],
     # annotation, and drawing the badge as well put the grade on the sheet
     # twice - once properly in the margin, once dropped inside the student's
     # sentence ("...the goods are handed 8 5/10 over").
-    already = set()
-    for v in verdicts:
+    # Carrying one is not the same as drawing it: a score with no room on the
+    # paper was refused, and skipping the badge too left the question with no
+    # mark on the copy at all.
+    already = set(written) if written is not None else set()
+    for v in (verdicts if written is None else []):
         for ann in (v.get("annotations") or []):
             if ann.get("style") == "score" or (
                     ann.get("marks") is not None and ann.get("style") == "summary"):
@@ -4087,6 +4143,8 @@ def build_annotated_pdf(
         # while the sheet excludes the desk and the scanner's white padding,
         # where nobody writes. Fall back to the ink box when no sheet is known.
         photo = _photo_bounds(doc[page_no])
+        if photo is not None:
+            photo = _reach_written_rows(photo, lpage, psx, psy, prect)
         pbox = lpage.get("paper_box")
         if pbox and len(pbox) == 4:
             bx, by, bw, bh = (float(v) for v in pbox)
@@ -4149,6 +4207,8 @@ def build_annotated_pdf(
     # question_number -> (page_no, y) of its lowest annotation, so the circled
     # mark lands beside the end of that answer.
     placements: dict[int, tuple[int, float, float]] = {}
+    # question_number of every question whose own score reached the page.
+    scores_written: set[int] = set()
     # Deduction reasons no spot near their answer could hold - written after
     # every mark is down, see _write_unwritten_reasons.
     unwritten: list = []
@@ -4498,14 +4558,21 @@ def build_annotated_pdf(
                     page_boxes.append(placed)
             drawn += 1
 
-            if q_no is not None:
+            written_mark = style == "score" or (style == "summary" and ann_marks is not None)
+            if q_no is not None and written_mark and placed is not None:
+                scores_written.add(q_no)
+            # A score or remark that found no room put no ink on the page, so
+            # it says nothing about where the answer ends: its row may be the
+            # very spot that refused it.
+            if q_no is not None and not (style in ("score", "margin_note") and placed is None):
                 prev = placements.get(q_no)
                 if prev is None or (page_no, rect.y1) > (prev[0], prev[1]):
                     # keep the END of the line too: the mark belongs beside where
                     # the answer finishes, not in a column at the page edge.
                     placements[q_no] = (page_no, rect.y1, rect.x1)
 
-    _place_question_scores(doc, placements, verdicts, paper, order, occupied, drawn_rules)
+    _place_question_scores(doc, placements, verdicts, paper, order, occupied, drawn_rules,
+                           written=scores_written)
 
     if unwritten:
         def use_page(pid: str, pno: int) -> None:

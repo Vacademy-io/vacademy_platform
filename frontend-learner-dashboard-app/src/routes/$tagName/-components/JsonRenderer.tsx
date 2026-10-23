@@ -73,6 +73,7 @@ import { FolderBrowserComponent } from "./components/FolderBrowserComponent";
 import { AccessPassGridComponent } from "./components/AccessPassGridComponent";
 import { DetailBlocksComponent } from "./components/DetailBlocksComponent";
 import { BlogComponent } from "./components/BlogComponent";
+import { JobOpeningsComponent } from "./components/JobOpeningsComponent";
 import { LeadFormComponent } from "./components/LeadFormComponent";
 import { submitWebsiteLead, isSpamSubmission } from "../-utils/website-lead";
 import { emitLeadCaptured } from "../-utils/catalogue-tracking";
@@ -456,6 +457,22 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
             tagName={tagName}
             // Recommended-course cards under an article use the site's card settings.
             globalSettings={globalSettings}
+            pageRoute={page.route || ""}
+            isPreviewMode={isPreviewMode}
+          />
+        );
+
+      case "jobOpenings":
+        // Careers: job cards, or one job as its own page when the URL carries
+        // its slug after this page's route (same address shape as a blog
+        // post). baseProps: slugs come from the authored titles, so a job has
+        // one address in every site language.
+        return (
+          <JobOpeningsComponent
+            key={id}
+            {...props}
+            baseProps={baseProps}
+            tagName={tagName}
             pageRoute={page.route || ""}
             isPreviewMode={isPreviewMode}
           />

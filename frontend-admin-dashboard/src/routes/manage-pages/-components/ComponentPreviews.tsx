@@ -23,6 +23,7 @@ import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { FolderBrowserPreview } from './folders/FolderBrowserPreview';
+import { JobOpeningsPreview } from './jobs/JobOpeningsPreview';
 import { AccessPassGridPreview } from './access-pass/AccessPassGridPreview';
 import { LearningPathPreview } from './learning-path/LearningPathPreview';
 
@@ -1347,6 +1348,8 @@ const ComponentPreviewSwitch: React.FC<{ component: { type: string; props: any }
             return <AnnouncementPreview props={props} />;
         case 'blog':
             return <BlogPreview props={props} />;
+        case 'jobOpenings':
+            return <JobOpeningsPreview props={props} />;
         case 'imageGallery':
             return <GalleryPreview props={props} />;
         case 'buyRentSection':

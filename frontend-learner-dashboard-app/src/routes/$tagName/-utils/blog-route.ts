@@ -8,7 +8,8 @@ import { RouteMatcher } from "../-services/route-matcher";
  *   /<site>/?post=<slug>    a blog placed on the home page, where a trailing
  *                           segment would collide with page and course routes
  *
- * Shared by BlogComponent (list vs. article) and CourseCataloguePage, which
+ * Shared by BlogComponent (list vs. article), JobOpeningsComponent (cards vs.
+ * one job, same address shape) and CourseCataloguePage, which
  * shows only the blog section while an article is open so the article reads as
  * a page of its own instead of one band among the page's other sections.
  */
@@ -21,9 +22,11 @@ export function blogPostSlugFor(
   pathname: string,
   searchStr: string,
   tagName: string,
-  pageRoute: string
+  pageRoute: string,
+  /** The home-page query key: `post` for the blog, `job` for job openings. */
+  queryKey = "post"
 ): string | null {
-  const fromQuery = new URLSearchParams(searchStr || "").get("post");
+  const fromQuery = new URLSearchParams(searchStr || "").get(queryKey);
   if (fromQuery) return fromQuery;
   if (isHomeRoute(pageRoute)) return null;
   const segs = RouteMatcher.segmentsAfterBase(pathname, tagName);

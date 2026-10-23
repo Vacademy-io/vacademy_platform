@@ -560,6 +560,62 @@ export const buildComponentTemplates = (t: TFunction): Record<string, Omit<Compo
         },
     },
 
+    // Job openings (careers): a card per job, and each job as a page of its
+    // own on /<site>/<page>/<slug> — the blog's address shape, no popup. Jobs
+    // live in the page JSON. `template` picks one of eight looks for both the
+    // cards and the job page (classic | poster | list | editorial | dark |
+    // minimal | spotlight | split). applyUrl is an external form (https).
+    jobOpenings: {
+        type: 'jobOpenings',
+        enabled: true,
+        props: {
+            headerText: t('jobOpenings.headerText'),
+            subheading: t('jobOpenings.subheading'),
+            template: 'classic',
+            columns: 2,
+            viewButtonLabel: t('jobOpenings.viewButtonLabel'),
+            applyButtonLabel: t('jobOpenings.applyButtonLabel'),
+            backLabel: t('jobOpenings.backLabel'),
+            emptyMessage: t('jobOpenings.emptyMessage'),
+            jobs: [
+                {
+                    id: 'job-1',
+                    slug: '',
+                    title: t('jobOpenings.job1Title'),
+                    image: '',
+                    imageAlt: '',
+                    summary: t('jobOpenings.job1Summary'),
+                    location: t('jobOpenings.job1Location'),
+                    jobType: t('jobOpenings.job1JobType'),
+                    compensation: t('jobOpenings.job1Compensation'),
+                    details: [
+                        { label: t('jobOpenings.job1DetailLabel'), value: t('jobOpenings.job1DetailValue') },
+                    ],
+                    description: t('jobOpenings.job1Description'),
+                    applyUrl: '',
+                    applyLabel: '',
+                    enabled: true,
+                },
+                {
+                    id: 'job-2',
+                    slug: '',
+                    title: t('jobOpenings.job2Title'),
+                    image: '',
+                    imageAlt: '',
+                    summary: t('jobOpenings.job2Summary'),
+                    location: t('jobOpenings.job2Location'),
+                    jobType: t('jobOpenings.job2JobType'),
+                    compensation: '',
+                    details: [],
+                    description: t('jobOpenings.job2Description'),
+                    applyUrl: '',
+                    applyLabel: '',
+                    enabled: true,
+                },
+            ],
+        },
+    },
+
     imageGallery: {
         type: 'imageGallery',
         enabled: true,

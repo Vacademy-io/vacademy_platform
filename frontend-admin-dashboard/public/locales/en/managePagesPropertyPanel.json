@@ -1443,5 +1443,83 @@
         "loop": "Endless loop",
         "loopOnHint": "The row keeps going round: after the last card comes the first again.",
         "loopOffHint": "At the last card the row scrolls back to the first."
+    },
+  "jobOpenings": {
+    "hint": "A card per job; each job opens as its own page under this page (for example /careers/teacher) with an Apply button to your form. Untitled or switched-off jobs are hidden.",
+    "template": "Template",
+    "headerText": "Heading",
+    "subheading": "Subheading",
+    "columns": "Cards per row",
+    "columnsHint": "On phones every template shows one card per row.",
+    "viewButtonLabel": "Card button",
+    "applyButtonLabel": "Apply button",
+    "backLabel": "Back link",
+    "emptyMessage": "When there are no jobs",
+    "jobsCount": "Jobs ({{count}})",
+    "addJob": "Add job",
+    "jobN": "Job {{n}}",
+    "visible": "Show this job",
+    "title": "Job title",
+    "slug": "URL slug",
+    "slugAuto": "made from the title",
+    "address": "Address: {{address}}",
+    "addressHidden": "Hidden: give it a title and switch it on to publish it.",
+    "image": "Image or poster (optional)",
+    "imageAlt": "Image description (alt text)",
+    "summary": "Short line for the card",
+    "location": "Location",
+    "jobType": "Job type",
+    "jobTypePlaceholder": "Full-time, Part-time…",
+    "compensation": "Compensation",
+    "details": "More details (one \"Label: Value\" per line)",
+    "detailsPlaceholder": "Exam focus: NEET\nExperience: 2+ years",
+    "description": "Full job description",
+    "applyUrl": "Apply link (your form)",
+    "applyUrlHint": "Google Form or any https link. Opens in a new tab.",
+    "applyUrlInvalid": "Use a full https:// link, or the Apply button will not show.",
+    "applyLabel": "Apply button text for this job (optional)",
+    "secondary": "Second button (optional)",
+    "secondaryLabel": "Button text",
+    "defaults": {
+      "newJob": "New job",
+      "view": "View job description",
+      "apply": "Apply now",
+      "back": "All openings",
+      "empty": "No open positions right now — check back soon."
+    },
+    "templates": {
+      "classic": {
+        "name": "Classic",
+        "hint": "Cards with a small photo and chips"
+      },
+      "poster": {
+        "name": "Poster",
+        "hint": "Your poster on top, never cropped"
+      },
+      "list": {
+        "name": "List",
+        "hint": "One row per job, button on the right"
+      },
+      "editorial": {
+        "name": "Editorial",
+        "hint": "Numbered rows with serif headings"
+      },
+      "dark": {
+        "name": "Dark",
+        "hint": "Dark band with a brand glow"
+      },
+      "minimal": {
+        "name": "Minimal",
+        "hint": "Text only, compact rows"
+      },
+      "spotlight": {
+        "name": "Spotlight",
+        "hint": "First job large, the rest in a grid"
+      },
+      "split": {
+        "name": "Split detail",
+        "hint": "Cards; job page with a sticky Apply panel"
+      }
     }
+  }
 }

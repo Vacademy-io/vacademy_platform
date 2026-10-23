@@ -482,6 +482,19 @@
         "share": "Partager",
         "shareOn": "Partager sur {{network}}"
     },
+    "jobOpenings": {
+        "viewDetails": "Voir la description du poste",
+        "apply": "Postuler",
+        "backToList": "Toutes les offres",
+        "opensInNewTab": "(s’ouvre dans un nouvel onglet)",
+        "empty": "Aucun poste ouvert pour le moment — revenez bientôt.",
+        "emptyGuidance": "Aucune offre à afficher pour le moment. Ajoutez-en une dans Postes, dans les réglages de cette section, ou réactivez une offre désactivée.",
+        "homePageHint": "Ces offres sont sur la page d’accueil : chaque poste s’ouvre donc avec ?job=… dans l’adresse. Placez-les sur leur propre page (par exemple /careers) pour donner à chaque poste une URL propre.",
+        "jobDetails": "Détails du poste",
+        "compensation": "Rémunération",
+        "location": "Lieu",
+        "jobType": "Type de poste"
+    },
     "comingSoon": {
         "ribbon": "Bientôt disponible",
         "notifyMe": "Me prévenir",

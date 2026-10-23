@@ -142,6 +142,11 @@
         "readMore": "Read more",
         "liveNote": "Published posts appear here on the live site. Write them under Manage Pages → Blog."
     },
+    "jobOpenings": {
+        "view": "View job description",
+        "empty": "No jobs yet — add one in the section settings.",
+        "liveNote": "Each job opens on its own page on the live site."
+    },
     "catalogFeatures": {
         "hero": "Hero",
         "streamIcons": "Stream icons",

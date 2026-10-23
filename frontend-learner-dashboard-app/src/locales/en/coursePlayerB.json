@@ -661,6 +661,19 @@
         "share": "Share",
         "shareOn": "Share on {{network}}"
     },
+    "jobOpenings": {
+        "viewDetails": "View job description",
+        "apply": "Apply now",
+        "backToList": "All openings",
+        "opensInNewTab": "(opens in a new tab)",
+        "empty": "No open positions right now — check back soon.",
+        "emptyGuidance": "No jobs to show yet. Add one under Jobs in this section's settings, or turn a disabled one back on.",
+        "homePageHint": "These openings sit on the home page, so each job opens with ?job=… in the address. Put them on their own page (for example /careers) to give every job a clean URL of its own.",
+        "jobDetails": "Job details",
+        "compensation": "Compensation",
+        "location": "Location",
+        "jobType": "Job type"
+    },
     "comingSoon": {
         "ribbon": "Coming soon",
         "notifyMe": "Notify me",

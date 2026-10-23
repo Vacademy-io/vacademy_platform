@@ -108,6 +108,7 @@ const COMPONENT_GROUPS: { title: string; keys: string[] }[] = [
         title: 'Answers & text',
         keys: [
             'blog',
+            'jobOpenings',
             'faqSection',
             'tabsAccordion',
             'announcementFeed',

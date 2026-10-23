@@ -48,6 +48,7 @@ from ..services.llm_json import generate_json
 from ..constants.model_defaults import GLM_DEFAULT
 from ..services.model_selection import resolve_models
 from ..services.page_audit import audit_component, audit_page, audit_reference_fidelity
+from ..services.catalogue_summary import job_slug
 from ..utils.json_extract import extract_and_sanitize_json
 
 logger = logging.getLogger(__name__)
@@ -2301,6 +2302,72 @@ def _apply_dark_band(ctype: str, props: Dict[str, Any], style: Optional[Dict[str
     return style
 
 
+# ─── jobOpenings (careers) ───────────────────────────────────────────────────
+# Contract mirrored by the learner's -utils/job-openings.ts and the editor's
+# jobs/job-templates.ts: the template ids, and the slug rule (each job's page
+# lives at /<page>/<slug>, so a slug must be stable and unique per section).
+JOB_TEMPLATES = ("classic", "poster", "list", "editorial", "dark", "minimal", "spotlight", "split")
+_MAX_JOBS = 60
+_SAFE_ROUTE_RE = re.compile(r"^#?[A-Za-z0-9][A-Za-z0-9_\-/#]*$")
+
+
+def _https_link(value: Any) -> str:
+    """An external form link: https only (http is upgraded); anything else is ''."""
+    url = str(value or "").strip()
+    if re.match(r"^http://", url, re.I):
+        url = "https://" + url[7:]
+    return url if re.match(r"^https://[^\s/]+", url, re.I) else ""
+
+
+def _normalize_job_openings(props: Dict[str, Any], warnings: List[str]) -> None:
+    """jobOpenings props after the generic scrub: a known template, columns 1-4,
+    and jobs whose apply links are external https, with stable unique slugs."""
+    template = props.get("template")
+    if template not in JOB_TEMPLATES:
+        if template:
+            warnings.append(f"jobOpenings: unknown template '{template}', using 'classic'")
+        props["template"] = "classic"
+    try:
+        props["columns"] = min(4, max(1, int(props.get("columns") or 2)))
+    except (TypeError, ValueError):
+        props["columns"] = 2
+    raw = props.get("jobs")
+    jobs = [j for j in raw if isinstance(j, dict)] if isinstance(raw, list) else []
+    if len(jobs) > _MAX_JOBS:
+        warnings.append(f"jobOpenings: kept the first {_MAX_JOBS} jobs")
+        jobs = jobs[:_MAX_JOBS]
+    used: set = set()
+    for i, job in enumerate(jobs):
+        if not str(job.get("id") or "").strip():
+            job["id"] = f"job-{uuid.uuid4().hex[:6]}"
+        apply_raw = str(job.get("applyUrl") or "").strip()
+        job["applyUrl"] = _https_link(apply_raw)
+        if apply_raw and not job["applyUrl"]:
+            warnings.append(f"jobOpenings: dropped a non-https apply link on '{job.get('title') or job['id']}'")
+        second = str(job.get("secondaryUrl") or "").strip()
+        if second and not (_https_link(second) or _SAFE_ROUTE_RE.match(second)):
+            job["secondaryUrl"] = ""
+        elif second.lower().startswith("http"):
+            job["secondaryUrl"] = _https_link(second)
+        details = job.get("details")
+        if details is not None:
+            job["details"] = [
+                {"label": str(d.get("label") or ""), "value": str(d.get("value") or "")}
+                for d in (details if isinstance(details, list) else [])
+                if isinstance(d, dict) and str(d.get("value") or "").strip()
+            ]
+        # A visible job's slug is fixed here, so its address survives a title edit.
+        if job.get("enabled") is False or not str(job.get("title") or "").strip():
+            continue
+        root = job_slug(job.get("slug")) or job_slug(job.get("title")) or f"job-{i + 1}"
+        slug, n = root, 2
+        while slug in used:
+            slug, n = f"{root}-{n}", n + 1
+        used.add(slug)
+        job["slug"] = slug
+    props["jobs"] = jobs
+
+
 def sanitize_component(
     comp: Any, allowed_types: set, allow_chrome: bool, seen_ids: set, allowed_urls: set, warnings: List[str]
 ) -> Optional[Dict[str, Any]]:
@@ -2357,6 +2424,8 @@ def sanitize_component(
             for slot in slots
         ]
     _normalize_icon_names(ctype, cleaned_props, warnings)
+    if ctype == "jobOpenings":
+        _normalize_job_openings(cleaned_props, warnings)
     # The editor template offers hero left.subheading and its preview shows
     # it, but the LEARNER never renders it — so a model that puts the tagline
     # there (as the copilot did) ships a hero with no copy under the title.

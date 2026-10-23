@@ -261,6 +261,27 @@
         "backLabel": "Tous les articles",
         "emptyMessage": "Pas encore d’articles — revenez bientôt."
     },
+    "jobOpenings": {
+        "headerText": "Postes ouverts",
+        "subheading": "Rejoignez notre équipe. Ouvrez une offre pour lire la description complète et postuler.",
+        "viewButtonLabel": "Voir la description du poste",
+        "applyButtonLabel": "Postuler",
+        "backLabel": "Toutes les offres",
+        "emptyMessage": "Aucun poste ouvert pour le moment — revenez bientôt.",
+        "job1Title": "Enseignant",
+        "job1Summary": "Enseignez votre matière à de petits groupes, en classe et en ligne.",
+        "job1Location": "Votre ville",
+        "job1JobType": "Temps plein",
+        "job1Compensation": "Selon expérience",
+        "job1DetailLabel": "Matière",
+        "job1DetailValue": "Votre matière",
+        "job1Description": "<h2>Le poste</h2><p>Décrivez le quotidien de cette personne et avec qui elle travaillera.</p><h3>Missions</h3><ul><li>Préparer et donner les cours</li><li>Suivre et accompagner la progression des élèves</li></ul><h3>Profil recherché</h3><ul><li>Diplôme dans la matière</li><li>Expérience d’enseignement appréciée</li></ul>",
+        "job2Title": "Conseiller pédagogique",
+        "job2Summary": "Orientez élèves et parents vers la bonne formation.",
+        "job2Location": "Votre ville",
+        "job2JobType": "Temps plein",
+        "job2Description": "<h2>Le poste</h2><p>Décrivez le poste, l’équipe et ce qu’on attend du premier mois.</p><h3>Profil recherché</h3><ul><li>Communication claire</li><li>Expérience dans l’éducation ou l’orientation</li></ul>"
+    },
     "promoPopup": {
         "badge": "Durée limitée",
         "heading": "Vente flash sur tous les cours",

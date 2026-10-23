@@ -21,6 +21,7 @@ change one, change the other.
 from __future__ import annotations
 
 import re
+import unicodedata
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 from urllib.parse import quote
 
@@ -55,6 +56,7 @@ COMPONENT_LABELS: Dict[str, str] = {
     "leadForm": "Lead Form",
     "teamSection": "Team",
     "announcementFeed": "Announcements",
+    "jobOpenings": "Job Openings",
     "imageGallery": "Image Gallery",
     "columnLayout": "Column Layout",
     "htmlBlock": "Custom HTML",
@@ -82,6 +84,23 @@ LIVE_DATA_TYPES = frozenset({
 
 #: Blocks that capture a visitor's details.
 CAPTURE_TYPES = frozenset({"leadForm", "contactForm", "newsletterSignup"})
+
+
+def job_slug(text: Any) -> str:
+    """A jobOpenings job's URL slug: "Educator Vacancy (NEET)" -> "educator-vacancy-neet".
+
+    Letters, marks and digits of any script are kept, every other run becomes
+    one "-". Mirrors slugifyJobTitle in the learner's -utils/job-openings.ts
+    (and the editor's jobs/job-templates.ts): a job's page lives at
+    /<page>/<slug>, so all three must agree."""
+    s = unicodedata.normalize("NFKC", str(text or "")).lower()
+    out: List[str] = []
+    for ch in s:
+        if unicodedata.category(ch)[:1] in ("L", "M", "N"):
+            out.append(ch)
+        elif not out or out[-1] != "-":
+            out.append("-")
+    return "".join(out).strip("-")[:80].rstrip("-")
 
 
 def component_label(comp_type: Any) -> str:
@@ -413,7 +432,7 @@ def data_binding(comp: Dict[str, Any], campaign_names: Optional[Dict[str, str]] 
 # ── page & site summaries ────────────────────────────────────────────────
 _IMAGE_KEYS = {"image", "src", "logo", "avatar", "photo", "backgroundimage", "posterimage", "thumbnail"}
 _LIST_KEYS = ("features", "stats", "testimonials", "faqs", "items", "steps", "members", "logos", "images", "blocks",
-              "cards", "plans", "links", "navigation", "tabs")
+              "cards", "plans", "links", "navigation", "tabs", "jobs")
 
 
 def _count_images(node: Any, depth: int = 0) -> int:

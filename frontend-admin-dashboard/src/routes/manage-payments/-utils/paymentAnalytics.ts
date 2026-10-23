@@ -2,6 +2,7 @@ import type { PaymentLogEntry } from '@/types/payment-logs';
 import { isRealCurrency, resolveEntryCurrency } from '@/utils/payment-currency';
 import { derivePaymentTypeLabel } from './exportPaymentLogsCsv';
 import { classifyEntry, isCancelledEntry, isDueEligibleEntry } from './paymentSummary';
+import { paymentReceivedAt } from './paymentReceivedAt';
 
 /**
  * Dashboard analytics derived entirely client-side from the payment-logs set the Manage Payments
@@ -24,9 +25,9 @@ const normStatus = (entry: PaymentLogEntry): 'PAID' | 'FAILED' | 'ABANDONED' | '
     return 'PENDING';
 };
 
-/** created_at is the real instant; `date` (UTC-midnight DATE) is the pre-created_at fallback. */
+/** When the payment counts as received, so a back-dated entry charts under its payment date. */
 const entryTime = (entry: PaymentLogEntry): number | null => {
-    const raw = entry.payment_log?.created_at || entry.payment_log?.date;
+    const raw = paymentReceivedAt(entry.payment_log).value;
     if (!raw) return null;
     const t = new Date(raw).getTime();
     return Number.isNaN(t) ? null : t;

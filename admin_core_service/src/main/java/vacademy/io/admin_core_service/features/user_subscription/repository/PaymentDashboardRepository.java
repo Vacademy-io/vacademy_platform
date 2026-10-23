@@ -50,7 +50,8 @@ public interface PaymentDashboardRepository extends JpaRepository<UserPlan, Stri
                 WITH paid_rows AS (
                   SELECT pl.id AS log_id,
                          pl.payment_amount AS amount,
-                         pl.created_at AS paid_at,
+                         """ + PaymentLogRepository.PAID_AT + """
+                           AS paid_at,
                          UPPER(COALESCE(NULLIF(TRIM(pl.vendor), ''), 'OTHER')) AS method,
                          COALESCE(up.user_id, pl.user_id, inv.user_id) AS payer_id,
                          up.enroll_invite_id AS enroll_invite_id,
@@ -73,8 +74,10 @@ public interface PaymentDashboardRepository extends JpaRepository<UserPlan, Stri
                        LIMIT 1
                     ) inv ON true
                    WHERE pl.payment_status = 'PAID'
-                     AND pl.created_at >= :startDate
-                     AND pl.created_at <= :endDate
+                     AND """ + PaymentLogRepository.PAID_AT + """
+                       >= :startDate
+                     AND """ + PaymentLogRepository.PAID_AT + """
+                       <= :endDate
                      AND ((ei.institute_id = :instituteId
                            AND (:noPackageSessions = true OR EXISTS (
                                  SELECT 1

@@ -144,6 +144,33 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
         """;
 
   /**
+   * When a payment counts as received, for every "collected in this window" figure: Manage
+   * Payments (list, tiles, Collected card) and the Payment Dashboard.
+   *
+   * <p>{@code created_at} is when the row was written, {@code date} is the payment date. For
+   * gateway payments and offline entries made the same day they agree ({@code date} is the UTC
+   * day of {@code created_at}), so those rows keep their exact instant. They differ only when an
+   * admin records a payment against an earlier date ("received 1 Jun", entered 23 Oct). Windowing
+   * on {@code created_at} filed that money under the entry month, so a month total never matched
+   * the institute's own books and a late entry silently moved revenue between months.
+   *
+   * <p>A back-dated row is placed at noon UTC of its date rather than midnight, so it stays on
+   * that calendar day in any institute time zone within twelve hours of UTC (IST included).
+   *
+   * <p>The typed date is trusted only from ten years before the entry to the day after it (the
+   * day after covers an IST entry made just past midnight, whose UTC day is still the previous
+   * one). Typos exist in production -- year 0026 for 2026, 2010 for a 2026 entry -- and taking
+   * those literally would drop real money out of every window, All time included.
+   * Reads {@code pl}; the caller must alias payment_log as {@code pl}.
+   */
+  String PAID_AT = """
+        (CASE WHEN pl.date IS NOT NULL AND pl.date <> CAST(pl.created_at AS date)
+                   AND pl.date >= CAST(pl.created_at AS date) - 3650
+                   AND pl.date <= CAST(pl.created_at AS date) + 1
+              THEN CAST(pl.date AS timestamp) + INTERVAL '12 hours'
+              ELSE pl.created_at END)""";
+
+  /**
    * Combined paginated query: returns payment log IDs from both regular (via user_plan/enroll_invite)
    * and admin-created invoice paths (via invoice_payment_log_mapping).
    *
@@ -223,8 +250,10 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
         LEFT JOIN payment_option po ON up.payment_option_id = po.id
         LEFT JOIN payment_plan cpp ON cpp.id = up.plan_id
         WHERE ei.institute_id = :instituteId
-          AND pl.created_at >= :startDate
-          AND pl.created_at <= :endDate
+          AND """ + PAID_AT + """
+            >= :startDate
+          AND """ + PAID_AT + """
+            <= :endDate
           AND (:noPaymentStatusFilter = true OR pl.payment_status IN (:paymentStatuses))
           AND (:noUserPlanStatusFilter = true OR up.status IN (:userPlanStatuses))
           AND (:noSourceFilter = true OR up.source IN (:sources))
@@ -329,8 +358,10 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
                       WHERE psg2.user_plan_id = iup.id
                         AND psg2.package_session_id IN (:packageSessionIds)))
           AND i.institute_id = :instituteId
-          AND pl.created_at >= :startDate
-          AND pl.created_at <= :endDate
+          AND """ + PAID_AT + """
+            >= :startDate
+          AND """ + PAID_AT + """
+            <= :endDate
           AND (:noPaymentStatusFilter = true OR pl.payment_status IN (:paymentStatuses))
           AND (:noSourceFilter = true OR i.source IN (:sources))
           AND (:userId IS NULL OR i.user_id = :userId)
@@ -497,7 +528,7 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
   /**
    * Per-day PAID collection totals for an institute over a date window, optionally
    * scoped to a single sub-org. Sums payment_log.payment_amount for PAID payments,
-   * grouped by the calendar day of payment_log.created_at in :timeZone (ascending).
+   * grouped by the calendar day the payment was received ({@link #PAID_AT}) in :timeZone.
    *
    * created_at is a naked UTC timestamp, so days were previously cut on UTC midnight and a payment
    * taken at 00:30 IST was charted under the previous day. :timeZone is an IANA zone the CALLER has
@@ -526,7 +557,8 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
    * first output column, so there is only one placeholder left to bind.
    */
   @Query(value = """
-      SELECT TO_CHAR(pl.created_at AT TIME ZONE 'UTC' AT TIME ZONE :timeZone, 'YYYY-MM-DD') AS day,
+      SELECT TO_CHAR(""" + PAID_AT + """
+        AT TIME ZONE 'UTC' AT TIME ZONE :timeZone, 'YYYY-MM-DD') AS day,
              SUM(pl.payment_amount) AS amount,
              COUNT(*) AS cnt,
              MAX(UPPER(COALESCE(NULLIF(TRIM(pl.currency), ''),
@@ -537,8 +569,10 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
       JOIN enroll_invite ei ON up.enroll_invite_id = ei.id
       LEFT JOIN payment_plan pp ON up.plan_id = pp.id
       WHERE ei.institute_id = :instituteId
-        AND pl.created_at >= :startDate
-        AND pl.created_at <= :endDate
+        AND """ + PAID_AT + """
+          >= :startDate
+        AND """ + PAID_AT + """
+          <= :endDate
         AND pl.payment_status = 'PAID'
         AND (:noSubOrg = true OR ei.sub_org_id = :subOrgId)
       GROUP BY 1

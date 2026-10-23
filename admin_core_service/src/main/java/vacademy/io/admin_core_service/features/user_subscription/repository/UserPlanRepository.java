@@ -804,8 +804,10 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                        LIMIT 1
                     ) inv ON true
                    WHERE pl.payment_status = 'PAID'
-                     AND pl.created_at >= :startDate
-                     AND pl.created_at <= :endDate
+                     AND """ + PaymentLogRepository.PAID_AT + """
+                       >= :startDate
+                     AND """ + PaymentLogRepository.PAID_AT + """
+                       <= :endDate
                      AND ((ei.institute_id = :instituteId
                            AND (:noPackageSessions = true OR EXISTS (
                                  SELECT 1

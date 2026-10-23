@@ -127,8 +127,8 @@ describe('the after-payment redirect', () => {
 
 /**
  * "Log In Automatically After Purchase" when the server issued no login code:
- * the buyer's account existed before this checkout (Parcham's buyers were
- * migrated from their old store and never got a password), so the button
+ * the buyer's account existed before this checkout (e.g. migrated from an
+ * old store and never sent a password), so the button
  * takes them to the OTP login with their email and phone filled in. Which OTP
  * form opens is the login page's call, from the portal's policy.
  */
@@ -140,10 +140,10 @@ describe('a buyer with an existing account on an auto-login page', () => {
             mappings: [
                 {
                     ps_invite_payment_option_id: 'o0',
-                    package_name: 'NCERT Geography',
+                    package_name: 'Geography eBook',
                     level_name: 'default',
                     session_name: 'default',
-                    payment_plan: { name: 'Parcham eBook Rs 10', actual_price: 10, currency: 'INR' },
+                    payment_plan: { name: 'eBook Rs 10', actual_price: 10, currency: 'INR' },
                 },
             ],
         };

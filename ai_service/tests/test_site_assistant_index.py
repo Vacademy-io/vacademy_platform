@@ -48,6 +48,88 @@ def test_fingerprint_changes_with_pages_not_with_assistant_settings():
     assert K.fingerprint(cat) != a
 
 
+def test_footer_is_indexed_once_with_the_home_page():
+    cat = copy.deepcopy(CATALOGUE)
+    cat["globalSettings"]["layout"] = {"footer": {"id": "site-footer", "type": "footer", "props": {
+        "leftSection": {"title": "BRAHM VARCHAS", "text": "Call +91 99999 00000<br>hello@example.org",
+                        "socials": [{"platform": "YouTube", "url": "https://youtube.com/@x"}]},
+        "rightSection1": {"title": "Explore", "links": [{"label": "Blog", "route": "blog"}]}}}}
+    footer = [s for s in K.extract_sections(cat) if s["section_id"] == "site-footer"]
+    assert len(footer) == 1 and footer[0]["page_route"] == ""
+    home = next(p for p in cat["pages"] if p.get("route") in ("", "home")) if any(
+        p.get("route") in ("", "home") for p in cat["pages"]) else cat["pages"][0]
+    assert footer[0]["page_title"] == home["title"]                     # the site's own home title, no literal
+    assert "+91 99999 00000" in footer[0]["text"] and "hello@example.org" in footer[0]["text"]
+    assert "youtube.com" not in footer[0]["text"]
+    a = K.fingerprint(cat)
+    cat["globalSettings"]["layout"]["footer"]["props"]["leftSection"]["text"] = "Call +91 88888 00000"
+    assert K.fingerprint(cat) != a                                   # a footer edit re-indexes
+    cat["globalSettings"]["layout"]["footer"]["enabled"] = False
+    assert not [s for s in K.extract_sections(cat) if s["section_id"] == "site-footer"]
+
+
+def test_blog_route_is_the_page_with_a_blog_section():
+    cat = copy.deepcopy(CATALOGUE)
+    assert K.blog_route(cat) is None
+    cat["pages"].append({"id": "news", "route": "news", "title": "News",
+                         "components": [{"id": "b1", "type": "blog", "props": {}}]})
+    assert K.blog_route(cat) == "news"
+    cat["pages"].append({"id": "blog", "route": "/blog/", "title": "Blog",
+                         "components": [{"id": "b2", "type": "blogList", "props": {}}]})
+    assert K.blog_route(cat) == "blog"                                # the page named blog wins
+    cat["pages"][-1]["hidden"] = True
+    assert K.blog_route(cat) == "news"
+
+
+def test_blog_posts_become_sections_at_their_own_address():
+    posts = [
+        {"slug": "ssc-cgl", "title": "SSC CGL 2026: Complete Guide", "category": "SSC",
+         "excerpt": "Eligibility &amp; pattern", "content_html":
+             "<style>.x{color:red}</style><h2>Eligibility</h2><p>Age 18&ndash;32 years.</p><svg><text>no</text></svg>"},
+        {"slug": "", "title": "No slug", "content_html": "<p>Never indexed because it has no address.</p>"},
+        {"slug": "empty", "title": "Empty", "content_html": "<p></p>"},
+    ]
+    sections = K.blog_sections(posts, "blog")
+    assert [s["page_route"] for s in sections] == ["blog/ssc-cgl"]
+    s = sections[0]
+    assert s["page_title"] == "SSC CGL 2026: Complete Guide" and s["heading"] == "SSC"
+    assert "Eligibility & pattern" in s["text"] and "Age 18–32 years." in s["text"]
+    assert "color:red" not in s["text"] and "no" not in s["text"].split()
+    chunks = K.chunk_sections(sections, max_chunks=K.MAX_BLOG_CHUNKS)
+    assert chunks[0]["content"].startswith("SSC CGL 2026: Complete Guide › SSC\n")
+
+
+def test_blog_posts_have_their_own_budget():
+    big = [{"slug": f"p{i}", "title": f"Post {i}", "content_html": "<p>" + "Word " * 60_000 + "</p>"} for i in range(5)]
+    sections = K.blog_sections(big, "blog")
+    assert sum(len(s["text"]) for s in sections) <= K.MAX_BLOG_CHARS
+    assert len(K.chunk_sections(sections, max_chunks=K.MAX_BLOG_CHUNKS)) <= K.MAX_BLOG_CHUNKS
+
+
+def test_index_includes_blog_posts_when_the_site_has_a_blog(monkeypatch):
+    f = install(monkeypatch)
+    cat = copy.deepcopy(CATALOGUE)
+    cat["pages"].append({"id": "blog", "route": "blog", "title": "Blog",
+                         "components": [{"id": "b", "type": "blog", "props": {}}]})
+    posts = [{"id": "p1", "slug": "ssc-cgl", "title": "SSC CGL guide", "category": "SSC", "excerpt": None,
+              "content_html": "<p>SSC CGL eligibility: any graduate, age 18 to 32 years.</p>",
+              "updated_at": "2026-10-01T00:00:00"}]
+    monkeypatch.setattr(K.repo, "blog_posts", lambda db, iid, limit=200: posts)
+    monkeypatch.setattr(K.repo, "blog_post_stamps", lambda db, iid, limit=200: [
+        {"id": p["id"], "updated_at": p["updated_at"]} for p in posts])
+
+    async def docs(texts, iid):
+        return [[0.1] * 3 for _ in texts]
+    monkeypatch.setattr(K.embedder, "documents", docs)
+    res = asyncio.run(K.index_site(INST, TAG, cat))
+    assert res["status"] == "READY"
+    routes = {c["page_route"] for c in f.store.chunks[(INST, TAG)]}
+    assert "blog/ssc-cgl" in routes
+    fp = K.site_fingerprint(INST, cat)
+    posts[0]["updated_at"] = "2026-10-02T00:00:00"
+    assert K.site_fingerprint(INST, cat) != fp                        # an edited post re-indexes
+
+
 def test_index_once_then_skip_until_pages_change(monkeypatch):
     f = install(monkeypatch)
     calls = []

@@ -368,6 +368,26 @@ def replace_page_chunks(db: Session, institute_id: str, site_tag: str, fingerpri
     return len(chunks)
 
 
+def blog_post_stamps(db: Session, institute_id: str, limit: int = 200) -> List[Dict[str, Any]]:
+    """Ids and edit times of the institute's published blog posts (what the page index fingerprints)."""
+    rows = db.execute(text("""
+        SELECT id, updated_at FROM catalogue_blog_post
+         WHERE institute_id = :iid AND status = 'PUBLISHED'
+         ORDER BY published_at DESC NULLS LAST, id LIMIT :n
+    """), {"iid": institute_id, "n": int(limit)}).fetchall()
+    return [_row(r) for r in rows]
+
+
+def blog_posts(db: Session, institute_id: str, limit: int = 200) -> List[Dict[str, Any]]:
+    """The institute's published blog posts, newest first (the site's blog sections list these)."""
+    rows = db.execute(text("""
+        SELECT id, slug, title, excerpt, category, tags, content_html FROM catalogue_blog_post
+         WHERE institute_id = :iid AND status = 'PUBLISHED'
+         ORDER BY published_at DESC NULLS LAST, id LIMIT :n
+    """), {"iid": institute_id, "n": int(limit)}).fetchall()
+    return [_row(r) for r in rows]
+
+
 def search_page_chunks_vector(db: Session, institute_id: str, site_tag: str, embedding: Sequence[float],
                               top_k: int = 4, threshold: float = 0.35) -> List[Dict[str, Any]]:
     rows = db.execute(text("""

@@ -1,10 +1,12 @@
 """What the assistant can look things up in, besides the catalogue.
 
-* Site pages: the published catalogue's pages, split into sections, chunked
-  (~800 chars), embedded (768-d, the platform embedder) and stored in
-  site_assistant_page_chunk. Re-indexed when the published pages'
-  fingerprint changes; one pod at a time (site_assistant_index_state is the
-  lock). Not billed (platform cost); logged.
+* Site pages: the published catalogue's pages (and its footer), split into
+  sections, chunked (~800 chars), embedded (768-d, the platform embedder) and
+  stored in site_assistant_page_chunk. When the site has a blog section, the
+  institute's published blog posts are indexed with it, each at its own
+  address (<blog page>/<slug>). Re-indexed when the published pages' or the
+  posts' fingerprint changes; one pod at a time (site_assistant_index_state is
+  the lock). Not billed (platform cost); logged.
 * FAQs and notices: site_assistant_knowledge rows, embedded on create/update.
 * Linked knowledge bases: retrieval only, through kb/retrieval.py, and only
   for bases the institute owns or may use.
@@ -16,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import html
 import json
 import logging
 import re
@@ -30,16 +33,21 @@ from .guards import words_for_search
 
 logger = logging.getLogger(__name__)
 
-INDEX_VERSION = "sa-index-v1"
+INDEX_VERSION = "sa-index-v2"
 CHUNK_CHARS = 800
 MAX_SITE_CHARS = 400_000
 MAX_CHUNKS = 600
+MAX_BLOG_POSTS = 200
+MAX_BLOG_CHARS = 1_000_000
+MAX_BLOG_CHUNKS = 1_400
+BLOG_TYPES = {"blog", "blogList"}
 PAGE_THRESHOLD = 0.35
 KNOWLEDGE_THRESHOLD = 0.35
 _SKIP_KEYS = {"id", "url", "href", "src", "image", "imageurl", "logo", "icon", "color", "background", "style",
               "classname", "variant", "anchorid", "type", "audienceid", "campaignid", "target", "link", "css",
               "backgroundimage", "posterimage", "thumbnail", "avatar", "photo", "alignment", "layout", "theme"}
 _SKIP_TYPES = {"header", "cartComponent", "leadForm", "contactForm", "newsletterSignup", "videoEmbed", "imageGallery"}
+_NOT_TEXT_RE = re.compile(r"<(style|script|svg|noscript)\b.*?</\1\s*>", re.I | re.S)
 _JUNK_RE = re.compile(r"^(#[0-9a-f]{3,8}|https?:\S+|[a-z0-9_\-]+|\d+(px|rem|em|%)?|rgba?\(.*\))$", re.I)
 
 
@@ -101,10 +109,84 @@ def extract_sections(catalogue: Dict[str, Any]) -> List[Dict[str, Any]]:
                 return out
             out.append({"page_route": route, "page_title": title, "section_id": comp.get("anchorId") or comp.get("id"),
                         "heading": heading_of(comp) or None, "text": body})
+    footer = _footer_section(catalogue, seen, _home_title(catalogue))
+    if footer and total + len(footer["text"]) <= MAX_SITE_CHARS:
+        out.append(footer)
     return out
 
 
-def chunk_sections(sections: List[Dict[str, Any]], size: int = CHUNK_CHARS) -> List[Dict[str, Any]]:
+def _home_title(catalogue: Dict[str, Any]) -> str:
+    """The title of the page the site opens on (route "" / "home", else the first page)."""
+    pages = [p for p in (catalogue or {}).get("pages") or [] if isinstance(p, dict) and _page_visible(p)]
+    home = next((p for p in pages if str(p.get("route") or "").strip().strip("/").lower() in ("", "home", "index")),
+                pages[0] if pages else {})
+    return strip_html(home.get("title") or (home.get("seo") or {}).get("metaTitle") or "Home", 160)
+
+
+def _footer_section(catalogue: Dict[str, Any], seen: set, home_title: str) -> Optional[Dict[str, Any]]:
+    """The site-wide footer (phone, email, address, links' labels), once, as part of the home page."""
+    layout = ((catalogue or {}).get("globalSettings") or {}).get("layout") or {}
+    footer = layout.get("footer") if isinstance(layout, dict) else None
+    if not isinstance(footer, dict) or footer.get("enabled") is False:
+        return None
+    strings: List[str] = []
+    _strings(footer.get("props") or {}, strings)
+    body = "\n".join(dict.fromkeys(s for s in strings if s))
+    key = hashlib.sha1(body.encode()).hexdigest()
+    if len(body) < 20 or key in seen:
+        return None
+    seen.add(key)
+    return {"page_route": "", "page_title": home_title, "section_id": footer.get("id"),
+            "heading": None, "text": body}
+
+
+def blog_route(catalogue: Dict[str, Any]) -> Optional[str]:
+    """Where the site opens a blog post: the route of its blog page (route "blog" first), else None."""
+    found: List[str] = []
+    for page in (catalogue or {}).get("pages") or []:
+        if not isinstance(page, dict) or not _page_visible(page):
+            continue
+        if any(c.get("type") in BLOG_TYPES and c.get("enabled") is not False
+               for c in walk_components(page.get("components"))):
+            route = str(page.get("route") or "").strip().strip("/")
+            if route and route.lower() not in ("home", "index"):
+                found.append(route)
+    if not found:
+        return None
+    return next((r for r in found if r.lower() == "blog"), found[0])
+
+
+def blog_plain_text(value: Any) -> str:
+    if not isinstance(value, str):
+        return ""
+    return html.unescape(strip_html(_NOT_TEXT_RE.sub(" ", value), 10_000_000))
+
+
+def blog_sections(posts: Sequence[Dict[str, Any]], route: str) -> List[Dict[str, Any]]:
+    """One section per published post, addressed <blog page>/<slug>, within the blog budget."""
+    out: List[Dict[str, Any]] = []
+    total = 0
+    for p in posts[:MAX_BLOG_POSTS]:
+        slug = str(p.get("slug") or "").strip().strip("/")
+        title = strip_html(p.get("title") or "", 160)
+        if not slug or not title:
+            continue
+        parts = [blog_plain_text(p.get("excerpt")), blog_plain_text(p.get("content_html"))]
+        body = "\n".join(x for x in parts if x).strip()
+        if len(body) < 20:
+            continue
+        body = body[:max(0, MAX_BLOG_CHARS - total)]
+        if not body:
+            break
+        total += len(body)
+        heading = strip_html(p.get("category") or "", 80) or None
+        out.append({"page_route": f"{route}/{slug}", "page_title": title, "section_id": None,
+                    "heading": heading, "text": body})
+    return out
+
+
+def chunk_sections(sections: List[Dict[str, Any]], size: int = CHUNK_CHARS,
+                   max_chunks: int = MAX_CHUNKS) -> List[Dict[str, Any]]:
     chunks: List[Dict[str, Any]] = []
     for s in sections:
         body = s["text"]
@@ -123,16 +205,50 @@ def chunk_sections(sections: List[Dict[str, Any]], size: int = CHUNK_CHARS) -> L
                                "section_id": s.get("section_id"), "heading": s.get("heading"),
                                "content": f"{prefix}\n{piece}"[:CHUNK_CHARS + 200]})
             start = end
-        if len(chunks) >= MAX_CHUNKS:
+        if len(chunks) >= max_chunks:
             break
-    return chunks[:MAX_CHUNKS]
+    return chunks[:max_chunks]
 
 
-def fingerprint(catalogue: Dict[str, Any]) -> str:
-    """sha256 of the published pages (settings edits elsewhere do not re-index)."""
+def fingerprint(catalogue: Dict[str, Any], blogs: Optional[str] = None) -> str:
+    """sha256 of the published pages, footer and blog posts' stamp (other settings edits do not re-index)."""
     pages = (catalogue or {}).get("pages") or []
-    blob = json.dumps({"v": INDEX_VERSION, "pages": pages}, sort_keys=True, ensure_ascii=False, default=str)
+    layout = ((catalogue or {}).get("globalSettings") or {}).get("layout") or {}
+    footer = layout.get("footer") if isinstance(layout, dict) else None
+    blob = json.dumps({"v": INDEX_VERSION, "pages": pages, "footer": footer, "blogs": blogs},
+                      sort_keys=True, ensure_ascii=False, default=str)
     return hashlib.sha256(blob.encode()).hexdigest()
+
+
+def blog_stamp(institute_id: str, catalogue: Dict[str, Any]) -> Optional[str]:
+    """sha256 of the published posts' ids and edit times when the site shows a blog, else None."""
+    if not blog_route(catalogue):
+        return None
+    try:
+        with db_session() as db:
+            rows = repo.blog_post_stamps(db, institute_id, MAX_BLOG_POSTS)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("site-assistant: blog posts unreadable for %s (%s)", institute_id, exc)
+        return None
+    blob = json.dumps([[r.get("id"), r.get("updated_at")] for r in rows], default=str)
+    return hashlib.sha256(blob.encode()).hexdigest()
+
+
+def site_fingerprint(institute_id: str, catalogue: Dict[str, Any]) -> str:
+    return fingerprint(catalogue, blog_stamp(institute_id, catalogue))
+
+
+def _blog_chunks(institute_id: str, catalogue: Dict[str, Any]) -> List[Dict[str, Any]]:
+    route = blog_route(catalogue)
+    if not route:
+        return []
+    try:
+        with db_session() as db:
+            posts = repo.blog_posts(db, institute_id, MAX_BLOG_POSTS)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("site-assistant: blog posts unreadable for %s (%s); indexing pages only", institute_id, exc)
+        return []
+    return chunk_sections(blog_sections(posts, route), max_chunks=MAX_BLOG_CHUNKS)
 
 
 # ── embeddings ────────────────────────────────────────────────────────────
@@ -195,12 +311,12 @@ def needs_index(institute_id: str, site_tag: str, fp: str) -> bool:
 
 async def index_site(institute_id: str, site_tag: str, catalogue: Dict[str, Any], *, force: bool = False) -> Dict[str, Any]:
     """Index the site's pages if this pod wins the lock. Returns {status, chunks}."""
-    fp = fingerprint(catalogue)
+    fp = site_fingerprint(institute_id, catalogue)
     with db_session() as db:
         if not repo.try_lock_index(db, institute_id, site_tag, fp, force=force):
             return {"status": "skipped"}
     sections = extract_sections(catalogue)
-    chunks = chunk_sections(sections)
+    chunks = chunk_sections(sections) + _blog_chunks(institute_id, catalogue)
     error: Optional[str] = None
     try:
         vectors = await embedder.documents([c["content"] for c in chunks], institute_id) if chunks else []
@@ -229,7 +345,7 @@ async def index_site(institute_id: str, site_tag: str, catalogue: Dict[str, Any]
 def ensure_index_background(institute_id: str, site_tag: str, catalogue: Dict[str, Any]) -> None:
     """Kick off indexing when the published pages changed. Never raises."""
     try:
-        fp = fingerprint(catalogue)
+        fp = site_fingerprint(institute_id, catalogue)
         if not needs_index(institute_id, site_tag, fp):
             return
         task = asyncio.get_running_loop().create_task(index_site(institute_id, site_tag, catalogue))

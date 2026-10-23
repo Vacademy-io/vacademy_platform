@@ -23,11 +23,12 @@ import json
 import logging
 import re
 from typing import Any, Dict, Iterable, List, Optional, Sequence
+from urllib.parse import quote
 
 from sqlalchemy import text
 
 from ..db import db_session
-from ..services.catalogue_summary import heading_of, strip_html, walk_components
+from ..services.catalogue_summary import heading_of, job_slug, strip_html, walk_components
 from . import repository as repo
 from .guards import words_for_search
 
@@ -95,6 +96,19 @@ def extract_sections(catalogue: Dict[str, Any]) -> List[Dict[str, Any]]:
             props = comp.get("props") or {}
             if comp.get("type") == "htmlPage":
                 strings.append(strip_html(str(props.get("html") or ""), 20_000))
+            elif comp.get("type") == "jobOpenings":
+                # Each job is a page of its own (<page>/<slug>), like a blog post:
+                # index it there, and only the section's own copy on the page.
+                for sec in job_sections(props, route):
+                    key = hashlib.sha1(sec["text"].encode()).hexdigest()
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    total += len(sec["text"])
+                    if total > MAX_SITE_CHARS:
+                        return out
+                    out.append(sec)
+                _strings({k: v for k, v in props.items() if k != "jobs"}, strings)
             else:
                 _strings(props, strings)
             body = "\n".join(dict.fromkeys(s for s in strings if s))
@@ -154,6 +168,38 @@ def blog_route(catalogue: Dict[str, Any]) -> Optional[str]:
     if not found:
         return None
     return next((r for r in found if r.lower() == "blog"), found[0])
+
+
+def job_sections(props: Dict[str, Any], route: str) -> List[Dict[str, Any]]:
+    """One section per visible job of a jobOpenings block, at the job's own address.
+
+    Slugs follow the learner rule (catalogue_summary.job_slug; repeats get -2, -3…);
+    on the home page a job opens at ?job=<slug>."""
+    out: List[Dict[str, Any]] = []
+    used: set = set()
+    jobs = props.get("jobs") if isinstance(props.get("jobs"), list) else []
+    base = str(route or "").strip().strip("/")
+    on_home = base.lower() in ("", "home", "homepage", "index")
+    for i, job in enumerate(jobs):
+        if not isinstance(job, dict) or job.get("enabled") is False:
+            continue
+        title = strip_html(job.get("title") or "", 160)
+        if not title:
+            continue
+        root = job_slug(job.get("slug")) or job_slug(job.get("title")) or f"job-{i + 1}"
+        slug, n = root, 2
+        while slug in used:
+            slug, n = f"{root}-{n}", n + 1
+        used.add(slug)
+        meta = [job.get("summary"), job.get("location"), job.get("jobType"), job.get("compensation")]
+        meta += [f"{d.get('label') or ''}: {d.get('value') or ''}" for d in job.get("details") or [] if isinstance(d, dict)]
+        parts = [strip_html(str(m), 2_000) for m in meta if m] + [blog_plain_text(job.get("description"))]
+        body = "\n".join(x for x in parts if x and x.strip(": ")).strip()
+        if len(body) < 20:
+            continue
+        address = f"?job={quote(slug)}" if on_home else f"{base}/{quote(slug)}"
+        out.append({"page_route": address, "page_title": title, "section_id": None, "heading": None, "text": body})
+    return out
 
 
 def blog_plain_text(value: Any) -> str:

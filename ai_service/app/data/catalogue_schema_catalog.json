@@ -635,6 +635,61 @@
       "dataBound": "Live blog: reads the institute's PUBLISHED posts (written in Manage Pages → Blog or by an AI app over the MCP `blog_edit` tool). Renders the post list on the page it sits on and one article at /<page>/<post-slug>, so put it on a DEDICATED page (route \"blog\"), never on the home page. Placement + look only: heading, subheading, layout grid|list, columns 2|3, pageSize, category (\"\" = all), show* toggles. Never invent posts — there are none in the page JSON."
     },
     {
+      "type": "jobOpenings",
+      "templateKey": "jobOpenings",
+      "exampleProps": {
+        "headerText": "Current openings",
+        "subheading": "Join our team. Open a role to read the full description and apply.",
+        "template": "classic",
+        "columns": 2,
+        "viewButtonLabel": "View job description",
+        "applyButtonLabel": "Apply now",
+        "backLabel": "All openings",
+        "emptyMessage": "No open positions right now — check back soon.",
+        "jobs": [
+          {
+            "id": "job-1",
+            "slug": "",
+            "title": "Teacher",
+            "image": "",
+            "imageAlt": "",
+            "summary": "Teach your subject to small batches, in class and online.",
+            "location": "Your city",
+            "jobType": "Full-time",
+            "compensation": "As per experience",
+            "details": [
+              {
+                "label": "Subject",
+                "value": "Your subject"
+              }
+            ],
+            "description": "<h2>About the role</h2><p>Describe what this person will do day to day and who they will work with.</p><h3>Responsibilities</h3><ul><li>Plan and teach lessons</li><li>Track and support student progress</li></ul><h3>Requirements</h3><ul><li>A degree in the subject</li><li>Teaching experience preferred</li></ul>",
+            "applyUrl": "",
+            "applyLabel": "",
+            "enabled": true
+          },
+          {
+            "id": "job-2",
+            "slug": "",
+            "title": "Academic Counsellor",
+            "image": "",
+            "imageAlt": "",
+            "summary": "Guide students and parents to the right course.",
+            "location": "Your city",
+            "jobType": "Full-time",
+            "compensation": "",
+            "details": [],
+            "description": "<h2>About the role</h2><p>Describe the role, the team and what a good first month looks like.</p><h3>Requirements</h3><ul><li>Clear communication</li><li>Experience in education or counselling</li></ul>",
+            "applyUrl": "",
+            "applyLabel": "",
+            "enabled": true
+          }
+        ]
+      },
+      "capabilities": "template classic|poster|list|editorial|dark|minimal|spotlight|split (cards + job page). jobs[]: {title, slug, image, summary, location, jobType, compensation, details[{label,value}], description (HTML), applyUrl (https), enabled}.",
+      "usage": "For a CAREERS page (route \"careers\"): a card per job, each job on its own page /<page>/<slug> with an external Apply link. Only jobs the admin gave; never invent roles, pay or form links."
+    },
+    {
       "type": "imageGallery",
       "templateKey": "imageGallery",
       "exampleProps": {

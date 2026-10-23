@@ -121,6 +121,9 @@ const USAGE = {
         'of sectionHeading+featureGrid whenever the job is to DOCUMENT offerings rather than sell them: one ' +
         'block per offering, keeping every real name — never merge or summarise a list of offerings into a few ' +
         'generic buckets. It has no price/image/enrol fields by design, so it is safe on informational pages.',
+    jobOpenings:
+        'For a CAREERS page (route "careers"): a card per job, each job on its own page /<page>/<slug> with an ' +
+        'external Apply link. Only jobs the admin gave; never invent roles, pay or form links.',
 };
 // The FULL prop surface the renderers actually read, per component.
 //
@@ -227,6 +230,9 @@ const CAPABILITIES = {
         'pill|underline, megaMenuStyle editorial, navigation[{label,route,type: link|megaMenu,megaMenu{libraryId,eyebrow,' +
         'helpLabel,helpRoute,categoriesHeading,showLegend,footnote}}] — patterns header.editorial, header.megaMenu. ' +
         'megaMenu.libraryId is a folder library the admin picks: leave it empty, never invent one.',
+    jobOpenings:
+        'template classic|poster|list|editorial|dark|minimal|spotlight|split (cards + job page). jobs[]: {title, slug, ' +
+        'image, summary, location, jobType, compensation, details[{label,value}], description (HTML), applyUrl (https), enabled}.',
     footer:
         'Site chrome: the footer shared by every page, kept in globalSettings.layout (over the MCP: website_edit(set_layout)). ' +
         'layout two-column|three-column|four-column, ' +

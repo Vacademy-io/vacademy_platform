@@ -396,6 +396,7 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
         # teaching pauses until they are back. None = present / not tracked.
         away_since: Optional[float] = None
         last_activeness_write = 0.0
+        avatar_diag_count = 0
 
         async def _await(what: str) -> None:
             nonlocal awaiting_answer_since, nudged, heard_audio
@@ -1268,6 +1269,12 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                 if now - last_activeness_write >= 20 or msg.get("final"):
                     last_activeness_write = now
                     svc.set_activeness(tutor_session_id, msg)
+                continue
+            if t == "avatar_diag":
+                # A handful per lesson from the avatar's device check; not activity.
+                if avatar_diag_count < svc.AVATAR_DIAG_MAX:
+                    avatar_diag_count += 1
+                    svc.add_avatar_diag(tutor_session_id, msg)
                 continue
             if t == "presence":
                 present = msg.get("present")

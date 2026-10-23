@@ -1087,3 +1087,17 @@ Spatius session tokens: `POST console.us-west.spatius.ai/v1/console/session-toke
 jobs: `console.spatius.ai/v1/open/...` with `X-App-ID` + `X-API-Key`; the account needs "Open API
 access" enabled by Spatius before creation works (403 otherwise).
 
+**Weak devices (23 October 2026).** `AvatarSDK.initialize` fetches a ~29 MB template on a first
+visit (cached by the SDK afterwards) with no progress and no timeout, and the face is computed and
+CPU-sorted (~70k splats) on the main thread 25 times a second; on WebGL it is also re-uploaded every
+frame. So `useSpatiusAvatar` sizes the face to the device: a browser drawing in software
+(`failIfMajorPerformanceCaveat`, SwiftShader / Basic Render Driver) gets no face; no WebGPU, ≤4
+cores or ≤4 GB gets `high` quality and the compressed model; the rest `ultra`, drawn at 2× on
+1x–1.5x screens (the canvas is sized from the card × devicePixelRatio, so a Windows laptop got a
+quarter of a Retina Mac's pixels). Below 15 fps for 4 s it steps down a tier; past the last tier,
+or with no frame for 3 s, it falls back to photo + speaker between lines. A load with no progress
+for 60 s falls back the same way (the bar creeps through the silent init instead of sitting at
+25%). Init starts at the course page's tap (`availability.avatar.app_id`), a hidden face stops
+drawing, and each lesson's `summary_json.avatar_diag` records tier, renderer, GPU, timings and any
+step-down or fallback.
+

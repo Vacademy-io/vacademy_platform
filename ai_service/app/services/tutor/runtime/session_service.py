@@ -485,7 +485,18 @@ def availability(db: Session, *, package_id: str, package_session_id: Optional[s
         "ready_slides": len(ready),
         "teachable_slides": len(supported),
         "available": bool(s.enabled) and len(ready) > 0,
+        "avatar": _avatar_hint(s),
     }
+
+
+def _avatar_hint(s: TutorSettings) -> Optional[Dict[str, str]]:
+    """The course's premium face, if any: the course page starts the SDK's
+    first-visit download (a ~29 MB template) at the tap that opens a voice
+    lesson instead of on the lesson page."""
+    from ...spatius_service import app_id, available
+    if s.avatar_provider == "spatius" and s.avatar_id and available():
+        return {"provider": "spatius", "app_id": app_id()}
+    return None
 
 
 # ── learner state ────────────────────────────────────────────────────────────
@@ -1062,6 +1073,49 @@ def set_activeness(tutor_session_id: str, msg: Dict[str, Any]) -> None:
                 return
             summ = dict(ts.summary_json or {})
             summ["activeness"] = act
+            ts.summary_json = summ
+            db.commit()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+AVATAR_DIAG_MAX = 8
+_DIAG_TEXT = {"event": 20, "tier": 10, "backend": 10, "gpu": 120, "quality": 10, "reason": 40}
+_DIAG_NUM = {"supersample": 4.0, "dpr": 8.0, "fps": 120.0, "init_ms": 600000.0, "load_ms": 600000.0,
+             "paint_ms": 600000.0}
+
+
+def clean_avatar_diag(msg: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """How the premium avatar ran on the learner's device, reduced to short
+    strings and clamped numbers (device-reported; nothing else is kept)."""
+    out: Dict[str, Any] = {}
+    for k, cap in _DIAG_TEXT.items():
+        v = msg.get(k)
+        if isinstance(v, str) and v:
+            out[k] = v[:cap]
+    for k, cap in _DIAG_NUM.items():
+        try:
+            f = float(msg.get(k))
+        except (TypeError, ValueError):
+            continue
+        if f == f:
+            out[k] = round(max(0.0, min(cap, f)), 2)
+    return out if out.get("event") else None
+
+
+def add_avatar_diag(tutor_session_id: str, msg: Dict[str, Any]) -> None:
+    """Append one avatar report (on screen / stepped down / fell back to voice)
+    to the session summary, so a slow-device complaint can be read per lesson."""
+    diag = clean_avatar_diag(msg)
+    if diag is None:
+        return
+    try:
+        with db_session() as db:
+            ts = db.get(TutorSession, tutor_session_id)
+            if ts is None:
+                return
+            summ = dict(ts.summary_json or {})
+            summ["avatar_diag"] = (list(summ.get("avatar_diag") or []) + [diag])[-AVATAR_DIAG_MAX:]
             ts.summary_json = summ
             db.commit()
     except Exception:  # noqa: BLE001

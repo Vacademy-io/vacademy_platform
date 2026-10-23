@@ -288,5 +288,7 @@ export function useTutorSocket(callbacks: Callbacks) {
     // running session average. Neither counts as activity on the server.
     sendPresence: (present: boolean, interrupted = false) => send({ type: "presence", present, interrupted }),
     sendActiveness: (report: Record<string, unknown>) => send({ type: "activeness", ...report }),
+    // Premium avatar device report (tier, renderer, timings, step-downs) for the lesson summary.
+    sendAvatarDiag: (diag: Record<string, string | number>) => send({ type: "avatar_diag", ...diag }),
   };
 }

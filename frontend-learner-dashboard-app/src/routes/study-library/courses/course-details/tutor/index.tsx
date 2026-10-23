@@ -3,7 +3,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { LayoutContainer } from "@/components/common/layout-container/layout-container";
 import { useSidebar } from "@/components/ui/sidebar";
 import { useAudioPlayer } from "@/hooks/useAudioPlayer";
-import { useSpatiusAvatar, type AvatarBoot } from "@/hooks/useSpatiusAvatar";
+import { useSpatiusAvatar, type AvatarBoot, type AvatarDiag } from "@/hooks/useSpatiusAvatar";
 import { BEGIN_CAP_MS, decideBegin, hasUserActivation } from "@/lib/tutorAudioGate";
 import { useVoiceRecorder } from "@/hooks/useVoiceRecorder";
 import { useTutorSocket, type TutorBoardOp, type TutorCheckEvent, type TutorPace, type TutorStateEvent } from "@/hooks/useTutorSocket";
@@ -132,8 +132,19 @@ function TutorPage() {
   const [pace, setPace] = useState<TutorPace>("normal");
   const [language, setLanguage] = useState<"en" | "hi">("en");
   // Premium teacher avatar (Spatius): mounted when the course has one and the learner keeps it on.
-  const avatar = useSpatiusAvatar();
+  // Device reports go to the lesson summary; held until the socket is ready.
+  const sendAvatarDiagRef = useRef<((d: AvatarDiag) => void) | null>(null);
+  const pendingAvatarDiagRef = useRef<AvatarDiag[]>([]);
+  const avatar = useSpatiusAvatar((d) => {
+    if (sendAvatarDiagRef.current) sendAvatarDiagRef.current(d);
+    else pendingAvatarDiagRef.current.push(d);
+  });
   const [avatarOn, setAvatarOn] = useState(true);
+  // A hidden face stops drawing; its CPU goes back to the lesson.
+  useEffect(() => {
+    avatar.setShown(avatarOn);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [avatarOn, avatar.ready]);
   const avatarContainerRef = useRef<HTMLDivElement | null>(null);
   const avatarBootedRef = useRef(false);
   const pendingAvatarRef = useRef<AvatarBoot | null>(null);
@@ -430,6 +441,8 @@ function TutorPage() {
       // Controls stay inert until `begin`: the teacher has not started, and
       // a tap now would only race the opening.
       setReadyAt(Date.now());
+      sendAvatarDiagRef.current = socket.sendAvatarDiag;
+      pendingAvatarDiagRef.current.splice(0).forEach((d) => socket.sendAvatarDiag(d));
       setDisconnected(null);
       if (typeof ev.pace === "string") setPace(ev.pace as TutorPace);
       if (ev.language === "en" || ev.language === "hi") setLanguage(ev.language);
@@ -1147,6 +1160,8 @@ function TutorPage() {
             avatarState={boot?.avatar && voiceMode ? (avatar.failed ? "failed" : !avatarOn ? "off" : avatar.painted ? "on" : "loading") : undefined}
             avatarPainted={avatar.painted}
             avatarProgress={avatar.progress}
+            avatarSupersample={avatar.supersample}
+            avatarErrorSoft={avatar.softFailed}
             gate={gate}
             onGateTap={() => void onGateTap()}
             avatarError={avatar.failed ?? avatar.warning ?? undefined}

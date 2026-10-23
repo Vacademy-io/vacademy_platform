@@ -7,7 +7,16 @@ declare module "@spatius/avatarkit" {
   export enum DrivingServiceMode { direct = "direct", backend = "backend", rtc = "rtc" }
   export enum RenderQuality { standard = "standard", high = "high", ultra = "ultra" }
   export type ConversationState = "idle" | "playing" | "paused";
+  /** Rendered-frame stats over a 2 s window, reported on every frame while the monitor is enabled. */
+  export interface FrameRateInfo {
+    fps: number;
+    presentationFps: number;
+    averageFrameTimeMs: number;
+    jankRatioPercent: number;
+  }
   export interface AvatarController {
+    frameRateMonitorEnabled: boolean;
+    onFrameRateInfo: ((info: FrameRateInfo) => void) | null;
     send(audio: ArrayBuffer | Uint8Array, end: boolean): string;
     interrupt(): void;
     setVolume(v: number): void;
@@ -26,6 +35,9 @@ declare module "@spatius/avatarkit" {
     onFirstRendering?: () => void;
     initializeAudioContext?(): Promise<void> | void;
     start?(): Promise<void> | void;
+    /** Stop drawing (audio and the animation state carry on). */
+    pauseRendering(): void;
+    resumeRendering(): void;
     dispose(): void;
   }
   export type LoadProgress = "downloading" | "completed" | "failed";
@@ -47,5 +59,7 @@ declare module "@spatius/avatarkit" {
       audioFormat?: { channelCount: number; sampleRate: number };
     }): Promise<void>;
     setSessionToken(token: string): void;
+    /** Takes effect on the next rendered frame; throws before initialize. */
+    setRenderQuality(quality: RenderQuality): void;
   };
 }

@@ -27,6 +27,8 @@ export interface TutorAvailability {
   resume_subject_id?: string | null;
   first_module_id?: string | null;
   first_subject_id?: string | null;
+  /** The course's premium face: lets the tap that opens a voice lesson start the SDK download. */
+  avatar?: { provider: "spatius"; app_id: string } | null;
 }
 
 export interface TutorChapterSlide {

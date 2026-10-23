@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { Microphone } from "@phosphor-icons/react";
 import { getTutorAvailability, type TutorAvailability } from "@/services/tutor-api";
-import { preloadAvatarKit } from "@/hooks/useSpatiusAvatar";
+import { preloadAvatarKit, warmAvatarSdk } from "@/hooks/useSpatiusAvatar";
 import { TeacherAvatar } from "./TeacherAvatar";
 
 interface TutorEntryCardProps {
@@ -47,8 +47,12 @@ export const TutorEntryCard: React.FC<TutorEntryCardProps> = ({ courseId, packag
   const subjectId = resuming ? avail.resume_subject_id : avail.first_subject_id;
   const go = (mode: "text" | "voice") => {
     // A voice lesson may bring the animated teacher: start its SDK download
-    // now, a whole round-trip before the lesson page asks for it.
-    if (mode === "voice") void preloadAvatarKit().catch(() => undefined);
+    // now, a whole round-trip before the lesson page asks for it — with the
+    // app id, the SDK's own first-visit template download too.
+    if (mode === "voice") {
+      if (avail.avatar?.app_id) warmAvatarSdk(avail.avatar.app_id);
+      else void preloadAvatarKit().catch(() => undefined);
+    }
     return navigate({
       to: "/study-library/courses/course-details/tutor",
       search: {

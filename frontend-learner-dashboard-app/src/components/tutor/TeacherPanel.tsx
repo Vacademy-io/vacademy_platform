@@ -83,7 +83,11 @@ interface TeacherPanelProps {
   onToggleAvatar?: () => void;
   /** Why the avatar stopped (vendor error code or message), and a way to start it again. */
   avatarError?: string;
+  /** `avatarError` is a plain sentence (this device cannot carry the face), not a vendor error. */
+  avatarErrorSoft?: boolean;
   onRetryAvatar?: () => void;
+  /** Draw the face at this multiple of the card and scale it down: sharper on 1x–1.5x screens. */
+  avatarSupersample?: number;
   /** The SDK has drawn its first frame: the photo poster cross-fades to the live face. */
   avatarPainted?: boolean;
   /** Asset download 0..1 while the face loads; null when unknown. */
@@ -138,7 +142,7 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
   teacherName, teacherAvatarFileId, phase, transcript, check, awaiting, voiceMode, micOn, speakOn,
   onSendText, onAsk, onContinue, onControl, onToggleMic, onToggleSpeak, onInterrupt, onEnd,
   notice, disabled, pace, onPace, stats, language, languages, onLanguage,
-  avatarContainerRef, avatarState, onToggleAvatar, avatarError, onRetryAvatar, avatarPainted, avatarProgress, gate, onGateTap, locked, countdown, activeness,
+  avatarContainerRef, avatarState, onToggleAvatar, avatarError, avatarErrorSoft, onRetryAvatar, avatarPainted, avatarProgress, avatarSupersample = 1, gate, onGateTap, locked, countdown, activeness,
 }) => {
   const photoUrl = useTeacherPhotoUrl(teacherAvatarFileId);
   const [text, setText] = useState("");
@@ -237,7 +241,7 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
         aria-expanded={optionsOpen}
         aria-label="Lesson options"
         title="Language and pace"
-        className={onDark ? "rounded-full bg-white/15 p-1.5 text-white backdrop-blur hover:bg-white/25" : "rounded-full p-2 text-neutral-500 hover:bg-neutral-100"}
+        className={onDark ? "rounded-full bg-neutral-900/40 p-1.5 text-white hover:bg-neutral-900/60" : "rounded-full p-2 text-neutral-500 hover:bg-neutral-100"}
       >
         <SlidersHorizontal className="size-4" />
       </button>
@@ -274,7 +278,10 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
         <div className={`relative overflow-hidden rounded-2xl bg-primary-100 ${avatarShown ? "aspect-[21/9] w-full lg:aspect-video" : "h-0"}`}>
           <div
             ref={avatarContainerRef}
-            className={`size-full transition-opacity duration-700 ${avatarPainted ? "opacity-100" : "opacity-0"}`}
+            className={`size-full origin-top-left transition-opacity duration-700 ${avatarPainted ? "opacity-100" : "opacity-0"}`}
+            // Genuinely dynamic value (screen pixel ratio): the SDK sizes its canvas from this
+            // box's layout size, so a larger box scaled down renders the face with more pixels.
+            style={avatarSupersample > 1 ? { width: `${avatarSupersample * 100}%`, height: `${avatarSupersample * 100}%`, transform: `scale(${1 / avatarSupersample})` } : undefined}
             aria-label={`${teacherName}'s avatar`}
           />
           {avatarShown && (
@@ -328,18 +335,18 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
                   {phase === "speaking" && (
-                    <button type="button" onClick={onInterrupt} className="rounded-full bg-white/15 p-1.5 text-white backdrop-blur hover:bg-white/25" title="Stop">
+                    <button type="button" onClick={onInterrupt} className="rounded-full bg-neutral-900/40 p-1.5 text-white hover:bg-neutral-900/60" title="Stop">
                       <Stop className="size-4" weight="fill" />
                     </button>
                   )}
                   {voiceMode && (
-                    <button type="button" onClick={onToggleSpeak} className="rounded-full bg-white/15 p-1.5 text-white backdrop-blur hover:bg-white/25" title={speakOn ? "Mute teacher" : "Unmute teacher"}>
+                    <button type="button" onClick={onToggleSpeak} className="rounded-full bg-neutral-900/40 p-1.5 text-white hover:bg-neutral-900/60" title={speakOn ? "Mute teacher" : "Unmute teacher"}>
                       {speakOn ? <SpeakerHigh className="size-4" /> : <SpeakerSlash className="size-4" />}
                     </button>
                   )}
                   {optionsButton(true)}
                   {avatarUsable && avatarState === "on" && (
-                    <button type="button" onClick={onToggleAvatar} className="rounded-full bg-white/15 p-1.5 text-white backdrop-blur hover:bg-white/25" title="Hide the teacher">
+                    <button type="button" onClick={onToggleAvatar} className="rounded-full bg-neutral-900/40 p-1.5 text-white hover:bg-neutral-900/60" title="Hide the teacher">
                       <EyeSlash className="size-4" />
                     </button>
                   )}
@@ -413,8 +420,14 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
 
       {avatarError && !gate && (avatarState === "failed" || avatarState === "on") && (
         <p role="status" className="mt-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xs text-neutral-600">
-          {avatarState === "failed" ? "Teacher avatar stopped: " : "Teacher avatar hiccup: "}
-          <span className="font-mono">{avatarError}</span>
+          {avatarErrorSoft ? (
+            avatarError
+          ) : (
+            <>
+              {avatarState === "failed" ? "Teacher avatar stopped: " : "Teacher avatar hiccup: "}
+              <span className="font-mono">{avatarError}</span>
+            </>
+          )}
           {avatarState === "failed" && onRetryAvatar && (
             <button type="button" onClick={onRetryAvatar} className="ms-2 font-medium text-primary-500 hover:underline">Try again</button>
           )}

@@ -28,6 +28,8 @@ export interface Instructor {
     roles?: string[];
     authorSubtitle?: string;
     authorDescription?: string;
+    /** Display role in this course (Author / Instructor / Acharya ...). '' = institute default. */
+    roleLabel?: string;
 }
 
 // === Subject Details with optional modules ===

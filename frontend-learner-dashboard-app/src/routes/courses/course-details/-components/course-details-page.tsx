@@ -57,6 +57,7 @@ import { CourseStatsSidebar } from "@/routes/study-library/courses/course-detail
 import { useCatalogStore } from "@/routes/courses/-store/catalogStore";
 import { formatTotalCourseDuration, getBackendCourseDuration } from "@/utils/courseTime";
 import { useCourseDisplaySettings } from "@/routes/study-library/courses/course-details/-hooks/use-course-display-settings";
+import { authorRoleTag, sharedAuthorRole } from "@/lib/course-author-role";
 
 type SlideType = {
     id: string;
@@ -638,6 +639,12 @@ export const CourseDetailsPage = () => {
         return <DashboardLoader />;
     }
 
+    // "Acharya" when every author is one; otherwise the institute term + a role line each.
+    const instructorsHeading = sharedAuthorRole(
+        (form.getValues("courseData")?.instructors ?? []).map((i) => i.roleLabel),
+        getTerminologyPlural(RoleTerms.Teacher, SystemTerms.Teacher)
+    );
+
     return (
         <>
             <div className="flex min-h-screen flex-col bg-white w-full">
@@ -1067,7 +1074,7 @@ export const CourseDetailsPage = () => {
                                     .length > 0 && (
                                     <div className="mb-6 sm:mb-8 space-y-stack">
                                         <h2 className="sm:mb-4 text-xl sm:text-2xl font-bold">
-                                            {getTerminologyPlural(RoleTerms.Teacher, SystemTerms.Teacher)}
+                                            {instructorsHeading}
                                         </h2>
                                         <div className="space-y-3 sm:space-y-4">
                                             {form
@@ -1097,6 +1104,11 @@ export const CourseDetailsPage = () => {
                                                                         instructor.name
                                                                     }
                                                                 </h3>
+                                                                {authorRoleTag(instructor.roleLabel, instructorsHeading) && (
+                                                                    <p className="text-xs sm:text-sm font-medium text-gray-500">
+                                                                        {authorRoleTag(instructor.roleLabel, instructorsHeading)}
+                                                                    </p>
+                                                                )}
                                                                 {instructor.authorSubtitle && (
                                                                     <p className="text-xs sm:text-sm text-gray-500">
                                                                         {

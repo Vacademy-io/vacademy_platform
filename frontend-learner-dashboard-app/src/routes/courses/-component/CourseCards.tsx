@@ -7,6 +7,7 @@ import { toTitleCase } from "@/lib/utils";
 import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { Button } from "@/components/ui/button";
+import { authorRole, sharedAuthorRole } from "@/lib/course-author-role";
 
 interface Instructor {
     id: string;
@@ -15,6 +16,8 @@ interface Instructor {
     profile_pic_file_id?: string | null;
     author_subtitle?: string;
     author_description?: string;
+    /** Display role in this course (Author / Instructor / Acharya …). */
+    role_label?: string | null;
 }
 
 interface CourseCardProps {
@@ -180,9 +183,9 @@ const CourseCard: React.FC<CourseCardProps> = ({
                         />
                         <div className="min-w-0 flex-1 space-y-1">
                             <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">
-                                {getTerminology(
-                                    RoleTerms.Teacher,
-                                    SystemTerms.Teacher
+                                {sharedAuthorRole(
+                                    instructors.map(authorRole),
+                                    getTerminology(RoleTerms.Teacher, SystemTerms.Teacher)
                                 )}
                             </p>
                             <div className="text-xs sm:text-sm font-semibold text-gray-800 truncate">

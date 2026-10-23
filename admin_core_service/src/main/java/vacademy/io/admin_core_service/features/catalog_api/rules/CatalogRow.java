@@ -78,8 +78,15 @@ public record CatalogRow(
         return instructors == null || instructors.isEmpty() ? null : instructors.get(0).name();
     }
 
-    /** A course instructor / author as the public pages may show them (never an email). */
-    public record Person(String id, String name, String imageFileId, String subtitle, String bioHtml) {
+    /**
+     * A course instructor / author as the public pages may show them (never an email).
+     * {@code role} is their display role in this course (Author / Instructor / Acharya ...),
+     * null when the admin set none.
+     */
+    public record Person(String id, String name, String imageFileId, String subtitle, String bioHtml, String role) {
+        public Person(String id, String name, String imageFileId, String subtitle, String bioHtml) {
+            this(id, name, imageFileId, subtitle, bioHtml, null);
+        }
     }
 
     public static CatalogRow from(PackageDetailV2DTO d) {
@@ -93,7 +100,7 @@ public record CatalogRow(
             for (UserDTO u : d.getInstructors()) {
                 if (u == null) continue;
                 people.add(new Person(u.getId(), trimToNull(u.getFullName()), trimToNull(u.getProfilePicFileId()),
-                        trimToNull(u.getAuthorSubtitle()), u.getAuthorDescription()));
+                        trimToNull(u.getAuthorSubtitle()), u.getAuthorDescription(), trimToNull(u.getRoleLabel())));
             }
         }
         String image = firstText(d.getCoursePreviewImageMediaId(), d.getCourseBannerMediaId(), d.getThumbnailFileId());

@@ -86,6 +86,12 @@ public class UserDTO {
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private Map<String, String> usernameFieldValues;
 
+    // Response-only: this person's display role in ONE course (Author / Instructor /
+    // Acharya ...), set by admin-core on course instructor lists from the faculty
+    // mapping. Never stored on the user; omitted when unset.
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private String roleLabel;
+
     public UserDTO(User user) {
         this.id = user.getId();
         this.username = user.getUsername();

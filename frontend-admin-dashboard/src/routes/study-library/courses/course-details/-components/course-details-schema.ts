@@ -83,6 +83,7 @@ export const buildCourseDetailsSchema = (t: TFunction) => {
         roles: z.array(z.string()).optional(),
         authorSubtitle: z.string().optional(),
         authorDescription: z.string().optional(),
+        roleLabel: z.string().optional(),
     });
 
     // Define the schema for level details within a session

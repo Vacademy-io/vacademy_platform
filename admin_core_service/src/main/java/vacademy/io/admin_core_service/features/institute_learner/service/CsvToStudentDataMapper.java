@@ -42,7 +42,8 @@ public class CsvToStudentDataMapper {
                     null, // authorSubtitle (added to UserDTO by Add Authors flow) — CSV import sets none
                     null, // authorDescription (added to UserDTO by Add Authors flow) — CSV import sets none
                     null, // usernameExplicit (username strategy hint) — legacy CSV sets none
-                    null); // usernameFieldValues (username strategy hint) — legacy CSV sets none
+                    null, // usernameFieldValues (username strategy hint) — legacy CSV sets none
+                    null); // roleLabel (per-course author role, response-only) — CSV import sets none
 
             StudentExtraDetails studentExtraDetails = new StudentExtraDetails(
                     getFieldValue(record, "FATHER_NAME"),

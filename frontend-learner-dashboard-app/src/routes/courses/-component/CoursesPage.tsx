@@ -163,6 +163,7 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                           profile_pic_file_id: instructor.profile_pic_file_id,
                           author_subtitle: instructor.author_subtitle,
                           author_description: instructor.author_description,
+                          role_label: instructor.role_label,
                         }))
                         : []
                     }

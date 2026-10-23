@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.study_library.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import vacademy.io.admin_core_service.features.faculty.service.CourseRoleLabelService;
 import vacademy.io.admin_core_service.features.packages.dto.ComingSoonDTO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.annotation.Cacheable;
@@ -91,6 +92,9 @@ public class StudyLibraryService {
 
     @Autowired
     private AuthService authService;
+
+    @Autowired
+    private CourseRoleLabelService courseRoleLabelService;
 
     @Autowired
     private LearnerOperationRepository learnerOperationRepository;
@@ -260,6 +264,9 @@ public class StudyLibraryService {
             List<UserDTO> allInstructors = authService.getUsersFromAuthServiceByUserIds(new ArrayList<>(allUserIds));
             allInstructors.forEach(user -> userIdToUserDTOMap.put(user.getId(), user));
         }
+        Map<String, Map<String, String>> roleLabels = allUserIds.isEmpty()
+                ? Map.of()
+                : courseRoleLabelService.labelsByPackage(packageIds);
 
         // Step 7: Bulk fetch read times for ONLY valid combinations
         List<String> slideStatuses = List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name());
@@ -324,10 +331,11 @@ public class StudyLibraryService {
                     // Get instructors for this level
                     List<String> facultyIds = levelSessionPackageToFacultyIdsMap.getOrDefault(lookupKey,
                             new ArrayList<>());
-                    List<UserDTO> instructors = facultyIds.stream()
+                    List<UserDTO> instructors = courseRoleLabelService.withRoleLabels(facultyIds.stream()
                             .map(userIdToUserDTOMap::get)
                             .filter(Objects::nonNull)
-                            .collect(Collectors.toList());
+                            .collect(Collectors.toList()),
+                            roleLabels.get(packageEntity.getId()));
 
                     // Build level DTO
                     LevelDTOWithDetails levelDTO = new LevelDTOWithDetails(level, subjectDTOs, instructors);
@@ -464,7 +472,9 @@ public class StudyLibraryService {
                         List.of(FacultyStatusEnum.ACTIVE.name()),
                         List.of(SubjectStatusEnum.ACTIVE.name()));
 
-        List<UserDTO> instructors = authService.getUsersFromAuthServiceByUserIds(userIds);
+        List<UserDTO> instructors = courseRoleLabelService.withRoleLabels(
+                authService.getUsersFromAuthServiceByUserIds(userIds),
+                courseRoleLabelService.labelsByPackage(Collections.singletonList(packageId)).get(packageId));
         return getLevelDTOWithDetails(subjects, level, instructors);
     }
 

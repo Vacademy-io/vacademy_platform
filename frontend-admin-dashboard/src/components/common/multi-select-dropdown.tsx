@@ -18,6 +18,8 @@ interface MultiSelectDropdownProps {
     className?: string;
     emptyLabel?: string;
     searchPlaceholder?: string;
+    /** Also match the search text against each option's subtitle (e.g. a staff email). */
+    searchSubtitle?: boolean;
 }
 
 export const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
@@ -29,6 +31,7 @@ export const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
     className = '',
     emptyLabel = 'No results',
     searchPlaceholder = 'Search…',
+    searchSubtitle = false,
 }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [search, setSearch] = useState('');
@@ -127,8 +130,12 @@ export const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
         );
         const needle = search.trim().toLowerCase();
         if (!needle) return unselected;
-        return unselected.filter((option) => option.name.toLowerCase().includes(needle));
-    }, [options, selected, search]);
+        return unselected.filter(
+            (option) =>
+                option.name.toLowerCase().includes(needle) ||
+                (searchSubtitle && (option.subtitle ?? '').toLowerCase().includes(needle))
+        );
+    }, [options, selected, search, searchSubtitle]);
 
     const getInitials = (name: string) => {
         const cleaned = name.trim();

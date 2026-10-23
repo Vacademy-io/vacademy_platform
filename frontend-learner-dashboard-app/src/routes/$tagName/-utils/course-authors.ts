@@ -8,6 +8,8 @@
  * WHO is shown, so both rules are testable without rendering the page.
  */
 
+import { authorRole } from "@/lib/course-author-role";
+
 /** One author as the course page shows it. Deliberately no email: this is a
  *  public page, and a staff address is never part of the profile. */
 export interface CourseAuthor {
@@ -18,6 +20,8 @@ export interface CourseAuthor {
     description?: string;
     /** media-service file id of the author's profile photo. */
     profilePicId?: string;
+    /** Display role in this course (Author / Instructor / Acharya …), as the admin typed it. */
+    role?: string;
 }
 
 /** The subset of UserDTO this page reads. */
@@ -27,6 +31,7 @@ export interface RawCourseInstructor {
     author_subtitle?: string | null;
     author_description?: string | null;
     profile_pic_file_id?: string | null;
+    role_label?: string | null;
 }
 
 const hasText = (html: string | null | undefined): boolean =>
@@ -54,6 +59,7 @@ export const mapCourseAuthors = (
             ? inst.author_description!.trim()
             : undefined,
         profilePicId: inst.profile_pic_file_id || undefined,
+        role: authorRole(inst),
     }));
 
 /**

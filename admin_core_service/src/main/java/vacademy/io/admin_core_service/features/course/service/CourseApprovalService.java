@@ -981,6 +981,7 @@ public class CourseApprovalService {
             copy.setSubjectId(original.getSubjectId()); // Keep same subject reference
             copy.setName(original.getName());
             copy.setStatus(original.getStatus());
+            copy.setRoleLabel(original.getRoleLabel());
             // Carry the access/linkage fields across verbatim. Dropping suborg_id in particular
             // would turn a sub-org access grant into a row indistinguishable from a real teacher
             // of the temp package session, which is exactly what the faculty listings filter on.

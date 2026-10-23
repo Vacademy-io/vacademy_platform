@@ -9,7 +9,23 @@ export type CourseFormData = Step1Data & Step2Data;
 interface AddFacultyToCourse {
     user: UserDetails;
     new_user: boolean;
+    /** Display role in this course (Author / Instructor / Acharya ...); '' clears it. */
+    role_label?: string;
 }
+
+/**
+ * Each author's role, read from the course-level author list: a level's userIds
+ * hold copies taken when the author was assigned, so they can be stale.
+ */
+const roleLabelsById = (formData: CourseFormData) =>
+    new Map(
+        (Array.isArray(formData.selectedInstructors) ? formData.selectedInstructors : []).map(
+            (i) => [i.id, i.roleLabel] as const
+        )
+    );
+
+const withRoleLabel = (role: string | undefined) =>
+    role !== undefined ? { role_label: role.trim() } : {};
 
 interface UserDetails {
     id: string;
@@ -154,6 +170,7 @@ export const convertToApiCourseFormat = (formData: CourseFormData): FormattedCou
             ? topLevelSubgroupNames.map((name) => ({ name }))
             : undefined;
 
+    const roleById = roleLabelsById(formData);
     const mapUser = (user: {
         id: string;
         name: string;
@@ -161,6 +178,7 @@ export const convertToApiCourseFormat = (formData: CourseFormData): FormattedCou
         profilePicId: string;
         authorSubtitle?: string;
         authorDescription?: string;
+        roleLabel?: string;
     }) => ({
         user: {
             id: user.id || '',
@@ -184,6 +202,7 @@ export const convertToApiCourseFormat = (formData: CourseFormData): FormattedCou
                 : {}),
         },
         new_user: false,
+        ...withRoleLabel(roleById.get(user.id) ?? user.roleLabel),
     });
 
     const formatLevels = (
@@ -434,7 +453,9 @@ export const convertToApiCourseFormatUpdate = (
         profilePicId: string;
         authorSubtitle?: string;
         authorDescription?: string;
+        roleLabel?: string;
     };
+    const roleById = roleLabelsById(formData);
 
     type Level = {
         id: string;
@@ -495,6 +516,7 @@ export const convertToApiCourseFormatUpdate = (
                     user: toUserPayload(user),
                     status: 'ACTIVE',
                     new_user: false,
+                    ...withRoleLabel(roleById.get(user.id) ?? user.roleLabel),
                 }));
 
             const existingUsers = currentUsers
@@ -503,6 +525,7 @@ export const convertToApiCourseFormatUpdate = (
                     user: toUserPayload(user),
                     status: 'ACTIVE',
                     new_user: false,
+                    ...withRoleLabel(roleById.get(user.id) ?? user.roleLabel),
                 }));
 
             const add_faculty_to_course = [...deletedUsers, ...addedUsers, ...existingUsers];
@@ -677,6 +700,7 @@ export function transformCourseData(course: CourseDetailsFormValues) {
                     roles: inst.roles,
                     authorSubtitle: inst.authorSubtitle,
                     authorDescription: inst.authorDescription,
+                    roleLabel: inst.roleLabel,
                 })),
                 newLevel: level.newLevel ?? false,
                 subgroups: Array.isArray(
@@ -732,6 +756,7 @@ function extractInstructors(data: Session[]) {
                         roles: instructor.roles,
                         authorSubtitle: instructor.authorSubtitle,
                         authorDescription: instructor.authorDescription,
+                        roleLabel: instructor.roleLabel,
                     });
                 }
             }

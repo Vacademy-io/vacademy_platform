@@ -8,6 +8,7 @@ interface Instructor {
   image_url?: string;
   author_subtitle?: string;
   author_description?: string;
+  role_label?: string | null;
 }
 
 interface Level {

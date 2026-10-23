@@ -24,6 +24,7 @@ import type {
   ProductPageSettings,
   ProductPageMappingResponse,
 } from "../-types/product-page-types";
+import { authorRole, authorRoleTag, sharedAuthorRole } from "@/lib/course-author-role";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -475,7 +476,7 @@ interface CourseInitData {
   sessions?: Array<{
     level_with_details?: Array<{
       read_time_in_minutes?: number;
-      instructors?: Array<{ full_name: string; email: string }>;
+      instructors?: Array<{ full_name: string; email: string; role_label?: string | null }>;
     }>;
   }>;
 }
@@ -513,7 +514,12 @@ const CourseDetailSheet = ({
   const levelWithDetails = details?.sessions?.[0]?.level_with_details?.[0];
   const levelId = course?.level_id;
   const rawInstructors = levelWithDetails?.instructors || [];
-  const instructors = rawInstructors.map(i => ({ name: i.full_name, email: i.email }));
+  const instructors = rawInstructors.map(i => ({ name: i.full_name, email: i.email, role: authorRole(i) }));
+  // "Acharya" when every author is one; otherwise the institute term + a role line each.
+  const instructorsHeading = sharedAuthorRole(
+    instructors.map((i) => i.role),
+    getTerminologyPlural(RoleTerms.Teacher, SystemTerms.Teacher),
+  );
   const tagStr = course?.tags || course?.comma_separeted_tags || "";
   const tags = tagStr.split(",").map(t => t.trim()).filter(Boolean);
   const description = sanitizeHtml(course?.course_html_description) || sanitizeHtml(course?.course_html_description_html) || "";
@@ -631,7 +637,7 @@ const CourseDetailSheet = ({
                 </HighlightAccordion>
               )}
               {instructors.length > 0 && (
-                <HighlightAccordion icon={<Users className="size-4 text-orange-600" />} title={getTerminologyPlural(RoleTerms.Teacher, SystemTerms.Teacher)}>
+                <HighlightAccordion icon={<Users className="size-4 text-orange-600" />} title={instructorsHeading}>
                   <div className="space-y-2">
                     {instructors.map((inst, i) => (
                       <div key={i} className="flex items-center gap-3 rounded-lg bg-white p-2.5">
@@ -640,6 +646,9 @@ const CourseDetailSheet = ({
                         </div>
                         <div>
                           <p className="text-sm font-semibold text-gray-900">{inst.name}</p>
+                          {authorRoleTag(inst.role, instructorsHeading) && (
+                            <p className="text-xs font-medium text-gray-500">{authorRoleTag(inst.role, instructorsHeading)}</p>
+                          )}
                           {inst.email && <p className="text-xs text-gray-500">{inst.email}</p>}
                         </div>
                       </div>

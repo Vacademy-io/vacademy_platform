@@ -65,6 +65,8 @@
             "WEAKNESS": "نقطة ضعف",
             "MISCONCEPTION": "مفهوم خاطئ",
             "INTEREST": "اهتمام"
-        }
+        },
+        "showAll": "عرض الكل ({{count}})",
+        "showLess": "عرض أقل"
     }
 }

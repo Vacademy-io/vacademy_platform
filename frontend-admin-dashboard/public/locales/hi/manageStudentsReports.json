@@ -53,6 +53,8 @@
             "WEAKNESS": "कमज़ोरी",
             "MISCONCEPTION": "गलत धारणा",
             "INTEREST": "रुचि"
-        }
+        },
+        "showAll": "सभी {{count}} देखें",
+        "showLess": "कम दिखाएँ"
     }
 }

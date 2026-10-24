@@ -53,6 +53,8 @@
             "WEAKNESS": "Weakness",
             "MISCONCEPTION": "Misconception",
             "INTEREST": "Interest"
-        }
+        },
+        "showAll": "Show all {{count}}",
+        "showLess": "Show less"
     }
 }

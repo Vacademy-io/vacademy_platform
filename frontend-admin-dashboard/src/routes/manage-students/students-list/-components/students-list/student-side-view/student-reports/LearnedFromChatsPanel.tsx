@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { format } from 'date-fns';
@@ -9,7 +10,6 @@ import {
     type LearnerProfileSignal,
     type LearnerSignalKind,
 } from '@/services/learner-profile';
-import { cn } from '@/lib/utils';
 import { ProfileSectionCard } from '../profile-ui';
 
 const KIND_ORDER: LearnerSignalKind[] = [
@@ -21,6 +21,8 @@ const KIND_ORDER: LearnerSignalKind[] = [
     'INTEREST',
 ];
 
+// Kept out of cn(): tailwind-merge reads the custom text-caption size and a
+// text-<colour> class as one group and would drop the size.
 const KIND_TONE: Record<LearnerSignalKind, string> = {
     GOAL: 'bg-primary-50 text-primary-700',
     PREFERENCE: 'bg-info-50 text-info-700',
@@ -37,6 +39,9 @@ interface SignalGroup {
     topic: string | null;
     signals: LearnerProfileSignal[];
 }
+
+/** Rows shown before "Show all". */
+const COLLAPSED_ROWS = 6;
 
 const groupSignals = (signals: LearnerProfileSignal[]): SignalGroup[] => {
     const groups = new Map<string, SignalGroup>();
@@ -62,6 +67,7 @@ export const LearnedFromChatsPanel = ({ userId }: { userId: string }) => {
     const { t } = useTranslation('manageStudentsReports');
     const queryClient = useQueryClient();
     const queryKey = ['learner-profile-signals', userId];
+    const [expanded, setExpanded] = useState(false);
 
     const { data: signals = [] } = useQuery({
         queryKey,
@@ -84,27 +90,25 @@ export const LearnedFromChatsPanel = ({ userId }: { userId: string }) => {
 
     if (signals.length === 0) return null;
     const groups = groupSignals(signals);
+    const shown = expanded ? groups : groups.slice(0, COLLAPSED_ROWS);
 
     return (
         <ProfileSectionCard icon={ChatsCircle} heading={t('learned.heading')}>
             <p className="mb-2 text-caption text-neutral-500">{t('learned.subtitle')}</p>
             <ul className="flex flex-col divide-y divide-border">
-                {groups.map((group) => {
+                {shown.map((group) => {
                     const latest = group.signals[0]!;
                     const seen = group.signals.length;
                     return (
                         <li key={group.key} className="flex items-start gap-2 py-2">
                             <span
-                                className={cn(
-                                    'mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-caption font-medium',
-                                    KIND_TONE[group.kind]
-                                )}
+                                className={`mt-0.5 w-24 shrink-0 rounded px-1.5 py-0.5 text-center text-caption font-medium ${KIND_TONE[group.kind]}`}
                             >
                                 {t(`learned.kind.${group.kind}`)}
                             </span>
                             <div className="min-w-0 flex-1">
                                 {group.topic && (
-                                    <p className="text-body font-medium text-card-foreground">
+                                    <p className="text-body font-medium text-card-foreground first-letter:uppercase">
                                         {group.topic}
                                     </p>
                                 )}
@@ -140,6 +144,17 @@ export const LearnedFromChatsPanel = ({ userId }: { userId: string }) => {
                     );
                 })}
             </ul>
+            {groups.length > COLLAPSED_ROWS && (
+                <button
+                    type="button"
+                    onClick={() => setExpanded((v) => !v)}
+                    className="mt-1 text-caption font-medium text-primary-600 hover:underline"
+                >
+                    {expanded
+                        ? t('learned.showLess')
+                        : t('learned.showAll', { count: groups.length })}
+                </button>
+            )}
         </ProfileSectionCard>
     );
 };

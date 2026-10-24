@@ -915,7 +915,11 @@ const FollowUpsContent = () => {
             />
 
             {/* Summary header. */}
-            <FollowUpsEnhancedHeader allowed={isAdmin || isScopedCounsellor} />
+            <FollowUpsEnhancedHeader
+                allowed={(isAdmin || isScopedCounsellor) && statusFilterReady}
+                leadStatusId={leadStatusId}
+                leadStatusExcludeId={leadStatusExcludeId}
+            />
 
             {/* View toggle on the left, counsellor filter on the right — this row
                 renders in both views, which the search toolbar below does not. */}

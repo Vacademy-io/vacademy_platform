@@ -12,8 +12,9 @@ package vacademy.io.admin_core_service.features.crm_dashboard.service;
  *
  * <p>Binds: instituteId, ownerCsv (single-owner narrow: forced self or a team),
  * scopeCsv (sub-org members / counsellor subtree), includeUnassigned, allowedCsv,
- * audienceId (one lead list, or empty for all).
- * Empty string = no restriction for the three CSVs. Window columns hold UTC wall
+ * audienceId (one lead list, or empty for all), statusCsv / statusExcludeCsv (the
+ * list's lead status include / exclude filter).
+ * Empty string = no restriction for the CSVs. Window columns hold UTC wall
  * clock, so instants are bound as UTC LocalDateTime.
  */
 final class CrmDashboardSql {
@@ -56,18 +57,30 @@ final class CrmDashboardSql {
                   AND ar.audience_status = 'ACTIVE'
                   AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
                   %s
+                  %s
             )
             """;
 
+    /** The leads list's lead status include / exclude predicates, on the same status key. */
+    static final String STATUS_FILTER = """
+                  AND (:statusCsv = ''
+                       OR %1$s = ANY(STRING_TO_ARRAY(:statusCsv, ','))
+                       OR ('__NO_STATUS__' = ANY(STRING_TO_ARRAY(:statusCsv, ','))
+                           AND ar.lead_status_id IS NULL AND ulp.conversion_status IS NULL))
+                  AND (:statusExcludeCsv = ''
+                       OR %1$s IS NULL
+                       OR NOT (%1$s = ANY(STRING_TO_ARRAY(:statusExcludeCsv, ','))))
+            """.formatted(STATUS_KEY);
+
     /** VIS limited to leads that arrived in [:seriesFrom, :to). */
     static String visSubmittedIn() {
-        return VIS.formatted(STATUS_KEY,
+        return VIS.formatted(STATUS_KEY, STATUS_FILTER,
                 "AND ar.submitted_at >= :seriesFrom AND ar.submitted_at < :to");
     }
 
     /** VIS over every visible lead (current-state blocks). */
     static String visAll() {
-        return VIS.formatted(STATUS_KEY, "");
+        return VIS.formatted(STATUS_KEY, STATUS_FILTER, "");
     }
 
     /** New leads per day (and how many of them were contacted) over previous + current period, one scan. */

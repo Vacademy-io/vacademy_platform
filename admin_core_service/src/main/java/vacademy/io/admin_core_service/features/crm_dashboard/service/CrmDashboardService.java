@@ -33,6 +33,7 @@ import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -42,6 +43,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 /**
  * CRM Dashboard — one request, only the blocks the page will draw.
@@ -122,7 +124,8 @@ public class CrmDashboardService {
         LeadVisibility vis = scopeCache.get(scopeKey(instituteId, user),
                 k -> readOnlyTx.execute(s -> leadVisibilityResolver.resolve(user, instituteId)));
         Scope scope = toScope(vis, instituteId, user, trimToNull(req.getTeamId()),
-                trimToNull(req.getAudienceId()));
+                trimToNull(req.getAudienceId()), statusCsv(req.getLeadStatusId()),
+                statusCsv(req.getLeadStatusExcludeId()));
 
         Set<String> wanted = new LinkedHashSet<>();
         if (req.getBlocks() == null || req.getBlocks().isEmpty()) {
@@ -265,6 +268,8 @@ public class CrmDashboardService {
         f.setInstituteId(instituteId);
         f.setAssignedCounselorId(scope.teamOwnerCsv());
         if (!scope.audienceId().isEmpty()) f.setAudienceId(scope.audienceId());
+        if (!scope.statusCsv().isEmpty()) f.setLeadStatusId(scope.statusCsv());
+        if (!scope.statusExcludeCsv().isEmpty()) f.setLeadStatusExcludeId(scope.statusExcludeCsv());
         f.setConversionStatusFilter("EXCLUDE_CONVERTED");
         f.setFollowUpPending(true);
         f.setFollowUpFrom(from);
@@ -373,7 +378,7 @@ public class CrmDashboardService {
      * own scope and never widens it: an empty intersection means nothing visible.
      */
     private Scope toScope(LeadVisibility vis, String instituteId, CustomUserDetails user, String teamId,
-                          String audienceId) {
+                          String audienceId, String statusCsv, String statusExcludeCsv) {
         boolean empty = vis.allowedAudienceIds() != null && vis.allowedAudienceIds().isEmpty();
         String allowedCsv = vis.allowedAudienceIds() == null ? "" : String.join(",", vis.allowedAudienceIds());
         String scopeCsv = vis.scopeOwnerIds() == null ? "" : String.join(",", vis.scopeOwnerIds());
@@ -408,13 +413,21 @@ public class CrmDashboardService {
         }
         return new Scope(ownerCsv, scopeCsv, vis.includeUnassigned(), allowedCsv, callOwnerCsv,
                 callsRestricted, teamOwnerCsv, empty,
-                cacheIdentity + "|" + (teamId == null ? "" : teamId) + "|" + (audienceId == null ? "" : audienceId),
-                audienceId == null ? "" : audienceId);
+                cacheIdentity + "|" + (teamId == null ? "" : teamId) + "|" + (audienceId == null ? "" : audienceId)
+                        + "|" + statusCsv + "|" + statusExcludeCsv,
+                audienceId == null ? "" : audienceId, statusCsv, statusExcludeCsv);
     }
 
     record Scope(String ownerCsv, String scopeCsv, boolean includeUnassigned, String allowedCsv,
                  String callOwnerCsv, boolean callsRestricted, String teamOwnerCsv, boolean empty,
-                 String cacheIdentity, String audienceId) {
+                 String cacheIdentity, String audienceId, String statusCsv, String statusExcludeCsv) {
+    }
+
+    /** Status keys as a clean CSV ("" = no narrowing), sorted so equal filters share a cache entry. */
+    static String statusCsv(String raw) {
+        if (raw == null) return "";
+        return Arrays.stream(raw.split(",")).map(String::trim).filter(k -> !k.isEmpty())
+                .distinct().sorted().collect(Collectors.joining(","));
     }
 
     // ─────────────────────────────────────────────────────────── window
@@ -464,6 +477,8 @@ public class CrmDashboardService {
                 .addValue("includeUnassigned", scope.includeUnassigned())
                 .addValue("allowedCsv", scope.allowedCsv())
                 .addValue("audienceId", scope.audienceId())
+                .addValue("statusCsv", scope.statusCsv())
+                .addValue("statusExcludeCsv", scope.statusExcludeCsv())
                 .addValue("callOwnerCsv", scope.callOwnerCsv())
                 .addValue("tz", w.tz().getId())
                 .addValue("from", w.from(), java.sql.Types.TIMESTAMP)

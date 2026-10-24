@@ -8,11 +8,25 @@ import { SectionCard } from '@/routes/study-library/live-session/-components/das
 /**
  * Follow-ups: who holds the overdue work, under the existing tiles. Only for admins and hierarchy-scoped counsellors — other roles are
  * limited to their own follow-ups on this page, and a team breakdown would show more.
+ * Takes the list's lead status filter (the route's status + hide-LOST setting) so each
+ * counsellor's number equals the list filtered to that counsellor.
  */
-export function FollowUpsEnhancedHeader({ allowed }: { allowed: boolean }) {
+export function FollowUpsEnhancedHeader({
+    allowed,
+    leadStatusId,
+    leadStatusExcludeId,
+}: {
+    allowed: boolean;
+    leadStatusId?: string;
+    leadStatusExcludeId?: string;
+}) {
     const enabled = allowed;
     const { t } = useTranslation('crmPages');
-    const { pick } = useCrmDashboardBlocks(['counsellors'], { enabled });
+    const { pick } = useCrmDashboardBlocks(['counsellors'], {
+        enabled,
+        leadStatusId,
+        leadStatusExcludeId,
+    });
     if (!enabled) return null;
     const rows = (pick<{ rows: CrmCounsellorRow[] }>('counsellors')?.rows ?? [])
         .filter((r) => r.overdue > 0)

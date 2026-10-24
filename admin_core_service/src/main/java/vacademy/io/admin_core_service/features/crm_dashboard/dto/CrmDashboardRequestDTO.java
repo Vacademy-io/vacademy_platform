@@ -33,6 +33,13 @@ public class CrmDashboardRequestDTO {
     private String audienceId;
     /** Optional team narrowing; always intersected with the caller's own scope. */
     private String teamId;
+    /**
+     * Optional lead-status narrowing, same keys and meaning as the leads list filter
+     * (CSV of status keys; {@code __NO_STATUS__} = no status). A page that hides some
+     * statuses (Follow-ups hides LOST) passes them so its header agrees with its list.
+     */
+    private String leadStatusId;
+    private String leadStatusExcludeId;
     /** summary, followups, pipeline, sources, counsellors, calls, lists, quality, views. Empty = all. */
     private List<String> blocks;
 }

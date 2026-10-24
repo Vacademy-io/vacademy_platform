@@ -27,6 +27,8 @@ import vacademy.io.common.exceptions.VacademyException;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -446,12 +448,56 @@ public class PaymentDeletionService {
             + "AND (pl.user_plan_id IS NULL OR pl.user_plan_id <> ?1))";
 
     /**
+     * The other courses of this enrolment's admission package that are not being removed with it.
+     * Only enrolments that still exist count.
+     */
+    private static final String PACKAGE_COURSES_LEFT_OUT = "SELECT COALESCE(p.package_name, apc.package_session_id) "
+            + "FROM admission_package_course apc "
+            + "JOIN admission_package_course mine ON mine.admission_package_id = apc.admission_package_id "
+            + "AND mine.user_plan_id = :plan "
+            + "LEFT JOIN package_session ps ON ps.id = apc.package_session_id "
+            + "LEFT JOIN package p ON p.id = ps.package_id "
+            + "WHERE apc.user_plan_id NOT IN (:together) "
+            + "AND EXISTS (SELECT 1 FROM user_plan up WHERE up.id = apc.user_plan_id) "
+            + "ORDER BY apc.position";
+
+    /**
+     * Receipts of this enrolment's payments that also cover a payment outside the enrolments being
+     * removed. Bills raised by hand are not receipts: the void reopens them.
+     */
+    private static final String RECEIPTS_SHARED_OUTSIDE = "SELECT DISTINCT COALESCE(i.invoice_number, i.id) "
+            + "FROM invoice i JOIN invoice_payment_log_mapping m ON m.invoice_id = i.id "
+            + "JOIN payment_log pl ON pl.id = m.payment_log_id "
+            + "WHERE pl.user_plan_id = :plan "
+            + "AND (i.source IS NULL OR i.source NOT IN ('ADMIN_MANUAL', 'LIVE_SESSION')) "
+            + "AND EXISTS (SELECT 1 FROM invoice_payment_log_mapping m2 JOIN payment_log pl2 "
+            + "ON pl2.id = m2.payment_log_id WHERE m2.invoice_id = i.id "
+            + "AND (pl2.user_plan_id IS NULL OR pl2.user_plan_id NOT IN (:together)))";
+
+    /** Receipts of this enrolment's payments that also cover another of the enrolments removed with it. */
+    private static final String RECEIPTS_SHARED_WITHIN = "SELECT DISTINCT i.id "
+            + "FROM invoice i JOIN invoice_payment_log_mapping m ON m.invoice_id = i.id "
+            + "JOIN payment_log pl ON pl.id = m.payment_log_id "
+            + "WHERE pl.user_plan_id = :plan "
+            + "AND (i.source IS NULL OR i.source NOT IN ('ADMIN_MANUAL', 'LIVE_SESSION')) "
+            + "AND EXISTS (SELECT 1 FROM invoice_payment_log_mapping m2 JOIN payment_log pl2 "
+            + "ON pl2.id = m2.payment_log_id WHERE m2.invoice_id = i.id "
+            + "AND pl2.user_plan_id <> :plan AND pl2.user_plan_id IN (:together))";
+
+    /**
      * Counts what {@link #deletePlanHistory} would remove and checks it can. Refused when real money
      * came in online (it has to be refunded in the gateway, the same rule as a single delete), or
-     * when a referral reward, access pass, admission package, plan change or live-class
-     * registration still points at the enrolment or one of its payments.
+     * when a referral reward, access pass, plan change or live-class registration still points at
+     * the enrolment or one of its payments.
+     *
+     * <p>{@code removedTogether} are the enrolments deleted with this one (it included). An
+     * admission package's courses share their receipts, so a package can only go as a whole: refused
+     * while one of its courses is left out, and while a receipt also covers a payment of an
+     * enrolment that stays.
      */
-    public PlanHistory previewPlanHistory(String userPlanId, String instituteId) {
+    public PlanHistory previewPlanHistory(String userPlanId, String instituteId, Collection<String> removedTogether) {
+        Set<String> together = new HashSet<>(removedTogether);
+        together.add(userPlanId);
         List<?> online = entityManager.createNativeQuery("SELECT COALESCE(vendor, 'UNKNOWN'), payment_amount "
                         + "FROM payment_log WHERE user_plan_id = ?1 AND UPPER(COALESCE(payment_status, '')) = 'PAID' "
                         + "AND UPPER(TRIM(COALESCE(vendor, ''))) NOT IN ('MANUAL', 'OFFLINE')")
@@ -465,20 +511,38 @@ public class PaymentDeletionService {
                     + "deleting the payment history.";
         } else if (countPlanReferences("referral_benefit_logs", userPlanId) > 0
                 || countPlanReferences("access_pass_grant", userPlanId) > 0
-                || countPlanReferences("admission_package_course", userPlanId) > 0
-                || countPlanReferences("user_plan_change_request", userPlanId) > 0) {
-            blocker = "This course is linked to a referral reward, access pass, admission package or plan change, "
+                || countPlanReferences("user_plan_change_request", userPlanId) > 0
+                // removePayment refuses these too; caught here so nothing is terminated first
+                || count("SELECT COUNT(*) FROM user_plan_change_request WHERE payment_log_id IN "
+                        + "(SELECT id FROM payment_log WHERE user_plan_id = ?1)", userPlanId) > 0) {
+            blocker = "This course is linked to a referral reward, access pass or plan change, "
                     + "so its payment history cannot be deleted. Remove the course without deleting it.";
         } else if (count("SELECT COUNT(*) FROM session_guest_registrations WHERE payment_log_id IN "
                 + "(SELECT id FROM payment_log WHERE user_plan_id = ?1)", userPlanId) > 0) {
             blocker = "A payment of this course is linked to a live-class registration, so the payment history "
                     + "cannot be deleted. Remove the course without deleting it.";
+        } else {
+            List<String> leftOut = names(PACKAGE_COURSES_LEFT_OUT, userPlanId, together);
+            if (!leftOut.isEmpty()) {
+                blocker = "This course is part of an admission package. Its payment history can only be deleted "
+                        + "together with the whole package — also select " + String.join(", ", leftOut)
+                        + ", or remove the course without deleting the payment history.";
+            } else {
+                List<String> shared = names(RECEIPTS_SHARED_OUTSIDE, userPlanId, together);
+                if (!shared.isEmpty()) {
+                    blocker = "Receipt " + String.join(", ", shared) + " of this course also covers a payment "
+                            + "of another course, so its payment history cannot be deleted on its own. "
+                            + "Remove the course without deleting the payment history.";
+                }
+            }
         }
         Object paid = entityManager.createNativeQuery("SELECT COALESCE(SUM(payment_amount), 0) FROM payment_log "
                         + "WHERE user_plan_id = ?1 AND UPPER(COALESCE(payment_status, '')) = 'PAID'")
                 .setParameter(1, userPlanId).getSingleResult();
         int invoices = entityManager.createNativeQuery(PLAN_INVOICES)
-                .setParameter(1, userPlanId).setParameter(2, instituteId).getResultList().size();
+                .setParameter(1, userPlanId).setParameter(2, instituteId).getResultList().size()
+                // + the package receipts it shares with the courses removed with it
+                + names(RECEIPTS_SHARED_WITHIN, userPlanId, together).size();
         return new PlanHistory(
                 (int) count("SELECT COUNT(*) FROM payment_log WHERE user_plan_id = ?1", userPlanId),
                 paid instanceof Number n ? BigDecimal.valueOf(n.doubleValue()) : BigDecimal.ZERO,
@@ -497,25 +561,31 @@ public class PaymentDeletionService {
      * settled payment goes through {@link #removePayment} (void first, so a bill it paid is reopened,
      * and its own DELETE row in the activity log), then the rest is removed with plain SQL,
      * children before parents. A DELETE row for the plan carries a snapshot of it.
+     *
+     * <p>{@code removedTogether} are the enrolments removed in the same transaction (see
+     * {@link #previewPlanHistory}). A receipt they share goes with the last of them: until then
+     * another payment still holds it.
      */
     @Transactional
-    public Map<String, Object> deletePlanHistory(String userPlanId, String instituteId, String userId) {
+    public Map<String, Object> deletePlanHistory(String userPlanId, String instituteId, String userId,
+                                                 Collection<String> removedTogether) {
         if (!StringUtils.hasText(instituteId)) throw new VacademyException("instituteId is required");
         if (!canDelete(userId, instituteId)) {
             recordBlocked("USER_PLAN", userPlanId, instituteId, userId, TURNED_OFF_MESSAGE, 403);
             throw new VacademyException(TURNED_OFF_MESSAGE);
         }
         try {
-            return removePlanHistory(userPlanId, instituteId, userId);
+            return removePlanHistory(userPlanId, instituteId, userId, removedTogether);
         } catch (VacademyException e) {
             recordBlocked("USER_PLAN", userPlanId, instituteId, userId, e.getMessage(), 400);
             throw e;
         }
     }
 
-    private Map<String, Object> removePlanHistory(String userPlanId, String instituteId, String userId) {
+    private Map<String, Object> removePlanHistory(String userPlanId, String instituteId, String userId,
+                                                  Collection<String> removedTogether) {
         paymentVoidService.assertNotSubOrgAdmin(userId);
-        PlanHistory history = previewPlanHistory(userPlanId, instituteId);
+        PlanHistory history = previewPlanHistory(userPlanId, instituteId, removedTogether);
         if (history.blocker() != null) throw new VacademyException(history.blocker());
         Map<String, Object> snapshot = planAuditSnapshot(userPlanId);
         if (snapshot.isEmpty()) throw new VacademyException("Enrolment plan not found: " + userPlanId);
@@ -562,6 +632,16 @@ public class PaymentDeletionService {
                 userPlanId);
         execute("UPDATE learner_access_log SET user_plan_id = NULL WHERE user_plan_id = ?1", userPlanId);
         execute("UPDATE referral_mapping SET user_plan_id = NULL WHERE user_plan_id = ?1", userPlanId);
+        // Its place in an admission package (the preview made sure the rest of the package goes in
+        // this transaction too); the package itself goes with its last course.
+        List<?> packages = entityManager.createNativeQuery(
+                        "SELECT admission_package_id FROM admission_package_course WHERE user_plan_id = ?1")
+                .setParameter(1, userPlanId).getResultList();
+        execute("DELETE FROM admission_package_course WHERE user_plan_id = ?1", userPlanId);
+        for (Object packageId : packages) {
+            execute("DELETE FROM admission_package WHERE id = ?1 AND NOT EXISTS "
+                    + "(SELECT 1 FROM admission_package_course WHERE admission_package_id = ?1)", String.valueOf(packageId));
+        }
         if (execute("DELETE FROM user_plan WHERE id = ?1", userPlanId) != 1) {
             throw new VacademyException("Payment history could not be deleted, nothing was changed");
         }
@@ -583,6 +663,31 @@ public class PaymentDeletionService {
         result.put("paid_amount_deleted", history.paidAmount());
         result.put("installments_deleted", installments);
         return result;
+    }
+
+    /**
+     * The enrolments whose payment history can only be deleted together with this one: the other
+     * courses of its admission package, and enrolments whose payments share a receipt with its.
+     */
+    public List<String> linkedPlans(String userPlanId) {
+        return entityManager.createNativeQuery("SELECT apc.user_plan_id FROM admission_package_course apc "
+                        + "JOIN admission_package_course mine ON mine.admission_package_id = apc.admission_package_id "
+                        + "AND mine.user_plan_id = ?1 WHERE apc.user_plan_id <> ?1 "
+                        + "UNION SELECT pl2.user_plan_id FROM payment_log pl "
+                        + "JOIN invoice_payment_log_mapping m ON m.payment_log_id = pl.id "
+                        + "JOIN invoice i ON i.id = m.invoice_id "
+                        + "JOIN invoice_payment_log_mapping m2 ON m2.invoice_id = i.id "
+                        + "JOIN payment_log pl2 ON pl2.id = m2.payment_log_id "
+                        + "WHERE pl.user_plan_id = ?1 AND pl2.user_plan_id <> ?1 "
+                        + "AND (i.source IS NULL OR i.source NOT IN ('ADMIN_MANUAL', 'LIVE_SESSION'))")
+                .setParameter(1, userPlanId).getResultList()
+                .stream().map(String::valueOf).toList();
+    }
+
+    private List<String> names(String sql, String userPlanId, Collection<String> together) {
+        return entityManager.createNativeQuery(sql)
+                .setParameter("plan", userPlanId).setParameter("together", List.copyOf(together)).getResultList()
+                .stream().map(String::valueOf).toList();
     }
 
     private long countPlanReferences(String table, String userPlanId) {

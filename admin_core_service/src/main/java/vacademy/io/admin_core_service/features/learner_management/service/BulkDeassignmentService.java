@@ -110,11 +110,22 @@ public class BulkDeassignmentService {
         // workflow is fired inside UserPlanService.cancelUserPlan.
         Map<String, List<String>> terminatedPackageSessionsByUser = new LinkedHashMap<>();
 
+        // Deleting payment history removes all of a learner's selected courses together, so their
+        // enrolments are looked up before any of them is touched.
+        Map<String, LearnerHistory> historyByUser = new HashMap<>();
+        if (deleteHistory) {
+            for (String userId : allUserIds) {
+                historyByUser.put(userId, resolveSelection(userId, request.getPackageSessionIds(),
+                        request.getInstituteId()));
+            }
+        }
+
         for (String packageSessionId : request.getPackageSessionIds()) {
             for (String userId : allUserIds) {
                 BulkDeassignResponseDTO.DeassignResultItemDTO result = processDeassignment(userId, userMap,
                         packageSessionId,
-                        request.getInstituteId(), mode, accessTillDate, dryRun, deleteHistory, adminUserId);
+                        request.getInstituteId(), mode, accessTillDate, dryRun, historyByUser.get(userId),
+                        adminUserId);
                 results.add(result);
 
                 if (!dryRun && MODE_HARD.equals(mode) && "SUCCESS".equals(result.getStatus())) {
@@ -152,6 +163,84 @@ public class BulkDeassignmentService {
     }
 
     // ========================= PRIVATE METHODS =========================
+
+    /**
+     * One learner's courses picked for "delete payment history". Courses tied together (an
+     * admission package, a shared receipt — {@link PaymentDeletionService#linkedPlans}) are removed
+     * together, in one transaction: the first of them processed deletes the group and the rest
+     * report its outcome. Every other course is removed on its own, as before.
+     */
+    private static final class LearnerHistory {
+        final Map<String, StudentSessionInstituteGroupMapping> mappingBySession = new HashMap<>();
+        /** plan → the selected plans removed with it (it included) */
+        Map<String, List<String>> groups;
+        Map<String, PaymentDeletionService.PlanHistory> previews;
+        final Map<String, Map<String, Object>> deleted = new HashMap<>();
+        final Map<String, String> errors = new HashMap<>();
+        final Set<String> reportedPlans = new HashSet<>();
+        /** Sessions already processed: a repeated one finds no active enrolment, as a fresh lookup would. */
+        final Set<String> usedSessions = new HashSet<>();
+
+        List<String> planIds() {
+            return mappingBySession.values().stream().map(StudentSessionInstituteGroupMapping::getUserPlanId)
+                    .filter(StringUtils::hasText).distinct().toList();
+        }
+    }
+
+    private List<String> groupOf(LearnerHistory history, String userPlanId) {
+        if (history.groups == null) {
+            // Built in full before it is kept, so a failed lookup is retried rather than left half done.
+            Map<String, List<String>> groups = new HashMap<>();
+            Set<String> selected = new LinkedHashSet<>(history.planIds());
+            for (String planId : selected) {
+                if (groups.containsKey(planId)) continue;
+                List<String> group = new ArrayList<>();
+                Deque<String> todo = new ArrayDeque<>(List.of(planId));
+                while (!todo.isEmpty()) {
+                    String next = todo.pop();
+                    if (group.contains(next)) continue;
+                    group.add(next);
+                    for (String linked : paymentDeletionService.linkedPlans(next)) {
+                        // A linked course that is not selected stays out: the preview refuses the group.
+                        if (selected.contains(linked) && !group.contains(linked)) todo.push(linked);
+                    }
+                }
+                group.forEach(member -> groups.put(member, group));
+            }
+            history.groups = groups;
+        }
+        return history.groups.get(userPlanId);
+    }
+
+    private LearnerHistory resolveSelection(String userId, List<String> packageSessionIds, String instituteId) {
+        LearnerHistory history = new LearnerHistory();
+        for (String packageSessionId : packageSessionIds) {
+            studentSessionRepository.findTopByPackageSessionIdAndUserIdAndStatusIn(packageSessionId, instituteId,
+                            userId, List.of(LearnerSessionStatusEnum.ACTIVE.name()))
+                    .ifPresent(mapping -> history.mappingBySession.put(packageSessionId, mapping));
+        }
+        return history;
+    }
+
+    /** Why this course's history cannot be deleted, or null. A refused course holds back its group. */
+    private String historyBlocker(LearnerHistory history, String userPlanId, String instituteId) {
+        if (history.previews == null) {
+            Map<String, PaymentDeletionService.PlanHistory> previews = new HashMap<>();
+            for (String planId : history.planIds()) {
+                previews.put(planId,
+                        paymentDeletionService.previewPlanHistory(planId, instituteId, groupOf(history, planId)));
+            }
+            history.previews = previews;
+        }
+        String own = history.previews.get(userPlanId).blocker();
+        if (own != null) return own;
+        boolean otherRefused = groupOf(history, userPlanId).stream()
+                .anyMatch(planId -> history.previews.get(planId).blocker() != null);
+        return otherRefused
+                ? "Not removed: this course shares its package or receipts with another selected course whose "
+                        + "payment history cannot be deleted (see its row), and they can only be removed together."
+                : null;
+    }
 
     /**
      * Parse the SOFT-mode "last access date" the frontend sends. Accepts either a
@@ -292,15 +381,21 @@ public class BulkDeassignmentService {
             String mode,
             Date accessTillDate,
             boolean dryRun,
-            boolean deleteHistory,
+            LearnerHistory history,
             String adminUserId) {
 
         String userEmail = userMap.containsKey(userId) ? userMap.get(userId).getEmail() : null;
+        // Set only when the payment history is deleted too (HARD + permission checked up front).
+        boolean deleteHistory = history != null;
 
         try {
-            // Find active mapping for this user + packageSession
-            Optional<StudentSessionInstituteGroupMapping> mappingOpt = studentSessionRepository
-                    .findTopByPackageSessionIdAndUserIdAndStatusIn(
+            // Find active mapping for this user + packageSession. With delete-history it was looked
+            // up before anything ran: an earlier course of this learner may have removed it already.
+            Optional<StudentSessionInstituteGroupMapping> mappingOpt = deleteHistory
+                    ? (history.usedSessions.add(packageSessionId)
+                            ? Optional.ofNullable(history.mappingBySession.get(packageSessionId))
+                            : Optional.empty())
+                    : studentSessionRepository.findTopByPackageSessionIdAndUserIdAndStatusIn(
                             packageSessionId, instituteId, userId,
                             List.of(LearnerSessionStatusEnum.ACTIVE.name()));
 
@@ -354,21 +449,21 @@ public class BulkDeassignmentService {
                         ? "terminate immediately"
                         : softMessage);
                 if (deleteHistory && StringUtils.hasText(userPlanId)) {
-                    PaymentDeletionService.PlanHistory history =
-                            paymentDeletionService.previewPlanHistory(userPlanId, instituteId);
-                    if (history.blocker() != null) {
+                    String blocker = historyBlocker(history, userPlanId, instituteId);
+                    if (blocker != null) {
                         return BulkDeassignResponseDTO.DeassignResultItemDTO.builder()
                                 .userId(userId).userEmail(userEmail)
                                 .packageSessionId(packageSessionId)
                                 .status("FAILED").actionTaken("NONE")
                                 .userPlanId(userPlanId)
-                                .message(history.blocker())
+                                .message(blocker)
                                 .warning(warning)
                                 .build();
                     }
-                    message += " and permanently delete its payment history: " + history.payments()
-                            + " payment(s) worth " + history.paidAmount().stripTrailingZeros().toPlainString()
-                            + ", " + history.installments() + " installment(s), " + history.invoices()
+                    PaymentDeletionService.PlanHistory preview = history.previews.get(userPlanId);
+                    message += " and permanently delete its payment history: " + preview.payments()
+                            + " payment(s) worth " + preview.paidAmount().stripTrailingZeros().toPlainString()
+                            + ", " + preview.installments() + " installment(s), " + preview.invoices()
                             + " invoice(s)";
                 }
                 return BulkDeassignResponseDTO.DeassignResultItemDTO.builder()
@@ -387,8 +482,37 @@ public class BulkDeassignmentService {
             String historyMessage = null;
             if (StringUtils.hasText(userPlanId)) {
                 if (hard && deleteHistory) {
-                    Map<String, Object> deleted = courseRemovalHistoryService
-                            .terminateAndDeleteHistory(userPlanId, instituteId, adminUserId);
+                    // Another selected course on the same plan already removed it, and this enrolment
+                    // with it — reported as before, when it was looked up afresh.
+                    if (history.reportedPlans.contains(userPlanId)) {
+                        return BulkDeassignResponseDTO.DeassignResultItemDTO.builder()
+                                .userId(userId).userEmail(userEmail)
+                                .packageSessionId(packageSessionId)
+                                .status("SKIPPED").actionTaken("NONE")
+                                .message("No active enrollment found")
+                                .build();
+                    }
+                    // The first course of a group removes the whole group; the rest report the outcome.
+                    if (!history.deleted.containsKey(userPlanId) && !history.errors.containsKey(userPlanId)) {
+                        List<String> group = groupOf(history, userPlanId);
+                        try {
+                            history.deleted.putAll(courseRemovalHistoryService
+                                    .terminateAndDeleteHistory(group, instituteId, adminUserId));
+                        } catch (Exception e) {
+                            String reason = e.getMessage() != null ? e.getMessage() : "Payment history could not be deleted";
+                            // A group shares one outcome; say so, since the reason may be another course's.
+                            String error = group.size() > 1
+                                    ? "Not removed: this course shares its package or receipts with other selected "
+                                            + "courses, which are removed together, and one of them was refused — " + reason
+                                    : reason;
+                            group.forEach(planId -> history.errors.put(planId, error));
+                        }
+                    }
+                    if (history.errors.containsKey(userPlanId)) {
+                        throw new VacademyException(history.errors.get(userPlanId));
+                    }
+                    history.reportedPlans.add(userPlanId);
+                    Map<String, Object> deleted = history.deleted.get(userPlanId);
                     historyMessage = "Payment history deleted: " + deleted.get("payments_deleted")
                             + " payment(s), " + deleted.get("installments_deleted") + " installment(s)";
                 } else {

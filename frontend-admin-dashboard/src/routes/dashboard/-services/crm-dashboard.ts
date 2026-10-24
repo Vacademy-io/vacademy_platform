@@ -16,6 +16,8 @@ export type CrmBlockId =
     | 'list_stats'
     | 'shifts';
 
+export type CrmDuplicateFilter = 'EXCLUDE' | 'ONLY' | 'AUTO';
+
 export interface CrmDashboardRequest {
     institute_id: string;
     from: string;
@@ -29,6 +31,8 @@ export interface CrmDashboardRequest {
     /** Lead status keys to keep / drop (CSV), same as the leads list filter. */
     lead_status_id?: string;
     lead_status_exclude_id?: string;
+    /** As the leads list's duplicates=; AUTO = the list's default (Lead Settings → Duplicate Leads only). */
+    duplicate_filter?: CrmDuplicateFilter;
     blocks: CrmBlockId[];
 }
 

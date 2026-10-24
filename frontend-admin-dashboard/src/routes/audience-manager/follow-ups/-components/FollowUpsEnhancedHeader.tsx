@@ -8,8 +8,9 @@ import { SectionCard } from '@/routes/study-library/live-session/-components/das
 /**
  * Follow-ups: who holds the overdue work, under the existing tiles. Only for admins and hierarchy-scoped counsellors — other roles are
  * limited to their own follow-ups on this page, and a team breakdown would show more.
- * Takes the list's lead status filter (the route's status + hide-LOST setting) so each
- * counsellor's number equals the list filtered to that counsellor.
+ * Takes the list's lead status filter (the route's status + hide-LOST setting), and the
+ * list's duplicate default (AUTO: hidden when Lead Settings keeps duplicates on the
+ * Duplicate Leads tab only), so each counsellor's number equals the list filtered to them.
  */
 export function FollowUpsEnhancedHeader({
     allowed,
@@ -26,6 +27,7 @@ export function FollowUpsEnhancedHeader({
         enabled,
         leadStatusId,
         leadStatusExcludeId,
+        duplicateFilter: 'AUTO',
     });
     if (!enabled) return null;
     const rows = (pick<{ rows: CrmCounsellorRow[] }>('counsellors')?.rows ?? [])

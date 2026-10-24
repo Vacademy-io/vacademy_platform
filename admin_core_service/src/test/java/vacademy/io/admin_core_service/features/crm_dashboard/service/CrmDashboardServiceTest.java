@@ -7,6 +7,7 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
 import vacademy.io.admin_core_service.features.audience.dto.LeadVisibility;
 import vacademy.io.admin_core_service.features.audience.service.AudienceService;
+import vacademy.io.admin_core_service.features.audience.service.LeadDeduplicationService;
 import vacademy.io.admin_core_service.features.audience.service.LeadFollowupService;
 import vacademy.io.admin_core_service.features.audience.service.LeadVisibilityResolver;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
@@ -38,6 +39,7 @@ class CrmDashboardServiceTest {
     private LeadVisibilityResolver resolver;
     private CounsellorScopeService scopeService;
     private AudienceService audienceService;
+    private LeadDeduplicationService dedupService;
     private CrmDashboardService service;
     private CustomUserDetails user;
 
@@ -47,8 +49,9 @@ class CrmDashboardServiceTest {
         resolver = mock(LeadVisibilityResolver.class);
         scopeService = mock(CounsellorScopeService.class);
         audienceService = mock(AudienceService.class);
+        dedupService = mock(LeadDeduplicationService.class);
         service = new CrmDashboardService(jdbc, mock(PlatformTransactionManager.class), resolver, scopeService,
-                audienceService, mock(LeadFollowupService.class), mock(AuthService.class));
+                audienceService, mock(LeadFollowupService.class), dedupService, mock(AuthService.class));
         user = mock(CustomUserDetails.class);
         when(user.getUserId()).thenReturn("u-1");
     }
@@ -168,5 +171,39 @@ class CrmDashboardServiceTest {
         assertFalse(CrmDashboardService.scopeKey(INSTITUTE, admin)
                 .equals(CrmDashboardService.scopeKey("other-institute", admin)));
         assertEquals(CrmDashboardService.scopeKey(INSTITUTE, admin), CrmDashboardService.scopeKey(INSTITUTE, admin));
+    }
+
+    @Test
+    @DisplayName("Status filters are normalised so equal filters share a cache entry; none = no filter")
+    void statusCsvNormalised() {
+        assertEquals("", CrmDashboardService.statusCsv(null));
+        assertEquals("", CrmDashboardService.statusCsv(" , "));
+        assertEquals("CALL_BACK,LOST", CrmDashboardService.statusCsv(" LOST,CALL_BACK,LOST "));
+    }
+
+    @Test
+    @DisplayName("Duplicate filter: none = no filter (old behaviour); AUTO follows the list's Duplicate Leads setting")
+    void duplicateFilterResolvesLikeTheList() {
+        when(dedupService.duplicatesTabOnly(INSTITUTE)).thenReturn(true);
+        assertEquals("", service.duplicateFilter(null, INSTITUTE, null));
+        assertEquals("", service.duplicateFilter("bogus", INSTITUTE, null));
+        assertEquals("EXCLUDE", service.duplicateFilter("exclude", INSTITUTE, null));
+        assertEquals("ONLY", service.duplicateFilter("ONLY", INSTITUTE, null));
+        assertEquals("EXCLUDE", service.duplicateFilter("AUTO", INSTITUTE, null));
+        // One list: the list query applies no default, so neither do we.
+        assertEquals("", service.duplicateFilter("AUTO", INSTITUTE, "aud-1"));
+
+        when(dedupService.duplicatesTabOnly(INSTITUTE)).thenReturn(false);
+        assertEquals("", service.duplicateFilter("AUTO", INSTITUTE, null));
+    }
+
+    @Test
+    @DisplayName("Every vis query carries the list's status and duplicate predicates")
+    void visCarriesListFilters() {
+        for (String sql : List.of(CrmDashboardSql.visAll(), CrmDashboardSql.visSubmittedIn())) {
+            assertTrue(sql.contains(":statusExcludeCsv"));
+            assertTrue(sql.contains("COALESCE(ar.is_duplicate, FALSE) = FALSE"));
+            assertFalse(sql.contains("%s"));
+        }
     }
 }

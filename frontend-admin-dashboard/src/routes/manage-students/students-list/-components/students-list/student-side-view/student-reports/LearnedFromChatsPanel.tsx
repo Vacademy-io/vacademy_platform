@@ -12,12 +12,13 @@ import {
 } from '@/services/learner-profile';
 import { ProfileSectionCard } from '../profile-ui';
 
+// What a teacher acts on first: the learner's aim, then where they struggle.
 const KIND_ORDER: LearnerSignalKind[] = [
     'GOAL',
-    'PREFERENCE',
-    'STRENGTH',
     'WEAKNESS',
     'MISCONCEPTION',
+    'STRENGTH',
+    'PREFERENCE',
     'INTEREST',
 ];
 

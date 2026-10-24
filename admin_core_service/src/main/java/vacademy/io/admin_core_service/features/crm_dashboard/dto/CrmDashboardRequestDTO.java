@@ -40,6 +40,12 @@ public class CrmDashboardRequestDTO {
      */
     private String leadStatusId;
     private String leadStatusExcludeId;
+    /**
+     * Optional duplicate-lead narrowing, as the leads list's {@code duplicates=}: EXCLUDE or
+     * ONLY. AUTO = what the list does when the route sets none, i.e. EXCLUDE across all lists
+     * when Lead Settings has "Show duplicates only in Duplicate Leads" on. Empty = no filter.
+     */
+    private String duplicateFilter;
     /** summary, followups, pipeline, sources, counsellors, calls, lists, quality, views. Empty = all. */
     private List<String> blocks;
 }

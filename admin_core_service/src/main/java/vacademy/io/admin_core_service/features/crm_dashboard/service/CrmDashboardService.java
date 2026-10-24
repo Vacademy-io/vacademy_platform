@@ -13,6 +13,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import vacademy.io.admin_core_service.features.audience.dto.LeadFilterDTO;
 import vacademy.io.admin_core_service.features.audience.dto.LeadVisibility;
 import vacademy.io.admin_core_service.features.audience.service.AudienceService;
+import vacademy.io.admin_core_service.features.audience.service.LeadDeduplicationService;
 import vacademy.io.admin_core_service.features.audience.service.LeadFollowupService;
 import vacademy.io.admin_core_service.features.audience.service.LeadVisibilityResolver;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
@@ -86,6 +87,7 @@ public class CrmDashboardService {
     private final CounsellorScopeService counsellorScopeService;
     private final AudienceService audienceService;
     private final LeadFollowupService leadFollowupService;
+    private final LeadDeduplicationService leadDeduplicationService;
     private final AuthService authService;
 
     /** Resolved lead scope per institute + user + authorities, for {@link #SCOPE_TTL}. */
@@ -105,6 +107,7 @@ public class CrmDashboardService {
                                CounsellorScopeService counsellorScopeService,
                                AudienceService audienceService,
                                LeadFollowupService leadFollowupService,
+                               LeadDeduplicationService leadDeduplicationService,
                                AuthService authService) {
         this.jdbc = jdbc;
         this.readOnlyTx = new TransactionTemplate(transactionManager);
@@ -113,6 +116,7 @@ public class CrmDashboardService {
         this.counsellorScopeService = counsellorScopeService;
         this.audienceService = audienceService;
         this.leadFollowupService = leadFollowupService;
+        this.leadDeduplicationService = leadDeduplicationService;
         this.authService = authService;
     }
 
@@ -125,7 +129,8 @@ public class CrmDashboardService {
                 k -> readOnlyTx.execute(s -> leadVisibilityResolver.resolve(user, instituteId)));
         Scope scope = toScope(vis, instituteId, user, trimToNull(req.getTeamId()),
                 trimToNull(req.getAudienceId()), statusCsv(req.getLeadStatusId()),
-                statusCsv(req.getLeadStatusExcludeId()));
+                statusCsv(req.getLeadStatusExcludeId()),
+                duplicateFilter(req.getDuplicateFilter(), instituteId, trimToNull(req.getAudienceId())));
 
         Set<String> wanted = new LinkedHashSet<>();
         if (req.getBlocks() == null || req.getBlocks().isEmpty()) {
@@ -270,6 +275,7 @@ public class CrmDashboardService {
         if (!scope.audienceId().isEmpty()) f.setAudienceId(scope.audienceId());
         if (!scope.statusCsv().isEmpty()) f.setLeadStatusId(scope.statusCsv());
         if (!scope.statusExcludeCsv().isEmpty()) f.setLeadStatusExcludeId(scope.statusExcludeCsv());
+        if (!scope.duplicateFilter().isEmpty()) f.setDuplicateFilter(scope.duplicateFilter());
         f.setConversionStatusFilter("EXCLUDE_CONVERTED");
         f.setFollowUpPending(true);
         f.setFollowUpFrom(from);
@@ -378,7 +384,8 @@ public class CrmDashboardService {
      * own scope and never widens it: an empty intersection means nothing visible.
      */
     private Scope toScope(LeadVisibility vis, String instituteId, CustomUserDetails user, String teamId,
-                          String audienceId, String statusCsv, String statusExcludeCsv) {
+                          String audienceId, String statusCsv, String statusExcludeCsv,
+                          String duplicateFilter) {
         boolean empty = vis.allowedAudienceIds() != null && vis.allowedAudienceIds().isEmpty();
         String allowedCsv = vis.allowedAudienceIds() == null ? "" : String.join(",", vis.allowedAudienceIds());
         String scopeCsv = vis.scopeOwnerIds() == null ? "" : String.join(",", vis.scopeOwnerIds());
@@ -414,13 +421,30 @@ public class CrmDashboardService {
         return new Scope(ownerCsv, scopeCsv, vis.includeUnassigned(), allowedCsv, callOwnerCsv,
                 callsRestricted, teamOwnerCsv, empty,
                 cacheIdentity + "|" + (teamId == null ? "" : teamId) + "|" + (audienceId == null ? "" : audienceId)
-                        + "|" + statusCsv + "|" + statusExcludeCsv,
-                audienceId == null ? "" : audienceId, statusCsv, statusExcludeCsv);
+                        + "|" + statusCsv + "|" + statusExcludeCsv + "|" + duplicateFilter,
+                audienceId == null ? "" : audienceId, statusCsv, statusExcludeCsv, duplicateFilter);
     }
 
     record Scope(String ownerCsv, String scopeCsv, boolean includeUnassigned, String allowedCsv,
                  String callOwnerCsv, boolean callsRestricted, String teamOwnerCsv, boolean empty,
-                 String cacheIdentity, String audienceId, String statusCsv, String statusExcludeCsv) {
+                 String cacheIdentity, String audienceId, String statusCsv, String statusExcludeCsv,
+                 String duplicateFilter) {
+    }
+
+    /**
+     * EXCLUDE / ONLY as sent; AUTO resolves the way the leads list does with no
+     * {@code duplicates=} (AudienceService.getLeads): across all lists, EXCLUDE when Lead
+     * Settings keeps duplicates on the Duplicate Leads tab only; one list = no filter.
+     * Anything else = "" (no filter).
+     */
+    String duplicateFilter(String raw, String instituteId, String audienceId) {
+        String v = raw == null ? "" : raw.trim().toUpperCase();
+        return switch (v) {
+            case "EXCLUDE", "ONLY" -> v;
+            case "AUTO" -> audienceId == null && leadDeduplicationService.duplicatesTabOnly(instituteId)
+                    ? "EXCLUDE" : "";
+            default -> "";
+        };
     }
 
     /** Status keys as a clean CSV ("" = no narrowing), sorted so equal filters share a cache entry. */
@@ -479,6 +503,7 @@ public class CrmDashboardService {
                 .addValue("audienceId", scope.audienceId())
                 .addValue("statusCsv", scope.statusCsv())
                 .addValue("statusExcludeCsv", scope.statusExcludeCsv())
+                .addValue("duplicateFilter", scope.duplicateFilter())
                 .addValue("callOwnerCsv", scope.callOwnerCsv())
                 .addValue("tz", w.tz().getId())
                 .addValue("from", w.from(), java.sql.Types.TIMESTAMP)

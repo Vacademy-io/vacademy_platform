@@ -7,6 +7,7 @@ import {
     isEmptyBlock,
     type CrmBlockId,
     type CrmDashboardBlocks,
+    type CrmDuplicateFilter,
 } from './crm-dashboard';
 
 /**
@@ -25,6 +26,8 @@ export function useCrmDashboardBlocks(
         /** Lead status keys to keep / drop (CSV), so a header matches a status-filtered list. */
         leadStatusId?: string;
         leadStatusExcludeId?: string;
+        /** Duplicate leads, as the list's duplicates= (AUTO = the list's default). */
+        duplicateFilter?: CrmDuplicateFilter;
         rangeDays?: CrmRangeDays;
     } = {}
 ) {
@@ -47,6 +50,7 @@ export function useCrmDashboardBlocks(
             opts.teamId ?? '',
             opts.leadStatusId ?? '',
             opts.leadStatusExcludeId ?? '',
+            opts.duplicateFilter ?? '',
         ],
         queryFn: () =>
             fetchCrmDashboard({
@@ -60,6 +64,7 @@ export function useCrmDashboardBlocks(
                 team_id: opts.teamId || undefined,
                 lead_status_id: opts.leadStatusId || undefined,
                 lead_status_exclude_id: opts.leadStatusExcludeId || undefined,
+                duplicate_filter: opts.duplicateFilter,
                 blocks,
             }),
         enabled: (opts.enabled ?? true) && !!instituteId && blocks.length > 0,

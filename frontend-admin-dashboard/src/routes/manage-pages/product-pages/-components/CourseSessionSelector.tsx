@@ -8,6 +8,7 @@ import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { getInstituteId } from '@/constants/helper';
 import { MyButton } from '@/components/design-system/button';
 import { Input } from '@/components/ui/input';
+import { useToast } from '@/hooks/use-toast';
 import {
     MagnifyingGlass,
     Plus,
@@ -19,6 +20,8 @@ import {
     Network,
     ArrowUp,
     ArrowDown,
+    SortAscending,
+    SortDescending,
 } from '@phosphor-icons/react';
 import type { MappingRow } from '../-types/product-page-types';
 import { SuggestionsPanel } from './SuggestionsPanel';
@@ -363,6 +366,8 @@ interface CourseSessionSelectorProps {
     onUpdateSuggestions: (s: Record<string, string[]>) => void;
     /** Moves a row one step; the row order is the order saved (and a learning path's step order). */
     onMove?: (rowId: string, direction: -1 | 1) => void;
+    /** Puts the rows in this order (row ids); the newest/oldest-first buttons use it. */
+    onReorder?: (orderedRowIds: string[]) => void;
 }
 
 export const CourseSessionSelector = ({
@@ -373,8 +378,11 @@ export const CourseSessionSelector = ({
     suggestions,
     onUpdateSuggestions,
     onMove,
+    onReorder,
 }: CourseSessionSelectorProps) => {
     const { t } = useTranslation('managePagesCourseSessionSelector');
+    const { toast } = useToast();
+    const [sorting, setSorting] = useState<'newest' | 'oldest' | null>(null);
     const sessionLabel = useMemo(() => buildSessionLabel(t), [t]);
     const instituteId = getCurrentInstituteId() || getInstituteId() || '';
     const [view, setView] = useState<'list' | 'suggestions'>('list');
@@ -594,6 +602,53 @@ export const CourseSessionSelector = ({
     const totalPrice = mappingRows.reduce((sum, r) => sum + (r.paymentPlanPrice || 0), 0);
     const currency = mappingRows.find((r) => r.currency)?.currency || '';
 
+    // The search API has no created_at in its response, but sorts by it: ask it for
+    // this page's courses newest first and take that order (reversed for oldest).
+    const handleSortByCreated = async (direction: 'newest' | 'oldest') => {
+        if (!onReorder || sorting) return;
+        const sessionIds = Array.from(new Set(mappingRows.map((r) => r.packageSessionId).filter(Boolean)));
+        if (sessionIds.length === 0) return;
+        setSorting(direction);
+        try {
+            const res = await authenticatedAxiosInstance.post(
+                COURSE_CATALOG_URL,
+                {
+                    status: ['ACTIVE'],
+                    level_ids: [],
+                    faculty_ids: [],
+                    package_types: [],
+                    search_by_name: null,
+                    tag: [],
+                    created_by_user_id: null,
+                    min_percentage_completed: 0,
+                    max_percentage_completed: 100,
+                    sort_columns: { created_at: 'DESC' },
+                    type: null,
+                    package_ids: [],
+                    package_session_ids: sessionIds,
+                    session_ids: [],
+                    package_view: true,
+                },
+                { params: { instituteId, page: 0, size: sessionIds.length } }
+            );
+            const newestFirst = ((res.data?.content ?? []) as CourseSearchItem[]).map(
+                (s) => s.package_session_id
+            );
+            const ordered = direction === 'newest' ? newestFirst : [...newestFirst].reverse();
+            const rank = new Map(ordered.map((id, i) => [id, i]));
+            // Stable: rows of the same course (or one the search didn't return) keep their order.
+            const rowIds = mappingRows
+                .map((r, i) => ({ id: r.rowId, i, rank: rank.get(r.packageSessionId) ?? Infinity }))
+                .sort((a, b) => a.rank - b.rank || a.i - b.i)
+                .map((r) => r.id);
+            onReorder(rowIds);
+        } catch {
+            toast({ title: t('selectedCourses.sortFailed'), variant: 'destructive' });
+        } finally {
+            setSorting(null);
+        }
+    };
+
     const handleRemoveRow = (rowId: string) => {
         const row = mappingRows.find((r) => r.rowId === rowId);
         if (row?.psInvitePaymentOptionId) {
@@ -661,14 +716,48 @@ export const CourseSessionSelector = ({
                                 {t('selectedCourses.heading')}
                             </h3>
                         </div>
-                        <MyButton
-                            scale="small"
-                            buttonType="secondary"
-                            onClick={() => setShowBrowser((v) => !v)}
-                        >
-                            <Plus className="size-3.5" />
-                            {t('selectedCourses.addMore')}
-                        </MyButton>
+                        <div className="flex flex-wrap items-center gap-2">
+                            {onReorder && mappingRows.length > 1 && (
+                                <>
+                                    <MyButton
+                                        scale="small"
+                                        buttonType="secondary"
+                                        disable={!!sorting}
+                                        onClick={() => handleSortByCreated('newest')}
+                                        title={t('selectedCourses.newestFirstHint')}
+                                    >
+                                        {sorting === 'newest' ? (
+                                            <CircleNotch className="size-3.5 animate-spin" />
+                                        ) : (
+                                            <SortDescending className="size-3.5" />
+                                        )}
+                                        {t('selectedCourses.newestFirst')}
+                                    </MyButton>
+                                    <MyButton
+                                        scale="small"
+                                        buttonType="secondary"
+                                        disable={!!sorting}
+                                        onClick={() => handleSortByCreated('oldest')}
+                                        title={t('selectedCourses.oldestFirstHint')}
+                                    >
+                                        {sorting === 'oldest' ? (
+                                            <CircleNotch className="size-3.5 animate-spin" />
+                                        ) : (
+                                            <SortAscending className="size-3.5" />
+                                        )}
+                                        {t('selectedCourses.oldestFirst')}
+                                    </MyButton>
+                                </>
+                            )}
+                            <MyButton
+                                scale="small"
+                                buttonType="secondary"
+                                onClick={() => setShowBrowser((v) => !v)}
+                            >
+                                <Plus className="size-3.5" />
+                                {t('selectedCourses.addMore')}
+                            </MyButton>
+                        </div>
                     </div>
 
                     <div className="space-y-3">

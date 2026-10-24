@@ -66,6 +66,7 @@ export const ProductPageEditor = () => {
         updateRow,
         removeRow,
         moveRow,
+        reorderRows,
         reseedMappings,
         save,
         isSaving,
@@ -298,6 +299,7 @@ export const ProductPageEditor = () => {
                                     onUpdate={updateRow}
                                     onRemove={removeRow}
                                     onMove={moveRow}
+                                    onReorder={reorderRows}
                                 />
                             </fieldset>
                         </div>

@@ -711,6 +711,7 @@ export const DocViewer: React.FC<DocViewerProps> = ({
                 creativeHtml={creativeHtml}
                 onSlideProgress={handleSlideProgress}
                 onSlideComplete={handleSlideComplete}
+                scormSlideId={documentId}
             />
         </div>
     );

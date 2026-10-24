@@ -51,6 +51,8 @@ type DocViewerComponentProps = {
   // Interactive-result reporting from a creative HTML slide (quiz/game).
   onSlideProgress?: (percent: number) => void;
   onSlideComplete?: (result: import("./html-slide-iframe").SlideResult) => void;
+  // Slide id: lets a creative HTML lesson save its own state via SCORM.
+  scormSlideId?: string;
 };
 
 const DocViewerComponentInner = forwardRef<DocViewerComponentRef, DocViewerComponentProps>(({
@@ -61,7 +63,8 @@ const DocViewerComponentInner = forwardRef<DocViewerComponentRef, DocViewerCompo
   isHtml = false,
   creativeHtml = false,
   onSlideProgress,
-  onSlideComplete
+  onSlideComplete,
+  scormSlideId
 }, ref) => {
   const { t } = useTranslation("studyContent");
   const containerRef = useRef<HTMLDivElement>(null);
@@ -344,6 +347,7 @@ const DocViewerComponentInner = forwardRef<DocViewerComponentRef, DocViewerCompo
           onLoad={() => handleDocumentLoadRef.current?.()}
           onProgress={onSlideProgress}
           onComplete={onSlideComplete}
+          scormSlideId={scormSlideId}
         />
       ) : isHtml ? (
         <div className="p-4 sm:p-6 lg:p-8 xl:p-12 markdown-content">

@@ -53,6 +53,7 @@ public class RenewalPaymentService {
     private final vacademy.io.admin_core_service.features.user_account.service.UserAccountLedgerService userAccountLedgerService;
     private final vacademy.io.admin_core_service.features.plan_change.service.PlanChangeService planChangeService;
     private final RenewalGracePolicy gracePolicy;
+    private final vacademy.io.admin_core_service.features.institute.service.setting.PaymentSettingService paymentSettingService;
     private final vacademy.io.admin_core_service.features.user_subscription.service.PaymentLogService paymentLogService;
 
     /**
@@ -363,7 +364,15 @@ public class RenewalPaymentService {
                     log.warn("Plan {}: could not check mandate for autopay resume: {}", userPlan.getId(), me.getMessage());
                 }
             }
-            userPlan.setNextChargeAt(autopayOn ? newEndDate : null);
+            // The charge is presented autopayChargeLeadDays BEFORE the new period ends, not
+            // on the end date. A UPI collect request needs the learner to approve it in their
+            // app and expires if they don't, so arming it on the end date means access lapses
+            // at midnight while the debit is still waiting for a tap. See
+            // PaymentSettingService#resolveChargeAt — 0 for every institute that hasn't set it,
+            // which keeps the old behaviour exactly.
+            userPlan.setNextChargeAt(autopayOn
+                    ? paymentSettingService.resolveChargeAt(newEndDate, userPlan.getEnrollInvite())
+                    : null);
             userPlanRepository.save(userPlan);
 
             log.info("Extended UserPlan {} endDate to: {} (autopay={}, status=ACTIVE)",

@@ -70,6 +70,7 @@ public class LearnerAccessService {
     private final InstituteStudentRepository instituteStudentRepository;
     private final LearnerAccessLogRepository learnerAccessLogRepository;
     private final vacademy.io.admin_core_service.features.user_subscription.repository.UserPlanRepository userPlanRepository;
+    private final vacademy.io.admin_core_service.features.institute.service.setting.PaymentSettingService paymentSettingService;
 
     // ── Admin-initiated changes ───────────────────────────────────────────
 
@@ -249,7 +250,8 @@ public class LearnerAccessService {
                 // pay-to-continue flow, and writing a charge date for them would arm a sweep
                 // that has nothing to charge against.
                 if (Boolean.TRUE.equals(plan.getAutoRenewalEnabled()) && plan.getNextChargeAt() != null) {
-                    plan.setNextChargeAt(newEnd);
+                    plan.setNextChargeAt(
+                            paymentSettingService.resolveChargeAt(newEnd, plan.getEnrollInvite()));
                 }
             }
             userPlanRepository.save(plan);

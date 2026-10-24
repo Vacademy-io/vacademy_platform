@@ -126,6 +126,9 @@ public class UserPlanService {
     private vacademy.io.admin_core_service.features.suborg.registration.repository.SubOrgRegistrationRepository subOrgRegistrationRepository;
 
     @Autowired
+    private vacademy.io.admin_core_service.features.institute.service.setting.PaymentSettingService paymentSettingService;
+
+    @Autowired
     @Lazy
     private vacademy.io.admin_core_service.features.packages.service.PackageSessionService packageSessionService;
 
@@ -297,7 +300,13 @@ public class UserPlanService {
             userPlan.setNextChargeAt(trialEnd);
         } else {
             userPlan.setIsTrial(false);
-            userPlan.setNextChargeAt(userPlan.getEndDate());
+            // A paying member's first renewal charge honours the institute's charge lead, so
+            // the debit is presented (and can be approved, or retried) while the member still
+            // has access. A TRIAL's charge deliberately does not: the lead would subtract
+            // days from the free window the learner was promised, and the trial's end date IS
+            // its conversion moment.
+            userPlan.setNextChargeAt(paymentSettingService.resolveChargeAt(
+                    userPlan.getEndDate(), userPlan.getEnrollInvite()));
         }
         userPlan.setRenewalAttemptCount(0);
         userPlanRepository.save(userPlan);

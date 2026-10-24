@@ -169,6 +169,16 @@ public interface StudentSessionInstituteGroupMappingRepository
    * ("11 Aug 2026") and is likewise rendered in the invite's zone, so the date a learner
    * reads matches the date they are charged.
    *
+   * <p>Plans already in dunning are excluded ({@code renewal_attempt_count = 0}). A plan
+   * whose charge has been presented and refused does not have an UPCOMING charge — it has a
+   * failing one, and belongs to {@link #findRenewalFailedPlans}, which chases it with a
+   * payment link. Without this they received both, and worse: {@code applyDunning} re-arms
+   * {@code next_charge_at} to {@code now + 1 day} after every failure, which re-qualifies
+   * the plan for "we charge you tomorrow" every single day. One SuchBliss member got that
+   * message on three consecutive days against a charge that never once completed.
+   * {@code renewal_attempt_count} is reset to 0 only by a successful renewal, so a plan that
+   * failed once and later recovered is correctly back in this audience for its next cycle.
+   *
    * <p>{@code is_trial} is returned so callers can split the audience: a trial's upcoming
    * charge is its FIRST charge ("your free trial ends tomorrow") while a member's is a
    * RENEWAL ("your plan renews tomorrow"). Both used to arrive here indistinguishable, so a
@@ -206,6 +216,7 @@ public interface StudentSessionInstituteGroupMappingRepository
             = CAST(now() AT TIME ZONE coalesce(jsonb_extract_path_text(cast(ei.setting_json as jsonb),
                                         'setting', 'AUTOPAY_SETTING', 'TRIAL_TIMEZONE'), 'UTC')
                    AS date) + CAST(:daysAhead AS int)
+        AND coalesce(up.renewal_attempt_count, 0) = 0
       ORDER BY up.id
       """, nativeQuery = true)
   List<Object[]> findUpcomingAutopayCharges(

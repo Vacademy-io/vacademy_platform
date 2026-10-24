@@ -586,16 +586,24 @@ public class PlanChangeService {
      */
     private void reapplyAutopay(UserPlan userPlan, UserPlanChangeRequest changeRequest, Date endDate) {
         if (!changeRequest.isCrossOption()) {
-            // Same invite, same autopay config — just keep the charge date aligned.
+            // Same invite, same autopay config — just keep the charge date aligned, lead
+            // included, so a plan change doesn't quietly move the charge back onto the end
+            // date for a member whose institute charges early.
             if (Boolean.TRUE.equals(userPlan.getAutoRenewalEnabled())) {
-                userPlan.setNextChargeAt(endDate);
+                userPlan.setNextChargeAt(
+                        paymentSettingService.resolveChargeAt(endDate, userPlan.getEnrollInvite()));
             }
             return;
         }
         EnrollInvite invite = resolveInvite(changeRequest.getToEnrollInviteId(), userPlan);
         boolean autopayEnabled = invite != null && autopayEnabledOn(invite);
         userPlan.setAutoRenewalEnabled(autopayEnabled);
-        userPlan.setNextChargeAt(autopayEnabled ? endDate : null);
+        // The lead is read against the invite the plan is moving TO: it carries the timezone
+        // the charge date will be bucketed in, and on a cross-institute move the institute
+        // whose setting applies.
+        userPlan.setNextChargeAt(autopayEnabled
+                ? paymentSettingService.resolveChargeAt(endDate, invite)
+                : null);
         if (!autopayEnabled) {
             log.info("Plan change: user plan {} moved to invite {} which has autopay off — "
                     + "auto-renewal cleared, learner renews manually",

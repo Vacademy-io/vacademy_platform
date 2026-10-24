@@ -42,4 +42,12 @@ public class DeassignOptionsDTO {
      * LEARNER_TERMINATION_REASON setting marks it required. Ignored for SOFT.
      */
     private String reason;
+
+    /**
+     * HARD-mode only. Also permanently delete the course's payment history — its payments,
+     * installments, invoices, ledger rows and the plan — so it shows nowhere. Needs the
+     * {@code allowDeletePayments} Display Settings permission. Off = today's behaviour: what was
+     * paid stays on record, only the open installments are cancelled.
+     */
+    private boolean deletePaymentHistory;
 }

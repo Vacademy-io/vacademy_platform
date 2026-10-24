@@ -266,6 +266,12 @@ export interface DeassignOptions {
      * setting says so.
      */
     reason?: string | null;
+    /**
+     * HARD-mode only. Also permanently delete the course's payment history
+     * (payments, installments, invoices, ledger rows and the plan). Needs the
+     * `allowDeletePayments` Display Settings permission.
+     */
+    delete_payment_history?: boolean;
 }
 
 export interface BulkDeassignRequest {

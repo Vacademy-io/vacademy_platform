@@ -13,6 +13,7 @@ import vacademy.io.admin_core_service.features.institute_learner.manager.Learner
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionRepository;
 import vacademy.io.admin_core_service.features.learner_management.dto.*;
 import vacademy.io.admin_core_service.features.packages.service.PackageSessionService;
+import vacademy.io.admin_core_service.features.user_subscription.service.PaymentDeletionService;
 import vacademy.io.admin_core_service.features.user_subscription.service.UserPlanService;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.exceptions.VacademyException;
@@ -45,6 +46,8 @@ public class BulkDeassignmentService {
     private final PackageSessionService packageSessionService;
     private final LearnerTerminationWorkflowHelper learnerTerminationWorkflowHelper;
     private final InstituteSettingService instituteSettingService;
+    private final PaymentDeletionService paymentDeletionService;
+    private final CourseRemovalHistoryService courseRemovalHistoryService;
 
     private static final String MODE_SOFT = "SOFT";
     private static final String MODE_HARD = "HARD";
@@ -70,6 +73,14 @@ public class BulkDeassignmentService {
 
         if (MODE_HARD.equals(mode)) {
             validateTerminationReason(request.getInstituteId(), options.getReason());
+        }
+
+        // HARD-only. Checked up front (dry run too) so a role without the permission is told
+        // before anything is terminated.
+        boolean deleteHistory = MODE_HARD.equals(mode) && options.isDeletePaymentHistory();
+        if (deleteHistory && !paymentDeletionService.canDelete(adminUserId, request.getInstituteId())) {
+            throw new VacademyException("Deleting payment history is turned off for your role. An admin can "
+                    + "turn on payment deletion under Settings → Display Settings → Learner Management.");
         }
 
         // SOFT-only "last access date" override. HARD ignores it (access is revoked now).
@@ -103,7 +114,7 @@ public class BulkDeassignmentService {
             for (String userId : allUserIds) {
                 BulkDeassignResponseDTO.DeassignResultItemDTO result = processDeassignment(userId, userMap,
                         packageSessionId,
-                        request.getInstituteId(), mode, accessTillDate, dryRun);
+                        request.getInstituteId(), mode, accessTillDate, dryRun, deleteHistory, adminUserId);
                 results.add(result);
 
                 if (!dryRun && MODE_HARD.equals(mode) && "SUCCESS".equals(result.getStatus())) {
@@ -280,7 +291,9 @@ public class BulkDeassignmentService {
             String instituteId,
             String mode,
             Date accessTillDate,
-            boolean dryRun) {
+            boolean dryRun,
+            boolean deleteHistory,
+            String adminUserId) {
 
         String userEmail = userMap.containsKey(userId) ? userMap.get(userId).getEmail() : null;
 
@@ -337,14 +350,33 @@ public class BulkDeassignmentService {
                     softMessage = "soft-cancel (access already ended " + accessTillDate
                             + " — learner will be marked INACTIVE for this course)";
                 }
+                String message = "Would " + (MODE_HARD.equals(mode)
+                        ? "terminate immediately"
+                        : softMessage);
+                if (deleteHistory && StringUtils.hasText(userPlanId)) {
+                    PaymentDeletionService.PlanHistory history =
+                            paymentDeletionService.previewPlanHistory(userPlanId, instituteId);
+                    if (history.blocker() != null) {
+                        return BulkDeassignResponseDTO.DeassignResultItemDTO.builder()
+                                .userId(userId).userEmail(userEmail)
+                                .packageSessionId(packageSessionId)
+                                .status("FAILED").actionTaken("NONE")
+                                .userPlanId(userPlanId)
+                                .message(history.blocker())
+                                .warning(warning)
+                                .build();
+                    }
+                    message += " and permanently delete its payment history: " + history.payments()
+                            + " payment(s) worth " + history.paidAmount().stripTrailingZeros().toPlainString()
+                            + ", " + history.installments() + " installment(s), " + history.invoices()
+                            + " invoice(s)";
+                }
                 return BulkDeassignResponseDTO.DeassignResultItemDTO.builder()
                         .userId(userId).userEmail(userEmail)
                         .packageSessionId(packageSessionId)
                         .status("SUCCESS").actionTaken(actionDesc)
                         .userPlanId(userPlanId)
-                        .message("Would " + (MODE_HARD.equals(mode)
-                                ? "terminate immediately"
-                                : softMessage))
+                        .message(message)
                         .warning(warning)
                         .build();
             }
@@ -352,8 +384,16 @@ public class BulkDeassignmentService {
             // Actually perform the cancellation
             boolean hard = MODE_HARD.equals(mode);
             boolean slotFreed = false;
+            String historyMessage = null;
             if (StringUtils.hasText(userPlanId)) {
-                userPlanService.cancelUserPlan(userPlanId, hard);
+                if (hard && deleteHistory) {
+                    Map<String, Object> deleted = courseRemovalHistoryService
+                            .terminateAndDeleteHistory(userPlanId, instituteId, adminUserId);
+                    historyMessage = "Payment history deleted: " + deleted.get("payments_deleted")
+                            + " payment(s), " + deleted.get("installments_deleted") + " installment(s)";
+                } else {
+                    userPlanService.cancelUserPlan(userPlanId, hard);
+                }
                 slotFreed = hard; // Only hard terminate actually frees the slot
                 // SOFT keeps the ACTIVE mapping (cancelUserPlan leaves it untouched).
                 // When the admin picked a "last access date", override the mapping's
@@ -400,6 +440,7 @@ public class BulkDeassignmentService {
                     .packageSessionId(packageSessionId)
                     .status("SUCCESS").actionTaken(actionTaken)
                     .userPlanId(userPlanId)
+                    .message(historyMessage)
                     .warning(warning)
                     .build();
 

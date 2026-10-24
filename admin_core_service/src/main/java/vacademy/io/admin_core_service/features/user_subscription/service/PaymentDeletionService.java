@@ -25,6 +25,7 @@ import vacademy.io.admin_core_service.features.user_subscription.repository.Paym
 import vacademy.io.admin_core_service.features.live_session.client.InstituteRoleUserClient;
 import vacademy.io.common.exceptions.VacademyException;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -412,6 +413,200 @@ public class PaymentDeletionService {
                 .setParameter(1, id)
                 .getSingleResult();
         return n instanceof Number num ? num.longValue() : 0L;
+    }
+
+    // ------------------------------------------------------------------ a course's whole history
+
+    /**
+     * What deleting one enrolment's payment history would remove. {@code blocker} is set when it
+     * cannot be done, and says why; nothing is deleted then.
+     */
+    public record PlanHistory(int payments, BigDecimal paidAmount, int installments, int invoices,
+                              String blocker) {}
+
+    /** Plan payments that are offline/manual and settled — deleted one by one through {@link #removePayment}. */
+    private static final String REMOVABLE_PAYMENTS = "SELECT id FROM payment_log WHERE user_plan_id = ?1 "
+            + "AND UPPER(TRIM(COALESCE(vendor, ''))) IN ('MANUAL', 'OFFLINE') "
+            + "AND UPPER(COALESCE(payment_status, '')) IN ('PAID', 'VOIDED')";
+
+    /**
+     * The invoices that belong to this enrolment and nothing else: its own plan invoice, invoices
+     * of its installments, and receipts made from its payments. A bill an admin raised by hand is
+     * not part of the course, and an invoice another enrolment's payment also points at is kept.
+     */
+    private static final String PLAN_INVOICES = "SELECT i.id FROM invoice i WHERE i.institute_id = ?2 AND ("
+            + "(i.source = 'USER_PLAN' AND i.source_id = ?1) "
+            + "OR (i.source = 'STUDENT_FEE_PAYMENT' AND i.source_id IN "
+            + "(SELECT id FROM student_fee_payment WHERE user_plan_id = ?1)) "
+            + "OR ((i.source IS NULL OR i.source NOT IN ('ADMIN_MANUAL', 'LIVE_SESSION')) AND EXISTS "
+            + "(SELECT 1 FROM invoice_payment_log_mapping m JOIN payment_log pl ON pl.id = m.payment_log_id "
+            + "WHERE m.invoice_id = i.id AND pl.user_plan_id = ?1))) "
+            + "AND NOT EXISTS (SELECT 1 FROM invoice_payment_log_mapping m JOIN payment_log pl "
+            + "ON pl.id = m.payment_log_id WHERE m.invoice_id = i.id "
+            + "AND (pl.user_plan_id IS NULL OR pl.user_plan_id <> ?1))";
+
+    /**
+     * Counts what {@link #deletePlanHistory} would remove and checks it can. Refused when real money
+     * came in online (it has to be refunded in the gateway, the same rule as a single delete), or
+     * when a referral reward, access pass, admission package, plan change or live-class
+     * registration still points at the enrolment or one of its payments.
+     */
+    public PlanHistory previewPlanHistory(String userPlanId, String instituteId) {
+        List<?> online = entityManager.createNativeQuery("SELECT COALESCE(vendor, 'UNKNOWN'), payment_amount "
+                        + "FROM payment_log WHERE user_plan_id = ?1 AND UPPER(COALESCE(payment_status, '')) = 'PAID' "
+                        + "AND UPPER(TRIM(COALESCE(vendor, ''))) NOT IN ('MANUAL', 'OFFLINE')")
+                .setParameter(1, userPlanId).getResultList();
+        String blocker = null;
+        if (!online.isEmpty()) {
+            Object[] first = (Object[]) online.get(0);
+            blocker = online.size() + " online payment(s) (" + first[0] + " " + first[1]
+                    + (online.size() > 1 ? ", …" : "") + ") were made for this course. Online payments cannot "
+                    + "be deleted — refund them through the payment gateway, or remove the course without "
+                    + "deleting the payment history.";
+        } else if (countPlanReferences("referral_benefit_logs", userPlanId) > 0
+                || countPlanReferences("access_pass_grant", userPlanId) > 0
+                || countPlanReferences("admission_package_course", userPlanId) > 0
+                || countPlanReferences("user_plan_change_request", userPlanId) > 0) {
+            blocker = "This course is linked to a referral reward, access pass, admission package or plan change, "
+                    + "so its payment history cannot be deleted. Remove the course without deleting it.";
+        } else if (count("SELECT COUNT(*) FROM session_guest_registrations WHERE payment_log_id IN "
+                + "(SELECT id FROM payment_log WHERE user_plan_id = ?1)", userPlanId) > 0) {
+            blocker = "A payment of this course is linked to a live-class registration, so the payment history "
+                    + "cannot be deleted. Remove the course without deleting it.";
+        }
+        Object paid = entityManager.createNativeQuery("SELECT COALESCE(SUM(payment_amount), 0) FROM payment_log "
+                        + "WHERE user_plan_id = ?1 AND UPPER(COALESCE(payment_status, '')) = 'PAID'")
+                .setParameter(1, userPlanId).getSingleResult();
+        int invoices = entityManager.createNativeQuery(PLAN_INVOICES)
+                .setParameter(1, userPlanId).setParameter(2, instituteId).getResultList().size();
+        return new PlanHistory(
+                (int) count("SELECT COUNT(*) FROM payment_log WHERE user_plan_id = ?1", userPlanId),
+                paid instanceof Number n ? BigDecimal.valueOf(n.doubleValue()) : BigDecimal.ZERO,
+                (int) count("SELECT COUNT(*) FROM student_fee_payment WHERE user_plan_id = ?1", userPlanId),
+                invoices, blocker);
+    }
+
+    /**
+     * Removes everything money-related about one enrolment, so it shows nowhere — the learner's
+     * Payment History tab, Manage Payments, invoices, the ledger: its payments, installments,
+     * invoices, ledger rows and finally the plan itself. Called when an admin hard-terminates a
+     * course and ticks "delete payment history"; the access side (the INVITED mapping that lets the
+     * learner be enrolled again) is left alone, only its pointer to the deleted plan is cleared.
+     *
+     * <p>Same permission and the same refusals as a single payment delete, all or nothing: each
+     * settled payment goes through {@link #removePayment} (void first, so a bill it paid is reopened,
+     * and its own DELETE row in the activity log), then the rest is removed with plain SQL,
+     * children before parents. A DELETE row for the plan carries a snapshot of it.
+     */
+    @Transactional
+    public Map<String, Object> deletePlanHistory(String userPlanId, String instituteId, String userId) {
+        if (!StringUtils.hasText(instituteId)) throw new VacademyException("instituteId is required");
+        if (!canDelete(userId, instituteId)) {
+            recordBlocked("USER_PLAN", userPlanId, instituteId, userId, TURNED_OFF_MESSAGE, 403);
+            throw new VacademyException(TURNED_OFF_MESSAGE);
+        }
+        try {
+            return removePlanHistory(userPlanId, instituteId, userId);
+        } catch (VacademyException e) {
+            recordBlocked("USER_PLAN", userPlanId, instituteId, userId, e.getMessage(), 400);
+            throw e;
+        }
+    }
+
+    private Map<String, Object> removePlanHistory(String userPlanId, String instituteId, String userId) {
+        paymentVoidService.assertNotSubOrgAdmin(userId);
+        PlanHistory history = previewPlanHistory(userPlanId, instituteId);
+        if (history.blocker() != null) throw new VacademyException(history.blocker());
+        Map<String, Object> snapshot = planAuditSnapshot(userPlanId);
+        if (snapshot.isEmpty()) throw new VacademyException("Enrolment plan not found: " + userPlanId);
+
+        // 1. Settled offline/manual payments, one by one (each voids first and logs its own DELETE).
+        entityManager.flush();
+        List<?> settled = entityManager.createNativeQuery(REMOVABLE_PAYMENTS)
+                .setParameter(1, userPlanId).getResultList();
+        for (Object id : settled) {
+            removePayment(String.valueOf(id), instituteId, userId);
+        }
+
+        // 2. Invoices of this enrolment that are still there, then the payments that never
+        //    settled (pending / failed checkouts — no money) and what hangs off them.
+        List<String> invoiceIds = entityManager.createNativeQuery(PLAN_INVOICES)
+                .setParameter(1, userPlanId).setParameter(2, instituteId).getResultList()
+                .stream().map(String::valueOf).toList();
+        String planLogs = "(SELECT id FROM payment_log WHERE user_plan_id = ?1)";
+        execute("DELETE FROM user_account_ledger WHERE reference_id IN " + planLogs, userPlanId);
+        execute("DELETE FROM student_fee_allocation_ledger WHERE payment_log_id IN " + planLogs, userPlanId);
+        execute("DELETE FROM payment_log_line_item WHERE payment_log_id IN " + planLogs, userPlanId);
+        execute("DELETE FROM invoice_payment_log_mapping WHERE payment_log_id IN " + planLogs, userPlanId);
+        for (String invoiceId : invoiceIds) {
+            execute("DELETE FROM user_account_ledger WHERE invoice_id = ?1", invoiceId);
+            removeInvoiceRows(invoiceId);
+        }
+
+        // 3. The ledger rows booked against the plan and its installments (accruals, discounts,
+        //    splits, the cancellation reversal), then the installments themselves.
+        String planBills = "(SELECT id FROM student_fee_payment WHERE user_plan_id = ?1)";
+        execute("DELETE FROM user_account_ledger WHERE source_id = ?1 OR source_id IN " + planBills, userPlanId);
+        execute("UPDATE student_fee_payment SET current_adjustment_history_id = NULL WHERE user_plan_id = ?1",
+                userPlanId);
+        execute("DELETE FROM student_fee_adjustment_history WHERE student_fee_payment_id IN " + planBills,
+                userPlanId);
+        execute("DELETE FROM student_fee_allocation_ledger WHERE student_fee_payment_id IN " + planBills,
+                userPlanId);
+        int installments = execute("DELETE FROM student_fee_payment WHERE user_plan_id = ?1", userPlanId);
+        int unsettledPayments = execute("DELETE FROM payment_log WHERE user_plan_id = ?1", userPlanId);
+
+        // 4. The plan. Rows that only point at it (enrolment mappings, access log, referral link)
+        //    lose the pointer; the blocking references were refused in the preview.
+        execute("UPDATE student_session_institute_group_mapping SET user_plan_id = NULL WHERE user_plan_id = ?1",
+                userPlanId);
+        execute("UPDATE learner_access_log SET user_plan_id = NULL WHERE user_plan_id = ?1", userPlanId);
+        execute("UPDATE referral_mapping SET user_plan_id = NULL WHERE user_plan_id = ?1", userPlanId);
+        if (execute("DELETE FROM user_plan WHERE id = ?1", userPlanId) != 1) {
+            throw new VacademyException("Payment history could not be deleted, nothing was changed");
+        }
+        entityManager.clear();
+
+        snapshot.put("payments_deleted", settled.size() + unsettledPayments);
+        snapshot.put("paid_amount_deleted", history.paidAmount());
+        snapshot.put("installments_deleted", installments);
+        snapshot.put("invoices_deleted", invoiceIds.size());
+        recordDeleted("USER_PLAN", userPlanId, instituteId, userId,
+                "permanently deleted the payment history of a removed course: " + (settled.size() + unsettledPayments)
+                        + " payment(s) worth " + history.paidAmount() + ", " + installments + " installment(s)",
+                snapshot);
+        log.info("[PlanHistoryDelete] userPlan={} institute={} deletedBy={} payments={} installments={}",
+                userPlanId, instituteId, userId, settled.size() + unsettledPayments, installments);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("user_plan_id", userPlanId);
+        result.put("payments_deleted", settled.size() + unsettledPayments);
+        result.put("paid_amount_deleted", history.paidAmount());
+        result.put("installments_deleted", installments);
+        return result;
+    }
+
+    private long countPlanReferences(String table, String userPlanId) {
+        return count("SELECT COUNT(*) FROM " + table + " WHERE user_plan_id = ?1", userPlanId);
+    }
+
+    private long count(String sql, String id) {
+        Object n = entityManager.createNativeQuery(sql).setParameter(1, id).getSingleResult();
+        return n instanceof Number num ? num.longValue() : 0L;
+    }
+
+    private Map<String, Object> planAuditSnapshot(String userPlanId) {
+        Map<String, Object> snap = new LinkedHashMap<>();
+        List<?> rows = entityManager.createNativeQuery("SELECT id, user_id, status, enroll_invite_id, "
+                        + "payment_option_id, plan_id, created_at, start_date, end_date FROM user_plan WHERE id = ?1")
+                .setParameter(1, userPlanId).getResultList();
+        if (rows.isEmpty()) return snap;
+        Object[] r = (Object[]) rows.get(0);
+        String[] keys = {"id", "user_id", "status", "enroll_invite_id", "payment_option_id", "plan_id",
+                "created_at", "start_date", "end_date"};
+        for (int i = 0; i < keys.length; i++) {
+            snap.put(keys[i], r[i] != null ? String.valueOf(r[i]) : null);
+        }
+        return snap;
     }
 
     // ------------------------------------------------------------------ audit

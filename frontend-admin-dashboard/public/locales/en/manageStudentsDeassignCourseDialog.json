@@ -28,6 +28,11 @@
             "optional": "(optional)",
             "placeholder": "Why is this learner being terminated?"
         },
+        "deletePaymentHistory": {
+            "label": "Also delete payment history",
+            "description": "Permanently removes this course's payments, installments, invoices and fee plan, so they no longer show in Payment History, Manage Payments or reports. Online (gateway) payments cannot be deleted.",
+            "warning": "Collected amounts in past reports will go down. This cannot be undone."
+        },
         "notifyLearners": "Notify learner about removal"
     },
     "preview": {

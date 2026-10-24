@@ -29,6 +29,7 @@ import type {
 import { getCurrencySymbol } from '@/constants/currencies';
 import { serverErrorMessage } from '@/services/payment-logs';
 import { AdmissionPackagesSection } from './admission-package-card';
+import { ReopenDuesButton, StopDuesForm } from './stop-dues-form';
 
 /**
  * Money for one CPO plan. The currency comes from the plan itself — this used to hard-code
@@ -61,7 +62,7 @@ const statusPill = (status: string, t: TFunction) => {
               ? 'bg-blue-100 text-blue-700'
               : status === 'OVERDUE'
                 ? 'bg-red-100 text-red-700'
-                : status === 'WAIVED' || status === 'CANCELLED'
+                : status === 'WAIVED' || status === 'CANCELLED' || status === 'STOPPED'
                   ? 'bg-neutral-100 text-neutral-500'
                   : 'bg-orange-100 text-orange-700';
     const statusLabels: Record<string, string> = {
@@ -70,6 +71,7 @@ const statusPill = (status: string, t: TFunction) => {
         OVERDUE: t('status.overdue'),
         WAIVED: t('status.waived'),
         CANCELLED: t('status.cancelled'),
+        STOPPED: t('status.stopped'),
     };
     const label = statusLabels[status] ?? status;
     return (
@@ -574,7 +576,7 @@ interface ItemProps {
     readOnly?: boolean;
 }
 
-type ItemPanel = 'pay' | 'edit' | 'split' | null;
+type ItemPanel = 'pay' | 'edit' | 'split' | 'stop' | null;
 
 /**
  * One installment as a compact line that fits the narrow side view: number, due date,
@@ -593,8 +595,17 @@ const InstallmentItem = ({ rows, index, userPlanId, userId, currency, readOnly }
     const canSplit = outstanding > 0 && row.status !== 'WAIVED';
     const payAmount = dueThrough(rows, index);
     const earlierOpen = rows.slice(0, index).filter(isOpen).length;
+    const stopped = !!row.stopped_at;
+    const later = rows.slice(index + 1).filter((r) => isOpen(r) && r.status !== 'WAIVED');
 
     const facts: string[] = [];
+    if (stopped)
+        facts.push(
+            t('stopDues.stoppedFact', {
+                amount: fmt(row.stopped_amount ?? 0, currency),
+                reason: row.stopped_reason || '—',
+            })
+        );
     if (paid > 0) facts.push(t('item.paid', { amount: fmt(paid, currency) }));
     if (paid > 0 && outstanding > 0)
         facts.push(t('item.left', { amount: fmt(outstanding, currency) }));
@@ -625,7 +636,7 @@ const InstallmentItem = ({ rows, index, userPlanId, userId, currency, readOnly }
                             <span className="text-xs font-semibold tabular-nums text-neutral-800">
                                 {fmt(row.amount_expected, currency)}
                             </span>
-                            {statusPill(row.status, t)}
+                            {statusPill(stopped ? 'STOPPED' : row.status, t)}
                         </div>
                     </div>
                     {facts.length > 0 && (
@@ -666,6 +677,22 @@ const InstallmentItem = ({ rows, index, userPlanId, userId, currency, readOnly }
                                     {t('row.split')}
                                 </button>
                             )}
+                            {open && outstanding > 0 && (
+                                <button
+                                    type="button"
+                                    onClick={() => toggle('stop')}
+                                    className="rounded border border-danger-200 px-2 py-0.5 text-2xs font-medium text-danger-700 hover:bg-danger-50"
+                                >
+                                    {t('stopDues.action')}
+                                </button>
+                            )}
+                            {stopped && (
+                                <ReopenDuesButton
+                                    target={{ sfpId: row.id }}
+                                    userId={userId}
+                                    className={actionButton}
+                                />
+                            )}
                         </div>
                     )}
                 </div>
@@ -692,6 +719,21 @@ const InstallmentItem = ({ rows, index, userPlanId, userId, currency, readOnly }
                         userPlanId={userPlanId}
                         userId={userId}
                         currency={currency}
+                        onDone={() => setPanel(null)}
+                    />
+                </div>
+            )}
+            {panel === 'stop' && open && (
+                <div className="mt-2">
+                    <StopDuesForm
+                        target={{ sfpId: row.id }}
+                        userId={userId}
+                        currency={currency}
+                        thisAmount={Math.max(0, outstanding)}
+                        laterAmount={round2(
+                            later.reduce((sum, r) => sum + Math.max(0, Number(r.outstanding)), 0)
+                        )}
+                        laterCount={later.length}
                         onDone={() => setPanel(null)}
                     />
                 </div>

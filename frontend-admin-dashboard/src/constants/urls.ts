@@ -1631,6 +1631,16 @@ export const PUT_ADMISSION_PACKAGE_INSTALLMENT = (packageId: string) =>
     `${BASE_URL}/admin-core-service/v1/fee-management/admission-package/${packageId}/installment`;
 export const POST_ADMISSION_PACKAGE_INSTALLMENT_SPLIT = (packageId: string) =>
     `${BASE_URL}/admin-core-service/v1/fee-management/admission-package/${packageId}/installment/split`;
+export const PUT_ADMISSION_PACKAGE_INSTALLMENT_AMOUNT = (packageId: string) =>
+    `${BASE_URL}/admin-core-service/v1/fee-management/admission-package/${packageId}/installment/amount`;
+export const POST_ADMISSION_PACKAGE_STOP_DUES = (packageId: string) =>
+    `${BASE_URL}/admin-core-service/v1/fee-management/admission-package/${packageId}/installment/stop-dues`;
+export const POST_ADMISSION_PACKAGE_REOPEN_DUES = (packageId: string) =>
+    `${BASE_URL}/admin-core-service/v1/fee-management/admission-package/${packageId}/installment/reopen`;
+export const POST_INSTALLMENT_STOP_DUES = (sfpId: string) =>
+    `${BASE_URL}/admin-core-service/v1/fee-management/installments/${sfpId}/stop-dues`;
+export const POST_INSTALLMENT_REOPEN_DUES = (sfpId: string) =>
+    `${BASE_URL}/admin-core-service/v1/fee-management/installments/${sfpId}/reopen`;
 
 // Offline Data Entry
 export const OFFLINE_CREATE_ATTEMPT = `${BASE_URL}/assessment-service/assessment/offline-entry/create-attempt`;

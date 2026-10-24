@@ -77,7 +77,8 @@
             "PAID": "Payé",
             "PARTIAL_PAID": "Payé en partie",
             "OVERDUE": "En retard",
-            "DUE": "À payer"
+            "DUE": "À payer",
+            "STOPPED": "Arrêtée"
         },
         "pay": {
             "heading": "Paiement du forfait",
@@ -104,7 +105,9 @@
             "payHeading": "Paiement de l'échéance du {{date}}",
             "coversEarlier_one": "Inclut {{count}} échéance antérieure encore ouverte : les paiements soldent d'abord la plus ancienne. Réparti entre les cours selon ce que chacun doit.",
             "coversEarlier_many": "Inclut {{count}} échéances antérieures encore ouvertes : les paiements soldent d'abord la plus ancienne. Réparti entre les cours selon ce que chacun doit.",
-            "coversEarlier_other": "Inclut {{count}} échéances antérieures encore ouvertes : les paiements soldent d'abord la plus ancienne. Réparti entre les cours selon ce que chacun doit."
+            "coversEarlier_other": "Inclut {{count}} échéances antérieures encore ouvertes : les paiements soldent d'abord la plus ancienne. Réparti entre les cours selon ce que chacun doit.",
+            "amount": "Modifier le montant",
+            "stop": "Arrêter les échéances"
         },
         "change": {
             "moveHeading": "Changer la date d'échéance",
@@ -119,7 +122,13 @@
             "dateError": "Choisissez une autre date",
             "moveSuccess": "Échéance déplacée sur tous les cours",
             "splitSuccess": "{{amount}} reporté à la nouvelle date",
-            "error": "Impossible de modifier l'échéance"
-        }
+            "error": "Impossible de modifier l'échéance",
+            "newAmountError": "Saisissez au moins {{amount}} (déjà payé)",
+            "amountSuccess": "Échéance fixée à {{amount}} sur tous les cours",
+            "amountHeading": "Modifier le montant",
+            "amountHint": "Modifie cette échéance sur tous les cours : chacun garde ce qu'il a payé ({{paid}}) et le reste est réparti selon ce que chacun doit. Le total du forfait change de la différence.",
+            "newAmount": "Nouveau montant"
+        },
+        "stoppedFact": "Échéances arrêtées : {{amount}} · {{reason}}"
     }
 }

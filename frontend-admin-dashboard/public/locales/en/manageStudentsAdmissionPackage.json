@@ -76,7 +76,8 @@
             "PAID": "Paid",
             "PARTIAL_PAID": "Part paid",
             "OVERDUE": "Overdue",
-            "DUE": "Due"
+            "DUE": "Due",
+            "STOPPED": "Stopped"
         },
         "pay": {
             "heading": "Package payment",
@@ -102,7 +103,9 @@
             "split": "Split",
             "payHeading": "Pay the {{date}} installment",
             "coversEarlier_one": "Includes {{count}} earlier installment still open: payments clear the oldest first. Shared between the courses by what each owes.",
-            "coversEarlier_other": "Includes {{count}} earlier installments still open: payments clear the oldest first. Shared between the courses by what each owes."
+            "coversEarlier_other": "Includes {{count}} earlier installments still open: payments clear the oldest first. Shared between the courses by what each owes.",
+            "amount": "Edit amount",
+            "stop": "Stop dues"
         },
         "change": {
             "moveHeading": "Change the due date",
@@ -117,7 +120,13 @@
             "dateError": "Pick a different date",
             "moveSuccess": "Installment moved on every course",
             "splitSuccess": "{{amount}} moved to the new date",
-            "error": "Could not change the installment"
-        }
+            "error": "Could not change the installment",
+            "newAmountError": "Enter an amount of at least {{amount}} (already paid)",
+            "amountSuccess": "Installment set to {{amount}} on every course",
+            "amountHeading": "Change the amount",
+            "amountHint": "Changes this installment on every course: each keeps what it has paid ({{paid}}) and the rest is shared by what each owes. The package total changes by the difference.",
+            "newAmount": "New amount"
+        },
+        "stoppedFact": "Dues stopped: {{amount}} · {{reason}}"
     }
 }

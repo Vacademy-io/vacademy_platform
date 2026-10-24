@@ -104,6 +104,10 @@ export interface CpoInstallmentRow {
     plan_discount_share?: number | null;
     installment_discount?: InstallmentDiscountEntry | null;
     manual_amount_override?: ManualAmountOverrideEntry | null;
+    /** Set while its dues are stopped (Stop dues): why, and what it took off. Reopen undoes it. */
+    stopped_reason?: string | null;
+    stopped_amount?: number | null;
+    stopped_at?: string | null;
 }
 
 export interface CpoSideViewInstallmentsResponse {
@@ -204,7 +208,10 @@ export interface AdmissionPackageInstallment {
     amount: number;
     paid: number;
     outstanding: number;
-    status: 'PAID' | 'PARTIAL_PAID' | 'OVERDUE' | 'DUE';
+    /** While its dues are stopped: what was taken off, and why. */
+    stopped?: number | null;
+    stopped_reason?: string | null;
+    status: 'PAID' | 'PARTIAL_PAID' | 'OVERDUE' | 'DUE' | 'STOPPED';
 }
 
 /** How a package payment would be shared between the courses. */
@@ -212,4 +219,21 @@ export interface AdmissionPackagePaymentPreview {
     amount: number;
     outstanding_total: number;
     courses: { user_plan_id: string; course_name?: string | null; amount: number }[];
+}
+
+/** Stop dues on an installment: it (or it and every later one) stops being owed. */
+export interface StopDuesRequest {
+    /** Package only: the package installment, by its due date. */
+    due_date?: string;
+    include_later: boolean;
+    reason: string;
+    /** Also remove the learner from the course(s): access ends now. */
+    remove_from_course: boolean;
+}
+
+export interface StopDuesResult {
+    stopped: number;
+    reopened: number;
+    removed_from_courses: number;
+    removal_errors?: string[] | null;
 }

@@ -4,7 +4,8 @@
         "partialPaid": "Partiellement payé",
         "overdue": "En retard",
         "waived": "Exonéré",
-        "cancelled": "Annulée"
+        "cancelled": "Annulée",
+        "stopped": "Arrêtée"
     },
     "row": {
         "updateSuccessToast": "Échéance mise à jour",
@@ -154,5 +155,37 @@
             "short": "répartie sur toutes les échéances",
             "hint": "L’ancienne méthode : chaque échéance, payée ou non, prend une part. Une échéance payée peut se retrouver en trop-perçu."
         }
+    },
+    "stopDues": {
+        "action": "Arrêter les échéances",
+        "heading": "Arrêter les échéances",
+        "hint": "Pour un apprenant qui a abandonné ou a cessé de payer. Ce que vous arrêtez n'est plus dû, en retard ni relancé. L'argent déjà payé et ses reçus restent. Vous pouvez rouvrir tant que l'apprenant est inscrit.",
+        "onlyThis": "Seulement cette échéance ({{amount}} impayés)",
+        "thisAndLater_one": "Celle-ci et {{count}} échéance suivante ({{amount}})",
+        "thisAndLater_many": "Celle-ci et les {{count}} échéances suivantes ({{amount}})",
+        "thisAndLater_other": "Celle-ci et les {{count}} échéances suivantes ({{amount}})",
+        "reason": "Motif",
+        "reasonPlaceholder": "ex. Abandon après la première échéance",
+        "removeCourse": "Retirer aussi l'apprenant de ce cours",
+        "removePackage_one": "Retirer aussi l'apprenant du cours du forfait",
+        "removePackage_many": "Retirer aussi l'apprenant des {{count}} cours du forfait",
+        "removePackage_other": "Retirer aussi l'apprenant des {{count}} cours du forfait",
+        "removeWarning": "L'accès prend fin maintenant, et les échéances arrêtées ne pourront plus être rouvertes.",
+        "cancel": "Annuler",
+        "saving": "Enregistrement…",
+        "submit": "Arrêter {{amount}}",
+        "success": "Échéances de {{amount}} arrêtées",
+        "successRemoved_one": "Échéances de {{amount}} arrêtées ; retiré de {{count}} cours",
+        "successRemoved_many": "Échéances de {{amount}} arrêtées ; retiré de {{count}} cours",
+        "successRemoved_other": "Échéances de {{amount}} arrêtées ; retiré de {{count}} cours",
+        "removalError": "Échéances arrêtées, mais l'apprenant n'a pas pu être retiré : {{errors}}",
+        "error": "Impossible d'arrêter les échéances",
+        "reasonError": "Indiquez pourquoi les échéances sont arrêtées",
+        "reopen": "Rouvrir",
+        "reopened_one": "{{count}} échéance rouverte",
+        "reopened_many": "{{count}} échéances rouvertes",
+        "reopened_other": "{{count}} échéances rouvertes",
+        "reopenError": "Impossible de rouvrir",
+        "stoppedFact": "{{amount}} arrêtés · {{reason}}"
     }
 }

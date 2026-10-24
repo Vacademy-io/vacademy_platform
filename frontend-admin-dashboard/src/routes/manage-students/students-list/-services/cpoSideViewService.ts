@@ -5,12 +5,17 @@ import {
     GET_USER_CPO_USER_PLANS,
     GET_USER_PLAN_INSTALLMENTS,
     POST_ADMISSION_PACKAGE_INSTALLMENT_SPLIT,
+    POST_ADMISSION_PACKAGE_REOPEN_DUES,
+    POST_ADMISSION_PACKAGE_STOP_DUES,
     POST_ADMISSION_PACKAGE_PAYMENT,
     POST_ADMISSION_PACKAGE_PAYMENT_PREVIEW,
     POST_SPLIT_INSTALLMENT,
     POST_USER_PLAN_CPO_DISCOUNT_PREVIEW,
+    POST_INSTALLMENT_REOPEN_DUES,
+    POST_INSTALLMENT_STOP_DUES,
     POST_USER_PLAN_OFFLINE_PAYMENT,
     PUT_ADMISSION_PACKAGE_INSTALLMENT,
+    PUT_ADMISSION_PACKAGE_INSTALLMENT_AMOUNT,
     PUT_INSTALLMENT,
     PUT_USER_PLAN_CPO_DISCOUNT,
 } from '@/constants/urls';
@@ -24,6 +29,8 @@ import type {
     ModifyInstallmentRequest,
     RecordOfflinePaymentRequest,
     SplitInstallmentRequest,
+    StopDuesRequest,
+    StopDuesResult,
 } from '../-types/cpo-side-view-types';
 
 // ─── Reads ─────────────────────────────────────────────────────────────────
@@ -218,8 +225,9 @@ export const useRecordAdmissionPackagePayment = (packageId: string, userId?: str
 /** A change to one package installment, keyed by its current due date. */
 export interface AdmissionPackageInstallmentChange {
     due_date: string;
-    new_due_date: string;
-    /** Split only: the part of the unpaid balance that moves to the new date. */
+    /** Move and split: the new date. */
+    new_due_date?: string;
+    /** Split: the part of the unpaid balance that moves; amount: the installment's new amount. */
     amount?: number;
 }
 
@@ -230,19 +238,62 @@ export interface AdmissionPackageInstallmentChange {
 export const useChangeAdmissionPackageInstallment = (packageId: string, userId?: string | null) => {
     const queryClient = useQueryClient();
     return useMutation({
-        mutationFn: async (input: { split: boolean; body: AdmissionPackageInstallmentChange }) => {
-            const r = input.split
-                ? await authenticatedAxiosInstance.post<AdmissionPackageSummary>(
-                      POST_ADMISSION_PACKAGE_INSTALLMENT_SPLIT(packageId),
-                      input.body
-                  )
-                : await authenticatedAxiosInstance.put<AdmissionPackageSummary>(
-                      PUT_ADMISSION_PACKAGE_INSTALLMENT(packageId),
-                      input.body
-                  );
+        mutationFn: async (input: {
+            kind: 'move' | 'split' | 'amount';
+            body: AdmissionPackageInstallmentChange;
+        }) => {
+            const r =
+                input.kind === 'split'
+                    ? await authenticatedAxiosInstance.post<AdmissionPackageSummary>(
+                          POST_ADMISSION_PACKAGE_INSTALLMENT_SPLIT(packageId),
+                          input.body
+                      )
+                    : await authenticatedAxiosInstance.put<AdmissionPackageSummary>(
+                          input.kind === 'amount'
+                              ? PUT_ADMISSION_PACKAGE_INSTALLMENT_AMOUNT(packageId)
+                              : PUT_ADMISSION_PACKAGE_INSTALLMENT(packageId),
+                          input.body
+                      );
             return r.data;
         },
         onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['cpo-side-view'] });
+            if (userId) {
+                queryClient.invalidateQueries({ queryKey: ['user-invoices', userId] });
+                queryClient.invalidateQueries({ queryKey: ['user-account-summary', userId] });
+                queryClient.invalidateQueries({ queryKey: ['user-account-ledger', userId] });
+            }
+        },
+    });
+};
+
+/**
+ * Stop dues (or Reopen) on a course installment or a package installment. A removal from the
+ * course changes the learner's enrolments too, so everything about them is refetched then.
+ */
+export const useStopDues = (
+    target: { sfpId: string } | { packageId: string },
+    userId?: string | null
+) => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async (input: { reopen: boolean; body: StopDuesRequest | { due_date?: string } }) => {
+            const url =
+                'sfpId' in target
+                    ? input.reopen
+                        ? POST_INSTALLMENT_REOPEN_DUES(target.sfpId)
+                        : POST_INSTALLMENT_STOP_DUES(target.sfpId)
+                    : input.reopen
+                      ? POST_ADMISSION_PACKAGE_REOPEN_DUES(target.packageId)
+                      : POST_ADMISSION_PACKAGE_STOP_DUES(target.packageId);
+            const r = await authenticatedAxiosInstance.post<StopDuesResult>(url, input.body);
+            return r.data;
+        },
+        onSuccess: (result) => {
+            if (result.removed_from_courses > 0) {
+                queryClient.invalidateQueries();
+                return;
+            }
             queryClient.invalidateQueries({ queryKey: ['cpo-side-view'] });
             if (userId) {
                 queryClient.invalidateQueries({ queryKey: ['user-invoices', userId] });

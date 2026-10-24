@@ -16,6 +16,7 @@ import {
     useRecordAdmissionPackagePayment,
     useUserAdmissionPackages,
 } from '@/routes/manage-students/students-list/-services/cpoSideViewService';
+import { ReopenDuesButton, StopDuesForm } from './stop-dues-form';
 import type {
     AdmissionPackageInstallment,
     AdmissionPackageSummary,
@@ -63,11 +64,13 @@ const statusPill = (status: AdmissionPackageInstallment['status'], t: TFunction)
     const tone =
         status === 'PAID'
             ? 'bg-success-50 text-success-700'
-            : status === 'OVERDUE'
-              ? 'bg-danger-50 text-danger-700'
-              : status === 'PARTIAL_PAID'
-                ? 'bg-info-50 text-info-700'
-                : 'bg-warning-50 text-warning-700';
+            : status === 'STOPPED'
+              ? 'bg-neutral-100 text-neutral-500'
+              : status === 'OVERDUE'
+                ? 'bg-danger-50 text-danger-700'
+                : status === 'PARTIAL_PAID'
+                  ? 'bg-info-50 text-info-700'
+                  : 'bg-warning-50 text-warning-700';
     return (
         <span className={`inline-block rounded-full px-2 py-0.5 text-2xs font-medium ${tone}`}>
             {t(`side.status.${status}`)}
@@ -285,29 +288,50 @@ interface ChangeFormProps {
     pkg: AdmissionPackageSummary;
     userId: string;
     row: AdmissionPackageInstallment;
-    /** Split: move part of the unpaid balance to a new date; otherwise move the whole installment. */
-    split: boolean;
+    /** Move the installment, split part of it to a new date, or change its amount. */
+    mode: 'move' | 'split' | 'amount';
     onDone: () => void;
 }
 
 /**
- * Moves a package installment to another date, or moves part of what is unpaid on it onto a new
- * date (shared between the courses by what each owes on it). Every course changes together, so
- * the package keeps one schedule.
+ * Changes one package installment on every course at once, so the package keeps one schedule:
+ * move it to another date; move part of what is unpaid on it onto a new date (shared between the
+ * courses by what each owes on it); or set its amount (each course keeps what it has paid, the
+ * unpaid part is shared the same way, and the package total moves by the difference).
  */
-const InstallmentChangeForm = ({ pkg, userId, row, split, onDone }: ChangeFormProps) => {
+const InstallmentChangeForm = ({ pkg, userId, row, mode, onDone }: ChangeFormProps) => {
     const { t } = useTranslation('manageStudentsAdmissionPackage');
     const { mutateAsync, isPending } = useChangeAdmissionPackageInstallment(pkg.id, userId);
     const unpaid = Math.max(0, Number(row.outstanding) || 0);
-    const [amount, setAmount] = useState<string>(split && unpaid > 0 ? String(unpaid) : '');
-    const [dueDate, setDueDate] = useState<string>(split ? '' : row.due_date.slice(0, 10));
+    const paid = Math.max(0, Number(row.paid) || 0);
+    const [amount, setAmount] = useState<string>(
+        mode === 'split' && unpaid > 0
+            ? String(unpaid)
+            : mode === 'amount'
+              ? String(row.amount)
+              : ''
+    );
+    const [dueDate, setDueDate] = useState<string>(
+        mode === 'move' ? row.due_date.slice(0, 10) : ''
+    );
     const amt = Number(amount);
-    const amountOk = !split || (amount !== '' && Number.isFinite(amt) && amt > 0 && amt <= unpaid);
-    const dateOk = !!dueDate && dueDate !== row.due_date.slice(0, 10);
+    const amountOk =
+        mode === 'move' ||
+        (amount !== '' &&
+            Number.isFinite(amt) &&
+            (mode === 'split'
+                ? amt > 0 && amt <= unpaid
+                : amt >= paid && amt !== Number(row.amount)));
+    const dateOk = mode === 'amount' || (!!dueDate && dueDate !== row.due_date.slice(0, 10));
+    const money = (n: number) => fmt(n, pkg.currency);
 
     const submit = async () => {
         if (!amountOk) {
-            toast.error(t('side.change.amountError', { amount: fmt(unpaid, pkg.currency) }));
+            toast.error(
+                mode === 'split'
+                    ? t('side.change.amountError', { amount: money(unpaid) })
+                    : t('side.change.newAmountError', { amount: money(paid) })
+            );
             return;
         }
         if (!dateOk) {
@@ -316,17 +340,19 @@ const InstallmentChangeForm = ({ pkg, userId, row, split, onDone }: ChangeFormPr
         }
         try {
             await mutateAsync({
-                split,
+                kind: mode,
                 body: {
                     due_date: row.due_date.slice(0, 10),
-                    new_due_date: dueDate,
-                    ...(split ? { amount: amt } : {}),
+                    ...(mode !== 'amount' ? { new_due_date: dueDate } : {}),
+                    ...(mode !== 'move' ? { amount: amt } : {}),
                 },
             });
             toast.success(
-                split
-                    ? t('side.change.splitSuccess', { amount: fmt(amt, pkg.currency) })
-                    : t('side.change.moveSuccess')
+                mode === 'split'
+                    ? t('side.change.splitSuccess', { amount: money(amt) })
+                    : mode === 'amount'
+                      ? t('side.change.amountSuccess', { amount: money(amt) })
+                      : t('side.change.moveSuccess')
             );
             onDone();
         } catch (e: unknown) {
@@ -337,24 +363,32 @@ const InstallmentChangeForm = ({ pkg, userId, row, split, onDone }: ChangeFormPr
     return (
         <div className="rounded border border-primary-200 bg-primary-50/40 p-2.5">
             <p className="text-2xs font-semibold uppercase tracking-wide text-primary-700">
-                {split
-                    ? t('side.change.splitHeading', { amount: fmt(unpaid, pkg.currency) })
-                    : t('side.change.moveHeading')}
+                {mode === 'split'
+                    ? t('side.change.splitHeading', { amount: money(unpaid) })
+                    : mode === 'amount'
+                      ? t('side.change.amountHeading')
+                      : t('side.change.moveHeading')}
             </p>
             <p className="mb-2 text-2xs text-neutral-500">
-                {split ? t('side.change.splitHint') : t('side.change.moveHint')}
+                {mode === 'split'
+                    ? t('side.change.splitHint')
+                    : mode === 'amount'
+                      ? t('side.change.amountHint', { paid: money(paid) })
+                      : t('side.change.moveHint')}
             </p>
             <div className="flex flex-wrap items-end gap-2">
-                {split && (
+                {mode !== 'move' && (
                     <div>
                         <label className="block text-2xs text-neutral-500">
-                            {t('side.change.amount')}
+                            {mode === 'split'
+                                ? t('side.change.amount')
+                                : t('side.change.newAmount')}
                         </label>
                         <input
                             type="number"
                             step="any"
-                            min={0}
-                            max={unpaid}
+                            min={mode === 'amount' ? paid : 0}
+                            max={mode === 'split' ? unpaid : undefined}
                             value={amount}
                             onChange={(e) => setAmount(e.target.value)}
                             onFocus={(e) => e.currentTarget.select()}
@@ -362,17 +396,21 @@ const InstallmentChangeForm = ({ pkg, userId, row, split, onDone }: ChangeFormPr
                         />
                     </div>
                 )}
-                <div>
-                    <label className="block text-2xs text-neutral-500">
-                        {split ? t('side.change.newDueDate') : t('side.change.dueDate')}
-                    </label>
-                    <input
-                        type="date"
-                        value={dueDate}
-                        onChange={(e) => setDueDate(e.target.value)}
-                        className="rounded border border-neutral-200 bg-white px-2 py-1 text-2xs"
-                    />
-                </div>
+                {mode !== 'amount' && (
+                    <div>
+                        <label className="block text-2xs text-neutral-500">
+                            {mode === 'split'
+                                ? t('side.change.newDueDate')
+                                : t('side.change.dueDate')}
+                        </label>
+                        <input
+                            type="date"
+                            value={dueDate}
+                            onChange={(e) => setDueDate(e.target.value)}
+                            className="rounded border border-neutral-200 bg-white px-2 py-1 text-2xs"
+                        />
+                    </div>
+                )}
                 <button
                     type="button"
                     disabled={isPending || !amountOk || !dateOk}
@@ -393,7 +431,7 @@ const InstallmentChangeForm = ({ pkg, userId, row, split, onDone }: ChangeFormPr
     );
 };
 
-type ItemPanel = 'pay' | 'move' | 'split' | null;
+type ItemPanel = 'pay' | 'move' | 'split' | 'amount' | 'stop' | null;
 
 interface ItemProps {
     pkg: AdmissionPackageSummary;
@@ -403,7 +441,8 @@ interface ItemProps {
 
 /**
  * One package installment: its date, amount and status, and what can be done to it — pay it,
- * move it to another date, or move part of it to a later date. Each acts on every course's bill
+ * move it to another date, move part of it to a later date, change its amount, or stop its dues
+ * (a learner who dropped out); a stopped one can be reopened. Each acts on every course's bill
  * for that date at once.
  */
 const PackageInstallmentItem = ({ pkg, userId, index }: ItemProps) => {
@@ -420,6 +459,8 @@ const PackageInstallmentItem = ({ pkg, userId, index }: ItemProps) => {
         earlier.reduce((sum, r) => sum + Number(r.outstanding), 0) + outstanding
     );
     const date = shortDate(row.due_date, i18n.language);
+    const later = pkg.installments.slice(index + 1).filter((r) => Number(r.outstanding) > 0);
+    const stopped = Number(row.stopped) > 0;
 
     return (
         <li className="px-3 py-2">
@@ -435,6 +476,21 @@ const PackageInstallmentItem = ({ pkg, userId, index }: ItemProps) => {
                     {statusPill(row.status, t)}
                 </span>
             </div>
+            {stopped && (
+                <div className="mt-1 flex flex-wrap items-center justify-between gap-2 text-2xs text-neutral-500">
+                    <span>
+                        {t('side.stoppedFact', {
+                            amount: money(row.stopped),
+                            reason: row.stopped_reason || '—',
+                        })}
+                    </span>
+                    <ReopenDuesButton
+                        target={{ packageId: pkg.id, dueDate: row.due_date.slice(0, 10) }}
+                        userId={userId}
+                        className={actionButton}
+                    />
+                </div>
+            )}
             {open && (
                 <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                     <button
@@ -454,6 +510,16 @@ const PackageInstallmentItem = ({ pkg, userId, index }: ItemProps) => {
                     <button type="button" onClick={() => toggle('split')} className={actionButton}>
                         {t('side.item.split')}
                     </button>
+                    <button type="button" onClick={() => toggle('amount')} className={actionButton}>
+                        {t('side.item.amount')}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => toggle('stop')}
+                        className="rounded border border-danger-200 bg-white px-2 py-0.5 text-2xs font-medium text-danger-700 hover:bg-danger-50"
+                    >
+                        {t('side.item.stop')}
+                    </button>
                 </div>
             )}
             {panel === 'pay' && open && (
@@ -472,14 +538,30 @@ const PackageInstallmentItem = ({ pkg, userId, index }: ItemProps) => {
                     />
                 </div>
             )}
-            {(panel === 'move' || panel === 'split') && open && (
+            {(panel === 'move' || panel === 'split' || panel === 'amount') && open && (
                 <div className="mt-2">
                     <InstallmentChangeForm
                         key={panel}
                         pkg={pkg}
                         userId={userId}
                         row={row}
-                        split={panel === 'split'}
+                        mode={panel}
+                        onDone={() => setPanel(null)}
+                    />
+                </div>
+            )}
+            {panel === 'stop' && open && (
+                <div className="mt-2">
+                    <StopDuesForm
+                        target={{ packageId: pkg.id, dueDate: row.due_date.slice(0, 10) }}
+                        userId={userId}
+                        currency={pkg.currency}
+                        thisAmount={outstanding}
+                        laterAmount={round2(
+                            later.reduce((sum, r) => sum + Number(r.outstanding), 0)
+                        )}
+                        laterCount={later.length}
+                        courseCount={pkg.courses.length}
                         onDone={() => setPanel(null)}
                     />
                 </div>

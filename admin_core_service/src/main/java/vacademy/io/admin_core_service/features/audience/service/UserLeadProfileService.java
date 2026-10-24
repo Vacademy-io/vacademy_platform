@@ -45,7 +45,7 @@ import java.util.stream.Collectors;
  * <p>Update triggers:
  * <ol>
  *   <li>Real-time: after any LeadScore save (called by LeadScoringService)</li>
- *   <li>Batch: every 30 minutes via {@link #batchRebuildProfiles()}</li>
+ *   <li>Batch: changed leads every 30 minutes via {@link #batchRebuildChangedProfiles()}, all leads nightly via {@link #batchRebuildProfiles()}</li>
  * </ol>
  * </p>
  */
@@ -120,6 +120,8 @@ public class UserLeadProfileService {
                         .instituteId(instituteId)
                         .build());
 
+        List<Object> before = computedFields(profile);
+
         // Don't update score if already CONVERTED
         if (!"CONVERTED".equals(profile.getConversionStatus())) {
             updateScoreFields(profile, instituteScores, responses);
@@ -128,10 +130,23 @@ public class UserLeadProfileService {
         // Always update activity counts
         updateActivityCounts(profile, userId, instituteScores);
 
+        // Nothing this method computes changed: keep the row as it is. The timestamps alone
+        // used to make every rebuild a write -- 4.7M updates a day, mostly no-ops.
+        if (profile.getId() != null && before.equals(computedFields(profile))) {
+            return profile;
+        }
+
         profile.setLastCalculatedAt(new Timestamp(System.currentTimeMillis()));
         profile.setUpdatedAt(new Timestamp(System.currentTimeMillis()));
 
         return userLeadProfileRepository.save(profile);
+    }
+
+    /** The values buildOrUpdateProfile derives; a rebuild that leaves them equal changes nothing. */
+    private static List<Object> computedFields(UserLeadProfile p) {
+        return Arrays.asList(p.getBestScore(), p.getBestScoreResponseId(), p.getBestSourceType(),
+                p.getCampaignCount(), p.getLastActivityAt(), p.getTotalTimelineEvents(),
+                p.getDemoAttendanceCount());
     }
 
     /**
@@ -616,15 +631,37 @@ public class UserLeadProfileService {
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
-     * Batch rebuild all profiles every 30 minutes.
-     * Catches up with any changes missed by real-time updates (e.g. percentile recalcs).
+     * Every 30 minutes: rebuild the profiles of leads whose inputs changed recently -- a new or
+     * updated response or score, a timeline event, a demo attendance. 65 minutes of look-back
+     * overlaps two runs, so a run that is late or lands on a restarting pod loses nothing.
+     * Rebuilding every profile here used to cost ~43 s of database time per run (about a fifth of
+     * admin-core's database load) to change a few hundred of ~118k profiles.
      */
     @Scheduled(fixedRate = 30 * 60 * 1000)
     // lockAtLeastFor sits just under the 30-minute rate so the rebuild runs once per interval,
     // not once per replica: with a 1-minute floor the 4 replicas took turns and the rebuild
     // ran back to back (~60 profile writes/s around the clock). See LeadScoringService.
     @SchedulerLock(name = "UserLeadProfileService_batchRebuildProfiles", lockAtMostFor = "PT29M", lockAtLeastFor = "PT29M")
+    public void batchRebuildChangedProfiles() {
+        Set<String> changed = new HashSet<>(userLeadProfileRepository.findUserIdsWithLeadInputsChangedSince(
+                new Timestamp(System.currentTimeMillis() - 65L * 60 * 1000)));
+        if (changed.isEmpty()) return;
+        log.info("Incremental user_lead_profile rebuild for {} changed users", changed.size());
+        rebuildProfiles(changed);
+    }
+
+    /**
+     * Nightly full rebuild: catches what the incremental pass cannot see, such as deleted
+     * responses, scores or timeline events.
+     */
+    @Scheduled(cron = "0 30 3 * * *", zone = "Asia/Kolkata")
+    @SchedulerLock(name = "UserLeadProfileService_batchRebuildAllProfiles", lockAtMostFor = "PT2H", lockAtLeastFor = "PT5M")
     public void batchRebuildProfiles() {
+        rebuildProfiles(null);
+    }
+
+    /** Rebuild the profiles of every scored lead, or only those whose user is in onlyUserIds. */
+    private void rebuildProfiles(Set<String> onlyUserIds) {
         log.info("Starting batch user_lead_profile rebuild...");
 
         // Get all distinct (userId, instituteId) pairs from lead_score via audience_response
@@ -654,6 +691,7 @@ public class UserLeadProfileService {
             }
 
             for (String userId : userIds) {
+                if (onlyUserIds != null && !onlyUserIds.contains(userId)) continue;
                 try {
                     buildOrUpdateProfile(userId, instituteId);
                     total++;

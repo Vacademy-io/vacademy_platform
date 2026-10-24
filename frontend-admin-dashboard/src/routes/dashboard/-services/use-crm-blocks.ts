@@ -22,6 +22,9 @@ export function useCrmDashboardBlocks(
         audienceId?: string;
         /** Team narrowing (Sales Dashboard); the server intersects it with the caller's scope. */
         teamId?: string;
+        /** Lead status keys to keep / drop (CSV), so a header matches a status-filtered list. */
+        leadStatusId?: string;
+        leadStatusExcludeId?: string;
         rangeDays?: CrmRangeDays;
     } = {}
 ) {
@@ -42,6 +45,8 @@ export function useCrmDashboardBlocks(
             blocks,
             opts.audienceId ?? '',
             opts.teamId ?? '',
+            opts.leadStatusId ?? '',
+            opts.leadStatusExcludeId ?? '',
         ],
         queryFn: () =>
             fetchCrmDashboard({
@@ -53,6 +58,8 @@ export function useCrmDashboardBlocks(
                 today_end: window.todayEnd,
                 audience_id: opts.audienceId,
                 team_id: opts.teamId || undefined,
+                lead_status_id: opts.leadStatusId || undefined,
+                lead_status_exclude_id: opts.leadStatusExcludeId || undefined,
                 blocks,
             }),
         enabled: (opts.enabled ?? true) && !!instituteId && blocks.length > 0,

@@ -26,6 +26,9 @@ export interface CrmDashboardRequest {
     team_id?: string;
     /** One lead list only. */
     audience_id?: string;
+    /** Lead status keys to keep / drop (CSV), same as the leads list filter. */
+    lead_status_id?: string;
+    lead_status_exclude_id?: string;
     blocks: CrmBlockId[];
 }
 

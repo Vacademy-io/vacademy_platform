@@ -43,7 +43,8 @@ export function FollowUpsEnhancedHeader({
             subtitle={t('followUps.byCounsellor.subtitle')}
         >
             <div className="grid gap-x-8 gap-y-2 md:grid-cols-2">
-                {rows.slice(0, 10).map((r) => (
+                {/* Every counsellor, not a top N: the rows must add up to the Overdue tile. */}
+                {rows.map((r) => (
                     <div key={r.owner_id} className="grid grid-cols-12 items-center gap-3">
                         <span className="col-span-4 truncate text-neutral-700">
                             <span className="text-caption">{r.name || '—'}</span>

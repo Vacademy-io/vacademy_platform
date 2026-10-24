@@ -62,7 +62,8 @@ export function AuthorRoleField({ value, onChange, options, defaultTerm }: Autho
                     <SelectTrigger className="h-8 border-gray-300 text-xs sm:w-48">
                         <SelectValue />
                     </SelectTrigger>
-                    <SelectContent>
+                    {/* Edit Course is a top-tier dialog; the default z-50 menu opens behind it. */}
+                    <SelectContent className="z-popover-above-top-modal">
                         <SelectItem value={DEFAULT_VALUE} className="text-xs">
                             Default ({defaultTerm})
                         </SelectItem>

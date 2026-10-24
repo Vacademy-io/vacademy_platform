@@ -36,5 +36,23 @@
         "reportsPending_one": "{{count}} रिपोर्ट अभी भी प्रोसेस हो रही है",
         "reportsPending_other": "{{count}} रिपोर्ट अभी भी प्रोसेस हो रही हैं",
         "checkStatusFailed": "रिपोर्ट स्थिति जाँचने में विफल"
+    },
+    "learned": {
+        "heading": "AI चैट से मिली जानकारी",
+        "subtitle": "AI ट्यूटर से बातचीत के दौरान इस छात्र के बारे में जो देखा गया। जो गलत लगे उसे हटा दें।",
+        "seenTimes_one": "{{count}} बार देखा गया",
+        "seenTimes_other": "{{count}} बार देखा गया",
+        "stated": "छात्र ने खुद बताया",
+        "dismiss": "यह नोट हटाएँ",
+        "dismissed": "नोट हटा दिया गया",
+        "dismissFailed": "नोट नहीं हटाया जा सका",
+        "kind": {
+            "GOAL": "लक्ष्य",
+            "PREFERENCE": "पसंद",
+            "STRENGTH": "मज़बूती",
+            "WEAKNESS": "कमज़ोरी",
+            "MISCONCEPTION": "गलत धारणा",
+            "INTEREST": "रुचि"
+        }
     }
 }

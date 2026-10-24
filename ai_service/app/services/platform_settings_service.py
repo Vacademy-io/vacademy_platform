@@ -733,6 +733,30 @@ SETTING_SPECS["site_assistant.llm.disable_reasoning"] = SettingSpec(
     default=lambda: True,
 )
 
+# Learner profile (app/services/learner_profile): after a Student AI chat goes idle,
+# a cheap model notes what it showed about the learner (admin_core V608). Phase 1
+# only writes; admins read it on the learner's Reports tab. Off by default.
+SETTING_SPECS["learner_profile.enabled"] = SettingSpec(
+    key="learner_profile.enabled",
+    group="learner_profile",
+    label="Learner profile: on (platform kill switch)",
+    description=(
+        "Off (default) = idle Student AI chats are not read. On = chats of the institutes listed below are "
+        "read once they go idle and what they show about the learner is saved for admins. Free to institutes."
+    ),
+    type="bool",
+    default=lambda: False,
+)
+SETTING_SPECS["learner_profile.institutes"] = SettingSpec(
+    key="learner_profile.institutes",
+    group="learner_profile",
+    label="Learner profile: institutes (JSON)",
+    description='JSON array of institute ids, or ["*"] for every institute. Empty (default) = none.',
+    type="string",
+    default=lambda: "[]",
+    max_length=6000,
+)
+
 # Course knowledge (app/services/course_knowledge): lessons indexed per institute
 # into a hidden course_content knowledge base. Every switch is off by default;
 # each institute also turns the feature on itself (course_knowledge_setting).
@@ -971,6 +995,7 @@ GROUP_LABELS = {
     "chatbot": "Student chatbot",
     "site_assistant": "Website assistant",
     "course_knowledge": "Course knowledge",
+    "learner_profile": "Learner profile",
     "kb": "Knowledge base",
     "youtube_captions": "YouTube captions",
     "voice": "Voice call",

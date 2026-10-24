@@ -2094,3 +2094,4 @@ export const CAPABILITIES_ME = `${BASE_URL}/admin-core-service/capabilities/v1/m
 // GET → { catalog, nav }: the module/feature catalogue (§12.2). Fetched only for
 // MANAGED institutes; see services/capability-catalog.ts.
 export const CAPABILITIES_CATALOG = `${BASE_URL}/admin-core-service/capabilities/v1/catalog`;
+export const LEARNER_PROFILE_BASE = `${BASE_URL}/admin-core-service/learner-profile/v1`;

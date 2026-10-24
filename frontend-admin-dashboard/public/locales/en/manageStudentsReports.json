@@ -36,5 +36,23 @@
         "reportsPending_one": "{{count}} report is still processing",
         "reportsPending_other": "{{count}} reports are still processing",
         "checkStatusFailed": "Failed to check report statuses"
+    },
+    "learned": {
+        "heading": "Learned from AI chats",
+        "subtitle": "What the AI tutor noticed while this learner chatted with it. Remove anything that looks wrong.",
+        "seenTimes_one": "Seen {{count}} time",
+        "seenTimes_other": "Seen {{count}} times",
+        "stated": "Said by the learner",
+        "dismiss": "Remove this note",
+        "dismissed": "Note removed",
+        "dismissFailed": "Could not remove the note",
+        "kind": {
+            "GOAL": "Goal",
+            "PREFERENCE": "Prefers",
+            "STRENGTH": "Strength",
+            "WEAKNESS": "Weakness",
+            "MISCONCEPTION": "Misconception",
+            "INTEREST": "Interest"
+        }
     }
 }

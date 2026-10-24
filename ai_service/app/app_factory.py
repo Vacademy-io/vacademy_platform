@@ -173,6 +173,13 @@ async def _lifespan(app: FastAPI):
         start_call_intelligence_poller()
     except Exception as exc:  # noqa: BLE001
         _logger.warning("call-intelligence poller startup skipped: %s", exc)
+    # Learner profile (admin_core V608): reads idle Student AI chats of allowlisted
+    # institutes into evidence rows. Idles while learner_profile.enabled is off.
+    try:
+        from .services.learner_profile.poller import start_learner_profile_poller
+        start_learner_profile_poller()
+    except Exception as exc:  # noqa: BLE001
+        _logger.warning("learner-profile poller startup skipped: %s", exc)
     # Copy-check billing reconciliation (spec 10.5): nightly, flags graded copies
     # of the last 48 h that have no credit transaction. One replica runs it
     # (advisory lock). Lazy import so a module issue can't block app boot.

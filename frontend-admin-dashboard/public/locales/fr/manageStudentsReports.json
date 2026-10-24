@@ -39,5 +39,23 @@
         "reportsPending_other": "{{count}} rapports sont toujours en cours de traitement",
         "reportsPending_many": "{{count}} rapports sont toujours en cours de traitement",
         "checkStatusFailed": "Échec de la vérification du statut des rapports"
+    },
+    "learned": {
+        "heading": "Appris des discussions IA",
+        "subtitle": "Ce que le tuteur IA a remarqué en discutant avec cet apprenant. Supprimez ce qui semble faux.",
+        "seenTimes_one": "Vu {{count}} fois",
+        "seenTimes_other": "Vu {{count}} fois",
+        "stated": "Dit par l'apprenant",
+        "dismiss": "Supprimer cette note",
+        "dismissed": "Note supprimée",
+        "dismissFailed": "Impossible de supprimer la note",
+        "kind": {
+            "GOAL": "Objectif",
+            "PREFERENCE": "Préfère",
+            "STRENGTH": "Point fort",
+            "WEAKNESS": "Point faible",
+            "MISCONCEPTION": "Idée fausse",
+            "INTEREST": "Intérêt"
+        }
     }
 }

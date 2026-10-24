@@ -48,5 +48,23 @@
         "reportsPending_many": "لا يزال {{count}} تقريرًا قيد المعالجة",
         "reportsPending_other": "لا يزال {{count}} تقرير قيد المعالجة",
         "checkStatusFailed": "فشل التحقق من حالة التقارير"
+    },
+    "learned": {
+        "heading": "ما تعلمناه من محادثات الذكاء الاصطناعي",
+        "subtitle": "ما لاحظه المعلم الذكي أثناء محادثته مع هذا المتعلم. احذف ما يبدو خاطئًا.",
+        "seenTimes_one": "شوهد مرة واحدة",
+        "seenTimes_other": "شوهد {{count}} مرات",
+        "stated": "قاله المتعلم",
+        "dismiss": "حذف هذه الملاحظة",
+        "dismissed": "تم حذف الملاحظة",
+        "dismissFailed": "تعذر حذف الملاحظة",
+        "kind": {
+            "GOAL": "هدف",
+            "PREFERENCE": "يفضّل",
+            "STRENGTH": "نقطة قوة",
+            "WEAKNESS": "نقطة ضعف",
+            "MISCONCEPTION": "مفهوم خاطئ",
+            "INTEREST": "اهتمام"
+        }
     }
 }

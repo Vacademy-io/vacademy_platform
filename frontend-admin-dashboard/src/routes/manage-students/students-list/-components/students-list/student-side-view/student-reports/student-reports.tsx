@@ -27,6 +27,7 @@ import {
 import { format } from 'date-fns';
 import { StudentReportDetailsDialog } from './StudentReportDetailsDialog';
 import { ComprehensiveReportDialog } from './ComprehensiveReportDialog';
+import { LearnedFromChatsPanel } from './LearnedFromChatsPanel';
 import { MyButton } from '@/components/design-system/button';
 import { toast } from 'sonner';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
@@ -281,6 +282,8 @@ export const StudentReports = () => {
                     />
                 </div>
             </ProfileActionBar>
+
+            {selectedStudent?.user_id && <LearnedFromChatsPanel userId={selectedStudent.user_id} />}
 
             {/* Hero stat tiles — visible once data is loaded and there are reports */}
             {!loading && !fetchError && reports.length > 0 && (

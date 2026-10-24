@@ -30,14 +30,21 @@ if [ -z "$BBB_DOMAIN" ] || echo "$BBB_DOMAIN" | grep -qP '^\d+\.\d+\.\d+\.\d+$';
     BBB_DOMAIN="$NEW_IP"
 fi
 
-# Collect ALL old IPs from critical config files (not from bbb-web which stores domain)
-OLD_IPS=$(grep -ohP '\d+\.\d+\.\d+\.\d+' \
-    /opt/freeswitch/etc/freeswitch/vars.xml \
-    /opt/freeswitch/etc/freeswitch/sip_profiles/external.xml \
-    /etc/bigbluebutton/bbb-webrtc-sfu/production.yml \
-    /usr/share/bigbluebutton/nginx/sip.nginx \
-    /etc/turnserver.conf \
-    2>/dev/null | grep -v '127\.\|0\.0\.\|255\.\|169\.254\.' | sort -u)
+# Collect ALL old IPs from critical config files (not from bbb-web which stores domain).
+# Only files that exist: BBB 3.0.39 stopped shipping sip.nginx, and under pipefail a
+# grep that cannot open one file (exit 2) — or finds no IP at all (exit 1) — killed
+# this whole script before it fixed anything (first boot after the 2026-10-23
+# upgrade). `|| true` keeps "no IPs" from doing the same.
+CRITICAL_FILES=()
+for f in /opt/freeswitch/etc/freeswitch/vars.xml \
+         /opt/freeswitch/etc/freeswitch/sip_profiles/external.xml \
+         /etc/bigbluebutton/bbb-webrtc-sfu/production.yml \
+         /usr/share/bigbluebutton/nginx/sip.nginx \
+         /etc/turnserver.conf; do
+    [ -f "$f" ] && CRITICAL_FILES+=("$f")
+done
+OLD_IPS=$( { grep -ohP '\d+\.\d+\.\d+\.\d+' "${CRITICAL_FILES[@]}" 2>/dev/null || true; } \
+    | { grep -v '127\.\|0\.0\.\|255\.\|169\.254\.' || true; } | sort -u)
 
 NEEDS_FIX=false
 for ip in $OLD_IPS; do
@@ -69,7 +76,7 @@ for dir in /opt/freeswitch/etc/freeswitch /usr/share/bigbluebutton/nginx \
         -name "*.yml" -o -name "*.yaml" -o -name "*.xml" -o -name "*.conf" \
         -o -name "*.override" -o -name "*.nginx" -o -name "*.properties" \
     \) 2>/dev/null | while read -r f; do
-        FILE_IPS=$(grep -oP '\d+\.\d+\.\d+\.\d+' "$f" 2>/dev/null | grep -v '127\.\|0\.0\.\|255\.\|169\.254\.' | sort -u)
+        FILE_IPS=$( { grep -oP '\d+\.\d+\.\d+\.\d+' "$f" 2>/dev/null || true; } | { grep -v '127\.\|0\.0\.\|255\.\|169\.254\.' || true; } | sort -u)
         for old in $FILE_IPS; do
             if [ "$old" != "$NEW_IP" ]; then
                 log "  $f: $old → $NEW_IP"
@@ -94,7 +101,7 @@ for f in /etc/bigbluebutton/bbb-webrtc-sfu/production.yml \
          /opt/freeswitch/etc/freeswitch/sip_profiles/external.xml \
          /usr/share/bigbluebutton/nginx/sip.nginx; do
     [ -f "$f" ] || continue
-    FILE_IPS=$(grep -oP '\d+\.\d+\.\d+\.\d+' "$f" 2>/dev/null | grep -v '127\.\|0\.0\.\|255\.\|169\.254\.' | sort -u)
+    FILE_IPS=$( { grep -oP '\d+\.\d+\.\d+\.\d+' "$f" 2>/dev/null || true; } | { grep -v '127\.\|0\.0\.\|255\.\|169\.254\.' || true; } | sort -u)
     for old in $FILE_IPS; do
         if [ "$old" != "$NEW_IP" ]; then
             log "  REFIX: $f: $old → $NEW_IP"
@@ -115,8 +122,8 @@ sed -i "s|defaultUploadedPresentation=https://[^/]*/|defaultUploadedPresentation
 # silent: coturn cannot bind a foreign address, exits, and every learner behind
 # a UDP-blocking firewall loses audio/video while everyone else is fine.
 if [ -f /etc/turnserver.conf ]; then
-    for old in $(grep -oP '^\s*(listening-ip|relay-ip|allowed-peer-ip)=\K[\d.]+' \
-                 /etc/turnserver.conf 2>/dev/null | grep -v '^127\.' | sort -u); do
+    for old in $( { grep -oP '^\s*(listening-ip|relay-ip|allowed-peer-ip)=\K[\d.]+' \
+                 /etc/turnserver.conf 2>/dev/null || true; } | { grep -v '^127\.' || true; } | sort -u); do
         if [ "$old" != "$NEW_IP" ]; then
             log "  TURN: $old → $NEW_IP"
             sed -i "s/\b$old\b/$NEW_IP/g" /etc/turnserver.conf

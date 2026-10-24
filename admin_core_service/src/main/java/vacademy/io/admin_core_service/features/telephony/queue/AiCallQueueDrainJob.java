@@ -21,6 +21,7 @@ import vacademy.io.admin_core_service.features.telephony.queue.entity.AiCallQueu
 import vacademy.io.admin_core_service.features.telephony.queue.repository.AiCallLaneRepository;
 import vacademy.io.admin_core_service.features.telephony.queue.repository.AiCallQueueItemRepository;
 import vacademy.io.common.exceptions.ConflictException;
+import vacademy.io.common.exceptions.VacademyException;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -296,7 +297,13 @@ public class AiCallQueueDrainJob {
         markClaimed(item);
 
         DispatchOutcome outcome = dispatch(item, parseTrigger(item.getCallTrigger()), true);
-        if (outcome != DispatchOutcome.DIALLED) return Optional.empty();
+        if (outcome != DispatchOutcome.DIALLED) {
+            // Not "queued": this item is finished and will never ring.
+            if (AiCallService.TOLL_FREE_MESSAGE.equals(item.getStatusReason())) {
+                throw new VacademyException(AiCallService.TOLL_FREE_MESSAGE);
+            }
+            return Optional.empty();
+        }
 
         laneRepository.touchDispatched(instituteId, Instant.now());
         return Optional.of(AiCallResponseDTO.builder()
@@ -392,6 +399,12 @@ public class AiCallQueueDrainJob {
                     // about different leads and keeps dialling.
                     deferItem(item, Instant.now().plus(RECALL_GAP_BACKOFF),
                             "Called very recently — waiting before calling again.");
+                    return DispatchOutcome.ITEM_HANDLED;
+                }
+                case AiCallService.SKIPPED_TOLL_FREE -> {
+                    // Can never succeed, so FAILED at once rather than three refused
+                    // dials (dispatchNowIfLineFree tells the person who clicked why).
+                    finish(item, AiCallQueueStatus.FAILED, AiCallService.TOLL_FREE_MESSAGE);
                     return DispatchOutcome.ITEM_HANDLED;
                 }
                 case SKIPPED_LEAD_DAILY_CAP -> {

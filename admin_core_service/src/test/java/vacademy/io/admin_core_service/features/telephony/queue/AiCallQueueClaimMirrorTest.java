@@ -12,6 +12,7 @@ import vacademy.io.admin_core_service.features.telephony.persistence.repository.
 import vacademy.io.admin_core_service.features.telephony.queue.entity.AiCallQueueItem;
 import vacademy.io.admin_core_service.features.telephony.queue.repository.AiCallLaneRepository;
 import vacademy.io.admin_core_service.features.telephony.queue.repository.AiCallQueueItemRepository;
+import vacademy.io.common.exceptions.VacademyException;
 
 import java.time.Instant;
 import java.util.HashMap;
@@ -86,6 +87,31 @@ class AiCallQueueClaimMirrorTest {
         assertEquals(AiCallQueueStatus.DIALED.name(), item.getStatus());
         assertEquals("log-1", item.getCallLogId());
         verify(aiCallService, times(1)).placeCall(any(), any(), any());
+    }
+
+    @Test
+    void aTollFreeLeadFailsAtOnceAndTheClickerHearsWhy() {
+        when(aiCallService.placeCall(any(), any(), any())).thenReturn(AiCallResponseDTO.builder()
+                .status(AiCallService.SKIPPED_TOLL_FREE).dispatched(false)
+                .providerMessage(AiCallService.TOLL_FREE_MESSAGE).build());
+
+        VacademyException e = assertThrows(VacademyException.class, () -> job.dispatchNowIfLineFree("q-1"));
+
+        assertEquals(AiCallService.TOLL_FREE_MESSAGE, e.getMessage());
+        assertEquals(AiCallQueueStatus.FAILED.name(), item.getStatus(), "not re-queued for three refused dials");
+        assertNull(item.getNotBefore());
+    }
+
+    @Test
+    void tollFreeNumbers() {
+        for (String n : new String[]{"18001234567", "1800 123 4567", "+91 1800 123 4567", "9118001234567",
+                "01800123456", "1800123456", "18601234567"}) {
+            assertTrue(AiCallService.isTollFree(n), n);
+        }
+        for (String n : new String[]{"+919876543210", "9876543210", "919166908033", "08023456789",
+                "+918035374489", "1800", "", null}) {
+            assertFalse(AiCallService.isTollFree(n), String.valueOf(n));
+        }
     }
 
     @Test

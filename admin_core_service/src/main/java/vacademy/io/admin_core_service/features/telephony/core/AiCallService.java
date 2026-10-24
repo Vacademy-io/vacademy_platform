@@ -67,6 +67,26 @@ public class AiCallService {
     private final AiCallResultRepository aiCallResultRepo;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
+    /** placeCall's status for a lead whose number is toll-free (see {@link #isTollFree}). */
+    public static final String SKIPPED_TOLL_FREE = "SKIPPED_TOLL_FREE";
+    public static final String TOLL_FREE_MESSAGE =
+            "Toll-free numbers (1800 / 1860) can't receive AI calls — add the lead's direct number.";
+
+    /**
+     * An Indian toll-free (1800) or shared-cost (1860) number, with or without 0 / 91 /
+     * +91 in front. Plivo refuses every one ("403 Calls to this destination region are
+     * barred."), and they answer with a phone menu anyway: 20 of 63 dials on 2026-10-24
+     * were university admission helplines, each retried three times. Mobiles and
+     * landlines never start with 1 in India, so nothing callable matches.
+     */
+    public static boolean isTollFree(String phone) {
+        if (phone == null) return false;
+        String d = phone.replaceAll("\\D", "");
+        if (d.startsWith("91") && d.length() >= 12) d = d.substring(2);
+        else if (d.startsWith("0")) d = d.substring(1);
+        return (d.startsWith("1800") || d.startsWith("1860")) && d.length() >= 10 && d.length() <= 12;
+    }
+
     /**
      * Window in which a second AI dial for the same lead is treated as a duplicate of
      * the first and skipped. Must stay below the smallest legitimate retry gap
@@ -258,6 +278,16 @@ public class AiCallService {
         // needs a user to attach the synthetic outcome to.
         if (!mock) {
             if (isBlank(phone)) throw new VacademyException("This subject has no phone number on file.");
+            if (isTollFree(phone)) {
+                // Not a throw: a throw is a "failed dial" the queue retries three times,
+                // and this one can never succeed.
+                log.info("AI call skipped: lead {} only has a toll-free number", userId);
+                return AiCallResponseDTO.builder()
+                        .status(SKIPPED_TOLL_FREE)
+                        .dispatched(false)
+                        .providerMessage(TOLL_FREE_MESSAGE)
+                        .build();
+            }
             if (isBlank(campaignId)) {
                 throw new VacademyException("No campaign configured — set a default Campaign ID in Settings → AI Calling.");
             }

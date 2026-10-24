@@ -147,27 +147,43 @@ public interface StudentSessionInstituteGroupMappingRepository
       @Param("statuses") List<String> statuses);
 
   /**
-   * Learners whose next autopay charge lands exactly N days from today, counted in the
-   * INVITE'S OWN timezone (AUTOPAY_SETTING.TRIAL_TIMEZONE, falling back to UTC when an
-   * invite sets none, which preserves the previous behaviour for institutes that do not).
+   * Learners whose next autopay charge lands exactly {@code daysAhead} days from today,
+   * counted on the DATE {@code next_charge_at} HOLDS with its time of day ignored.
    *
-   * <p>It used to compare {@code CAST(next_charge_at AS date)} against {@code CURRENT_DATE},
-   * both of which resolve in the database session timezone -- UTC on the pods. A charge due
-   * at IST midnight is stored 18:30 UTC the PREVIOUS day, so it cast to the previous date
-   * and the notice went out a day early; a charge stored mid-day cast to the same date
-   * either way and went out correctly. 20 SuchBliss plans sit on the midnight boundary and
-   * the rest do not, which is exactly why the timing looked arbitrary rather than broken.
+   * <p>The time used to decide the answer. This compared {@code next_charge_at} converted
+   * into the invite's {@code AUTOPAY_SETTING.TRIAL_TIMEZONE}, so a charge recorded at 10:00
+   * UTC bucketed on its own date while one at 18:30 UTC — midnight in Asia/Kolkata —
+   * bucketed on the day AFTER the date it reads as. Since {@code next_charge_at} inherits
+   * its clock from whenever the member happened to enrol, two plans both recorded "on the
+   * 27th" were announced on different days. Six of SuchBliss's sixteen armed plans sit on
+   * the midnight boundary and ten do not, which is why the timing looked arbitrary.
    *
-   * <p>The timezone is read with {@code jsonb_extract_path_text(cast(... as jsonb), ...)} and
-   * NOT with {@code ::jsonb #>>}: Hibernate parses {@code :} in a native query as a named
-   * parameter and strips one colon from {@code ::}, so the statement reaching Postgres said
-   * {@code setting_json:jsonb} and failed with "syntax error at or near :". The cast function
-   * form has no colons to mangle.
+   * <p>It also put this query and the charge out of step, because
+   * {@code RenewalChargeService.isDueWithLead} counts its own lead back from the same
+   * anchor. With {@code CHARGE_LEAD_DAYS = 2} and {@code daysAhead = 1} the charge went out
+   * on anchor-2 and the reminder on anchor-1 — one day AFTER the money had already been
+   * presented. Both now count from the stored date, so {@code daysAhead} must simply exceed
+   * {@code CHARGE_LEAD_DAYS} for the reminder to arrive first, and the relationship is
+   * legible from the two numbers alone.
+   *
+   * <p>{@code CURRENT_DATE} resolves in the database session zone (UTC on the pods), which
+   * is the same calendar day as the invite's zone for any run between 05:30 and 29:30 IST —
+   * both renewal workflows fire mid-afternoon IST, comfortably inside that.
+   *
+   * <p>Plans already in dunning are excluded ({@code renewal_attempt_count = 0}). A plan
+   * whose charge has been presented and refused has no UPCOMING charge — it has a failing
+   * one, and belongs to {@link #findRenewalFailedPlans}, which chases it with a payment
+   * link. Without this they got both, and worse: {@code applyDunning} re-arms
+   * {@code next_charge_at} to {@code now + 1 day} after every failure, which re-qualified
+   * the plan for "we charge you tomorrow" every single day. One SuchBliss member got that
+   * message on three consecutive days against a charge that never once completed.
+   * {@code renewal_attempt_count} resets to 0 only on a successful renewal, so a plan that
+   * failed once and later recovered is correctly back in this audience next cycle.
    *
    * <p>Only ACTIVE plans with autopay still enabled are returned, so learners who already
-   * cancelled are naturally excluded. charge_date_label is preformatted for messages
-   * ("11 Aug 2026") and is likewise rendered in the invite's zone, so the date a learner
-   * reads matches the date they are charged.
+   * cancelled are naturally excluded. {@code charge_date_label} is preformatted for messages
+   * ("11 Aug 2026") off the same stored date, so the date a learner reads is the date in the
+   * row.
    *
    * <p>{@code is_trial} is returned so callers can split the audience: a trial's upcoming
    * charge is its FIRST charge ("your free trial ends tomorrow") while a member's is a
@@ -185,27 +201,18 @@ public interface StudentSessionInstituteGroupMappingRepository
           s.username AS username,
           up.next_charge_at AS next_charge_at,
           up.end_date AS end_date,
-          to_char(up.next_charge_at AT TIME ZONE 'UTC'
-                  AT TIME ZONE coalesce(jsonb_extract_path_text(cast(ei.setting_json as jsonb),
-                                        'setting', 'AUTOPAY_SETTING', 'TRIAL_TIMEZONE'), 'UTC'),
-                  'DD Mon YYYY') AS charge_date_label,
+          to_char(up.next_charge_at, 'DD Mon YYYY') AS charge_date_label,
           up.is_trial AS is_trial
       FROM user_plan up
       JOIN student_session_institute_group_mapping ssigm
         ON ssigm.user_plan_id = up.id AND ssigm.status = 'ACTIVE'
       JOIN student s ON s.user_id = up.user_id
-      LEFT JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
       WHERE ssigm.package_session_id IN (:psIds)
         AND up.status = 'ACTIVE'
         AND up.auto_renewal_enabled = true
         AND up.next_charge_at IS NOT NULL
-        AND CAST(up.next_charge_at AT TIME ZONE 'UTC'
-                 AT TIME ZONE coalesce(jsonb_extract_path_text(cast(ei.setting_json as jsonb),
-                                        'setting', 'AUTOPAY_SETTING', 'TRIAL_TIMEZONE'), 'UTC')
-                 AS date)
-            = CAST(now() AT TIME ZONE coalesce(jsonb_extract_path_text(cast(ei.setting_json as jsonb),
-                                        'setting', 'AUTOPAY_SETTING', 'TRIAL_TIMEZONE'), 'UTC')
-                   AS date) + CAST(:daysAhead AS int)
+        AND CAST(up.next_charge_at AS date) = CURRENT_DATE + CAST(:daysAhead AS int)
+        AND coalesce(up.renewal_attempt_count, 0) = 0
       ORDER BY up.id
       """, nativeQuery = true)
   List<Object[]> findUpcomingAutopayCharges(

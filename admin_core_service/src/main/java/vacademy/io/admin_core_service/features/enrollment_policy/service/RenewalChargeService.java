@@ -205,21 +205,45 @@ public class RenewalChargeService {
     }
 
     /**
-     * A plan is due for this run when its next_charge_at falls on or before today +
-     * the invite's {@code AUTOPAY_SETTING.CHARGE_LEAD_DAYS} (0 when unset, capped at
-     * {@link #MAX_CHARGE_LEAD_DAYS}). A lead of 1 presents the charge the day before the
-     * due date — for UPI Autopay the bank then debits ~24 h later, ON the due date, and
-     * the learner has had the pre-debit notification in between. The cycle does not
-     * drift: a successful renewal extends from the plan's end_date, not from the charge
+     * A plan is due for this run when the DATE ITS next_charge_at HOLDS, minus the invite's
+     * {@code AUTOPAY_SETTING.CHARGE_LEAD_DAYS} (0 when unset, capped at
+     * {@link #MAX_CHARGE_LEAD_DAYS}), has arrived. A lead of 1 presents the charge the day
+     * before the due date — for UPI Autopay the bank then debits ~24 h later, ON the due
+     * date, and the learner has had the pre-debit notification in between. The cycle does
+     * not drift: a successful renewal extends from the plan's end_date, not from the charge
      * time (see RenewalPaymentService.calculateNewEndDate).
+     *
+     * <p><b>The time of day is deliberately ignored.</b> It used to decide the answer, via
+     * {@code endOfDay(now + lead, billingZone)}: a next_charge_at of 10:00 UTC anchored to
+     * its own date, while 18:30 UTC — midnight in Asia/Kolkata — anchored to the day AFTER
+     * the one it reads as. Two plans both recorded "on the 27th" were therefore charged on
+     * different days, and the anchor a lead is counted back from moved with a time nobody
+     * chose: next_charge_at inherits its clock from whenever the member happened to enrol.
+     * Six of SuchBliss's sixteen armed plans sit on the midnight boundary and ten do not,
+     * which is precisely why the timing looked arbitrary instead of wrong.
+     *
+     * <p>So the anchor is the date the column holds and nothing else. "27th at any time" is
+     * the 27th, a lead of 1 charges on the 26th, and an institute picks its billing day by
+     * setting that date — no per-institute code, and no zone arithmetic between the date an
+     * admin reads in the row and the day the money moves.
      */
     private boolean isDueWithLead(UserPlan plan, Date now) {
         if (plan.getNextChargeAt() == null) {
             return false;
         }
         int lead = resolveChargeLeadDays(plan.getEnrollInvite());
-        return !plan.getNextChargeAt().after(
-                endOfDay(plusDays(now, lead), billingZone(plan.getEnrollInvite())));
+        return !storedDate(plan.getNextChargeAt()).minusDays(lead).isAfter(storedDate(now));
+    }
+
+    /**
+     * The calendar date a timestamp column HOLDS, time of day discarded.
+     *
+     * <p>{@code next_charge_at} is {@code timestamp without time zone} and is read back at
+     * UTC, so this is the date that appears if you select the column — which is the whole
+     * point: it is the date an admin sees, a support query returns, and a reminder prints.
+     */
+    private static java.time.LocalDate storedDate(Date date) {
+        return date.toInstant().atZone(java.time.ZoneOffset.UTC).toLocalDate();
     }
 
     private int resolveChargeLeadDays(EnrollInvite invite) {

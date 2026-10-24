@@ -6,6 +6,7 @@ import {
   FRAME_SELECTION_SCRIPT,
   publishFrameSelection,
 } from "@/components/chatbot/moments/frame-selection";
+import { buildScormShim, htmlWantsScorm, useHtmlSlideScorm } from "./html-slide-scorm";
 
 const HEIGHT_MSG = "vac-html-slide-height";
 const MAX_HEIGHT = 20000;
@@ -152,14 +153,20 @@ function headPrefix({ baseCss, injectVars, dir, lang }: HeadOptions): string {
   return out;
 }
 
-/** Put `prefix` first in <head> (creating one when needed) and make it a standards-mode document. */
-function withHeadPrefix(html: string, prefix: string): string {
+/** Put `prefix` first in <head>, creating one when needed (after any doctype). */
+function insertAtHeadStart(html: string, prefix: string): string {
   const headOpen = /<head(\s[^>]*)?>/i;
   const htmlOpen = /<html(\s[^>]*)?>/i;
-  let doc: string;
-  if (headOpen.test(html)) doc = html.replace(headOpen, (tag) => `${tag}${prefix}`);
-  else if (htmlOpen.test(html)) doc = html.replace(htmlOpen, (tag) => `${tag}<head>${prefix}</head>`);
-  else doc = `<head>${prefix}</head>${html}`;
+  if (headOpen.test(html)) return html.replace(headOpen, (tag) => `${tag}${prefix}`);
+  if (htmlOpen.test(html)) return html.replace(htmlOpen, (tag) => `${tag}<head>${prefix}</head>`);
+  const doctype = html.match(/^\s*<!doctype[^>]*>/i);
+  if (doctype) return `${doctype[0]}<head>${prefix}</head>${html.slice(doctype[0].length)}`;
+  return `<head>${prefix}</head>${html}`;
+}
+
+/** Put `prefix` first in <head> (creating one when needed) and make it a standards-mode document. */
+function withHeadPrefix(html: string, prefix: string): string {
+  const doc = insertAtHeadStart(html, prefix);
   // A fragment without a doctype renders in quirks mode (body heights and table
   // fonts behave differently); opting in always gets a standards-mode document.
   return /^\s*<!doctype/i.test(doc) ? doc : `<!DOCTYPE html>${doc}`;
@@ -193,6 +200,11 @@ export interface HtmlSlideIframeProps {
   className?: string;
   /** Smallest height the frame may take, in px (default 120). */
   minHeight?: number;
+  /**
+   * Slide id for SCORM state. When set and the document looks for a SCORM API,
+   * the frame gets one and the lesson's own saved state persists per learner.
+   */
+  scormSlideId?: string;
 }
 
 /**
@@ -215,23 +227,39 @@ export const HtmlSlideIframe = ({
   lang,
   className,
   minHeight,
+  scormSlideId,
 }: HtmlSlideIframeProps) => {
   const { t } = useTranslation("libraryCommonB");
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const [height, setHeight] = useState(480);
   const varsKey = injectVars ? JSON.stringify(injectVars) : "";
-  const srcDoc = useMemo(() => {
-    const optIn = Boolean(baseCss || measure === "content" || varsKey || dir || lang);
-    if (!optIn) return withResizeScript(html);
-    const vars = varsKey ? (JSON.parse(varsKey) as Record<string, string>) : undefined;
-    const prefixed = withHeadPrefix(html, headPrefix({ baseCss, injectVars: vars, dir, lang }));
-    return measure === "content" ? withContentResizeScript(prefixed) : withResizeScript(prefixed);
-  }, [html, baseCss, measure, varsKey, dir, lang]);
   // Keep latest handlers without re-subscribing the listener.
   const onProgressRef = useRef(onProgress);
   onProgressRef.current = onProgress;
   const onCompleteRef = useRef(onComplete);
   onCompleteRef.current = onComplete;
+  // A SCORM-aware lesson that reports completion completes the slide through
+  // the same callbacks as `vacademy:progress` + `vacademy:complete` messages
+  // (progress also counts as learner activity, so a paused timer resumes).
+  const scorm = useHtmlSlideScorm(
+    scormSlideId && htmlWantsScorm(html) ? scormSlideId : undefined,
+    () => {
+      onProgressRef.current?.(100);
+      onCompleteRef.current?.({});
+    }
+  );
+  const scormSeed = scorm.state.status === "ready" ? scorm.state.seed : null;
+  const handleScormMessageRef = useRef(scorm.handleMessage);
+  handleScormMessageRef.current = scorm.handleMessage;
+  const srcDoc = useMemo(() => {
+    // The API must exist before the lesson's own scripts look for it.
+    const doc = scormSeed ? insertAtHeadStart(html, buildScormShim(scormSeed)) : html;
+    const optIn = Boolean(baseCss || measure === "content" || varsKey || dir || lang);
+    if (!optIn) return withResizeScript(doc);
+    const vars = varsKey ? (JSON.parse(varsKey) as Record<string, string>) : undefined;
+    const prefixed = withHeadPrefix(doc, headPrefix({ baseCss, injectVars: vars, dir, lang }));
+    return measure === "content" ? withContentResizeScript(prefixed) : withResizeScript(prefixed);
+  }, [html, baseCss, measure, varsKey, dir, lang, scormSeed]);
   const onMeasuredRef = useRef(onMeasured);
   onMeasuredRef.current = onMeasured;
   const minHeightRef = useRef(minHeight ?? 120);
@@ -240,6 +268,7 @@ export const HtmlSlideIframe = ({
   useEffect(() => {
     const onMessage = (e: MessageEvent) => {
       if (e.source !== iframeRef.current?.contentWindow) return;
+      if (handleScormMessageRef.current(e.data)) return;
       const data = e.data as { type?: string; height?: number; percent?: number } & SlideResult;
       if (data?.type === HEIGHT_MSG && typeof data.height === "number") {
         const next = Math.min(Math.max(data.height, minHeightRef.current), MAX_HEIGHT);
@@ -261,6 +290,12 @@ export const HtmlSlideIframe = ({
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
   }, []);
+
+  // Load the saved state first: the frame reads it synchronously on start, and
+  // a later srcDoc change would reload the lesson.
+  if (scorm.state.status === "loading") {
+    return <div className={className ? cn("w-full bg-white", className) : "w-full bg-white"} style={{ height }} />;
+  }
 
   return (
     <iframe

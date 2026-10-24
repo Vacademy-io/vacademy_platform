@@ -400,6 +400,30 @@ def is_hold_announcement(text: str) -> bool:
             and bool(ws) and all(w in _HOLD_WORDS for w in ws))
 
 
+# ── a phone menu that loops ──────────────────────────────────────────────────
+# Call 5856b13f (2026-10-24): an admissions IVR answered, nobody pressed
+# anything, and "You have entered an invalid option. Thank you for calling …
+# Press 1 for …" replayed every 21 s for EIGHT minutes while the bot talked
+# back to it 34 times. A person never says the same menu line three times.
+_IVR_MENU = re.compile(
+    r"\b(?:press|dial)\s+(?:\d|one|two|three|four|five|six|seven|eight|nine|zero|star|hash)\b"
+    r"|\b(?:invalid|wrong|incorrect)\s+(?:option|input|selection|entry|choice)\b"
+    r"|\bnot a valid\s+(?:option|input|selection|entry|choice)\b"
+    r"|\b\d\s+(?:dabaye|dabayen|dabayein|dabaiye|dabaen)\b"
+    r"|दबाएं|दबाएँ|दबाइए|दबाये")
+# How often one menu line may play before the menu counts as looping.
+IVR_LOOP_REPEATS = 3
+
+
+def ivr_menu_key(text: str) -> str:
+    """The comparison key of a phone-menu line ("Press 1 for …", "invalid
+    option"), or "" when the line is not one. PURE; the live gate counts these."""
+    t = " ".join((text or "").casefold().split())
+    if not t or not _IVR_MENU.search(t):
+        return ""
+    return spoken_key(t)
+
+
 def is_hold_fragment(text: str) -> bool:
     """While on hold: a piece of the looping recording — every word of it is a
     word the recordings say ("उन्होंने आपके।", "Speaking with.", "See shortly.")."""

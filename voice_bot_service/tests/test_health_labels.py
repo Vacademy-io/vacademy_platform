@@ -524,3 +524,80 @@ async def test_a_short_reply_between_generic_operator_lines_is_a_person(clock):
                      (4.0, "कृपया बाद में प्रयास करें।")):
         await _say(tc, clock, at, line)
     assert not tc.looks_like_voicemail()
+
+
+# ── a looping phone menu ─────────────────────────────────────────────────────
+
+# Call 5856b13f (2026-10-24), as the STT split it: an admissions IVR replaying
+# every ~21 s for eight minutes while the bot answered it 34 times.
+_IVR_LOOP = (
+    "You have entered an invalid option.",
+    "Thank you for calling.",
+    "Nitya Admission Team.",
+    "Press 1 for the programs offered at.",
+    "Mangaluru campus.",
+    "Programs offered at Bengaluru campus.",
+)
+
+
+@pytest.mark.asyncio
+async def test_a_phone_menu_that_replays_itself_is_hung_up_on(clock):
+    rec = _Rec()
+    tc = _collector(rec)
+    at = 2.0
+    for loop in range(3):
+        assert not tc.looks_like_ivr_loop(), f"hung up after {loop} play(s) of the menu"
+        for line in _IVR_LOOP:
+            await _say(tc, clock, at, line)
+            at += 3.0
+    assert tc.looks_like_ivr_loop()
+
+
+@pytest.mark.asyncio
+async def test_a_person_mentioning_a_menu_is_not_an_ivr_loop(clock):
+    rec = _Rec()
+    tc = _collector(rec)
+    for at, line in ((2.0, "Hello?"),
+                     (5.0, "You have to press 1 on our IVR to reach admissions."),
+                     (9.0, "Yes, press 1."),
+                     (13.0, "Press 2 is for the hostel."),
+                     (17.0, "Sorry, which option did you want?")):
+        await _say(tc, clock, at, line)
+    assert not tc.looks_like_ivr_loop()
+
+
+@pytest.mark.parametrize("line,menu", [
+    ("You have entered an invalid option.", True),
+    ("Press 1 for admissions.", True),
+    ("Please dial 9 for the operator.", True),
+    ("That is not a valid selection.", True),
+    ("एडमिशन के लिए 1 दबाएं।", True),
+    ("Hindi ke liye 4 dabayein.", True),
+    ("Aap dabaiye mat.", False),
+    ("Press.", False),
+    ("I am under a lot of pressure.", False),
+    ("Hello, who is this?", False),
+])
+def test_ivr_menu_key(line, menu):
+    from app.turntake import ivr_menu_key
+    assert bool(ivr_menu_key(line)) is menu
+
+
+# ── a caller we can hear but not understand ──────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_wordless_sounds_are_counted_until_a_word_arrives(clock):
+    """ddcba11f (2026-10-24): five 0.2 s sounds, no words, 16 s of silence."""
+    from pipecat.frames.frames import VADUserStartedSpeakingFrame, VADUserStoppedSpeakingFrame
+    rec = _Rec()
+    tc = _collector(rec)
+    bot_stopped = 10_000.0 + 6.7
+    for at in (9.0, 11.9, 15.6):
+        clock.t = 10_000.0 + at
+        await tc.process_frame(VADUserStartedSpeakingFrame(), b.FrameDirection.DOWNSTREAM)
+        clock.t += 0.2
+        await tc.process_frame(VADUserStoppedSpeakingFrame(), b.FrameDirection.DOWNSTREAM)
+    assert tc.wordless_onsets_since(bot_stopped) == 3
+    assert tc.wordless_onsets_since(10_000.0 + 12.0) == 1
+    await _say(tc, clock, 21.3, "Hello.")
+    assert tc.wordless_onsets_since(bot_stopped) == 0, "a word arrived: they are heard"

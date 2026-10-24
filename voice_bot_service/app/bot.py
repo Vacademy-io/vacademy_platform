@@ -106,7 +106,8 @@ from .turntake import (mid_reply_action, is_carrier_announcement,
                        caller_says_goodbye,
                        is_screener_hold, spoken_key, takes_over_opening, is_question,
                        is_hold_announcement, hold_absorbs, caller_is_busy,
-                       opening_expected_secs, ends_on_question)
+                       opening_expected_secs, ends_on_question, ivr_menu_key,
+                       IVR_LOOP_REPEATS)
 
 from .sarvam_v4_voices import (SARVAM_V4_DEFAULT_VOICE, SARVAM_V4_MALE,  # noqa: E402
                                SARVAM_V4_VOICES)
@@ -506,6 +507,10 @@ class TranscriptCollector(FrameProcessor):
         self._turns_after_carrier = []  # times of short turns since the last carrier line
         self._prev_final = ""          # every final, carrier or not (split-phrase matching)
         self._prev_final_t = 0.0
+        # Phone-menu lines heard, by ivr_menu_key → times (looks_like_ivr_loop).
+        self._ivr_lines: Dict[str, int] = {}
+        # Caller VAD onsets (wordless_onsets_since).
+        self._vad_onsets: List[float] = []
         # When the person put us on hold (0 = not on hold); see the hold branch in
         # process_frame and turntake.is_hold_announcement.
         self._hold_since = 0.0
@@ -649,6 +654,7 @@ class TranscriptCollector(FrameProcessor):
                                    int(isinstance(frame, VADUserStartedSpeakingFrame))])
             if isinstance(frame, VADUserStartedSpeakingFrame):
                 self._vad_started_t = time.time()
+                self._vad_onsets.append(self._vad_started_t)
                 self._voice_on = True
                 self._arm_voice_cut()
                 self._set_user_speaking(True)
@@ -740,6 +746,9 @@ class TranscriptCollector(FrameProcessor):
                            and not is_hold_announcement(prev_final)
                            and is_hold_announcement(prev_final + " " + text))
             self._prev_final_t = now
+            _ivr = ivr_menu_key(text)
+            if _ivr:
+                self._ivr_lines[_ivr] = self._ivr_lines.get(_ivr, 0) + 1
             # The OPERATOR's recorded message is not the callee. Record it (the
             # answering-machine detector reads these markers) then stop: it must
             # not stamp transcript_t (which would make _greet_when_ready skip our
@@ -1602,6 +1611,19 @@ class TranscriptCollector(FrameProcessor):
             # बाद में") must not be hung up on in silence (review 2026-10-14).
             return self._carrier_seen and self._human_turns == 0
         return self._carrier_seen and self._human_turns <= self._recording_turns
+
+    def looks_like_ivr_loop(self) -> bool:
+        """A phone menu is replaying itself: one menu line has played
+        IVR_LOOP_REPEATS times. The bot cannot press a key, so nobody will ever
+        pick up behind it (call 5856b13f: 8 minutes, 34 replies to the menu)."""
+        return any(n >= IVR_LOOP_REPEATS for n in self._ivr_lines.values())
+
+    def wordless_onsets_since(self, since: float) -> int:
+        """How many times the caller's voice started after `since` without one
+        word reaching us since then — 0 once any final has arrived."""
+        if self._prev_final_t > since:
+            return 0
+        return sum(1 for t in self._vad_onsets if t > since)
 
     def _last_reply_had_question(self) -> bool:
         """Did the bot's most recent played reply ask anything?"""
@@ -7890,6 +7912,14 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             # Before deciding: on hold, ORPHAN_ASK / LLM_BRIDGE are never decided,
             # so apply_decision cannot book them against the call's budget.
             flags["on_hold"] = _held > 0
+            if not outcome.end_requested and transcript.looks_like_ivr_loop():
+                # Nothing to say to a menu, and nobody to say goodbye to — the
+                # voicemail hang-up, for a phone menu that keeps replaying.
+                diag.idle_hangup = True
+                logger.info("ivr: the phone menu is looping — hanging up corr=%s", corr)
+                outcome.end_requested = True
+                await _begin_stop()
+                continue
             d = watchdog_decide(flags, now, cfg)
             apply_decision(flags, d, now)
 
@@ -7935,6 +7965,27 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                         and now - _last >= settings.idle_timeout_secs):
                     logger.info("idle: caller spoke last and got no reply for %.1fs — "
                                 "nudging from the watchdog corr=%s", now - _last, corr)
+                    flags["bot_stopped_t"] = now        # one shot per silence, not one per tick
+                    await _on_idle(None)
+                    continue
+                # The caller keeps making a sound but no word ever comes: a faint
+                # "Hello?" every few seconds. Each one re-arms pipecat's idle
+                # timer and is too short for the orphan re-ask (0.4 s — blips
+                # must not trigger "say that again", call 3b5fb592), so the
+                # line sat silent (call ddcba11f, 2026-10-24: five sounds of
+                # 0.2 s over 16 s, then "Hello."). After the usual idle span,
+                # two such sounds earn the presence check.
+                _since = flags["bot_stopped_t"]
+                if (_since > 0 and flags["transcript_t"] < _since
+                        and not flags["bot_speaking"]
+                        and flags["stopping_since"] is None and flags["ducked_since"] == 0
+                        and not _reply_pending()
+                        and transcript.wordless_onsets_since(_since) >= 2
+                        and now - flags["voice_tick_t"] >= 1.5
+                        and now - _since >= settings.idle_timeout_secs):
+                    logger.info("idle: %d sounds and no words for %.1fs since the bot spoke — "
+                                "nudging corr=%s", transcript.wordless_onsets_since(_since),
+                                now - _since, corr)
                     flags["bot_stopped_t"] = now        # one shot per silence, not one per tick
                     await _on_idle(None)
                 continue

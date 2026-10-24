@@ -12,6 +12,7 @@ import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.user_subscription.util.TrialStartResolver;
 
+import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
@@ -105,8 +106,10 @@ public class PaymentSettingService {
      *
      * <p>It also sets the notification rhythm for free. The pre-charge reminder is the
      * {@code getUpcomingAutopayCharges} audience at {@code daysAhead=1}, i.e.
-     * {@code next_charge_at - 1 day}, so a two-day lead puts "your plan ends on X" three
-     * days before the period ends and the charge two.
+     * {@code next_charge_at - 1 day}. Counting from the plan's last covered day D:
+     * lead 0 charges on D with the reminder on D-1; lead 1 charges on D-1 with the reminder
+     * on D-2, which gives a UPI collect request a full day to be approved and dunning a day
+     * to retry while the member still has access.
      */
     public static final String AUTOPAY_CHARGE_LEAD_DAYS_KEY = "autopayChargeLeadDays";
 
@@ -166,31 +169,44 @@ public class PaymentSettingService {
     }
 
     /**
-     * {@code endDate} minus this institute's lead days, subtracted in {@code zone}.
+     * The instant to present the charge for a period ending {@code endDate}: start of day,
+     * in {@code zone}, on the LAST DAY THE PLAN COVERS minus this institute's lead days.
      *
-     * <p>The zone matters, and getting it wrong is the bug this signature exists to prevent.
-     * {@code Calendar.add(DAY_OF_MONTH, -n)} works in the SERVER's zone, so on a UTC pod a
-     * plan ending at 18:30 UTC (midnight IST) walks back to 18:30 UTC — right by luck, since
-     * India has no DST. Across a DST boundary the same arithmetic shifts the wall-clock hour,
-     * which moves the charge onto the wrong calendar day in the only zone anyone is reading:
-     * {@code getUpcomingAutopayCharges} buckets {@code next_charge_at} by date in the
-     * invite's {@code AUTOPAY_SETTING.TRIAL_TIMEZONE}, so an hour of drift silently costs or
-     * gains a day of notice. Subtracting in that same zone keeps the charge on the day the
-     * reminder promises.
+     * <p><b>Why "last day covered" and not {@code endDate} itself.</b> {@code end_date} is the
+     * EXCLUSIVE boundary — the instant access stops. A plan whose last usable day is 27 Oct is
+     * stored as {@code 2026-10-27 18:30 UTC}, which is 00:00 IST on the 28th. So the old
+     * {@code next_charge_at = end_date} did not mean "charge on the end date", it meant "charge
+     * at the instant the member's access dies", and because the sweep runs once a day at 15:00
+     * IST and tests {@code next_charge_at <= now}, a charge armed at 00:00 IST is not picked up
+     * that day at all — 18:30 UTC is after the sweep's 09:30 UTC — so it slipped to the NEXT
+     * day's sweep. Net effect: every autopay member was charged the day AFTER their plan ended,
+     * with the audience query and its date label faithfully reporting that later day. Two
+     * SuchBliss plans ending 27 Oct were armed to charge on the 28th.
      *
-     * <p>A zero or negative lead returns {@code endDate} untouched — no conversion, no
-     * rounding, nothing for an unconfigured institute to notice.
+     * <p>Anchoring on {@code endDate - 1ns} in the invite's zone collapses that boundary back to
+     * the real last day (27 Oct), and normalising to start-of-day makes the stored instant
+     * unambiguous for a once-daily sweep: start-of-day IST is 18:30 UTC on the PREVIOUS day,
+     * comfortably before 09:30 UTC, so the plan is charged on exactly the date it reads as. The
+     * label, the audience bucket and the day money actually moves now all agree.
+     *
+     * <p>With no lead configured this still moves every autopay charge one day earlier than
+     * before — deliberately. That is the correction: a renewal belongs on the last day the
+     * member is still a member, not on the first day they are not.
+     *
+     * <p>The zone is the invite's {@code AUTOPAY_SETTING.TRIAL_TIMEZONE} because that is the zone
+     * {@code getUpcomingAutopayCharges} buckets by. Subtracting with
+     * {@code Calendar.add(DAY_OF_MONTH, -n)} instead would work in the SERVER's zone — right by
+     * luck for India, which has no DST, but across a DST boundary it shifts the wall-clock hour
+     * and silently moves the charge onto a different calendar day than the reminder promised.
      */
     public Date resolveChargeAt(Date endDate, String instituteId, ZoneId zone) {
         if (endDate == null) {
             return null;
         }
-        int lead = getAutopayChargeLeadDays(instituteId);
-        if (lead <= 0) {
-            return endDate;
-        }
         ZoneId target = zone != null ? zone : ZoneId.systemDefault();
-        ZonedDateTime chargeAt = endDate.toInstant().atZone(target).minusDays(lead);
+        int lead = getAutopayChargeLeadDays(instituteId);
+        LocalDate lastCoveredDay = endDate.toInstant().atZone(target).minusNanos(1).toLocalDate();
+        ZonedDateTime chargeAt = lastCoveredDay.minusDays(lead).atStartOfDay(target);
         return Date.from(chargeAt.toInstant());
     }
 

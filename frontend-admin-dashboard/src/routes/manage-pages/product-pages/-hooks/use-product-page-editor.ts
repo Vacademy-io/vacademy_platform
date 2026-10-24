@@ -166,6 +166,20 @@ export const useProductPageEditor = (productPageId: string) => {
         [markDirty]
     );
 
+    /** Puts the rows in the given order; rows not listed keep their order at the end. */
+    const reorderRows = useCallback(
+        (orderedRowIds: string[]) => {
+            setMappingRows((prev) => {
+                const rank = new Map(orderedRowIds.map((id, i) => [id, i]));
+                return [...prev]
+                    .sort((a, b) => (rank.get(a.rowId) ?? Infinity) - (rank.get(b.rowId) ?? Infinity))
+                    .map((r, i) => (r.displayOrder === i ? r : { ...r, displayOrder: i }));
+            });
+            markDirty();
+        },
+        [markDirty]
+    );
+
     /**
      * Replace the course rows with the server's — after a catalogue sync, which
      * changes the mappings on the server directly. The one-shot seed above never
@@ -226,6 +240,7 @@ export const useProductPageEditor = (productPageId: string) => {
         updateRow,
         removeRow,
         moveRow,
+        reorderRows,
         reseedMappings,
         save: saveMutation.mutate,
         isSaving: saveMutation.isPending,

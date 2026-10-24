@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState } from 'react';
 import { CourseSessionSelector } from './CourseSessionSelector';
@@ -68,7 +68,13 @@ const newRow = (packageSessionId: string): MappingRow => ({
 const inviteListCalls = () =>
     post.mock.calls.filter(([url]) => String(url).includes('get-enroll-invite'));
 
-function Harness({ initialRows }: { initialRows: MappingRow[] }) {
+function Harness({
+    initialRows,
+    onReorder,
+}: {
+    initialRows: MappingRow[];
+    onReorder?: (orderedRowIds: string[]) => void;
+}) {
     const [rows, setRows] = useState(initialRows);
     return (
         <CourseSessionSelector
@@ -84,16 +90,17 @@ function Harness({ initialRows }: { initialRows: MappingRow[] }) {
             }}
             suggestions={{}}
             onUpdateSuggestions={vi.fn()}
+            onReorder={onReorder}
         />
     );
 }
 
-const renderWithClient = (rows: MappingRow[]) =>
+const renderWithClient = (rows: MappingRow[], onReorder?: (orderedRowIds: string[]) => void) =>
     render(
         <QueryClientProvider
             client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
         >
-            <Harness initialRows={rows} />
+            <Harness initialRows={rows} onReorder={onReorder} />
         </QueryClientProvider>
     );
 
@@ -180,5 +187,52 @@ describe('CourseSessionSelector requests', () => {
         expect(inviteListCalls()).toHaveLength(1);
         expect(get).toHaveBeenCalledTimes(1);
         expect(String(get.mock.calls[0]![0])).toContain('inv-new');
+    });
+});
+
+describe('CourseSessionSelector newest/oldest first', () => {
+    beforeEach(() => {
+        post.mockReset();
+        get.mockReset();
+        post.mockImplementation((url: string, body: { package_session_ids?: string[] }) => {
+            if (url.includes('get-enroll-invite')) {
+                return Promise.resolve({ data: { content: [], last: true } });
+            }
+            // The search sorts by created_at DESC: ps-3 is the newest course.
+            const content = body?.package_session_ids?.length
+                ? ['ps-3', 'ps-1', 'ps-2'].map((id) => ({ id: `pkg-${id}`, package_session_id: id }))
+                : [];
+            return Promise.resolve({
+                data: { content, totalElements: content.length, last: true, number: 0 },
+            });
+        });
+    });
+
+    const rows = () => ['ps-1', 'ps-2', 'ps-3'].map((id) => savedRow(id, `inv-${id}`));
+
+    it('orders the rows by course creation, newest first', async () => {
+        const onReorder = vi.fn();
+        renderWithClient(rows(), onReorder);
+
+        fireEvent.click(await screen.findByText('selectedCourses.newestFirst'));
+
+        await waitFor(() => expect(onReorder).toHaveBeenCalledTimes(1));
+        expect(onReorder).toHaveBeenCalledWith(['row-ps-3', 'row-ps-1', 'row-ps-2']);
+    });
+
+    it('orders the rows by course creation, oldest first', async () => {
+        const onReorder = vi.fn();
+        renderWithClient(rows(), onReorder);
+
+        fireEvent.click(await screen.findByText('selectedCourses.oldestFirst'));
+
+        await waitFor(() => expect(onReorder).toHaveBeenCalledTimes(1));
+        expect(onReorder).toHaveBeenCalledWith(['row-ps-2', 'row-ps-1', 'row-ps-3']);
+    });
+
+    it('hides the buttons when the page has no reorder handler', async () => {
+        renderWithClient(rows());
+        expect(await screen.findByText('selectedCourses.heading')).toBeInTheDocument();
+        expect(screen.queryByText('selectedCourses.newestFirst')).not.toBeInTheDocument();
     });
 });

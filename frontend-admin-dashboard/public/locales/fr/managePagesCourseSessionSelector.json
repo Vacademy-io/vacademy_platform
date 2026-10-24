@@ -18,7 +18,12 @@
     "selectedCourses": {
         "heading": "Cours sélectionnés",
         "addMore": "Ajouter plus",
-        "combinedTotal": "Total combiné :"
+        "combinedTotal": "Total combiné :",
+        "newestFirst": "Plus récents d'abord",
+        "oldestFirst": "Plus anciens d'abord",
+        "newestFirstHint": "Mettre le cours ajouté le plus récemment en haut",
+        "oldestFirstHint": "Mettre le cours ajouté le plus anciennement en haut",
+        "sortFailed": "Impossible de trier les cours. Veuillez réessayer."
     },
     "browser": {
         "searchPlaceholder": "Rechercher des cours ou des sessions…",

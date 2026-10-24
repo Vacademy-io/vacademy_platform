@@ -19,7 +19,12 @@
     "selectedCourses": {
         "heading": "Selected Courses",
         "addMore": "Add More",
-        "combinedTotal": "Combined total:"
+        "combinedTotal": "Combined total:",
+        "newestFirst": "Newest first",
+        "oldestFirst": "Oldest first",
+        "newestFirstHint": "Put the newest uploaded course on top",
+        "oldestFirstHint": "Put the oldest uploaded course on top",
+        "sortFailed": "Couldn't sort the courses. Please try again."
     },
     "browser": {
         "searchPlaceholder": "Search courses or batches…",

@@ -21,7 +21,12 @@
     "selectedCourses": {
         "heading": "الدورات المحددة",
         "addMore": "إضافة المزيد",
-        "combinedTotal": "الإجمالي الكلي:"
+        "combinedTotal": "الإجمالي الكلي:",
+        "newestFirst": "الأحدث أولاً",
+        "oldestFirst": "الأقدم أولاً",
+        "newestFirstHint": "ضع أحدث دورة مرفوعة في الأعلى",
+        "oldestFirstHint": "ضع أقدم دورة مرفوعة في الأعلى",
+        "sortFailed": "تعذّر ترتيب الدورات. يرجى المحاولة مرة أخرى."
     },
     "browser": {
         "searchPlaceholder": "ابحث عن دورات أو دفعات…",

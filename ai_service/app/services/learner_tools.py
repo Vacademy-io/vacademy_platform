@@ -501,6 +501,8 @@ async def get_my_live_classes(db: Session, user_id: str, institute_id: str, whic
 _LEARNER_CHAT_ROUTE = "/assessment-service/internal/learner-chat/v1"
 TEST_ROUTE = "/assessment/examination"
 REPORT_ROUTE = "/assessment/reports/student-report"
+AI_REPORT_ROUTE = "/assessment/reports/ai-report"
+MY_REPORTS_ROUTE = "/my-reports"
 _NO_END_YEAR = 9000  # bound_end_time 9999-12-31 means "no end date"
 
 _BATCH_IDS_SQL = text("""
@@ -781,7 +783,7 @@ SELECT topic, COUNT(*) AS n FROM learning_analytics
 """)
 
 _REPORT_SQL = text("""
-SELECT report_json, created_at FROM student_analysis_process
+SELECT id, report_json, created_at FROM student_analysis_process
  WHERE user_id = :user_id AND institute_id = :institute_id AND status = 'COMPLETED'
  ORDER BY created_at DESC LIMIT 1
 """)
@@ -809,13 +811,50 @@ def _as_list(value: Any, limit: int = 4) -> List[str]:
     items = value if isinstance(value, list) else ([value] if value else [])
     for v in items:
         if isinstance(v, dict):
-            v = v.get("topic") or v.get("title") or v.get("area") or v.get("description") or v.get("text") or ""
+            v = (v.get("topic") or v.get("title") or v.get("area") or v.get("misconception")
+                 or v.get("description") or v.get("text") or "")
         v = " ".join(str(v).replace("**", "").split())
         if v:
             out.append(v if len(v) <= 220 else v[:217].rsplit(" ", 1)[0] + "…")
         if len(out) >= limit:
             break
     return out
+
+
+def _topic_split(data: Dict[str, Any], limit: int = 4):
+    """Strong and weak topics of one test analysis, as "Topic (9/10, 90%)".
+
+    topic_analysis (per-topic accuracy) wins, split at 75% like the learner's AI
+    report; older analyses only carry {topic: percent} maps under
+    strengths / weaknesses."""
+    strong: List[tuple] = []
+    weak: List[tuple] = []
+    for t in data.get("topic_analysis") or []:
+        if not isinstance(t, dict) or not str(t.get("topic") or "").strip():
+            continue
+        acc = _num(t.get("accuracy"))
+        if acc is None:
+            continue
+        count = f"{_int(t.get('correct'))}/{_int(t.get('questions_count'))}, " if t.get("questions_count") else ""
+        label = f"{' '.join(str(t['topic']).split())} ({count}{_fmt(acc)}%)"
+        (strong if acc >= 75 else weak).append((acc, label))
+    if not strong and not weak:
+        for key, bucket in (("strengths", strong), ("weaknesses", weak)):
+            value = data.get(key)
+            if isinstance(value, dict):
+                for topic, pct in value.items():
+                    acc = _num(pct)
+                    if str(topic).strip() and acc is not None:
+                        bucket.append((acc, f"{' '.join(str(topic).split())} ({_fmt(acc)}%)"))
+            else:
+                bucket.extend((0, v) for v in _as_list(value, limit))
+    strong.sort(key=lambda x: -x[0])
+    weak.sort(key=lambda x: x[0])
+    return [label for _, label in strong[:limit]], [label for _, label in weak[:limit]]
+
+
+def _topic_names(labels: List[str], limit: int = 2) -> str:
+    return ", ".join(label.rsplit(" (", 1)[0] for label in labels[:limit])
 
 
 def _int(value: Any) -> int:
@@ -846,12 +885,13 @@ def _streak(days: List[Any], today) -> int:
     return streak
 
 
-async def get_my_performance(db: Session, user_id: str, institute_id: str) -> str:
+async def get_my_performance(db: Session, user_id: str, institute_id: str) -> ToolOutput | str:
     import json
 
     params = {"user_id": user_id, "institute_id": institute_id}
     now = datetime.now(IST)
     sections: List[str] = []
+    links: List[Dict[str, Any]] = []
 
     released: List[Dict[str, Any]] = []
     try:
@@ -863,8 +903,9 @@ async def get_my_performance(db: Session, user_id: str, institute_id: str) -> st
         sections.append("RECENT RELEASED TEST RESULTS:\n" + "\n".join(lines))
         ids = [_f(r, "assessment_id") for r in released if _f(r, "assessment_id")]
         rows = db.execute(_INSIGHTS_SQL, {"user_id": user_id, "ids": ids}).all() if ids else []
-        names = {_f(r, "assessment_id"): _f(r, "assessment_name") for r in released}
+        analysed: Dict[str, tuple] = {}
         insight_lines: List[str] = []
+        by_id = {_f(r, "assessment_id"): r for r in released}
         for source_id, raw, _created in rows:
             try:
                 data = json.loads(raw) if isinstance(raw, str) else (raw or {})
@@ -872,17 +913,45 @@ async def get_my_performance(db: Session, user_id: str, institute_id: str) -> st
                 continue
             if not isinstance(data, dict):
                 continue
+            strong, weak = _topic_split(data)
             parts = []
-            for label, key in (("strengths", "strengths"), ("weaknesses", "weaknesses"),
-                               ("misconceptions", "misconception_analysis"),
+            if strong:
+                parts.append("strong topics: " + "; ".join(strong))
+            if weak:
+                parts.append("weak topics: " + "; ".join(weak))
+            for label, key in (("misconceptions", "misconception_analysis"),
                                ("work on", "areas_of_improvement")):
-                vals = _as_list(data.get(key))
+                vals = _as_list(data.get(key), 3)
                 if vals:
                     parts.append(f"{label}: " + "; ".join(vals))
             if parts:
-                insight_lines.append(f"- {names.get(source_id) or 'Test'} — " + " | ".join(parts))
+                analysed[source_id] = (strong, weak)
+                name = _f(by_id.get(source_id) or {}, "assessment_name") or "Test"
+                insight_lines.append(f"- {name} — " + " | ".join(parts))
         if insight_lines:
             sections.append("FROM THE AI ANALYSIS OF THOSE TESTS:\n" + "\n".join(insight_lines))
+        for r in released:
+            aid = _f(r, "assessment_id")
+            name = " ".join(str(_f(r, "assessment_name") or "Test").split())
+            if aid in analysed:
+                strong, weak = analysed[aid]
+                bits = ([f"Strong: {_topic_names(strong)}"] if strong else []) + (
+                    [f"Work on: {_topic_names(weak)}"] if weak else [])
+                links.append({
+                    "title": name,
+                    "subtitle": " · ".join(bits) or "AI analysis",
+                    "href": AI_REPORT_ROUTE + "?" + urlencode({
+                        "assessmentId": aid, "assessmentName": name, "attemptId": _f(r, "attempt_id") or "",
+                    }),
+                    "icon": "assessment",
+                })
+            elif aid:
+                links.append({
+                    "title": name,
+                    "subtitle": "Result report",
+                    "href": REPORT_ROUTE + "?" + urlencode({"assessmentId": aid, "attemptId": _f(r, "attempt_id") or ""}),
+                    "icon": "assessment",
+                })
 
     linked = db.execute(_LINKED_SQL, {"user_id": user_id}).mappings().all()
     if linked:
@@ -894,12 +963,27 @@ async def get_my_performance(db: Session, user_id: str, institute_id: str) -> st
             sections.append("SAVED WEAKNESSES: " + "; ".join(wk))
 
     report = db.execute(_REPORT_SQL, params).first()
-    if report and report[0]:
+    if report and report[1]:
         try:
-            rj = json.loads(report[0]) if isinstance(report[0], str) else report[0]
-            summary = " ".join(str((rj or {}).get("summary") or "").split())
-            if summary:
-                sections.append(f"LATEST PROGRESS REPORT ({when_label(report[1], now)}): {summary[:600]}")
+            rj = json.loads(report[1]) if isinstance(report[1], str) else report[1]
+            rj = rj if isinstance(rj, dict) else {}
+            # v2 reports keep the summary under ai_insights and topics as [{topic, confidence}].
+            ai = rj.get("ai_insights") if isinstance(rj.get("ai_insights"), dict) else {}
+            summary = " ".join(str(rj.get("summary") or ai.get("summary") or "").split())
+            parts = [summary[:600]] if summary else []
+            for label, key in (("strengths", "strengths"), ("areas to improve", "areas_to_improve")):
+                vals = _as_list(rj.get(key))
+                if vals:
+                    parts.append(f"{label}: " + "; ".join(vals))
+            if parts:
+                sections.append(f"LATEST PROGRESS REPORT ({when_label(report[2], now)}): " + " | ".join(parts))
+                meta = rj.get("meta") if isinstance(rj.get("meta"), dict) else {}
+                links.append({
+                    "title": " ".join(str(meta.get("report_name") or "Progress report").split()),
+                    "subtitle": when_label(report[2], now) or "Progress report",
+                    "href": f"{MY_REPORTS_ROUTE}/{report[0]}",
+                    "icon": "assessment",
+                })
         except (ValueError, TypeError, AttributeError):
             pass
 
@@ -930,11 +1014,16 @@ async def get_my_performance(db: Session, user_id: str, institute_id: str) -> st
             "There is no performance data for this student yet (no released tests, saved reports, "
             "study activity or attendance). Say so kindly and suggest starting with their course."
         )
-    return (
+    text_out = (
         "What the platform has measured about this student. Use it to coach: name 2-3 concrete "
-        "strengths and 2-3 priorities with a next step each; quote numbers only from here.\n\n"
-        + "\n\n".join(sections)
+        "strengths and 2-3 priorities with a next step each; quote numbers only from here."
+        + (" The reports these come from are already shown as linked cards; don't list the links."
+           if links else "")
+        + "\n\n" + "\n\n".join(sections)
     )
+    if not links:
+        return text_out
+    return ToolOutput(text=text_out, card={"kind": "link_list", "title": "Your reports", "items": links[:6]})
 
 
 def params_camel(params: Dict[str, str]) -> Dict[str, str]:

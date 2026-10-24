@@ -40,6 +40,8 @@ interface EngagementData {
     activenessAttention?: number;
     activenessSeconds?: number;
     activenessAwayCount?: number;
+    /** Why there is no (current) score: 2 turned off, 3 phone/tablet, 4 camera blocked, … (1 = measured). */
+    activenessState?: number;
 }
 
 const BBB_COUNTERS = ['chats', 'talks', 'talkTime', 'raisehand', 'emojis', 'pollVotes'] as const;
@@ -99,6 +101,12 @@ const activenessOf = (student: LiveSessionReport): number | null => {
     return typeof v === 'number' ? v : null;
 };
 
+/** The reason code when it explains something (not 1 = measured). */
+const activenessStateOf = (student: LiveSessionReport): number | null => {
+    const v = parseEngagement(student.engagementData)?.activenessState;
+    return typeof v === 'number' && v !== 1 ? v : null;
+};
+
 function getActivenessBadgeColor(value: number) {
     if (value >= 70) return 'border-green-200 bg-green-50 text-green-700';
     if (value >= 40) return 'border-yellow-200 bg-yellow-50 text-yellow-700';
@@ -114,7 +122,10 @@ function activenessSummary(t: TFunction, e: EngagementData): string {
         parts.push(t('activeness.tracked', { value: formatAttendedDuration(t, null, e.activenessSeconds) }));
     }
     if (typeof e.activenessAwayCount === 'number') parts.push(t('activeness.away', { count: e.activenessAwayCount }));
-    return parts.join(' · ');
+    if (typeof e.activenessState === 'number' && e.activenessState !== 1) {
+        parts.push(t(`activenessState.${e.activenessState}`, { defaultValue: '' }));
+    }
+    return parts.filter(Boolean).join(' · ');
 }
 
 /**
@@ -385,7 +396,10 @@ export function AttendanceMarkingTable({
     }, [data, getStatus]);
 
     // The column only appears for classes that had the activeness score on.
-    const showActiveness = useMemo(() => data.some((s) => activenessOf(s) !== null), [data]);
+    const showActiveness = useMemo(
+        () => data.some((s) => activenessOf(s) !== null || activenessStateOf(s) !== null),
+        [data]
+    );
 
     const handleSave = async () => {
         if (dirtyCount === 0) return;
@@ -461,6 +475,8 @@ export function AttendanceMarkingTable({
                 row[t('csv.activenessMinutes')] =
                     typeof engagement?.activenessSeconds === 'number' ? Math.round(engagement.activenessSeconds / 60) : '';
                 row[t('csv.activenessAwayCount')] = engagement?.activenessAwayCount ?? '';
+                const state = activenessStateOf(item);
+                row[t('csv.activenessStatus')] = state !== null ? t(`activenessState.${state}`, { defaultValue: '' }) : '';
             }
             customFieldColumns.forEach((cf) => {
                 row[cf.name] = getCfValue(item, cf.key);
@@ -614,6 +630,7 @@ export function AttendanceMarkingTable({
                             const activePoints = computeActivePoints(student);
                             const pointsBadge = getActivePointsBadge(t, activePoints);
                             const activeness = activenessOf(student);
+                            const activenessState = activenessStateOf(student);
 
                             return (
                                 <Fragment key={student.studentId}>
@@ -702,6 +719,14 @@ export function AttendanceMarkingTable({
                                                         title={activenessSummary(t, engagement)}
                                                     >
                                                         {activeness}%
+                                                    </Badge>
+                                                ) : activenessState !== null ? (
+                                                    <Badge
+                                                        variant="outline"
+                                                        className="border-gray-200 bg-gray-50 text-xs text-gray-600"
+                                                        title={t(`activenessState.${activenessState}`, { defaultValue: '' })}
+                                                    >
+                                                        {t(`activenessStateShort.${activenessState}`, { defaultValue: '' })}
                                                     </Badge>
                                                 ) : (
                                                     <span className="text-gray-300">--</span>

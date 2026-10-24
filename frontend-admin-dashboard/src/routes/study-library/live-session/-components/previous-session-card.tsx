@@ -158,7 +158,7 @@ export default function PreviousSessionCard({
                 : '';
         // Activeness columns only for classes that had the opt-in camera score on.
         const withActiveness = (reportResponse || []).some((item) =>
-            (item.engagementData ?? '').includes('"activeness"')
+            /"activeness(State)?"/.test(item.engagementData ?? '')
         );
         const csvData = (reportResponse || []).map((item, idx) => {
             const engagement = item.engagementData
@@ -225,6 +225,10 @@ export default function PreviousSessionCard({
                           [t('csv.activeness')]: engagement?.activeness ?? '',
                           [t('csv.activenessOnScreen')]: engagement?.activenessOnScreen ?? '',
                           [t('csv.activenessAttention')]: engagement?.activenessAttention ?? '',
+                          [t('csv.activenessStatus')]:
+                              typeof engagement?.activenessState === 'number' && engagement.activenessState !== 1
+                                  ? t(`activenessState.${engagement.activenessState}`, { defaultValue: '' })
+                                  : '',
                       }
                     : {}),
             };

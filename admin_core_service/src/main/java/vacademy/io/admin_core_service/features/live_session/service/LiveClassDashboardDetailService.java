@@ -323,6 +323,7 @@ public class LiveClassDashboardDetailService {
                     .activenessAttention(eng != null ? eng.activenessAttention() : null)
                     .activenessSeconds(eng != null ? eng.activenessSeconds() : null)
                     .activenessAwayCount(eng != null ? eng.activenessAwayCount() : null)
+                    .activenessState(eng != null ? eng.activenessState() : null)
                     .rating(fb.rating())
                     .answers(fb.answers())
                     .build();
@@ -572,7 +573,7 @@ public class LiveClassDashboardDetailService {
      */
     record Engagement(Integer talks, Integer chats, Integer raiseHands, Integer pollVotes, Integer emojis,
                       Integer activeness, Integer activenessOnScreen, Integer activenessAttention,
-                      Integer activenessSeconds, Integer activenessAwayCount) {
+                      Integer activenessSeconds, Integer activenessAwayCount, Integer activenessState) {
     }
 
     private static final List<String> BBB_COUNTER_KEYS =
@@ -659,7 +660,8 @@ public class LiveClassDashboardDetailService {
                 optInt(root, "activenessOnScreen"),
                 optInt(root, "activenessAttention"),
                 optInt(root, "activenessSeconds"),
-                optInt(root, "activenessAwayCount"));
+                optInt(root, "activenessAwayCount"),
+                optInt(root, "activenessState"));
     }
 
     private static Integer optInt(JsonNode root, String key) {

@@ -87,6 +87,13 @@ class LiveClassDashboardDetailServiceTest {
         assertNull(onlyScore.chats());
         assertNull(onlyScore.activenessOnScreen());
         assertEquals(60, onlyScore.activeness());
+        assertNull(onlyScore.activenessState());
+
+        // A phone: the plugin only reports why there is no score.
+        var phone = LiveClassDashboardDetailService.parseEngagement("{\"activenessState\":3}");
+        assertNull(phone.activeness());
+        assertNull(phone.talks());
+        assertEquals(3, phone.activenessState());
     }
 
     @Test

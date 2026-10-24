@@ -9,7 +9,7 @@
 import { ActivenessMeter, type LiveScore, type Score } from "./meter";
 import { CameraError, type CameraProblem, listCameras, openCamera, stopStream } from "./camera";
 import { createAttentionTracker, type AttentionTracker } from "./tracker";
-import { persistKey, sendReport, type ReportPayload } from "./report";
+import { persistKey, sendReport, sendStatus, type ActivenessStatus, type ReportPayload } from "./report";
 
 export type Phase = "starting" | "on" | "off" | "problem";
 
@@ -74,6 +74,17 @@ const MIC_SETTLE_MAX_MS = 20_000;
 const MIC_SETTLE_FALLBACK_MS = 8000;
 const CAMERA_KEY = "vacademy.activeness.camera";
 const RESUME_MAX_AGE_MS = 12 * 3600_000;
+
+const STATUS_FOR_PROBLEM: Record<CameraProblem, ActivenessStatus> = {
+  denied: "camera_blocked",
+  "os-blocked": "camera_blocked",
+  "in-use": "camera_busy",
+  "not-found": "no_camera",
+  ended: "camera_stopped",
+  slow: "too_slow",
+  load: "load_failed",
+  unknown: "camera_stopped",
+};
 
 const EMPTY_LIVE: LiveScore = { score: null, onScreen: null, attention: null, reason: null, reasonIsCurrent: false };
 
@@ -242,7 +253,8 @@ export class ActivenessController {
     window.addEventListener("pagehide", this.onPageHide);
     navigator.mediaDevices?.addEventListener?.("devicechange", this.onDeviceChange);
 
-    if (!turnedOff) this.autoStart();
+    if (turnedOff) this.status("turned_off");
+    else this.autoStart();
   }
 
   private get offKey() {
@@ -297,10 +309,11 @@ export class ActivenessController {
     storage.set(this.offKey, "0");
     this.releaseCamera();
     this.set({ phase: "starting", problem: null, slowLoad: false, askingPermission: false, collapsed: false });
-    const asking = window.setTimeout(
-      () => gen === this.generation && this.set({ askingPermission: true }),
-      ASKING_PERMISSION_AFTER_MS
-    );
+    const asking = window.setTimeout(() => {
+      if (gen !== this.generation) return;
+      this.set({ askingPermission: true });
+      this.status("awaiting_permission");
+    }, ASKING_PERMISSION_AFTER_MS);
     try {
       let stream: MediaStream;
       try {
@@ -374,6 +387,7 @@ export class ActivenessController {
     storage.set(this.offKey, "1");
     this.generation += 1;
     this.report(false);
+    this.status("turned_off");
     this.releaseCamera();
     this.closeTracker();
     this.userChoseLayout = true;
@@ -532,6 +546,7 @@ export class ActivenessController {
   private fail(problem: CameraProblem) {
     this.generation += 1;
     this.report(false);
+    this.status(STATUS_FOR_PROBLEM[problem]);
     this.releaseCamera();
     this.set({
       phase: "problem",
@@ -621,6 +636,12 @@ export class ActivenessController {
       final,
     };
     sendReport(this.reportUrl, payload, beacon);
+  }
+
+  /** Tell the admin why there is no (current) score. Score reports set "measuring" server-side. */
+  private status(status: ActivenessStatus) {
+    if (this.disposed) return;
+    sendStatus(this.reportUrl, this.token, status);
   }
 
   private loadResume(): unknown {

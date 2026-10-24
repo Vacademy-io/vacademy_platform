@@ -120,6 +120,19 @@ const downloadCsv = (rows: Record<string, unknown>[], fileName: string) => {
     URL.revokeObjectURL(url);
 };
 
+/** engagement_data.activenessState codes (plugin status), matching the other exports. */
+const ACTIVENESS_STATE_LABELS: Record<number, string> = {
+    2: 'Turned off by the learner',
+    3: 'Phone/tablet — not measured',
+    4: 'Camera blocked',
+    5: 'No camera',
+    6: 'Camera in use by another app',
+    7: 'Device too slow',
+    8: "Couldn't load",
+    9: 'Camera stopped',
+    10: 'Camera not allowed',
+};
+
 /** Same columns and active-points formula the attendance export has always used. */
 const toAttendanceCsvRow = (item: LiveSessionReport, idx: number, typeLabel: string) => {
     const engagement = item.engagementData
@@ -175,6 +188,10 @@ const toAttendanceCsvRow = (item: LiveSessionReport, idx: number, typeLabel: str
         'Activeness %': engagement?.activeness ?? '',
         'On screen %': engagement?.activenessOnScreen ?? '',
         'Attention %': engagement?.activenessAttention ?? '',
+        'Activeness status':
+            typeof engagement?.activenessState === 'number' && engagement.activenessState !== 1
+                ? ACTIVENESS_STATE_LABELS[engagement.activenessState] ?? ''
+                : '',
     };
 };
 

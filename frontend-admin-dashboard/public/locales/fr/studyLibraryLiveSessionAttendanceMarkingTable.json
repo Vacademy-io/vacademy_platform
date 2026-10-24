@@ -91,7 +91,8 @@
         "activenessOnScreen": "À l'écran %",
         "activenessAttention": "Attention %",
         "activenessMinutes": "Minutes suivies par la caméra",
-        "activenessAwayCount": "Absences"
+        "activenessAwayCount": "Absences",
+        "activenessStatus": "Statut d'activité"
     },
     "durationSeconds_one": "{{count}} s",
     "durationSeconds_many": "{{count}} s",
@@ -110,5 +111,29 @@
         "away_one": "absent {{count}} fois",
         "away_other": "absent {{count}} fois",
         "detail": "Activité {{value}} % — {{summary}}"
+    },
+    "activenessState": {
+        "1": "Mesuré",
+        "2": "Désactivé par l'apprenant",
+        "3": "Téléphone/tablette — non mesuré",
+        "4": "Caméra bloquée",
+        "5": "Pas de caméra",
+        "6": "Caméra utilisée par une autre application",
+        "7": "Appareil trop lent",
+        "8": "Chargement impossible",
+        "9": "Caméra arrêtée",
+        "10": "Caméra non autorisée"
+    },
+    "activenessStateShort": {
+        "1": "Mesuré",
+        "2": "Désactivé",
+        "3": "Téléphone",
+        "4": "Caméra bloquée",
+        "5": "Pas de caméra",
+        "6": "Caméra occupée",
+        "7": "Trop lent",
+        "8": "Non chargé",
+        "9": "Caméra arrêtée",
+        "10": "Non autorisée"
     }
 }

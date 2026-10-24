@@ -11,6 +11,7 @@ import { useEffect, useRef } from "react";
 import * as ReactDOM from "react-dom/client";
 import { BbbPluginSdk, FloatingWindow, type PluginApi } from "bigbluebutton-html-plugin-sdk";
 import { ActivenessController } from "./controller";
+import { sendStatus } from "./report";
 import { isDesktop } from "./camera";
 import { Panel } from "./Panel";
 
@@ -91,6 +92,24 @@ function ActivenessPlugin({ uuid, pluginName }: { uuid: string; pluginName: stri
   }
   const eligible = !shouldUnmount && role !== "MODERATOR" && identity.current !== null;
   const latched = identity.current;
+
+  // Phones and tablets are not measured (camera conflicts with BBB's own webcam on
+  // iOS, battery, a phone-sized panel). Say so once, so the admin sees
+  // "Phone — not measured" rather than a blank next to this learner.
+  const phoneReported = useRef(false);
+  if (
+    !phoneReported.current &&
+    !identity.current &&
+    !shouldUnmount &&
+    token &&
+    reportUrl &&
+    /^https:\/\//.test(reportUrl) &&
+    role === "VIEWER" &&
+    !isDesktop()
+  ) {
+    phoneReported.current = true;
+    sendStatus(reportUrl, token, "unsupported_device");
+  }
 
   const controllerRef = useRef<ActivenessController | null>(null);
 

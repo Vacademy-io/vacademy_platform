@@ -259,7 +259,8 @@
         "activenessOnScreen": "À l'écran %",
         "activenessAttention": "Attention %",
         "activenessMinutesTracked": "Minutes de suivi caméra",
-        "activenessAwayCount": "Nombre d'absences"
+        "activenessAwayCount": "Nombre d'absences",
+        "activenessStatus": "Statut d'activité"
     },
     "atRisk": {
         "title": "Apprenants à risque",
@@ -301,5 +302,29 @@
     },
     "page": {
         "description": "Présence, temps en cours, engagement et avis des cours en direct, par enseignant et par groupe."
+    },
+    "activenessState": {
+        "1": "Mesuré",
+        "2": "Désactivé par l'apprenant",
+        "3": "Téléphone/tablette — non mesuré",
+        "4": "Caméra bloquée",
+        "5": "Pas de caméra",
+        "6": "Caméra utilisée par une autre application",
+        "7": "Appareil trop lent",
+        "8": "Chargement impossible",
+        "9": "Caméra arrêtée",
+        "10": "Caméra non autorisée"
+    },
+    "activenessStateShort": {
+        "1": "Mesuré",
+        "2": "Désactivé",
+        "3": "Téléphone",
+        "4": "Caméra bloquée",
+        "5": "Pas de caméra",
+        "6": "Caméra occupée",
+        "7": "Trop lent",
+        "8": "Non chargé",
+        "9": "Caméra arrêtée",
+        "10": "Non autorisée"
     }
 }

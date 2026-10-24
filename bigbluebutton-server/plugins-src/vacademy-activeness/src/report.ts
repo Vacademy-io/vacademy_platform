@@ -16,8 +16,28 @@ export interface ReportPayload {
   final: boolean;
 }
 
-export const sendReport = (url: string, payload: ReportPayload, beacon: boolean) => {
-  const body = JSON.stringify(payload);
+/**
+ * Why this learner has no (current) score — shown to admins instead of a blank.
+ * Codes are mapped server-side (LiveSessionProviderController.ACTIVENESS_STATES).
+ */
+export type ActivenessStatus =
+  | "turned_off"
+  | "unsupported_device"
+  | "camera_blocked"
+  | "no_camera"
+  | "camera_busy"
+  | "too_slow"
+  | "load_failed"
+  | "camera_stopped"
+  | "awaiting_permission";
+
+export const sendStatus = (url: string, token: string, status: ActivenessStatus, beacon = false) =>
+  post(url, JSON.stringify({ token, status }), beacon);
+
+export const sendReport = (url: string, payload: ReportPayload, beacon: boolean) =>
+  post(url, JSON.stringify(payload), beacon);
+
+const post = (url: string, body: string, beacon: boolean) => {
   try {
     // sendBeacon survives the tab closing; fetch+keepalive is the fallback.
     if (beacon && typeof navigator.sendBeacon === "function") {

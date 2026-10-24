@@ -80,6 +80,12 @@ public final class LiveClassDashboardDetails {
         private Integer activenessAttention;
         private Integer activenessSeconds;
         private Integer activenessAwayCount;
+        /**
+         * Why there is no (current) score: 1 measuring, 2 turned off by the learner,
+         * 3 phone/tablet, 4 camera blocked, 5 no camera, 6 camera busy, 7 device too
+         * slow, 8 could not load, 9 camera stopped, 10 waiting for camera permission.
+         */
+        private Integer activenessState;
         private Double rating;
         private List<FeedbackAnswer> answers;
     }

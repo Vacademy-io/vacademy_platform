@@ -56,11 +56,24 @@
         "pollVotes": "Votes de sondage",
         "activeness": "Activité %",
         "activenessOnScreen": "À l'écran %",
-        "activenessAttention": "Attention %"
+        "activenessAttention": "Attention %",
+        "activenessStatus": "Statut d'activité"
     },
     "status": {
         "present": "Présent",
         "absent": "Absent",
         "unmarked": "Non marqué"
+    },
+    "activenessState": {
+        "1": "Mesuré",
+        "2": "Désactivé par l'apprenant",
+        "3": "Téléphone/tablette — non mesuré",
+        "4": "Caméra bloquée",
+        "5": "Pas de caméra",
+        "6": "Caméra utilisée par une autre application",
+        "7": "Appareil trop lent",
+        "8": "Chargement impossible",
+        "9": "Caméra arrêtée",
+        "10": "Caméra non autorisée"
     }
 }

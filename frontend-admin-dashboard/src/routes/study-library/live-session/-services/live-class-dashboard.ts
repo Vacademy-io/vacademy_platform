@@ -238,6 +238,8 @@ export interface DashboardClassLearner {
     /** Seconds the camera was tracked. */
     activeness_seconds?: number | null;
     activeness_away_count?: number | null;
+    /** Why there is no (current) score: 2 turned off, 3 phone/tablet, 4 camera blocked, … (1 = measured). */
+    activeness_state?: number | null;
 }
 
 export interface DashboardAtRiskLearner {

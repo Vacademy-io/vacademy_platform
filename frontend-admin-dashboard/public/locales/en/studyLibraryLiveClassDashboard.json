@@ -259,7 +259,8 @@
         "activenessOnScreen": "On screen %",
         "activenessAttention": "Attention %",
         "activenessMinutesTracked": "Minutes camera tracked",
-        "activenessAwayCount": "Times stepped away"
+        "activenessAwayCount": "Times stepped away",
+        "activenessStatus": "Activeness status"
     },
     "atRisk": {
         "title": "Learners at risk",
@@ -301,5 +302,29 @@
     },
     "page": {
         "description": "Attendance, time in class, engagement and feedback of live classes, by teacher and batch."
+    },
+    "activenessState": {
+        "1": "Measured",
+        "2": "Turned off by the learner",
+        "3": "Phone/tablet — not measured",
+        "4": "Camera blocked",
+        "5": "No camera",
+        "6": "Camera in use by another app",
+        "7": "Device too slow",
+        "8": "Couldn't load",
+        "9": "Camera stopped",
+        "10": "Camera not allowed"
+    },
+    "activenessStateShort": {
+        "1": "Measured",
+        "2": "Turned off",
+        "3": "Phone",
+        "4": "Camera blocked",
+        "5": "No camera",
+        "6": "Camera busy",
+        "7": "Too slow",
+        "8": "Couldn't load",
+        "9": "Camera stopped",
+        "10": "No permission"
     }
 }

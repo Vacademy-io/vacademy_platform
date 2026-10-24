@@ -80,6 +80,23 @@ public class LiveSessionProviderController {
      */
     private static final long ACTIVENESS_MIN_WRITE_GAP_MS = 20_000;
     private static final long ACTIVENESS_MIN_FINAL_GAP_MS = 2_000;
+    private static final long ACTIVENESS_MIN_STATE_GAP_MS = 1_000;
+    /**
+     * Why a learner has no (or no current) activeness score, sent by the plugin as
+     * `status` and stored as engagement_data.activenessState. Codes are stable —
+     * the admin UI maps them to labels.
+     */
+    static final Map<String, Integer> ACTIVENESS_STATES = Map.of(
+            "on", 1,
+            "turned_off", 2,
+            "unsupported_device", 3,
+            "camera_blocked", 4,
+            "no_camera", 5,
+            "camera_busy", 6,
+            "too_slow", 7,
+            "load_failed", 8,
+            "camera_stopped", 9,
+            "awaiting_permission", 10);
     private final java.util.concurrent.ConcurrentHashMap<String, Long> activenessLastWriteAt =
             new java.util.concurrent.ConcurrentHashMap<>();
 
@@ -904,6 +921,9 @@ public class LiveSessionProviderController {
 
         Integer avg = activenessInt(root, "avg");
         Integer seconds = activenessInt(root, "seconds");
+        if (avg == null && seconds == null && root.path("status").isTextual()) {
+            return storeActivenessState(claims.get(), root.path("status").asText());
+        }
         if (avg == null || seconds == null) {
             return ResponseEntity.badRequest().build();
         }
@@ -945,10 +965,33 @@ public class LiveSessionProviderController {
         return ResponseEntity.noContent().build();
     }
 
+    /** A status-only report: why this learner is not being measured (phone, turned off, camera blocked, …). */
+    private ResponseEntity<Void> storeActivenessState(BbbActivenessTokenService.Claims claims, String status) {
+        Integer state = ACTIVENESS_STATES.get(status);
+        if (state == null) {
+            return ResponseEntity.badRequest().build();
+        }
+        String key = claims.scheduleId() + ":" + claims.userId() + ":state";
+        if (!activenessWriteAllowed(key, ACTIVENESS_MIN_STATE_GAP_MS)) {
+            return ResponseEntity.noContent().build();
+        }
+        try {
+            liveSessionLogsRepository.mergeActivenessState(claims.scheduleId(), claims.userId(), state);
+        } catch (Exception e) {
+            log.warn("[BBB] Failed to store activeness status; scheduleId={}, userId={}: {}",
+                    claims.scheduleId(), claims.userId(), e.getMessage());
+            return ResponseEntity.status(500).build();
+        }
+        return ResponseEntity.noContent().build();
+    }
+
     /** Per-learner write throttle for activeness reports (see ACTIVENESS_MIN_WRITE_GAP_MS). */
     private boolean activenessWriteAllowed(String key, boolean isFinal) {
+        return activenessWriteAllowed(key, isFinal ? ACTIVENESS_MIN_FINAL_GAP_MS : ACTIVENESS_MIN_WRITE_GAP_MS);
+    }
+
+    private boolean activenessWriteAllowed(String key, long gap) {
         long now = System.currentTimeMillis();
-        long gap = isFinal ? ACTIVENESS_MIN_FINAL_GAP_MS : ACTIVENESS_MIN_WRITE_GAP_MS;
         boolean[] allowed = {false};
         activenessLastWriteAt.compute(key, (k, last) -> {
             if (last == null || now - last >= gap) {

@@ -150,7 +150,8 @@ public interface LiveSessionLogsRepository extends JpaRepository<LiveSessionLogs
                                                           THEN CAST(:attention AS integer) END,
                               'activenessSeconds', CAST(:seconds AS integer),
                               'activenessAwayCount', CAST(:awayCount AS integer),
-                              'activenessAwaySeconds', CAST(:awaySeconds AS integer)))
+                              'activenessAwaySeconds', CAST(:awaySeconds AS integer),
+                              'activenessState', 1))
                    AS text)
              WHERE schedule_id = :scheduleId
                AND user_source_id = :userId
@@ -172,6 +173,44 @@ public interface LiveSessionLogsRepository extends JpaRepository<LiveSessionLogs
             @Param("seconds") int seconds,
             @Param("awayCount") int awayCount,
             @Param("awaySeconds") int awaySeconds);
+
+    /**
+     * Why the activeness plugin is not (or no longer) measuring this learner — a
+     * phone, the learner turned it off, the camera is blocked/busy/missing, … — as
+     * an integer code in engagement_data.activenessState (see
+     * LiveSessionProviderController.ACTIVENESS_STATES; the analytics callback only
+     * merges integer keys). A score report sets it back to 1.
+     *
+     * "Waiting for camera permission" (10) never overwrites a learner who already
+     * has a score: it can only arrive late, after the prompt was answered.
+     */
+    @Modifying
+    @Transactional
+    @Query(value = """
+            UPDATE live_session_logs
+               SET engagement_data = CAST(
+                       (CASE WHEN pg_input_is_valid(engagement_data, 'jsonb')
+                             THEN (CASE WHEN jsonb_typeof(CAST(engagement_data AS jsonb)) = 'object'
+                                        THEN CAST(engagement_data AS jsonb)
+                                        ELSE jsonb_build_object() END)
+                             ELSE jsonb_build_object() END)
+                       || jsonb_build_object('activenessState', CAST(:state AS integer))
+                   AS text),
+                   updated_at = now()
+             WHERE schedule_id = :scheduleId
+               AND user_source_id = :userId
+               AND log_type = 'ATTENDANCE_RECORDED'
+               AND (CAST(:state AS integer) <> 10
+                    OR NOT (CASE WHEN pg_input_is_valid(engagement_data, 'jsonb')
+                                 THEN (CASE WHEN jsonb_typeof(CAST(engagement_data AS jsonb)) = 'object'
+                                            THEN jsonb_exists(CAST(engagement_data AS jsonb), 'activeness')
+                                            ELSE FALSE END)
+                                 ELSE FALSE END))
+            """, nativeQuery = true)
+    int mergeActivenessState(
+            @Param("scheduleId") String scheduleId,
+            @Param("userId") String userId,
+            @Param("state") int state);
 
     /**
      * Used by the provider sync scheduler to upsert provider-sourced attendance.

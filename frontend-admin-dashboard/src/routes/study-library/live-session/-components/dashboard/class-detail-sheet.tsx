@@ -72,10 +72,13 @@ function ActivenessChip({
     learner,
     label,
     detail,
+    stateLabel,
 }: {
     learner: DashboardClassLearner;
     label: string;
     detail: string;
+    /** Why there is no score (phone, turned off, camera blocked …), when there is none. */
+    stateLabel: string | null;
 }) {
     const score = learner.activeness;
     return (
@@ -94,6 +97,8 @@ function ActivenessChip({
                 >
                     {Math.round(score)}%
                 </span>
+            ) : stateLabel ? (
+                <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-neutral-600">{stateLabel}</span>
             ) : (
                 EMPTY_VALUE
             )}
@@ -182,11 +187,16 @@ export function ClassDetailSheet({
         return c;
     }, [learners]);
 
-    // The activeness score is opt-in per class: show it only when someone has one.
+    // The activeness score is opt-in per class: show it only when someone has one,
+    // or a reason for not having one (phone, turned off, camera blocked …).
     const showActiveness = useMemo(
-        () => (learners ?? []).some((l) => isNum(l.activeness)),
+        () => (learners ?? []).some((l) => isNum(l.activeness) || isNum(l.activeness_state)),
         [learners]
     );
+    const activenessState = (l: DashboardClassLearner, short: boolean): string | null =>
+        isNum(l.activeness_state) && l.activeness_state !== 1
+            ? t(`${short ? 'activenessStateShort' : 'activenessState'}.${l.activeness_state}`, { defaultValue: '' }) || null
+            : null;
 
     // "On screen 90% · Attention 76% · tracked 42m · stepped away 3×" — missing parts omitted.
     const activenessDetail = (l: DashboardClassLearner) =>
@@ -209,6 +219,7 @@ export function ClassDetailSheet({
             isNum(l.activeness_away_count) && l.activeness_away_count > 0
                 ? t('drilldown.activenessAway', { count: l.activeness_away_count })
                 : null,
+            activenessState(l, false),
         ]
             .filter(Boolean)
             .join(' · ');
@@ -274,6 +285,7 @@ export function ClassDetailSheet({
                           t('csv.activenessAttention'),
                           t('csv.activenessMinutesTracked'),
                           t('csv.activenessAwayCount'),
+                          t('csv.activenessStatus'),
                       ]
                     : []),
             ],
@@ -297,6 +309,7 @@ export function ClassDetailSheet({
                           l.activeness_attention ?? '',
                           isNum(l.activeness_seconds) ? Math.round(l.activeness_seconds / 60) : '',
                           l.activeness_away_count ?? '',
+                          activenessState(l, false) ?? '',
                       ]
                     : []),
             ])
@@ -552,6 +565,7 @@ export function ClassDetailSheet({
                                                             learner={l}
                                                             label={t('drilldown.activeness')}
                                                             detail={activenessDetail(l)}
+                                                            stateLabel={activenessState(l, true)}
                                                         />
                                                     )}
                                                 </div>

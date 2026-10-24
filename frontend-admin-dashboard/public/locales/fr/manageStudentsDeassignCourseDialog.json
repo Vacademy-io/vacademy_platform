@@ -28,6 +28,11 @@
             "optional": "(facultatif)",
             "placeholder": "Pourquoi cet apprenant est-il résilié ?"
         },
+        "deletePaymentHistory": {
+            "label": "Supprimer aussi l'historique des paiements",
+            "description": "Supprime définitivement les paiements, échéances, factures et le plan tarifaire de ce cours : ils n'apparaissent plus dans l'historique des paiements, la gestion des paiements ni les rapports. Les paiements en ligne (passerelle) ne peuvent pas être supprimés.",
+            "warning": "Les montants encaissés des rapports passés vont baisser. Action irréversible."
+        },
         "notifyLearners": "Notifier l'apprenant du retrait"
     },
     "preview": {

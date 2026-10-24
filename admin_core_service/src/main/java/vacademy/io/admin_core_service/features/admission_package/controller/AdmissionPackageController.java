@@ -17,6 +17,8 @@ import vacademy.io.admin_core_service.features.admission_package.dto.AdmissionPa
 import vacademy.io.admin_core_service.features.admission_package.dto.AdmissionPackageSummaryDTO;
 import vacademy.io.admin_core_service.features.admission_package.service.AdmissionPackagePaymentService;
 import vacademy.io.admin_core_service.features.fee_management.dto.RecordOfflinePaymentRequestDTO;
+import vacademy.io.admin_core_service.features.fee_management.dto.StopDuesRequestDTO;
+import vacademy.io.admin_core_service.features.fee_management.dto.StopDuesResultDTO;
 import vacademy.io.admin_core_service.features.fee_management.service.FeeAccessGuard;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
@@ -107,5 +109,60 @@ public class AdmissionPackageController {
         if (request == null) throw new VacademyException("Say which installment to split");
         return ResponseEntity.ok(admissionPackagePaymentService.splitInstallment(packageId, request.getDueDate(),
                 request.getAmount(), request.getNewDueDate(), user != null ? user.getUserId() : null));
+    }
+
+    /** Changes a package installment's amount on every course (the package total moves by the difference). */
+    @PutMapping("/admission-package/{packageId}/installment/amount")
+    @Auditable(
+            entityType = "FEE_PLAN",
+            action = "UPDATE",
+            entityIdExpr = "#packageId",
+            descriptionExpr = "'set the ' + #request?.dueDate + ' installment of admission package ' + #packageId + ' to ' + #request?.amount")
+    public ResponseEntity<AdmissionPackageSummaryDTO> setInstallmentAmount(
+            @PathVariable String packageId,
+            @RequestBody AdmissionPackageInstallmentChangeDTO request,
+            @RequestAttribute("user") CustomUserDetails user) {
+        feeAccessGuard.requireStaff(user, admissionPackagePaymentService.instituteOf(packageId));
+        if (request == null) throw new VacademyException("Say which installment to change");
+        return ResponseEntity.ok(admissionPackagePaymentService.setInstallmentAmount(packageId, request.getDueDate(),
+                request.getAmount(), user != null ? user.getUserId() : null));
+    }
+
+    /**
+     * Stop dues from a package installment (or it and every later one) on every course — a learner
+     * who dropped out or stopped paying; optionally removes them from the package's courses.
+     */
+    @PostMapping("/admission-package/{packageId}/installment/stop-dues")
+    @Auditable(
+            entityType = "FEE_PLAN",
+            action = "CANCEL",
+            entityIdExpr = "#packageId",
+            descriptionExpr = "'stopped dues on the ' + #request?.dueDate + ' installment' + (#request?.includeLater ? ' and later ones' : '')"
+                    + " + ' of admission package ' + #packageId + (#request?.removeFromCourse ? ', removed from its courses' : '')"
+                    + " + ': ' + #request?.reason")
+    public ResponseEntity<StopDuesResultDTO> stopDues(
+            @PathVariable String packageId,
+            @RequestBody StopDuesRequestDTO request,
+            @RequestAttribute("user") CustomUserDetails user) {
+        feeAccessGuard.requireStaff(user, admissionPackagePaymentService.instituteOf(packageId));
+        return ResponseEntity.ok(admissionPackagePaymentService.stopDues(packageId, request,
+                user != null ? user.getUserId() : null));
+    }
+
+    /** Reopens what was stopped together with a package installment. */
+    @PostMapping("/admission-package/{packageId}/installment/reopen")
+    @Auditable(
+            entityType = "FEE_PLAN",
+            action = "UPDATE",
+            entityIdExpr = "#packageId",
+            descriptionExpr = "'reopened the stopped dues of the ' + #request?.dueDate + ' installment of admission package ' + #packageId")
+    public ResponseEntity<StopDuesResultDTO> reopenDues(
+            @PathVariable String packageId,
+            @RequestBody AdmissionPackageInstallmentChangeDTO request,
+            @RequestAttribute("user") CustomUserDetails user) {
+        feeAccessGuard.requireStaff(user, admissionPackagePaymentService.instituteOf(packageId));
+        if (request == null) throw new VacademyException("Say which installment to reopen");
+        return ResponseEntity.ok(admissionPackagePaymentService.reopenDues(packageId, request.getDueDate(),
+                user != null ? user.getUserId() : null));
     }
 }

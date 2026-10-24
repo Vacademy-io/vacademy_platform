@@ -236,8 +236,18 @@ public final class AdmissionPackageSplitter {
             throw new VacademyException("Only " + money(owed).toPlainString()
                     + " is unpaid on this installment, so that is the most that can be moved");
         }
-        boolean whole = isWhole(amount) && owedPerBill.stream().allMatch(AdmissionPackageSplitter::isWhole);
-        BigDecimal[] parts = apportion(amount, owedPerBill, whole ? 0 : 2);
+        return shareByWeight(owedPerBill, amount);
+    }
+
+    /**
+     * Shares {@code amount} in proportion to {@code weights} — equally when every weight is zero.
+     * Whole rupees when the amount and every weight are whole; the parts add up to the amount.
+     */
+    public static BigDecimal[] shareByWeight(List<BigDecimal> weights, BigDecimal amount) {
+        List<BigDecimal> w = sum(weights).signum() > 0 ? weights
+                : weights.stream().map(x -> BigDecimal.ONE).toList();
+        boolean whole = isWhole(amount) && w.stream().allMatch(AdmissionPackageSplitter::isWhole);
+        BigDecimal[] parts = apportion(amount, w, whole ? 0 : 2);
         for (int i = 0; i < parts.length; i++) parts[i] = money(parts[i]);
         return parts;
     }

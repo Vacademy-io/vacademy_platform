@@ -43,4 +43,9 @@ public class CpoInstallmentRowDTO {
 
     /** Manual amount override currently in effect (from user_plan.discount_json). */
     private UserPlanDiscountJson.ManualAmountOverrideEntry manualAmountOverride;
+
+    /** Set while the installment's dues are stopped (Stop dues): why, and what it took off. */
+    private String stoppedReason;
+    private BigDecimal stoppedAmount;
+    private java.time.LocalDateTime stoppedAt;
 }

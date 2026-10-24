@@ -71,7 +71,10 @@ public class AdmissionPackageSummaryDTO {
         private BigDecimal amount;
         private BigDecimal paid;
         private BigDecimal outstanding;
-        /** PAID, PARTIAL_PAID, OVERDUE or DUE. */
+        /** While its dues are stopped (Stop dues): what was taken off, and why. */
+        private BigDecimal stopped;
+        private String stoppedReason;
+        /** PAID, PARTIAL_PAID, OVERDUE, DUE, or STOPPED when nothing on it is owed because its dues were stopped. */
         private String status;
     }
 }

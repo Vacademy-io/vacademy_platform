@@ -11,7 +11,11 @@ import vacademy.io.admin_core_service.features.admission_package.repository.Admi
 import vacademy.io.admin_core_service.features.fee_management.dto.RecordOfflinePaymentRequestDTO;
 import vacademy.io.admin_core_service.features.fee_management.entity.StudentFeePayment;
 import vacademy.io.admin_core_service.features.fee_management.repository.StudentFeePaymentRepository;
+import vacademy.io.admin_core_service.features.fee_management.dto.StopDuesRequestDTO;
+import vacademy.io.admin_core_service.features.fee_management.repository.FeeBillCancellationRepository;
 import vacademy.io.admin_core_service.features.fee_management.service.CpoDiscountService;
+import vacademy.io.admin_core_service.features.fee_management.service.FeeBillCancellationService;
+import vacademy.io.admin_core_service.features.fee_management.service.FeeStopDuesService;
 import vacademy.io.admin_core_service.features.fee_management.service.CpoSideViewService;
 import vacademy.io.admin_core_service.features.invoice.service.InvoiceService;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
@@ -47,8 +51,11 @@ class AdmissionPackagePaymentServiceTest {
     private final CpoSideViewService sideView = mock(CpoSideViewService.class);
     private final InvoiceService invoices = mock(InvoiceService.class);
     private final CpoDiscountService discounts = mock(CpoDiscountService.class);
+    private final FeeStopDuesService stopDues = mock(FeeStopDuesService.class);
+    private final FeeBillCancellationService cancellations = mock(FeeBillCancellationService.class);
+    private final FeeBillCancellationRepository stops = mock(FeeBillCancellationRepository.class);
     private final AdmissionPackagePaymentService service = new AdmissionPackagePaymentService(
-            packages, courses, bills, plans, sessions, sideView, invoices, discounts);
+            packages, courses, bills, plans, sessions, sideView, invoices, discounts, stopDues, cancellations, stops);
 
     private static StudentFeePayment bill(String plan, String due, String expected, String paid, String status) {
         StudentFeePayment b = new StudentFeePayment();
@@ -75,6 +82,7 @@ class AdmissionPackagePaymentServiceTest {
         AdmissionPackage pkg = new AdmissionPackage();
         pkg.setId("pkg");
         pkg.setInstituteId("inst");
+        pkg.setUserId("learner");
         pkg.setFeeTotal(new BigDecimal("80000"));
         pkg.setDiscountTotal(new BigDecimal("10000"));
         when(packages.findById("pkg")).thenReturn(Optional.of(pkg));
@@ -174,5 +182,36 @@ class AdmissionPackagePaymentServiceTest {
         assertThrows(VacademyException.class, () ->
                 service.splitInstallment("pkg", LocalDate.parse("2026-11-10"), new BigDecimal("32501"), to, "admin"));
         verify(discounts, never()).splitInstallment(anyString(), any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("stop dues from a package installment takes every course's bill on it and after")
+    @SuppressWarnings("unchecked")
+    void stopsDuesFromAnInstallmentOnEveryCourse() {
+        givenPackage();
+        StopDuesRequestDTO req = StopDuesRequestDTO.builder().dueDate(LocalDate.parse("2026-11-10"))
+                .includeLater(true).reason("Dropped out").removeFromCourse(true).build();
+
+        service.stopDues("pkg", req, "admin");
+
+        ArgumentCaptor<List<StudentFeePayment>> picked = ArgumentCaptor.forClass(List.class);
+        verify(stopDues).stop(picked.capture(), eq(req), eq("learner"), eq("inst"),
+                eq(List.of("diploma", "bwssc")), eq("admin"));
+        assertEquals(List.of("diploma@2026-11-10", "diploma@2026-12-10", "bwssc@2026-11-10", "bwssc@2026-12-10"),
+                picked.getValue().stream().map(StudentFeePayment::getId).toList());
+    }
+
+    @Test
+    @DisplayName("a package installment's new amount is shared by what each course still owes on it")
+    void setsInstallmentAmountOnEveryCourse() {
+        givenPackage();
+        // 32500 due on 10 Nov (22344 + 10156) becomes 20000.
+        service.setInstallmentAmount("pkg", LocalDate.parse("2026-11-10"), new BigDecimal("20000"), "admin");
+        verify(discounts).setInstallmentNetAmount(eq("diploma@2026-11-10"),
+                argThat(a -> a.compareTo(new BigDecimal("13750")) == 0), anyString(), eq("admin"));
+        verify(discounts).setInstallmentNetAmount(eq("bwssc@2026-11-10"),
+                argThat(a -> a.compareTo(new BigDecimal("6250")) == 0), anyString(), eq("admin"));
+        assertThrows(VacademyException.class, () ->
+                service.setInstallmentAmount("pkg", LocalDate.parse("2026-10-25"), new BigDecimal("4000"), "admin"));
     }
 }

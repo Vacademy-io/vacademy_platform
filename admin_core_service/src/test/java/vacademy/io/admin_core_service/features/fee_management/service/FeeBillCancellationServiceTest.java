@@ -2,13 +2,17 @@ package vacademy.io.admin_core_service.features.fee_management.service;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import vacademy.io.admin_core_service.features.fee_management.entity.FeeBillCancellation;
 import vacademy.io.admin_core_service.features.fee_management.entity.StudentFeePayment;
+import vacademy.io.admin_core_service.features.fee_management.repository.FeeBillCancellationRepository;
 import vacademy.io.admin_core_service.features.fee_management.repository.StudentFeePaymentRepository;
 import vacademy.io.admin_core_service.features.user_account.repository.UserAccountLedgerRepository;
 import vacademy.io.admin_core_service.features.user_account.service.UserAccountLedgerService;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
@@ -52,7 +56,8 @@ class FeeBillCancellationServiceTest {
         when(ledgerRepo.debitNetBySourceId("b4")).thenReturn(BigDecimal.ZERO);
         when(ledgerRepo.debitNetBySourceId("b5")).thenReturn(BigDecimal.ZERO);
 
-        int n = new FeeBillCancellationService(sfps, ledger, ledgerRepo).cancelOpenBills("plan", null);
+        int n = new FeeBillCancellationService(sfps, ledger, ledgerRepo,
+                mock(FeeBillCancellationRepository.class)).cancelOpenBills("plan", null);
 
         assertEquals(4, n);
         assertEquals("PAID", paid.getStatus());
@@ -68,5 +73,48 @@ class FeeBillCancellationServiceTest {
         // Nor does one with less on the ledger than was paid get a new charge.
         verify(ledger, never()).recordDebitAccrual(any(), any(), any(), any(), any(), any(), any(), any(), any());
         assertEquals("CANCELLED", preLedger.getStatus());
+    }
+
+    @Test
+    @DisplayName("stopping dues records each bill so reopening puts amount, status and ledger back")
+    void stopDuesThenReopen() {
+        StudentFeePaymentRepository sfps = mock(StudentFeePaymentRepository.class);
+        UserAccountLedgerService ledger = mock(UserAccountLedgerService.class);
+        UserAccountLedgerRepository ledgerRepo = mock(UserAccountLedgerRepository.class);
+        FeeBillCancellationRepository records = mock(FeeBillCancellationRepository.class);
+        FeeBillCancellationService service = new FeeBillCancellationService(sfps, ledger, ledgerRepo, records);
+        StudentFeePayment partial = bill("b2", "30000", "10000", "PARTIAL_PAID");
+        StudentFeePayment open = bill("b3", "30000", "0", "OVERDUE");
+        StudentFeePayment paid = bill("b1", "5000", "5000", "PAID");
+        when(ledgerRepo.debitNetBySourceId("b2")).thenReturn(new BigDecimal("30000"));
+        when(ledgerRepo.debitNetBySourceId("b3")).thenReturn(new BigDecimal("30000"));
+
+        assertEquals(2, service.stopDues(List.of(paid, partial, open), "Dropped out", "admin"));
+
+        assertEquals("CANCELLED", open.getStatus());
+        assertEquals(0, open.getAmountExpected().signum());
+        assertEquals(0, partial.getAmountExpected().compareTo(new BigDecimal("10000")));
+        assertEquals("PAID", paid.getStatus());
+        ArgumentCaptor<FeeBillCancellation> saved = ArgumentCaptor.forClass(FeeBillCancellation.class);
+        verify(records, org.mockito.Mockito.times(2)).save(saved.capture());
+        FeeBillCancellation openRecord = saved.getAllValues().get(1);
+        assertEquals("OVERDUE", openRecord.getPreviousStatus());
+        assertEquals(0, openRecord.getLedgerReversed().compareTo(new BigDecimal("30000")));
+        assertEquals(0, openRecord.cancelledAmount().compareTo(new BigDecimal("30000")));
+        assertEquals("Dropped out", openRecord.getReason());
+
+        when(records.findFirstByStudentFeePaymentIdAndReopenedAtIsNullOrderByCancelledAtDesc("b3"))
+                .thenReturn(Optional.of(openRecord));
+        when(records.findFirstByStudentFeePaymentIdAndReopenedAtIsNullOrderByCancelledAtDesc("b2"))
+                .thenReturn(Optional.of(saved.getAllValues().get(0)));
+        assertEquals(2, service.reopen(List.of(partial, open), "admin"));
+
+        assertEquals("OVERDUE", open.getStatus());
+        assertEquals(0, open.getAmountExpected().compareTo(new BigDecimal("30000")));
+        assertEquals("PARTIAL_PAID", partial.getStatus());
+        assertEquals(0, partial.getAmountExpected().compareTo(new BigDecimal("30000")));
+        verify(ledger).recordDebitAccrual(eq("u1"), eq("inst"), eq(new BigDecimal("30000.00")), anyString(), any(),
+                eq("PLAN_REOPENED"), eq("b3"), any(), anyString());
+        assertEquals("admin", openRecord.getReopenedByUserId());
     }
 }

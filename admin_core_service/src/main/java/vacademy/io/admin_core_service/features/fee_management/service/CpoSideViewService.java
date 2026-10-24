@@ -70,6 +70,7 @@ public class CpoSideViewService {
     private final ComplexPaymentOptionRepository complexPaymentOptionRepository;
     private final FacultySubjectPackageSessionMappingRepository facultyMappingRepository;
     private final vacademy.io.admin_core_service.features.admission_package.repository.AdmissionPackageCourseRepository admissionPackageCourseRepository;
+    private final vacademy.io.admin_core_service.features.fee_management.repository.FeeBillCancellationRepository feeBillCancellationRepository;
 
     // -------------------------------------------------------------------- read
 
@@ -159,6 +160,15 @@ public class CpoSideViewService {
         });
         UserPlanDiscountJson snapshot = parseSnapshot(plan);
         Map<String, BigDecimal> planShares = cpoDiscountService.currentPlanDiscountShares(sfps, snapshot);
+        Map<String, vacademy.io.admin_core_service.features.fee_management.entity.FeeBillCancellation> stopped =
+                new java.util.HashMap<>();
+        List<String> cancelledIds = sfps.stream()
+                .filter(s -> FeeBillCancellationService.CANCELLED.equalsIgnoreCase(s.getStatus()))
+                .map(StudentFeePayment::getId).toList();
+        if (!cancelledIds.isEmpty()) {
+            feeBillCancellationRepository.findByStudentFeePaymentIdInAndReopenedAtIsNull(cancelledIds)
+                    .forEach(c -> stopped.put(c.getStudentFeePaymentId(), c));
+        }
 
         BigDecimal gross = BigDecimal.ZERO;
         BigDecimal net = BigDecimal.ZERO;
@@ -174,7 +184,11 @@ public class CpoSideViewService {
             net = net.add(amountExpected);
             paid = paid.add(amountPaid);
 
+            var stop = stopped.get(sfp.getId());
             rows.add(CpoInstallmentRowDTO.builder()
+                    .stoppedReason(stop != null ? stop.getReason() : null)
+                    .stoppedAmount(stop != null ? stop.cancelledAmount() : null)
+                    .stoppedAt(stop != null ? stop.getCancelledAt() : null)
                     .id(sfp.getId())
                     .aftInstallmentId(sfp.getIId())
                     .installmentNumber(sfp.getInstallmentNumber())

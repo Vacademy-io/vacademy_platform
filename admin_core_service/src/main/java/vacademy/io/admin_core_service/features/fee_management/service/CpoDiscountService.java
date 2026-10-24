@@ -282,6 +282,35 @@ public class CpoDiscountService {
         return snapshot;
     }
 
+    /**
+     * Sets what the learner owes on one installment (its net, after the plan discount) to
+     * {@code net} — how a package installment's new amount lands on each course exactly. The
+     * amount override is chosen so the row nets to it: with the plan discount fixed per row (a
+     * package's), the override is the net plus that row's share; with no plan discount it is the
+     * net itself. A plan discount spread in proportion is not supported here (its shares move
+     * with every amount), so that is refused rather than landing near the target.
+     */
+    @Transactional
+    public UserPlanDiscountJson setInstallmentNetAmount(String sfpId, BigDecimal net, String reason, String appliedBy) {
+        if (net == null || net.signum() < 0) {
+            throw new VacademyException("Installment amount must be zero or positive");
+        }
+        StudentFeePayment sfp = loadSfp(sfpId);
+        UserPlanDiscountJson snapshot = readOrInit(loadPlan(sfp.getUserPlanId()));
+        Map<String, BigDecimal> frozen = frozenShares(snapshot);
+        BigDecimal override;
+        if (frozen != null) {
+            override = net.add(nz(frozen.get(sfpId)));
+        } else if (snapshot.getCpoDiscount() == null || snapshot.getCpoDiscount().getValue() == null
+                || snapshot.getCpoDiscount().getValue() == 0d) {
+            override = net;
+        } else {
+            throw new VacademyException("This course's discount is spread over its installments in proportion, "
+                    + "so set the amount on the installment itself");
+        }
+        return setInstallmentAmount(sfpId, scale(override), reason, appliedBy);
+    }
+
     @Transactional
     public UserPlanDiscountJson clearInstallmentAmountOverride(String sfpId, String appliedBy) {
         StudentFeePayment sfp = loadSfp(sfpId);

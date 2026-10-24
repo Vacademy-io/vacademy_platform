@@ -14,7 +14,13 @@ import vacademy.io.admin_core_service.features.fee_management.dto.RecordOfflineP
 import vacademy.io.admin_core_service.features.fee_management.entity.StudentFeePayment;
 import vacademy.io.admin_core_service.features.fee_management.repository.StudentFeePaymentRepository;
 import vacademy.io.admin_core_service.features.fee_management.service.AdmissionPackageSplitter;
+import vacademy.io.admin_core_service.features.fee_management.dto.StopDuesRequestDTO;
+import vacademy.io.admin_core_service.features.fee_management.dto.StopDuesResultDTO;
+import vacademy.io.admin_core_service.features.fee_management.entity.FeeBillCancellation;
+import vacademy.io.admin_core_service.features.fee_management.repository.FeeBillCancellationRepository;
 import vacademy.io.admin_core_service.features.fee_management.service.CpoDiscountService;
+import vacademy.io.admin_core_service.features.fee_management.service.FeeBillCancellationService;
+import vacademy.io.admin_core_service.features.fee_management.service.FeeStopDuesService;
 import vacademy.io.admin_core_service.features.fee_management.service.CpoSideViewService;
 import vacademy.io.admin_core_service.features.invoice.service.InvoiceService;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
@@ -48,6 +54,9 @@ public class AdmissionPackagePaymentService {
     private final CpoSideViewService cpoSideViewService;
     private final InvoiceService invoiceService;
     private final CpoDiscountService cpoDiscountService;
+    private final FeeStopDuesService feeStopDuesService;
+    private final FeeBillCancellationService feeBillCancellationService;
+    private final FeeBillCancellationRepository feeBillCancellationRepository;
 
     /** A package with its courses and each course's live fee bills, in package order. */
     private record Loaded(AdmissionPackage pkg, List<AdmissionPackageCourse> courses, List<UserPlan> plans,
@@ -191,9 +200,92 @@ public class AdmissionPackagePaymentService {
         return summarise(load(loaded.pkg()));
     }
 
+    /**
+     * Stop dues on a package installment (or it and every later one) for every course at once —
+     * a learner who dropped out or stopped paying. Optionally also removes them from every course
+     * of the package.
+     */
+    public StopDuesResultDTO stopDues(String packageId, StopDuesRequestDTO req, String adminUserId) {
+        if (req == null || req.getDueDate() == null) {
+            throw new VacademyException("Say which installment: its due date");
+        }
+        Loaded loaded = load(find(packageId));
+        List<StudentFeePayment> bills = new ArrayList<>();
+        for (List<StudentFeePayment> courseBills : loaded.bills()) {
+            for (StudentFeePayment bill : courseBills) {
+                LocalDate due = toLocalDate(bill.getDueDate());
+                boolean picked = req.isIncludeLater()
+                        ? due == null || !due.isBefore(req.getDueDate())
+                        : req.getDueDate().equals(due);
+                if (picked) bills.add(bill);
+            }
+        }
+        log.info("stopPackageDues: package={}, from={}, later={}, remove={}, bills={}, by={}", packageId,
+                req.getDueDate(), req.isIncludeLater(), req.isRemoveFromCourse(), bills.size(), adminUserId);
+        List<String> planIds = loaded.courses().stream().map(AdmissionPackageCourse::getUserPlanId).toList();
+        return feeStopDuesService.stop(bills, req, loaded.pkg().getUserId(), loaded.pkg().getInstituteId(),
+                planIds, adminUserId);
+    }
+
+    /** Reopens what was stopped together with the package installment due on {@code dueDate}. */
+    public StopDuesResultDTO reopenDues(String packageId, LocalDate dueDate, String adminUserId) {
+        if (dueDate == null) {
+            throw new VacademyException("Say which installment: its due date");
+        }
+        Loaded loaded = load(find(packageId));
+        java.util.Map<String, StudentFeePayment> toReopen = new java.util.LinkedHashMap<>();
+        for (List<StudentFeePayment> courseBills : loaded.bills()) {
+            for (StudentFeePayment bill : courseBills) {
+                if (!FeeBillCancellationService.CANCELLED.equalsIgnoreCase(bill.getStatus())) continue;
+                if (!dueDate.equals(toLocalDate(bill.getDueDate()))) continue;
+                for (StudentFeePayment b : feeBillCancellationService.stoppedWith(bill)) toReopen.put(b.getId(), b);
+            }
+        }
+        return feeStopDuesService.reopen(new ArrayList<>(toReopen.values()), adminUserId);
+    }
+
+    /**
+     * Sets a package installment's amount to {@code amount} on every course: each course keeps
+     * what it has paid on it, and the unpaid part is shared between the courses in proportion to
+     * what each still owes on it. The package total moves by the difference.
+     */
+    @Transactional
+    public AdmissionPackageSummaryDTO setInstallmentAmount(String packageId, LocalDate dueDate, BigDecimal amount,
+                                                           String adminUserId) {
+        if (amount == null || amount.signum() < 0) {
+            throw new VacademyException("Enter the installment's new amount");
+        }
+        Loaded loaded = load(find(packageId));
+        List<StudentFeePayment> bills = new ArrayList<>();
+        for (StudentFeePayment bill : billsOn(loaded, dueDate)) {
+            if (!"WAIVED".equalsIgnoreCase(bill.getStatus())) bills.add(bill);
+        }
+        BigDecimal paidOn = bills.stream().map(b -> nz(b.getAmountPaid())).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal unpaidOn = bills.stream().map(AdmissionPackagePaymentService::owed)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (unpaidOn.signum() <= 0) {
+            throw new VacademyException("This installment is paid, so its amount cannot change");
+        }
+        if (amount.compareTo(paidOn) < 0) {
+            throw new VacademyException(paidOn.stripTrailingZeros().toPlainString()
+                    + " is already paid on this installment, so it cannot be less than that");
+        }
+        BigDecimal[] unpaidParts = AdmissionPackageSplitter.shareByWeight(
+                bills.stream().map(AdmissionPackagePaymentService::owed).toList(), amount.subtract(paidOn));
+        log.info("setPackageInstallmentAmount: package={}, due={}, amount={}, unpaid shares={}, by={}",
+                packageId, dueDate, amount, java.util.Arrays.toString(unpaidParts), adminUserId);
+        for (int i = 0; i < bills.size(); i++) {
+            BigDecimal net = nz(bills.get(i).getAmountPaid()).add(unpaidParts[i]);
+            if (net.compareTo(nz(bills.get(i).getAmountExpected())) == 0) continue;
+            cpoDiscountService.setInstallmentNetAmount(bills.get(i).getId(), net,
+                    "Package installment amount changed", adminUserId);
+        }
+        return summarise(load(loaded.pkg()));
+    }
+
     // ---------------------------------------------------------------- helpers
 
-    /** The courses' live bills due on {@code dueDate}: one package installment. */
+    /** The courses' live (not cancelled) bills due on {@code dueDate}: one package installment. */
     private List<StudentFeePayment> billsOn(Loaded loaded, LocalDate dueDate) {
         if (dueDate == null) {
             throw new VacademyException("Say which installment: its due date");
@@ -201,11 +293,28 @@ public class AdmissionPackagePaymentService {
         List<StudentFeePayment> out = new ArrayList<>();
         for (List<StudentFeePayment> bills : loaded.bills()) {
             for (StudentFeePayment bill : bills) {
+                if (FeeBillCancellationService.CANCELLED.equalsIgnoreCase(bill.getStatus())) continue;
                 if (dueDate.equals(toLocalDate(bill.getDueDate()))) out.add(bill);
             }
         }
         if (out.isEmpty()) {
             throw new VacademyException("This package has no installment due on " + dueDate);
+        }
+        return out;
+    }
+
+    /** The open Stop dues record of each of the package's cancelled bills, by bill id. */
+    private Map<String, FeeBillCancellation> stopsOf(Loaded loaded) {
+        List<String> cancelled = new ArrayList<>();
+        for (List<StudentFeePayment> bills : loaded.bills()) {
+            for (StudentFeePayment bill : bills) {
+                if (FeeBillCancellationService.CANCELLED.equalsIgnoreCase(bill.getStatus())) cancelled.add(bill.getId());
+            }
+        }
+        Map<String, FeeBillCancellation> out = new java.util.HashMap<>();
+        if (cancelled.isEmpty()) return out;
+        for (FeeBillCancellation c : feeBillCancellationRepository.findByStudentFeePaymentIdInAndReopenedAtIsNull(cancelled)) {
+            out.put(c.getStudentFeePaymentId(), c);
         }
         return out;
     }
@@ -223,7 +332,9 @@ public class AdmissionPackagePaymentService {
         for (AdmissionPackageCourse course : courses) {
             plans.add(userPlanRepository.findById(course.getUserPlanId()).orElse(null));
             List<StudentFeePayment> rows = new ArrayList<>(studentFeePaymentRepository.findByUserPlanId(course.getUserPlanId()));
-            rows.removeIf(r -> "CANCELLED".equalsIgnoreCase(r.getStatus()) || "DELETED".equalsIgnoreCase(r.getStatus()));
+            // A cancelled bill stays: it holds what was paid on it (amount cut to that), and a stopped
+            // one shows as stopped. Nothing is owed on it, so no payment or change reaches it.
+            rows.removeIf(r -> "DELETED".equalsIgnoreCase(r.getStatus()));
             bills.add(rows);
         }
         return new Loaded(pkg, courses, plans, bills);
@@ -255,7 +366,9 @@ public class AdmissionPackagePaymentService {
         BigDecimal net = BigDecimal.ZERO, paid = BigDecimal.ZERO;
         String currency = null;
         List<AdmissionPackageSummaryDTO.Course> courses = new ArrayList<>();
-        Map<LocalDate, BigDecimal[]> byDate = new TreeMap<>(); // amount, paid, owed
+        Map<LocalDate, BigDecimal[]> byDate = new TreeMap<>(); // amount, paid, owed, stopped
+        Map<LocalDate, String> stoppedReason = new java.util.HashMap<>();
+        Map<String, FeeBillCancellation> stops = stopsOf(loaded);
         for (int i = 0; i < loaded.courses().size(); i++) {
             AdmissionPackageCourse course = loaded.courses().get(i);
             UserPlan plan = loaded.plans().get(i);
@@ -270,10 +383,16 @@ public class AdmissionPackagePaymentService {
                 coursePaid = coursePaid.add(billPaid);
                 LocalDate due = toLocalDate(bill.getDueDate());
                 if (due == null) continue;
-                BigDecimal[] day = byDate.computeIfAbsent(due, d -> new BigDecimal[]{BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO});
+                BigDecimal[] day = byDate.computeIfAbsent(due, d -> new BigDecimal[]{
+                        BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO});
                 day[0] = day[0].add(expected);
                 day[1] = day[1].add(billPaid);
                 if (!"PAID".equalsIgnoreCase(bill.getStatus())) day[2] = day[2].add(owed(bill));
+                FeeBillCancellation stop = stops.get(bill.getId());
+                if (stop != null) {
+                    day[3] = day[3].add(stop.cancelledAmount());
+                    if (stop.getReason() != null) stoppedReason.putIfAbsent(due, stop.getReason());
+                }
             }
             net = net.add(courseNet);
             paid = paid.add(coursePaid);
@@ -295,12 +414,14 @@ public class AdmissionPackagePaymentService {
         BigDecimal nextAmount = null;
         for (Map.Entry<LocalDate, BigDecimal[]> e : byDate.entrySet()) {
             BigDecimal[] day = e.getValue();
-            if (day[0].signum() == 0 && day[1].signum() == 0) continue;
-            String status = day[2].signum() <= 0 ? "PAID"
+            if (day[0].signum() == 0 && day[1].signum() == 0 && day[3].signum() == 0) continue;
+            String status = day[2].signum() <= 0 ? (day[3].signum() > 0 ? "STOPPED" : "PAID")
                     : e.getKey().isBefore(today) ? "OVERDUE"
                     : day[1].signum() > 0 ? "PARTIAL_PAID" : "DUE";
             installments.add(AdmissionPackageSummaryDTO.Installment.builder()
-                    .dueDate(e.getKey()).amount(day[0]).paid(day[1]).outstanding(day[2]).status(status).build());
+                    .dueDate(e.getKey()).amount(day[0]).paid(day[1]).outstanding(day[2])
+                    .stopped(day[3].signum() > 0 ? day[3] : null).stoppedReason(stoppedReason.get(e.getKey()))
+                    .status(status).build());
             if (nextDue == null && day[2].signum() > 0) {
                 nextDue = e.getKey();
                 nextAmount = day[2];

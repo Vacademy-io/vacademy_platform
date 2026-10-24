@@ -8,11 +8,14 @@ import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import vacademy.io.admin_core_service.features.telephony.persistence.repository.AirtelCallImportRepository;
 
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Polls the Airtel CCR/CDR export bucket for new objects and hands each to
@@ -31,6 +34,7 @@ public class AirtelCcrImportScheduler {
 
     @Autowired private AirtelCcrS3Reader s3;
     @Autowired private AirtelCcrImportService importService;
+    @Autowired private AirtelCallImportRepository callImportRepository;
 
     @Value("${telephony.airtel.s3.lookback-days:2}")
     private int lookbackDays;
@@ -77,12 +81,22 @@ public class AirtelCcrImportScheduler {
             LocalDate today = LocalDate.now(ZoneOffset.UTC);
             for (int d = 0; d <= lookbackDays && imported < maxPerRun; d++) {
                 String prefix = today.minusDays(d).format(DATE_PREFIX) + "/";
-                List<String> keys = s3.listKeys(prefix);
-                for (String key : keys) {
+                List<String> targets = s3.listKeys(prefix).stream()
+                        .filter(key -> (key.contains("/Cdr/") && key.endsWith(".json"))
+                                || (key.contains("/Rec/") && key.endsWith(".mp3")))
+                        .toList();
+                // Skip keys already imported with one lookup per 1,000 keys. Probing each key
+                // (importObject's existsByS3Key) re-checked the whole look-back window every tick:
+                // 8.1M queries a day for a handful of new objects. importObject still checks the
+                // rest itself, so this only removes work.
+                Set<String> existing = new HashSet<>();
+                for (int i = 0; i < targets.size(); i += 1000) {
+                    existing.addAll(callImportRepository.findExistingS3Keys(
+                            targets.subList(i, Math.min(i + 1000, targets.size()))));
+                }
+                for (String key : targets) {
                     if (imported >= maxPerRun) break;
-                    boolean target = (key.contains("/Cdr/") && key.endsWith(".json"))
-                            || (key.contains("/Rec/") && key.endsWith(".mp3"));
-                    if (!target) continue;
+                    if (existing.contains(key)) continue;
                     if (importService.importObject(key)) imported++;
                 }
             }
